@@ -109,9 +109,14 @@ def record_run_start(
 
 
 def record_run_end(conn: sqlite3.Connection, run_id: str, **fields: Any) -> None:
+    update_run(conn, run_id, **fields)
+
+
+def update_run(conn: sqlite3.Connection, run_id: str, **fields: Any) -> None:
+    """Set columns of a ``runs`` row (only known columns; values are bound parameters)."""
     allowed = {
         "status", "provider", "model", "tier", "attempts", "finished_at", "duration_s",
-        "worker_output_tokens", "envelope_chars",
+        "worker_output_tokens", "envelope_chars", "workspace", "worktree", "applied",
     }  # fmt: skip
     unknown = set(fields) - allowed
     if unknown:

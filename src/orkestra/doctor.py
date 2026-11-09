@@ -9,6 +9,7 @@ import asyncio
 import os
 import shutil
 import subprocess
+import sys
 import time
 from collections.abc import Callable, Mapping
 from contextlib import closing
@@ -58,6 +59,7 @@ class DoctorReport:
 
 Which = Callable[[str], str | None]
 VersionProbe = Callable[[str], str | None]
+GitConfig = Callable[[str], str | None]
 
 
 def probe_version(executable: str) -> str | None:
@@ -315,6 +317,28 @@ async def _price_checks(config: Config, environ: Mapping[str, str]) -> list[Chec
     return checks
 
 
+def read_git_config(key: str) -> str | None:
+    """``git config --get <key>`` (global and system), or ``None``."""
+    try:
+        done = subprocess.run(
+            ["git", "config", "--get", key], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=VERSION_TIMEOUT_S, check=False,
+        )  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.strip() or None if done.returncode == 0 else None
+
+
+def _longpaths_check(git_config: GitConfig) -> list[Check]:
+    """Worktrees live under ~/.orkestra/worktrees: deep repositories can hit MAX_PATH."""
+    if (git_config("core.longpaths") or "").lower() == "true":
+        return []
+    return [
+        Check("tool:git", "warn", t("doctor.git.longpaths"),
+              {"hint": "git config --global core.longpaths true"})
+    ]  # fmt: skip
+
+
 def _check_tool(tool: str, which: Which, probe: VersionProbe, *, required: bool) -> Check:
     path = which(tool)
     if path is None:
@@ -337,6 +361,8 @@ async def run_doctor(
     cwd: Path | None = None,
     which: Which = shutil.which,
     probe: VersionProbe = probe_version,
+    git_config: GitConfig | None = None,
+    platform: str = sys.platform,
 ) -> DoctorReport:
     env = os.environ if environ is None else environ
     checks: list[Check] = []
@@ -370,6 +396,8 @@ async def run_doctor(
         checks.extend(_state_checks(loaded.config.providers))
         checks.extend(await _price_checks(loaded.config, env))
     checks.append(_check_tool("git", which, probe, required=True))
+    if platform == "win32" and which("git") is not None:
+        checks.extend(_longpaths_check(git_config or read_git_config))
     configured_commands = (
         {getattr(c, "command", None) for c in loaded.config.providers.values()} if loaded else set()
     )

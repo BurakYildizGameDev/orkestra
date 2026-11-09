@@ -8,7 +8,7 @@
 
 **A budget-aware CLI that lets one strong "chief" model (e.g. Claude) hand work to many cheaper or local "worker" models, verify the results, and fall back to another provider when one fails.**
 
-> **Status: in development.** Phases 0–4 of 14 and the first part of phase 5 are done: the project skeleton, configuration, the Ollama and OpenAI-compatible adapters, `ask`, `doctor`, daily budgets, provider consent, the circuit breaker, secret scanning, the router with retries and failover, and task files with verification, feedback retries and escalation. Isolated code edits and the rest are on the [roadmap](#roadmap). This README only describes what already works.
+> **Status: in development.** Phases 0–4 of 14 and the first two parts of phase 5 are done: the project skeleton, configuration, the Ollama and OpenAI-compatible adapters, `ask`, `doctor`, daily budgets, provider consent, the circuit breaker, secret scanning, the router with retries and failover, task files with verification, feedback retries and escalation, and isolated git worktrees with `show`, `apply`, `discard` and `gc`. Edit tasks that let workers change code (in those worktrees) and the rest are on the [roadmap](#roadmap). This README only describes what already works.
 
 ```
 You ──► Claude (chief: plans, splits, reviews)
@@ -41,6 +41,9 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | One question to a worker model, with context files and an optional JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Routing with profiles, privacy and failover; see why each provider was chosen or skipped | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Task files (YAML/JSON): verify the answer, retry with feedback, move up a tier | `orkestra run task.yaml [--dry-run] [--json]` |
+| A run's envelope, full output, log or change | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
+| Bring a run's change into your working tree, or throw it away | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
+| Clean up abandoned worktrees, old run records and stale reservations | `orkestra gc [--older-than 30] [--dry-run]` |
 | Environment check: config, provider access, API key variables, Ollama models, consent, paused providers, git, codex/agy | `orkestra doctor [--json] [--warm]` |
 | Explicit consent per provider, shown before it is granted | `orkestra providers enable <name>`, `providers disable <name>` |
 | Providers with consent, health and remaining budget | `orkestra providers list [--json]` |
@@ -180,6 +183,28 @@ the task sets one.
 Every attempt's request, response and check log (`verify.log`) is kept in
 `~/.orkestra/runs/<run_id>/attempts/<n>/`.
 
+## Worktrees: isolated changes
+
+Workers never change your checkout. A run that changes code gets its own git worktree under
+`~/.orkestra/worktrees/`, which starts from what is on your disk **now**: the last commit plus
+your uncommitted changes and untracked files (ignored files stay behind). You look at the
+result and decide:
+
+```bash
+orkestra show <run_id> --diff      # the change
+orkestra apply <run_id>            # bring it into your working tree, remove the worktree
+orkestra discard <run_id>          # or throw it away
+orkestra gc                        # abandoned worktrees, runs older than 30 days, stale reservations
+```
+
+`apply` never stages anything and never touches your other uncommitted work. If you edited the
+same files after the run started, it merges them three ways; if a change overlaps yours, it
+writes **nothing**, lists the conflicting files and exits with code 5, and the worktree stays
+for you to look at. Git hooks do not run in worktrees. Submodules and Git LFS files are not
+handled yet (you get a warning). On Windows, `doctor` suggests `core.longpaths` because the
+worktree paths are deep. Edit tasks that use these worktrees arrive in the next part of
+phase 5.
+
 ## Configuration
 
 Orkestra reads a base file and a project file, and the project file wins:
@@ -259,7 +284,7 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 2 | Configuration or usage error |
 | 3 | No suitable provider, or every candidate failed (unreachable, paused, budget exhausted, secrets in context, no key, outside the profile) |
 | 4 | User consent required (`orkestra providers enable <name>`) |
-| 5 | Worktree / apply conflict (Phase 5) |
+| 5 | `apply` conflict: nothing was written, the worktree is kept |
 | 10 | Unexpected internal error |
 
 ## Security
@@ -283,7 +308,8 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 3 | State DB, daily budgets, provider consent, circuit breaker, secret scanning | ✅ |
 | 4 | Router, retries and **failover**: offline → local Ollama, failing API → next provider | ✅ |
 | 5a | Task files, verifiers, retries with feedback, escalation (`orkestra run`) | ✅ |
-| 5b–5c | Git worktrees, `edit`, `show`, `apply`, `discard` | ⏳ |
+| 5b | Git worktrees, `show`, `apply`, `discard`, `gc` | ✅ |
+| 5c | Edit tasks with API workers | ⏳ |
 | 6 | Code agents: Codex CLI, Antigravity CLI | ⏳ |
 | 7 | Batch runs, parallelism, cost estimate | ⏳ |
 | 8 | Chief tools: `status`, `review`, `map`, templates, `plan expand`, cache, savings counter | ⏳ |

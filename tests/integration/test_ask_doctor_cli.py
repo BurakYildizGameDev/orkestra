@@ -404,3 +404,27 @@ def test_schema_that_is_not_an_object_is_translated(
     assert code == 2
     assert "not an object" not in err
     assert "nesne" in err
+
+
+# --- Faz 5b ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("value", "warned"), [(None, True), ("false", True), ("true", False)])
+async def test_doctor_suggests_longpaths_on_windows(
+    workdir: Path, value: str | None, warned: bool
+) -> None:
+    report = await doctor.run_doctor(
+        which=lambda tool: f"/usr/bin/{tool}" if tool == "git" else None,
+        probe=lambda path: "git version 2.50.0",
+        git_config=lambda key: value,
+        platform="win32",
+    )
+    hints = [c.data.get("hint") for c in report.checks if c.name == "tool:git"]
+    assert ("git config --global core.longpaths true" in hints) is warned
+    linux = await doctor.run_doctor(
+        which=lambda tool: "/usr/bin/git" if tool == "git" else None,
+        probe=lambda path: "git version 2.50.0",
+        git_config=lambda key: None,
+        platform="linux",
+    )
+    assert not any(c.data.get("hint", "").startswith("git config") for c in linux.checks)

@@ -8,7 +8,7 @@
 
 **Güçlü bir "şef" modelin (ör. Claude) işi birçok ucuz veya yerel "işçi" modele dağıtmasını, sonuçları doğrulamasını ve bir sağlayıcı çökünce diğerine geçmesini sağlayan, bütçe farkındalıklı komut satırı aracı.**
 
-> **Durum: geliştirme aşamasında.** 14 fazın 0–4'ü ve 5. fazın ilk kısmı bitti: proje iskeleti, yapılandırma, Ollama ve OpenAI uyumlu adapter'lar, `ask`, `doctor`, günlük bütçe, sağlayıcı onayı, devre kesici, gizli bilgi taraması, yeniden deneme + yedeğe geçişli router ve doğrulama, geri bildirimle tekrar deneme ve üst kademeye geçişli görev dosyaları. Yalıtılmış kod düzenleme ve diğerleri [yol haritasında](#yol-haritası). Bu README sadece bugün çalışan özellikleri anlatır.
+> **Durum: geliştirme aşamasında.** 14 fazın 0–4'ü ve 5. fazın ilk iki kısmı bitti: proje iskeleti, yapılandırma, Ollama ve OpenAI uyumlu adapter'lar, `ask`, `doctor`, günlük bütçe, sağlayıcı onayı, devre kesici, gizli bilgi taraması, yeniden deneme + yedeğe geçişli router doğrulama, geri bildirimle tekrar deneme ve üst kademeye geçişli görev dosyaları, ve `show`, `apply`, `discard`, `gc` ile yalıtılmış git worktree'leri. İşçilerin (bu worktree'lerde) kod değiştirdiği düzenleme görevleri ve diğerleri [yol haritasında](#yol-haritası). Bu README sadece bugün çalışan özellikleri anlatır.
 
 ```
 Sen ──► Claude (şef: planlar, böler, denetler)
@@ -41,6 +41,9 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | İşçi modele tek soru; bağlam dosyaları ve isteğe bağlı JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Profil, gizlilik ve yedeğe geçişli yönlendirme; her sağlayıcının neden seçildiğini/elendiğini görme | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Görev dosyaları (YAML/JSON): cevabı doğrula, geri bildirimle tekrar dene, üst kademeye geç | `orkestra run gorev.yaml [--dry-run] [--json]` |
+| Bir koşunun envelope'u, tam çıktısı, log'u veya değişikliği | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
+| Koşunun değişikliğini çalışma ağacına al ya da at | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
+| Sahipsiz worktree, eski koşu kaydı ve askıda rezervasyonları temizle | `orkestra gc [--older-than 30] [--dry-run]` |
 | Ortam kontrolü: config, sağlayıcı erişimi, API anahtarı değişkenleri, Ollama modelleri, onaylar, beklemedeki sağlayıcılar, git, codex/agy | `orkestra doctor [--json] [--warm]` |
 | Sağlayıcı başına açık onay (vermeden önce ne yapabileceği gösterilir) | `orkestra providers enable <ad>`, `providers disable <ad>` |
 | Sağlayıcılar: onay, sağlık ve kalan bütçe | `orkestra providers list [--json]` |
@@ -177,6 +180,28 @@ kendiliğinden geçer).
 Her denemenin isteği, cevabı ve kontrol kaydı (`verify.log`)
 `~/.orkestra/runs/<run_id>/attempts/<n>/` altında tutulur.
 
+## Worktree'ler: yalıtılmış değişiklikler
+
+İşçiler senin çalışma kopyanı asla değiştirmez. Kod değiştiren bir koşu `~/.orkestra/worktrees/`
+altında kendi git worktree'sini alır ve diskte **şu an** ne varsa oradan başlar: son commit,
+commit edilmemiş değişikliklerin ve izlenmeyen dosyaların (ignore edilen dosyalar taşınmaz).
+Sonuca bakıp karar verirsin:
+
+```bash
+orkestra show <run_id> --diff      # değişiklik
+orkestra apply <run_id>            # çalışma ağacına al, worktree'yi sil
+orkestra discard <run_id>          # ya da at
+orkestra gc                        # sahipsiz worktree'ler, 30 günden eski koşular, askıda rezervasyonlar
+```
+
+`apply` hiçbir şeyi stage'lemez ve commit edilmemiş diğer işine dokunmaz. Koşu başladıktan
+sonra aynı dosyaları değiştirdiysen üç yönlü birleştirir; değişiklik seninkiyle çakışırsa
+**hiçbir şey yazmaz**, çakışan dosyaları listeler, kod 5 ile çıkar ve worktree incelemen için
+kalır. Worktree'lerde git hook'ları çalışmaz. Alt modüller ve Git LFS dosyaları henüz
+işlenmez (uyarı verilir). Worktree yolları derin olduğu için `doctor` Windows'ta
+`core.longpaths` önerir. Bu worktree'leri kullanan düzenleme görevleri 5. fazın sonraki
+kısmında geliyor.
+
 ## Yapılandırma
 
 Orkestra bir temel dosya ve bir proje dosyası okur; proje dosyası kazanır:
@@ -256,7 +281,7 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 2 | Yapılandırma veya kullanım hatası |
 | 3 | Uygun sağlayıcı yok ya da bütün adaylar başarısız (erişilemiyor, beklemede, bütçe doldu, bağlamda gizli bilgi, anahtar yok, profil dışında) |
 | 4 | Kullanıcı onayı gerekli (`orkestra providers enable <ad>`) |
-| 5 | Worktree / uygulama çakışması (Faz 5) |
+| 5 | `apply` çakışması: hiçbir şey yazılmadı, worktree duruyor |
 | 10 | Beklenmeyen iç hata |
 
 ## Güvenlik
@@ -280,7 +305,8 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 3 | Durum veritabanı, günlük bütçe, sağlayıcı onayı, devre kesici, gizli bilgi taraması | ✅ |
 | 4 | Router, yeniden deneme ve **yedeğe geçiş**: internet yok → yerel Ollama, çöken API → sıradaki sağlayıcı | ✅ |
 | 5a | Görev dosyaları, doğrulayıcılar, geri bildirimle tekrar deneme, üst kademeye geçiş (`orkestra run`) | ✅ |
-| 5b–5c | Git worktree, `edit`, `show`, `apply`, `discard` | ⏳ |
+| 5b | Git worktree, `show`, `apply`, `discard`, `gc` | ✅ |
+| 5c | API işçileriyle düzenleme görevleri | ⏳ |
 | 6 | Kod ajanları: Codex CLI, Antigravity CLI | ⏳ |
 | 7 | Toplu çalıştırma, paralellik, maliyet tahmini | ⏳ |
 | 8 | Şef araçları: `status`, `review`, `map`, şablonlar, `plan expand`, önbellek, tasarruf sayacı | ⏳ |
