@@ -34,3 +34,22 @@ def build_ask_messages(
             "Output only the JSON.\n" + json.dumps(schema, indent=2)
         )
     return load_prompt("worker_system.md").strip(), "\n\n".join(parts)
+
+
+FEEDBACK_CHARS = 2000  # failed-check details sent back (Mimari §8)
+PREVIOUS_ANSWER_CHARS = 8000
+
+
+def _cut(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit] + "\n[... truncated]"
+
+
+def build_retry_message(user: str, answer: str, failures: list[str]) -> str:
+    """The original task plus what went wrong last time (``prompts/retry_feedback.md``)."""
+    details = _cut("\n".join(f"- {f}" for f in failures), FEEDBACK_CHARS)
+    feedback = (
+        load_prompt("retry_feedback.md")
+        .strip()
+        .format(answer=_cut(answer.strip(), PREVIOUS_ANSWER_CHARS), failures=details)
+    )
+    return f"{user}\n\n{feedback}"

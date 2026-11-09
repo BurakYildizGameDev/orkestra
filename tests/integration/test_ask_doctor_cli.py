@@ -200,8 +200,9 @@ def test_ask_schema_ok_and_failed(
         json.dumps({"type": "object", "required": ["n"], "properties": {"n": {"type": "integer"}}}),
         encoding="utf-8",
     )
+    bad = _ollama_ok('{"n": "three"}')
     route = respx.post(f"{OLLAMA}/api/chat").mock(
-        side_effect=[_ollama_ok('```json\n{"n": 3}\n```'), _ollama_ok('{"n": "three"}')]
+        side_effect=[_ollama_ok('```json\n{"n": 3}\n```'), bad, bad, bad]
     )
     code, out, _ = _run(["ask", "count", "--schema", str(schema), "--json"], capsys)
     assert code == 0
@@ -213,6 +214,7 @@ def test_ask_schema_ok_and_failed(
     assert code == 1
     env = json.loads(out)
     assert env["status"] == "failed"
+    assert env["attempts"] == 3  # first answer + defaults.max_retries (2) with feedback
     assert env["verification"][0]["ok"] is False
     assert env["verification"][0]["detail"].startswith("n:")
 

@@ -16,14 +16,14 @@ import typer
 
 from orkestra import __version__, doctor, envelope, i18n
 from orkestra.config import loader
-from orkestra.config.schema import Provider
+from orkestra.config.schema import Config, Provider
 from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
 from orkestra.i18n import t
 from orkestra.providers import registry
 from orkestra.routing.router import Route, describe_candidates
 from orkestra.security.redact import config_for_display
 from orkestra.state import consent, db
-from orkestra.tasks import runner
+from orkestra.tasks import runner, spec
 
 
 @dataclass
@@ -189,6 +189,39 @@ def _route_text(plan: Route) -> str:
         lines.append(t("route.dry.eliminated"))
         lines.extend(f"  - {e.reason}" for e in plan.eliminated)
     return "\n".join(lines)
+
+
+def _execute(
+    task: spec.TaskSpec,
+    config: Config,
+    options: runner.RunOptions,
+    *,
+    dry_run: bool,
+    as_json: bool,
+) -> None:
+    """Shared by ``ask`` and ``run``: plan or run the task and print the result."""
+    if dry_run:
+        plan = asyncio.run(runner.plan_task(task, config, options))
+        for warning in plan.warnings:
+            typer.echo(warning, err=True)
+        if as_json:
+            _echo_json(_route_json(plan.route))
+        else:
+            typer.echo(_route_text(plan.route))
+        if plan.exit_code:
+            raise typer.Exit(plan.exit_code)
+        return
+    outcome = asyncio.run(runner.run_task(task, config, options))
+    for warning in outcome.warnings:
+        typer.echo(warning, err=True)
+    if as_json:
+        typer.echo(envelope.to_json(outcome.envelope))
+    else:
+        if outcome.output is not None:
+            typer.echo(outcome.output)
+        typer.echo(envelope.human_summary(outcome.envelope), err=True)
+    if outcome.exit_code:
+        raise typer.Exit(outcome.exit_code)
 
 
 def build_app() -> typer.Typer:
@@ -387,39 +420,38 @@ def build_app() -> typer.Typer:
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
-        request = runner.AskRequest(
-            allow_secrets=allow_secrets,
-            prompt=prompt,
+        task = spec.ask_task(
+            prompt,
             provider=provider,
             model=model,
             tier=tier,
-            profile=profile,
             local_only=local_only,
             context=tuple(context or ()),
             schema=schema,
         )
-        if dry_run:
-            plan = asyncio.run(runner.plan_ask(request, loaded.config))
-            for warning in plan.warnings:
-                typer.echo(warning, err=True)
-            if as_json:
-                _echo_json(_route_json(plan.route))
-            else:
-                typer.echo(_route_text(plan.route))
-            if plan.exit_code:
-                raise typer.Exit(plan.exit_code)
-            return
-        outcome = asyncio.run(runner.run_ask(request, loaded.config))
-        for warning in outcome.warnings:
-            typer.echo(warning, err=True)
-        if as_json:
-            typer.echo(envelope.to_json(outcome.envelope))
-        else:
-            if outcome.output is not None:
-                typer.echo(outcome.output)
-            typer.echo(envelope.human_summary(outcome.envelope), err=True)
-        if outcome.exit_code:
-            raise typer.Exit(outcome.exit_code)
+        options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets)
+        _execute(task, loaded.config, options, dry_run=dry_run, as_json=as_json)
+
+    @app.command("run", help=t("cli.run.help"))
+    def run_command(
+        ctx: typer.Context,
+        task_file: Annotated[Path, typer.Argument(metavar="TASK", help=t("cli.run.arg.task"))],
+        allow_secrets: Annotated[
+            bool, typer.Option("--allow-secrets", help=t("cli.ask.option.allow_secrets"))
+        ] = False,
+        profile: Annotated[
+            str | None,
+            typer.Option("--profile", metavar="NAME", help=t("cli.ask.option.profile")),
+        ] = None,
+        dry_run: Annotated[
+            bool, typer.Option("--dry-run", help=t("cli.ask.option.dry_run"))
+        ] = False,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+        task = spec.load_task(task_file)
+        options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets)
+        _execute(task, loaded.config, options, dry_run=dry_run, as_json=as_json)
 
     @app.command("doctor", help=t("cli.doctor.help"))
     def doctor_command(

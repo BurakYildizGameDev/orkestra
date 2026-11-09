@@ -1,0 +1,25 @@
+# Example ask task: summarize the README as JSON, checked against a schema.
+# Run it from the repository root:
+#   orkestra run examples/tasks/summarize-readme.yaml --dry-run   # who would answer
+#   orkestra run examples/tasks/summarize-readme.yaml --json      # run it
+# Relative paths (context, schema) are resolved from the directory you run orkestra in,
+# or from `workspace` if the task sets it.
+id: summarize-readme
+kind: ask                    # ask (answer only); edit tasks come in a later version
+tier: 1                      # start on the cheapest tier; failed checks move up
+prompt: |
+  Summarize what this project does for a new contributor.
+  Give a one-sentence summary and three to five key features.
+context:
+  files: [README.md]
+output:
+  format: json
+  schema: examples/tasks/summary.schema.json
+verify:
+  # json_schema runs automatically because output.format is json.
+  - type: regex
+    must_not_match: ["(?i)lorem ipsum"]
+limits:
+  max_retries: 1             # one retry with feedback per model before moving up a tier
+privacy: normal              # local_only keeps the README on local models
+tags: [docs]

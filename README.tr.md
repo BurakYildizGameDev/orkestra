@@ -8,7 +8,7 @@
 
 **Güçlü bir "şef" modelin (ör. Claude) işi birçok ucuz veya yerel "işçi" modele dağıtmasını, sonuçları doğrulamasını ve bir sağlayıcı çökünce diğerine geçmesini sağlayan, bütçe farkındalıklı komut satırı aracı.**
 
-> **Durum: geliştirme aşamasında.** 14 fazın 0–4'ü bitti: proje iskeleti, yapılandırma, Ollama ve OpenAI uyumlu adapter'lar, `ask`, `doctor`, günlük bütçe, sağlayıcı onayı, devre kesici, gizli bilgi taraması ve yeniden deneme + yedeğe geçişli router. Görev dosyaları, yalıtılmış kod düzenleme ve diğerleri [yol haritasında](#yol-haritası). Bu README sadece bugün çalışan özellikleri anlatır.
+> **Durum: geliştirme aşamasında.** 14 fazın 0–4'ü ve 5. fazın ilk kısmı bitti: proje iskeleti, yapılandırma, Ollama ve OpenAI uyumlu adapter'lar, `ask`, `doctor`, günlük bütçe, sağlayıcı onayı, devre kesici, gizli bilgi taraması, yeniden deneme + yedeğe geçişli router ve doğrulama, geri bildirimle tekrar deneme ve üst kademeye geçişli görev dosyaları. Yalıtılmış kod düzenleme ve diğerleri [yol haritasında](#yol-haritası). Bu README sadece bugün çalışan özellikleri anlatır.
 
 ```
 Sen ──► Claude (şef: planlar, böler, denetler)
@@ -40,6 +40,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Birleştirilmiş config ve kaynakları, okunur hatalarla doğrulama | `orkestra config show [--json]`, `orkestra config validate` |
 | İşçi modele tek soru; bağlam dosyaları ve isteğe bağlı JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Profil, gizlilik ve yedeğe geçişli yönlendirme; her sağlayıcının neden seçildiğini/elendiğini görme | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
+| Görev dosyaları (YAML/JSON): cevabı doğrula, geri bildirimle tekrar dene, üst kademeye geç | `orkestra run gorev.yaml [--dry-run] [--json]` |
 | Ortam kontrolü: config, sağlayıcı erişimi, API anahtarı değişkenleri, Ollama modelleri, onaylar, beklemedeki sağlayıcılar, git, codex/agy | `orkestra doctor [--json] [--warm]` |
 | Sağlayıcı başına açık onay (vermeden önce ne yapabileceği gösterilir) | `orkestra providers enable <ad>`, `providers disable <ad>` |
 | Sağlayıcılar: onay, sağlık ve kalan bütçe | `orkestra providers list [--json]` |
@@ -85,6 +86,9 @@ uv run orkestra ask "Bu fonksiyon ne yapıyor?" --context src/util.py
 uv run orkestra ask "Tek satırda özetle" --provider openrouter --tier 2
 uv run orkestra ask "Tek satırda özetle" --dry-run      # kim cevap verirdi, neden
 uv run orkestra ask "İsimleri çıkar" --context kisiler.txt --schema isimler.schema.json --json
+
+# 5. Ya da görevi kontrolleriyle birlikte dosyaya yaz ve çalıştır
+uv run orkestra run examples/tasks/summarize-readme.yaml --json
 ```
 
 `ask` **router** üzerinden çalışır. Görevi yapabilecek her (sağlayıcı, model) çiftini şu sırayla
@@ -122,6 +126,56 @@ olabilir); yeniden denemeler ve yedeğe geçişler `daily_runs` için sağlayıc
 
 Yani internet yokken `ask` aynı komut içinde yerel Ollama'dan cevap verir; uzak API envelope'ta
 `failovers` altında listelenir. Bütün adaylar başarısız olursa hepsi listelenir ve çıkış kodu 3 olur.
+
+## Görev dosyaları ve doğrulama
+
+Görev dosyası tek bir işi ve sonucun nasıl kontrol edileceğini tarif eder. `orkestra ask` de
+seçeneklerinden aynı türde bir görev oluşturur. Örnekler: [`examples/tasks/`](examples/tasks/).
+
+```yaml
+id: summarize-readme
+kind: ask                    # edit görevleri (git worktree'de kod değiştirme) sonra gelecek
+tier: 1                      # başlanacak en düşük kademe
+prompt: |
+  Bu projenin ne yaptığını tek cümleyle özetle ve ana özelliklerini listele.
+context:
+  files: [README.md]
+  globs: []                  # örn. ["src/**/*.py"]; .gitignore ve .orkestraignore uygulanır
+output:
+  format: json               # text | json
+  schema: summary.schema.json
+verify:
+  - type: regex
+    must_not_match: ["(?i)lorem ipsum"]
+  - type: command            # kendi kontrolün; çıkış kodu 0 = geçti
+    run: "python check_summary.py"
+    timeout_s: 60
+limits:
+  max_retries: 1             # model başına geri bildirimle tekrar (varsayılan: defaults.max_retries)
+  timeout_s: 120             # istek başına (varsayılan: sağlayıcının zaman aşımı)
+privacy: normal              # local_only görevi yerel modellerde tutar
+tags: [docs]
+```
+
+Göreli yollar `orkestra`'yı çalıştırdığın dizine göre, görevde `workspace` varsa ona göre çözülür.
+
+**Doğrulayıcılar:** `command` (çıkış kodu 0; `shell: true` yazmadıkça kabuk yok, boru ve `&&`
+için gerekir), `json_schema` (`format: json` ise kendiliğinden eklenir), `regex` (`must_match`,
+`must_not_match`), `files_exist`, ve kod değişiklikleri için `max_changed_files`,
+`max_diff_lines`, `protect_paths`, `forbid_paths` (hiçbir şey değiştirmeyen `ask` görevlerinde
+kendiliğinden geçer).
+
+**Bir kontrol başarısız olunca:**
+
+1. Aynı model önceki cevabını ve başarısız kontrolleri (İngilizce) geri alır ve `max_retries`
+   kez daha dener.
+2. Hâlâ geçemezse ya da `CANNOT_DO: <neden>` derse bir üst kademeye geçilir, aynı kademedeki
+   diğer adaylar atlanır. Geçiş `escalations` altında listelenir.
+3. Hiçbir cevap geçmezse: `status: failed`, kademe 3 de geçemediyse `escalate` (şef devralmalı).
+   Çıkış kodu 1. Son cevap yine `output.md`'de durur.
+
+Her denemenin isteği, cevabı ve kontrol kaydı (`verify.log`)
+`~/.orkestra/runs/<run_id>/attempts/<n>/` altında tutulur.
 
 ## Yapılandırma
 
@@ -198,7 +252,7 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | Çıkış kodu | Anlamı |
 |---|---|
 | 0 | Başarılı |
-| 1 | Doğrulama geçmedi (ör. cevap `--schema`'ya uymuyor); `doctor` için: bir kontrol başarısız |
+| 1 | Doğrulama geçmedi (`failed`) ya da şefin devralması gerekiyor (`escalate`); `doctor` için: bir kontrol başarısız |
 | 2 | Yapılandırma veya kullanım hatası |
 | 3 | Uygun sağlayıcı yok ya da bütün adaylar başarısız (erişilemiyor, beklemede, bütçe doldu, bağlamda gizli bilgi, anahtar yok, profil dışında) |
 | 4 | Kullanıcı onayı gerekli (`orkestra providers enable <ad>`) |
@@ -212,7 +266,8 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 - Kod ajanları için `danger-full-access` config tarafından reddedilir.
 - Açık onay olmadan hiçbir sağlayıcı kullanılmaz. Onay, verinin nereye gittiğini ve neyin çalıştırılacağını belirleyen ayarlara bağlıdır (URL, anahtar değişkeni, başlıklar, komut, sandbox, model kimlikleri); bunlardan biri değişirse yeniden sorulur. Sağlayıcıyı kapatıp açmak, bütçesini veya zaman aşımını değiştirmek yeniden sormaz.
 - Bağlam dosyaları gizli bilgi için taranır (OpenAI/OpenRouter/AWS/GitHub/Slack/Google anahtarları, özel anahtarlar ve config'teki anahtar değişkenlerinin değerleri). Böyle bir bağlam `--allow-secrets` verilmedikçe uzak sağlayıcıya asla gitmez.
-- Orkestra'nın `~/.orkestra/runs/` altına yazdığı her şey (istek, yanıt, çıktı, envelope, log) maskelenir.
+- Orkestra'nın `~/.orkestra/runs/` altına yazdığı her şey (istek, yanıt, çıktı, envelope, log) maskelenir. İstem metni de taranır; `.orkestraignore`'a uyan dosyalar hiç gönderilmez.
+- `command` doğrulayıcısı senin yazdığın komutu çalışma dizininde çalıştırır. Bu, komutu kendin çalıştırmakla aynı risktir; Orkestra kabuğu sadece `shell: true` ile kullanır.
 - Telemetri yok. Her şey senin bilgisayarında ve senin seçtiğin sağlayıcılarda kalır.
 
 ## Yol haritası
@@ -224,7 +279,8 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 2 | Ollama + OpenAI uyumlu adapter'lar, `ask`, `doctor` | ✅ |
 | 3 | Durum veritabanı, günlük bütçe, sağlayıcı onayı, devre kesici, gizli bilgi taraması | ✅ |
 | 4 | Router, yeniden deneme ve **yedeğe geçiş**: internet yok → yerel Ollama, çöken API → sıradaki sağlayıcı | ✅ |
-| 5 | Görev dosyaları, doğrulayıcılar, git worktree, `edit`, `apply` | ⏳ |
+| 5a | Görev dosyaları, doğrulayıcılar, geri bildirimle tekrar deneme, üst kademeye geçiş (`orkestra run`) | ✅ |
+| 5b–5c | Git worktree, `edit`, `show`, `apply`, `discard` | ⏳ |
 | 6 | Kod ajanları: Codex CLI, Antigravity CLI | ⏳ |
 | 7 | Toplu çalıştırma, paralellik, maliyet tahmini | ⏳ |
 | 8 | Şef araçları: `status`, `review`, `map`, şablonlar, `plan expand`, önbellek, tasarruf sayacı | ⏳ |

@@ -155,3 +155,34 @@ def test_verification_words_are_translated() -> None:
     text = human_summary(envelope)
     assert "FAIL" not in text
     assert "BAŞARISIZ" in text
+
+
+# --- ignore files and globs (Faz 5a) ---------------------------------------------------
+
+
+def test_orkestraignore_excludes_even_explicit_files(tmp_path: Path) -> None:
+    (tmp_path / ".orkestraignore").write_text("secrets/\n", encoding="utf-8")
+    (tmp_path / "secrets").mkdir()
+    (tmp_path / "secrets" / "k.txt").write_text("k", encoding="utf-8")
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    ctx = collect_context(
+        [Path("secrets/k.txt"), Path("a.txt")], max_bytes=1000, cwd=tmp_path,
+        ignore_file=".orkestraignore",
+    )  # fmt: skip
+    assert [f.display for f in ctx.files] == ["a.txt"]
+    assert ctx.skipped_ignored == (("secrets/k.txt", ".orkestraignore"),)
+
+
+def test_globs_skip_gitignored_files_and_git_dir(tmp_path: Path) -> None:
+    (tmp_path / ".gitignore").write_text("build/\n", encoding="utf-8")
+    for name in ("src/a.py", "src/b.py", "build/c.py", ".git/hooks/d.py"):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text("x", encoding="utf-8")
+    ctx = collect_context([], globs=["**/*.py"], max_bytes=1000, cwd=tmp_path)
+    assert [f.display for f in ctx.files] == ["src/a.py", "src/b.py"]
+    assert ctx.skipped_ignored == (("build/c.py", ".gitignore"),)
+
+
+def test_absolute_glob_is_a_usage_error(tmp_path: Path) -> None:
+    with pytest.raises(UsageError):
+        collect_context([], globs=[str(tmp_path / "*.py")], max_bytes=1000, cwd=tmp_path)

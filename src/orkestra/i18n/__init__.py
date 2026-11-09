@@ -150,9 +150,9 @@ class _KeepMissing(dict[str, object]):
         return "{" + key + "}"
 
 
-def _lookup(key: str) -> str | None:
-    for lang in (_current, DEFAULT_LANGUAGE):
-        text = load_catalog(lang).get(key)
+def _lookup(key: str, lang: str) -> str | None:
+    for code in (lang, DEFAULT_LANGUAGE):
+        text = load_catalog(code).get(key)
         if text:
             return text
     return None
@@ -165,8 +165,13 @@ def t(key: str, /, **params: object) -> str:
     (or raises ``TranslationError`` when ``ORKESTRA_I18N_STRICT=1``). A translation that
     cannot be formatted is returned unformatted instead of crashing.
     """
+    return t_in(_current, key, **params)
+
+
+def t_in(lang: str, key: str, /, **params: object) -> str:
+    """Like ``t()`` but in ``lang``; e.g. English text for worker prompts (always English)."""
     strict = os.environ.get(STRICT_ENV) == "1"
-    text = _lookup(key)
+    text = _lookup(key, lang)
     if text is None:
         if strict:
             raise TranslationError(f"missing translation key: {key}")
