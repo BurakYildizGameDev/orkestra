@@ -7,6 +7,7 @@ cli.option.lang: "Arayüz dili: en, tr, de, es, fr."
 cli.error.unsupported_language: "Desteklenmeyen dil '{lang}'. Şunlardan birini seç: {choices}."
 
 errors.prefix: "Hata: {message}"
+errors.no_message: "{type} (ayrıntı yok)"
 errors.internal: "Beklenmeyen iç hata: {detail}"
 
 cli.option.config: "Kullanılacak config dosyası (ORKESTRA_CONFIG veya ~/.orkestra/config.yaml yerine)."

@@ -11,6 +11,8 @@ Orkestra: birden fazla yapay zekâyı (Ollama, OpenAI uyumlu API'ler, Codex/Anti
 3. `docs/YAPILIS_PLANI.md` – sadece sana verilen faz
 4. `docs/DECISIONS.md` – önceki sapma kararları
 
+Not: 2 ve 3 numaralı plan belgeleri bilerek git'te değil, sadece yerelde tutulur. Klonda yoksa çalışmaya başlamadan kullanıcıdan iste; onlarsız faz yapma.
+
 ## Kesin kurallar
 - **Sadece istenen fazı yap.** Gelecek fazların kodunu "hazırlık" diye yazma.
 - **Önce test.** Yeni davranış için önce başarısız test, sonra kod.

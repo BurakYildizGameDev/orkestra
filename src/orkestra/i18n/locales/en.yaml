@@ -8,6 +8,7 @@ cli.option.lang: "Interface language: en, tr, de, es, fr."
 cli.error.unsupported_language: "Unsupported language '{lang}'. Choose one of: {choices}."
 
 errors.prefix: "Error: {message}"
+errors.no_message: "{type} (no details)"
 errors.internal: "Unexpected internal error: {detail}"
 
 cli.option.config: "Config file to use (instead of ORKESTRA_CONFIG or ~/.orkestra/config.yaml)."

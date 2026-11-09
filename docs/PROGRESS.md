@@ -27,6 +27,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 0 (PR #1), 2026-11-09
+Yeni kural (AGENTS.md faz bitiş listesi): her faz sonunda `/code-review`. Faz 0 için 10 bulgu; 9'u düzeltildi, 1'i önemsiz diye atlandı (D-035):
+- ✅ `--lang TR`/`tr_TR` reddediliyordu → normalize ediliyor.
+- ✅ Son çare hata yakalayıcısı bozuk katalogda kendisi çöküyordu → çeviriden bağımsız.
+- ✅ `LC_ALL=C LANG=tr_TR` Türkçe gösteriyordu → POSIX kuralı (İngilizce).
+- ✅ `--lang` ön taraması alt komut argümanlarına bakıyordu → ilk alt komutta duruyor.
+- ✅ Düz süslü parantezli çeviri `t()`'yi çökertebiliyordu → ham metin + katalog testi.
+- ✅ i18n'de düz `ValueError`/`KeyError` → `TranslationError`/`UsageError`.
+- ✅ Sürüm iki yerde → tek kaynak (`importlib.metadata`).
+- ✅ Mesajsız hata "Error: " basıyordu → hata sınıfı adı gösteriliyor.
+- ✅ AGENTS.md yerel plan belgelerine atıf → "yoksa kullanıcıdan iste" notu.
+- ➖ `--version --lang xx` hatasız geçiyor → önemsiz, düzeltilmedi.
+Testler: 400 geçti (+18).
+
 ### Faz 4 – Router ve yeniden deneme (2026-11-09)
 **Yapılanlar:**
 - `routing/router.py`: Mimari §7 algoritması saf fonksiyon olarak (`route(needs, config, snapshot, profile)`); durum `take_snapshot()` ile ayrı okunuyor. Kademe aralığı = [max(görev kademesi, profil min), profil max]. Eleme kuralları: kod ajanı (Faz 6'ya kadar), kapalı, deneysel ama açıkça `enabled: true` değil, onay yok/değişti, anahtar yok, `local_only` ve uzak, gizli bilgi ve uzak, devre açık, model yok, kademe aralık dışı, bağlam %80'e sığmıyor, bütçe aşılır. Sıralama: kademe ↑ → `priority` ↓ → config'teki sıra (D-031); kalan bütçe sadece eler. Her elenen için kod (JSON) ve okunur neden (seçili dilde).

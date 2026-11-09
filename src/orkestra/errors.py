@@ -1,6 +1,6 @@
 """Exception hierarchy and exit code mapping.
 
-Exit codes (README "Sonuç zarfı ve çıkış kodları"):
+Exit codes (README "Result envelope and exit codes"):
 
     0  success
     1  task failed verification (failed / escalate)
@@ -86,6 +86,10 @@ class InternalError(OrkestraError):
     """Unexpected internal failure."""
 
     exit_code = ExitCode.INTERNAL
+
+
+class TranslationError(InternalError):
+    """A broken or incomplete translation catalog (a bug in Orkestra, not user input)."""
 
 
 class ProviderError(OrkestraError):

@@ -38,7 +38,8 @@ def _version_callback(value: bool) -> None:
 def _lang_callback(value: str | None) -> str | None:
     if value is None:
         return None
-    if value not in i18n.SUPPORTED_LANGUAGES:
+    code = i18n.normalize_language(value)  # "TR", "tr_TR" … like ORKESTRA_LANG
+    if code is None:
         raise typer.BadParameter(
             t(
                 "cli.error.unsupported_language",
@@ -46,8 +47,8 @@ def _lang_callback(value: str | None) -> str | None:
                 choices=", ".join(i18n.SUPPORTED_LANGUAGES),
             )
         )
-    i18n.set_language(value)
-    return value
+    i18n.set_language(code)
+    return code
 
 
 def _echo_json(data: Any) -> None:
@@ -444,15 +445,25 @@ def build_app() -> typer.Typer:
     return app
 
 
+_GLOBAL_VALUE_OPTIONS = ("--lang", "--config")
+
+
 def _find_option(args: Sequence[str], name: str) -> str | None:
-    """Read a global option before typer parses (help texts depend on the language)."""
-    for i, arg in enumerate(args):
-        if arg == "--":
-            break
+    """Read a global option before typer parses (help texts depend on the language).
+
+    Only the global options before the subcommand are scanned, so a subcommand's own
+    arguments (e.g. a prompt text) can never switch the language or the config.
+    """
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--" or not arg.startswith("-"):
+            break  # end of options, or the subcommand
         if arg == name:
             return args[i + 1] if i + 1 < len(args) else None
         if arg.startswith(f"{name}="):
             return arg.split("=", 1)[1]
+        i += 2 if arg in _GLOBAL_VALUE_OPTIONS else 1
     return None
 
 
@@ -465,19 +476,20 @@ def _wants_json(args: Sequence[str]) -> bool:
 
 
 def _report_error(exc: OrkestraError, *, as_json: bool) -> None:
+    message = exc.message or t("errors.no_message", type=type(exc).__name__)
     if as_json:
         _echo_json(
             {
                 "error": {
                     "code": exit_code_for(exc),
                     "type": type(exc).__name__,
-                    "message": exc.message,
+                    "message": message,
                     "details": list(exc.details),
                 }
             }
         )
         return
-    typer.echo(t("errors.prefix", message=exc.message), err=True)
+    typer.echo(t("errors.prefix", message=message), err=True)
     for detail in exc.details:
         typer.echo(f"  - {detail}", err=True)
 
@@ -496,5 +508,14 @@ def app(argv: Sequence[str] | None = None) -> None:
         _report_error(exc, as_json=_wants_json(args))
         raise SystemExit(exit_code_for(exc)) from None
     except Exception as exc:
-        typer.echo(t("errors.internal", detail=f"{type(exc).__name__}: {exc}"), err=True)
+        typer.echo(_internal_error_text(exc), err=True)
         raise SystemExit(int(ExitCode.INTERNAL)) from None
+
+
+def _internal_error_text(exc: Exception) -> str:
+    """Never raises: the translation catalog itself may be what is broken."""
+    detail = f"{type(exc).__name__}: {str(exc)[:300]}"
+    try:
+        return t("errors.internal", detail=detail)
+    except Exception:
+        return f"Unexpected internal error: {detail}"

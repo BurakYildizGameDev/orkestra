@@ -10,8 +10,11 @@ from orkestra import __version__
 from orkestra.cli import app
 
 
-def test_version_value() -> None:
-    assert __version__ == "0.0.1"
+def test_version_comes_from_package_metadata() -> None:
+    from importlib.metadata import version
+
+    assert __version__ == version("orkestra-cli")  # single source: pyproject.toml
+    assert __version__ != "0.0.0+unknown"
 
 
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
