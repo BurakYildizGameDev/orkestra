@@ -1,0 +1,25 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+
+from orkestra import i18n
+
+
+@pytest.fixture(autouse=True)
+def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
+    """No test sees the developer's home, language or locale."""
+    for var in (i18n.LANG_ENV, "LC_ALL", "LC_MESSAGES", "LANG"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(i18n, "_platform_locale", lambda: None)
+    monkeypatch.setenv("ORKESTRA_HOME", str(tmp_path / "orkestra-home"))
+    monkeypatch.setenv(i18n.STRICT_ENV, "1")
+    # Wide terminal so rich does not wrap help text in assertions.
+    monkeypatch.setenv("COLUMNS", "200")
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    i18n.set_language("en")
+    yield
+    i18n.set_language("en")

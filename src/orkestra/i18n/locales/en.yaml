@@ -1,0 +1,11 @@
+# English catalog: source language and fallback for every other language.
+# Flat "key: value" pairs. Placeholders use {name} and must match in every language.
+
+cli.help: "Budget-aware task dispatcher that runs multiple AIs under one chief."
+cli.version: "orkestra {version}"
+cli.option.version: "Show the version and exit."
+cli.option.lang: "Interface language: en, tr, de, es, fr."
+cli.error.unsupported_language: "Unsupported language '{lang}'. Choose one of: {choices}."
+
+errors.prefix: "Error: {message}"
+errors.internal: "Unexpected internal error: {detail}"
