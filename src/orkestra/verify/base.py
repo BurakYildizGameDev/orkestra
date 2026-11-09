@@ -59,11 +59,19 @@ def passed(kind: str, detail: str = "", log: str = "") -> CheckResult:
     return CheckResult(VerificationResult(type=kind, ok=True, detail=detail), log=log)
 
 
-def failed(kind: str, message: Message, extra: str = "", log: str = "") -> CheckResult:
-    """``extra``: untranslated text appended to the message (e.g. command output)."""
+def failed(
+    kind: str, message: Message | Sequence[Message], extra: str = "", log: str = ""
+) -> CheckResult:
+    """``extra``: untranslated text appended to the message(s) (e.g. command output).
+
+    Several messages (e.g. every pattern that failed) are joined with ``; ``.
+    """
+    messages = [message] if isinstance(message, Message) else list(message)
+    user = "; ".join(m.user() for m in messages)
+    english = "; ".join(m.english() for m in messages)
     return CheckResult(
-        VerificationResult(type=kind, ok=False, detail=message.user() + extra),
-        feedback=f"{kind}: {message.english()}{extra}",
+        VerificationResult(type=kind, ok=False, detail=user + extra),
+        feedback=f"{kind}: {english}{extra}",
         log=log,
     )
 

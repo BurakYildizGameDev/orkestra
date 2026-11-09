@@ -9,7 +9,10 @@ directory are read (D-038). The secret scan runs on the result (``tasks/runner.p
 
 from __future__ import annotations
 
+import glob
 import html
+import os
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,7 +24,6 @@ from orkestra.i18n import t
 
 BINARY_SNIFF_BYTES = 8192
 GITIGNORE = ".gitignore"
-_GLOB_CHARS = frozenset("*?[")
 
 
 @dataclass(frozen=True)
@@ -76,18 +78,69 @@ def _ignored_by(display: str, specs: Sequence[tuple[str, pathspec.GitIgnoreSpec 
     return ""
 
 
-def expand_globs(globs: Sequence[str], base: Path) -> list[Path]:
-    """Files matching the glob patterns under ``base``, sorted, ``.git/`` never included."""
+def glob_regex(pattern: str) -> re.Pattern[str]:
+    """A glob pattern as a regex over ``/``-separated relative paths.
+
+    ``**`` spans directories, ``*`` and ``?`` stay inside one, ``[...]`` is a character class.
+    Hidden files match like any other (the ignore files decide what is left out).
+    """
+    out: list[str] = []
+    i = 0
+    while i < len(pattern):
+        char = pattern[i]
+        if pattern.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+        elif pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif char == "*":
+            out.append("[^/]*")
+            i += 1
+        elif char == "?":
+            out.append("[^/]")
+            i += 1
+        elif char == "[" and "]" in pattern[i + 1 :]:
+            end = pattern.index("]", i + 1)
+            body = pattern[i + 1 : end]
+            out.append("[^" + body[1:] + "]" if body.startswith("!") else "[" + body + "]")
+            i = end + 1
+        else:
+            out.append(re.escape(char))
+            i += 1
+    return re.compile("".join(out) + r"\Z")
+
+
+def expand_globs(
+    globs: Sequence[str],
+    base: Path,
+    specs: Sequence[tuple[str, pathspec.GitIgnoreSpec | None]] = (),
+) -> list[Path]:
+    """Files matching the glob patterns under ``base``, sorted.
+
+    The walk never enters ``.git/`` or a directory the ignore ``specs`` exclude (``.venv/``,
+    ``node_modules/``…), so a ``**`` pattern stays fast in a big repository.
+    """
     found: set[Path] = set()
+    patterns: list[re.Pattern[str]] = []
     for pattern in globs:
         if Path(pattern).is_absolute():
             raise UsageError(t("context.error.glob_absolute", pattern=pattern))
-        if not _GLOB_CHARS & set(pattern):
+        if glob.has_magic(pattern):
+            patterns.append(glob_regex(pattern.replace("\\", "/")))
+        else:
             found.add(base / pattern)
-            continue
-        found.update(
-            p for p in base.glob(pattern) if p.is_file() and ".git" not in p.relative_to(base).parts
-        )
+    if patterns:
+        for root, dirs, files in os.walk(base):
+            rel = Path(root).relative_to(base).as_posix()
+            prefix = "" if rel == "." else f"{rel}/"
+            dirs[:] = sorted(
+                d for d in dirs if d != ".git" and not _ignored_by(f"{prefix}{d}/", specs)
+            )
+            for name in files:
+                path = f"{prefix}{name}"
+                if any(p.match(path) for p in patterns):
+                    found.add(base / path)
     return sorted(found)
 
 
@@ -104,7 +157,7 @@ def collect_context(
     explicit_specs = [(ignore_file, _ignore_spec(base, ignore_file))] if ignore_file else []
     glob_specs = [*explicit_specs, (GITIGNORE, _ignore_spec(base, GITIGNORE))]
     candidates = [(raw, explicit_specs) for raw in paths]
-    candidates += [(p, glob_specs) for p in expand_globs(globs, base)]
+    candidates += [(p, glob_specs) for p in expand_globs(globs, base, glob_specs)]
     found: list[tuple[Path, str, int]] = []
     skipped: list[str] = []
     ignored: list[tuple[str, str]] = []

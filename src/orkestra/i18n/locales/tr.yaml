@@ -136,6 +136,7 @@ context.error.too_large: "Bağlam {total} bayt, sınır {limit} (security.max_co
 context.error.file_size: "{path}: {size} bayt"
 context.warning.binary: "İkili dosya atlandı: {path}"
 context.warning.ignored: "{path} atlandı: {file} dışarıda bırakıyor"
+context.warning.ignored_many: "{files} dışarıda bıraktığı için {count} dosya atlandı"
 context.error.glob_absolute: "{pattern}: glob desenleri göreli olmalı"
 
 ask.error.schema: "Geçersiz JSON Schema dosyası {path}: {reason}"

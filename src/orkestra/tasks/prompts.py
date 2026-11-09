@@ -21,9 +21,13 @@ def load_prompt(name: str) -> str:
 
 
 def build_ask_messages(
-    prompt: str, context: Context, schema: dict[str, Any] | None = None
+    prompt: str,
+    context: Context,
+    schema: dict[str, Any] | None = None,
+    *,
+    json_output: bool = False,
 ) -> tuple[str, str]:
-    """Return ``(system, user)`` for an ``ask`` task."""
+    """Return ``(system, user)`` for an ``ask`` task (``json_output``: JSON without a schema)."""
     parts: list[str] = []
     if context.files:
         parts.append("Context files:\n\n" + render_context(context))
@@ -33,6 +37,8 @@ def build_ask_messages(
             "Output format: a single JSON value that validates against this JSON Schema. "
             "Output only the JSON.\n" + json.dumps(schema, indent=2)
         )
+    elif json_output:
+        parts.append("Output format: a single JSON value. Output only the JSON.")
     return load_prompt("worker_system.md").strip(), "\n\n".join(parts)
 
 

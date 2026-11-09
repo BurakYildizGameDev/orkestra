@@ -190,14 +190,23 @@ class TaskSpec(_Model):
 def effective_verifiers(task: TaskSpec) -> list[VerifierSpec]:
     """The task's verifiers plus the implicit ones.
 
-    - ``output.format: json`` adds a ``json_schema`` check (with ``output.schema``) unless the
-      task lists one itself.
+    - ``output.format: json`` adds a ``json_schema`` check with ``output.schema`` unless the
+      task already checks that schema; a listed ``json_schema`` without a schema of its own
+      checks ``output.schema``.
     - Edit tasks get ``forbid_paths`` for secrets and ``.git`` and ``max_diff_lines: 2000``
       unless ``verify_defaults: false`` (Mimari §10).
     """
-    checks: list[VerifierSpec] = list(task.verify)
-    if task.output.format == "json" and not any(v.type == "json_schema" for v in checks):
-        checks.insert(0, JsonSchemaVerifier(type="json_schema", schema=task.output.schema_path))
+    declared = task.output.schema_path
+    checks: list[VerifierSpec] = [
+        # A json_schema check without its own schema means "the output schema".
+        v.model_copy(update={"schema_path": declared})
+        if isinstance(v, JsonSchemaVerifier) and v.schema_path is None and declared
+        else v
+        for v in task.verify
+    ]
+    schemas = [v.schema_path for v in checks if isinstance(v, JsonSchemaVerifier)]
+    if task.output.format == "json" and (declared not in schemas if declared else not schemas):
+        checks.insert(0, JsonSchemaVerifier(type="json_schema", schema=declared))
     if task.kind == "edit" and task.verify_defaults:
         checks.append(ForbidPaths(type="forbid_paths", paths=list(DEFAULT_FORBIDDEN)))
         checks.append(MaxDiffLines(type="max_diff_lines", value=DEFAULT_MAX_DIFF_LINES))

@@ -137,6 +137,7 @@ context.error.too_large: "Context is {total} bytes, the limit is {limit} (securi
 context.error.file_size: "{path}: {size} bytes"
 context.warning.binary: "Skipped binary file: {path}"
 context.warning.ignored: "Skipped {path}: excluded by {file}"
+context.warning.ignored_many: "Skipped {count} files excluded by {files}"
 context.error.glob_absolute: "{pattern}: glob patterns must be relative"
 
 ask.error.schema: "Invalid JSON Schema file {path}: {reason}"

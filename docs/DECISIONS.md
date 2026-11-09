@@ -257,3 +257,17 @@ Mimari §4.3, §5.1, §6.1, §6.2, §7, §7.1 ve §11 bu kararlarla güncellendi
 - **`kind: edit`:** 5c gelene kadar açık bir kullanım hatası (kod 2); şema bunu zaten kabul ediyor, varsayılan doğrulayıcıları (`forbid_paths`, `max_diff_lines: 2000`) da tanımlı.
 Mimari §4.2, §8, §10 ve §11 güncellendi.
 
+## D-039 – Faz 5a kod denetimi düzeltmeleri (2026-11-10)
+`/code-review` (PR #6) bulgularına göre (10/10 düzeltildi):
+- Envelope'taki `verification[].detail` (komut çıktısı dahil) maskeleniyor; önceden sadece diskteki `envelope.json` maskeliydi, `--json` stdout'u değildi.
+- Windows'ta `command` doğrulayıcısı programı kabuk gibi `PATH` + `PATHEXT` ile bulur (`shutil.which`); `npm test` (`npm.cmd`) artık kabuksuz çalışır. Komut satırının geri kalanı değişmeden gider.
+- Zaman aşımından sonra öldürülen sürecin çıktısı en fazla 5 sn beklenir; ağacın dışında kalıp boruyu açık tutan bir süreç (ör. arka plana atılmış sunucu) Orkestra'yı kilitlemez.
+- Görevdeki `json_schema` doğrulayıcısının kendi şeması yoksa `output.schema`'yı kullanır; başka bir şemayla `json_schema` verilmişse `output.schema` yine ayrıca denetlenir.
+- İşçiye denetleneceği şema söylenir: şema `output.schema`'da değil de bir doğrulayıcıda olsa bile. `format: json` ama şema yoksa "tek bir JSON değeri yaz" denir. Şema bir kez yüklenir.
+- Envelope `usage` artık koşunun bütün cevaplarının toplamı (geri bildirimli denemeler ve önceki adaylar da ödendi); `runs.worker_output_tokens` da öyle.
+- `regex` bütün başarısız desenleri bir arada bildirir (bir geri bildirimle hepsi düzeltilebilsin).
+- `files_exist` mutlak yolları ve mutlak glob'ları kabul eder (önceden `NotImplementedError` ile çöküyordu).
+- Glob gezintisi `.git/` ve ignore dosyalarının dışladığı dizinlere (`.venv/`, `node_modules/`) hiç girmez; eşleşme glob anlamıyla yapılır (`notes/*` alt dizine inmez). Atlanan dosya 5'ten fazlaysa tek satırlık uyarı.
+- Glob karakteri denetimi tek yerde: `glob.has_magic`.
+Mimari §10, §11 ve §13 güncellendi.
+

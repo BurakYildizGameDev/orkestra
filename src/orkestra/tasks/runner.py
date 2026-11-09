@@ -77,7 +77,7 @@ from orkestra.tasks.context import Context, collect_context
 from orkestra.tasks.prompts import build_ask_messages, build_retry_message
 from orkestra.tasks.spec import TaskSpec
 from orkestra.verify import CheckResult, Verifier, VerifyContext, build_verifiers, run_verifiers
-from orkestra.verify.schema import load_schema
+from orkestra.verify.schema import JsonSchemaCheck
 
 Sleep = Callable[[float], Awaitable[None]]
 
@@ -85,6 +85,7 @@ PROMPT_SOURCE = "<prompt>"  # where a finding in the prompt text itself is repor
 CANNOT_DO = "CANNOT_DO:"  # worker protocol (prompts/worker_system.md, Mimari §8.1)
 VERIFICATION_FAILED = "VerificationFailed"  # failover "error" when answers kept failing checks
 TOP_TIER = 3
+IGNORED_WARNINGS = 5  # more skipped files than this are reported as one count
 
 
 async def _sleep(seconds: float) -> None:
@@ -171,7 +172,12 @@ class _Prepared:
 
 def _warnings(context: Context, findings: Sequence[Finding]) -> list[str]:
     warnings = [t("context.warning.binary", path=p) for p in context.skipped_binary]
-    warnings += [t("context.warning.ignored", path=p, file=f) for p, f in context.skipped_ignored]
+    ignored = context.skipped_ignored
+    if len(ignored) > IGNORED_WARNINGS:  # one line instead of a screenful
+        names = ", ".join(sorted({f for _, f in ignored}))
+        warnings.append(t("context.warning.ignored_many", count=len(ignored), files=names))
+    else:
+        warnings += [t("context.warning.ignored", path=p, file=f) for p, f in ignored]
     warnings += [
         t("secrets.warning.found_prompt", line=f.line, kind=f.kind)
         if f.path == PROMPT_SOURCE
@@ -188,14 +194,17 @@ def _prepare(
         raise UsageError(t("task.error.edit_not_available"))
     base = task.base_dir(Path.cwd() if cwd is None else cwd)
     checks = build_verifiers(task, base_dir=base)
-    schema = load_schema(base / task.output.schema_path) if task.output.schema_path else None
+    # The model is told the schema it is checked against (loaded once, by the verifier).
+    schema = next((c.schema for c in checks if isinstance(c, JsonSchemaCheck) and c.schema), None)
     context = collect_context(
         [Path(f) for f in task.context.files], globs=task.context.globs, cwd=base,
         max_bytes=config.security.max_context_bytes, ignore_file=config.security.ignore_file,
     )  # fmt: skip
     known = configured_secrets(config, env)
     findings = _scan(task.prompt, context, known)
-    system, user = build_ask_messages(task.prompt, context, schema)
+    system, user = build_ask_messages(
+        task.prompt, context, schema, json_output=task.output.format == "json"
+    )
     return _Prepared(
         task, options, config, env, base, checks, context, Redactor(known),
         Redactor(known, passwords=False), findings, _warnings(context, findings), system, user,
@@ -299,7 +308,6 @@ class _Answer:
     candidate: Candidate
     text: str
     checks: list[CheckResult]
-    usage: Usage
     result: CompletionResult
 
 
@@ -338,6 +346,7 @@ class _TaskRun:
         self.last_problem: str | None = None  # "cannot_do" | "checks": which came last
         self.failovers: list[Failover] = []
         self.escalations: list[Escalation] = []
+        self.used: list[Usage] = []  # every answered request of the run (envelope usage)
         self.log = logging.getLogger("orkestra")
         self.started = clock()
 
@@ -503,6 +512,7 @@ class _TaskRun:
                 estimated=usage.estimated, now=self.now(),
             )  # fmt: skip
             health.record_success(self.conn, candidate.provider)
+            self.used.append(usage)
             self._write(attempt_dir / "response.txt", result.text, answer=True)
             reason = _cannot_do(result.text)
             if reason is not None:
@@ -511,8 +521,8 @@ class _TaskRun:
             answers += 1
             checks = await self._verify(result.text, attempt_dir)
             if all(c.result.ok for c in checks):
-                return self._succeed(candidate, completion, result, usage, checks)
-            self.rejected = _Answer(candidate, result.text, checks, usage, result)
+                return self._succeed(candidate, completion, result, checks)
+            self.rejected = _Answer(candidate, result.text, checks, result)
             self.last_problem = "checks"
             failures = [c.feedback for c in checks if not c.result.ok]
             self.log.info("attempt %d failed checks: %s", self.attempts, failures)
@@ -621,13 +631,13 @@ class _TaskRun:
             **self._base(answer.candidate),
             status=status,
             summary=summarize_text(self.prep.redact(text), str(output_path)),
-            verification=[c.result for c in answer.checks],
+            # Command output can echo secrets from the environment: mask like the records.
+            verification=[
+                c.result.model_copy(update={"detail": self.prep.redact(c.result.detail)})
+                for c in answer.checks
+            ],
             output_path=str(output_path),
-            usage=EnvelopeUsage(
-                prompt_tokens=answer.result.usage.prompt_tokens,
-                completion_tokens=answer.result.usage.completion_tokens,
-                cost_usd=answer.usage.cost_usd,
-            ),
+            usage=self._total_usage(),
             duration_s=self._duration(),
         )
         return envelope, text
@@ -637,10 +647,9 @@ class _TaskRun:
         candidate: Candidate,
         completion: CompletionRequest,
         result: CompletionResult,
-        usage: Usage,
         checks: list[CheckResult],
     ) -> TaskOutcome:
-        answer = _Answer(candidate, result.text, checks, usage, result)
+        answer = _Answer(candidate, result.text, checks, result)
         envelope, text = self._answer_envelope(answer, "ok", completion.max_output_tokens)
         return self._finish(envelope, text, 0)
 
@@ -650,6 +659,17 @@ class _TaskRun:
         limit = self._max_output(answer.candidate)
         envelope, text = self._answer_envelope(answer, status, limit)
         return self._finish(envelope, text, int(ExitCode.TASK_FAILED))
+
+    def _total_usage(self) -> EnvelopeUsage:
+        """Everything the run's answers used: retries and earlier candidates are paid too."""
+        if not self.used:
+            return EnvelopeUsage()
+        costs = [u.cost_usd for u in self.used if u.cost_usd is not None]
+        return EnvelopeUsage(
+            prompt_tokens=sum(u.prompt_tokens or 0 for u in self.used),
+            completion_tokens=sum(u.completion_tokens or 0 for u in self.used),
+            cost_usd=sum(costs) if costs else None,
+        )
 
     def _duration(self) -> float:
         return round(self.clock() - self.started, 3)

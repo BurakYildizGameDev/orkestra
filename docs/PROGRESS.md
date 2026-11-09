@@ -27,6 +27,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 5a (PR #6), 2026-11-10
+10 bulgu, 10'u düzeltildi (D-039):
+- ✅ `--json` envelope'ı stdout'a maskelenmeden gidiyordu (komut çıktısında sır olabilir) → `detail` maskeli.
+- ✅ Windows'ta `npm test` gibi `.cmd` araçları kabuksuz bulunamıyordu → `PATH` + `PATHEXT` ile çözülüyor.
+- ✅ Zaman aşımı sonrası boruyu tutan başıboş süreç Orkestra'yı kilitleyebiliyordu → en fazla 5 sn bekleniyor.
+- ✅ Görevde şemasız `json_schema` varken `output.schema` denetlenmiyordu → kullanılıyor.
+- ✅ Doğrulayıcıdaki şema işçiye söylenmiyordu; şemasız JSON çıktıda JSON istenmiyordu → söyleniyor; şema bir kez yükleniyor.
+- ✅ Envelope `usage` sadece son cevabı sayıyordu → bütün cevapların toplamı.
+- ✅ `regex` ilk hatada duruyordu → bütün desenler bildiriliyor.
+- ✅ Mutlak `files_exist` deseni çöküyordu → destekleniyor.
+- ✅ Glob bütün ağacı (`.venv`, `node_modules`) geziyor ve her dosya için uyarı basıyordu → dışlanan dizinlere girmiyor, uyarı tek satıra iniyor; eşleşme glob anlamıyla.
+- ✅ Şema iki kez yükleniyordu, glob karakter sabiti iki yerdeydi → tek yer.
+Testler: 530 geçti (+21).
+
 ### Faz 5a – Görev şeması ve doğrulayıcılar (2026-11-10)
 **Yapılanlar:**
 - `tasks/spec.py`: `TaskSpec` (Mimari §4.2) ve 8 doğrulayıcının şeması (ayırt edici `type` ile), `.yaml`/`.json` görev dosyası yükleme, okunur ve çevrili hata satırları (`verify[0].run: …`), görev kimliği kuralı, `effective_verifiers` (JSON çıktıda kendiliğinden `json_schema`; edit için varsayılan `forbid_paths` + `max_diff_lines: 2000`, `verify_defaults: false` ile kapanır), `ask_task` (`orkestra ask`'in görevi).
@@ -46,7 +60,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 - ✅ Tüm doğrulayıcı türlerinin birim testleri (`tests/unit/test_verify.py`): komut başarılı/başarısız/zaman aşımı/bulunamadı/kabuk, JSON şema (çitli, bozuk), regex, değişiklik sınırları, korunan/yasak yollar, `files_exist`, kullanıcı dili ↔ İngilizce geri bildirim.
 - ✅ Görev şeması birim testleri (`tests/unit/test_task_spec.py`): her hata türü için okunur satır, Türkçe çeviri, YAML satır numarası, JSON dosyası, varsayılan doğrulayıcılar.
 - ✅ Canlı (gerçek Ollama, `qwen2.5-coder:1.5b`): örnek görev ilk denemede `json_schema` + `regex` geçti; geri bildirim denemesinde ikinci istek İngilizce geri bildirimle gitti (model `CANNOT_DO` dedi → `escalate`, kod 1).
-- ✅ ruff, ruff format, pyright, pytest (509 test) temiz.
+- ✅ ruff, ruff format, pyright, pytest (509 test; denetim düzeltmeleriyle 530) temiz.
 - Worktree, `edit`, `apply`, Ctrl+C'de worktree korunması, bozuk/çitli/kesik edit JSON'u → 5b/5c'nin kriterleri.
 
 **Ertelenenler:**

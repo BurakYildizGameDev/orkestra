@@ -288,3 +288,54 @@ def test_edit_tasks_are_not_available_yet(home: Path, capsys: pytest.CaptureFixt
     code, _, err = _run(["--lang", "en", "run", _task(kind="edit")], capsys)
     assert code == 2
     assert "edit" in err
+
+
+# --- code review fixes (PR #6) ---------------------------------------------------------
+
+
+@respx.mock
+def test_command_output_in_the_envelope_is_redacted(
+    home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama("OK"))
+    leak = (
+        f'"{sys.executable}" -c "import os; print(os.environ[\'ROUTER_KEY\']); raise SystemExit(1)"'
+    )
+    task = _task(verify=[{"type": "command", "run": leak}], limits={"max_retries": 0})
+    code, out, err = _run(["run", task, "--json", "--profile", "cheap"], capsys)
+    assert code == 1
+    assert "RUNTESTKEY" not in out + err
+    assert "***" in json.loads(out)["verification"][0]["detail"]
+
+
+@respx.mock
+def test_schema_given_on_a_verifier_reaches_the_prompt(
+    home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    Path("s.json").write_text(
+        json.dumps({"type": "object", "required": ["answer_field"]}), encoding="utf-8"
+    )
+    ollama = respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama('{"answer_field": 1}'))
+    task = _task(output={"format": "json"}, verify=[{"type": "json_schema", "schema": "s.json"}])
+    code, _, _ = _run(["run", task, "--profile", "cheap"], capsys)
+    assert code == 0
+    assert "answer_field" in _ollama_user(ollama.calls[0].request)
+
+
+@respx.mock
+def test_json_output_without_schema_asks_for_json(
+    home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ollama = respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama("[1, 2]"))
+    code, _, _ = _run(["run", _task(output={"format": "json"}), "--profile", "cheap"], capsys)
+    assert code == 0
+    assert "single JSON value" in _ollama_user(ollama.calls[0].request)
+
+
+@respx.mock
+def test_envelope_usage_counts_every_answer(home: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    respx.post(f"{OLLAMA}/api/chat").mock(side_effect=[_ollama("nope"), _ollama("OK")])
+    code, out, _ = _run(["run", _task(verify=MUST_OK), "--json", "--profile", "cheap"], capsys)
+    assert code == 0
+    usage = json.loads(out)["usage"]
+    assert (usage["prompt_tokens"], usage["completion_tokens"]) == (10, 4)  # 2 x (5, 2)

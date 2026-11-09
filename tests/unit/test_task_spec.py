@@ -178,3 +178,20 @@ def test_example_tasks_are_valid() -> None:
     for path in examples:
         task = load_task(path)
         assert build_verifiers(task, base_dir=root)  # schema files exist and are valid
+
+
+def test_listed_json_schema_without_schema_inherits_the_output_schema() -> None:
+    task = _task(output={"format": "json", "schema": "s.json"}, verify=[{"type": "json_schema"}])
+    checks = effective_verifiers(task)
+    assert [(v.type, getattr(v, "schema_path", None)) for v in checks] == [
+        ("json_schema", "s.json")
+    ]
+
+
+def test_output_schema_is_still_checked_next_to_another_schema() -> None:
+    task = _task(
+        output={"format": "json", "schema": "s.json"},
+        verify=[{"type": "json_schema", "schema": "other.json"}],
+    )
+    schemas = sorted(getattr(v, "schema_path", "") for v in effective_verifiers(task))
+    assert schemas == ["other.json", "s.json"]

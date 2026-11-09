@@ -187,3 +187,58 @@ async def test_detail_follows_the_ui_language_feedback_stays_english(tmp_path: P
     (result,) = await _check(tmp_path, {"type": "regex", "must_match": ["xyz"]}, answer="abc")
     assert "xyz" in result.result.detail and "pattern not found" not in result.result.detail
     assert result.feedback.startswith("regex: pattern not found: xyz")
+
+
+# --- code review fixes (PR #6) ---------------------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PATHEXT lookup is Windows-only")
+async def test_windows_cmd_tools_are_found_without_a_shell(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "fakenpm.cmd").write_text("@echo npm says %1\r\n", encoding="utf-8")
+    monkeypatch.setenv("PATH", f"{tools};{__import__('os').environ['PATH']}")
+    (result,) = await _check(tmp_path, {"type": "command", "run": "fakenpm hello"})
+    assert result.result.ok, result.result.detail
+    assert "npm says hello" in result.result.detail
+
+
+async def test_timeout_never_hangs_on_a_process_that_keeps_the_pipe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
+    from orkestra.verify import command
+
+    monkeypatch.setattr(command, "KILL_GRACE_S", 0.5)
+    # The parent exits at once; its child keeps stdout open and is no longer in the tree.
+    script = (
+        "import subprocess, sys; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(8)'])"
+    )
+    started = time.monotonic()
+    (result,) = await _check(
+        tmp_path, {"type": "command", "run": f'{PY} -c "{script}"', "timeout_s": 1}
+    )
+    assert time.monotonic() - started < 6
+    assert not result.result.ok and "timed out" in result.result.detail
+
+
+async def test_regex_reports_every_failed_pattern(tmp_path: Path) -> None:
+    spec = {"type": "regex", "must_match": ["^Summary:", "^Risks:"], "must_not_match": ["TODO"]}
+    (result,) = await _check(tmp_path, spec, answer="TODO: write it")
+    assert not result.result.ok
+    for part in ("^Summary:", "^Risks:", "TODO"):
+        assert part in result.result.detail and part in result.feedback
+
+
+async def test_files_exist_accepts_absolute_paths_and_globs(tmp_path: Path) -> None:
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "a.json").write_text("{}", encoding="utf-8")
+    absolute = (tmp_path / "out").as_posix()
+    (result,) = await _check(
+        tmp_path, {"type": "files_exist", "paths": [f"{absolute}/a.json", f"{absolute}/*.json"]}
+    )
+    assert result.result.ok, result.result.detail

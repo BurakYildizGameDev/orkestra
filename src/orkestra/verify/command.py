@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import os
 import shlex
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,11 +21,40 @@ import psutil
 
 from orkestra.verify.base import DETAIL_CHARS, CheckResult, Message, VerifyContext, failed, passed
 
+KILL_GRACE_S = 5.0  # after a timeout: how long to wait for the killed process's output
+
 
 def _args(run: str, shell: bool) -> str | list[str]:
-    if shell or os.name == "nt":
+    if shell:
         return run
+    if os.name == "nt":
+        return _windows_command_line(run)
     return shlex.split(run)
+
+
+def _split_program(run: str) -> tuple[str, str]:
+    """First token of a Windows command line (quoted or not) and the rest, unchanged."""
+    text = run.lstrip()
+    if text.startswith('"'):
+        end = text.find('"', 1)
+        if end == -1:
+            return text[1:], ""
+        return text[1:end], text[end + 1 :]
+    program, _, rest = text.partition(" ")
+    return program, (" " + rest) if rest else ""
+
+
+def _windows_command_line(run: str) -> str:
+    """Resolve the program like a shell would, through PATH and PATHEXT.
+
+    ``CreateProcess`` only finds ``.exe`` files on its own, so ``npm test`` (``npm.cmd``) would
+    be "not found" without a shell. The rest of the command line is passed on unchanged.
+    """
+    program, rest = _split_program(run)
+    resolved = shutil.which(program) if program else None
+    if resolved is None:
+        return run
+    return subprocess.list2cmdline([resolved]) + rest
 
 
 def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
@@ -68,8 +98,7 @@ class CommandCheck:
             raw, _ = await asyncio.to_thread(proc.communicate, timeout=self.timeout_s)
         except subprocess.TimeoutExpired:
             _kill_tree(proc)
-            raw, _ = proc.communicate()
-            output = raw.decode("utf-8", errors="replace")
+            output = (await _drain(proc)).decode("utf-8", errors="replace")
             message = Message("verify.command.timeout", {"seconds": self.timeout_s})
             return failed(self.type, message, f"\n{_tail(output)}".rstrip(), log=output)
         except BaseException:
@@ -80,6 +109,21 @@ class CommandCheck:
             return passed(self.type, _tail(output), log=output)
         message = Message("verify.command.exit", {"code": proc.returncode})
         return failed(self.type, message, f"\n{_tail(output)}".rstrip(), log=output)
+
+
+async def _drain(proc: subprocess.Popen[bytes]) -> bytes:
+    """Output of a killed process, waiting at most ``KILL_GRACE_S``.
+
+    A process outside the killed tree (e.g. a daemon the check started) may still hold the
+    pipe open; then the output is given up instead of waiting forever.
+    """
+    try:
+        raw, _ = await asyncio.to_thread(proc.communicate, timeout=KILL_GRACE_S)
+    except subprocess.TimeoutExpired:
+        # Do not close the pipe here: on Windows that blocks until the (daemon) reader
+        # thread finishes, i.e. until the stray process exits.
+        return b""
+    return raw or b""
 
 
 def _program(run: str) -> str:

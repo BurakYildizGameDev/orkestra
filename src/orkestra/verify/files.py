@@ -6,14 +6,13 @@ nothing, so the change checks pass trivially. Patterns use ``.gitignore`` syntax
 
 from __future__ import annotations
 
+import glob
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 import pathspec
 
 from orkestra.verify.base import CheckResult, FileChange, Message, VerifyContext, failed, passed
-
-_GLOB_CHARS = frozenset("*?[")
 
 
 def _matching(patterns: Sequence[str], changes: Sequence[FileChange]) -> list[str]:
@@ -80,6 +79,8 @@ class FilesExistCheck:
 
 
 def _exists(ctx: VerifyContext, path: str) -> bool:
-    if _GLOB_CHARS & set(path):
-        return any(ctx.workdir.glob(path))
+    """Relative paths are under the workdir; absolute ones (and absolute globs) are allowed."""
+    target = str(ctx.workdir / path)  # an absolute ``path`` replaces the workdir
+    if glob.has_magic(path):
+        return bool(glob.glob(target, recursive=True))
     return (ctx.workdir / path).exists()
