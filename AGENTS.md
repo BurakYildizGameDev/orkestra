@@ -42,6 +42,7 @@ uv run orkestra --help
 - [ ] Sapmalar `docs/DECISIONS.md`'de
 - [ ] `git diff` içinde sır/kişisel veri yok
 - [ ] Commit: `feat(faz-N): kısa açıklama`
+- [ ] **Kod denetimi:** faz bitince fazın diff'i/PR'ı için kod denetleyici çalıştırılır (Claude Code'da `/code-review <PR numarası>`). Bulgular düzeltilir ya da gerekçesiyle `docs/PROGRESS.md`'ye "bilinen sorun" olarak yazılır; sonuç faz raporunda madde madde verilir.
 
 ## Kod stili
 - Python 3.11+, tam tip ipuçları, `from __future__ import annotations`.
