@@ -9,7 +9,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 0 – İskelet + i18n altyapısı | ✅ | 2026-11-09 | Paket adı `orkestra-cli` (D-001) |
 | 1 – Config | ✅ | 2026-11-09 | init, config show/validate (D-006…D-012) |
 | 2 – Chat adapter, ask, doctor | ✅ | 2026-11-09 | Ollama + OpenAI uyumlu, ask, doctor (D-013…D-019) |
-| 3 – Durum, bütçe, onay | ⏳ | | |
+| 3 – Durum, bütçe, onay | ✅ | 2026-11-09 | state.db, bütçe rezervasyonu, onay, devre kesici, gizli bilgi, fiyat kaynakları (D-020…D-028) |
 | 4 – Router | ⏳ | | |
 | 5a – Görev + doğrulama | ⏳ | | |
 | 5b – Worktree | ⏳ | | |
@@ -26,6 +26,39 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 3 – Durum, bütçe, onay, sağlık (2026-11-09)
+**Yapılanlar:**
+- `state/db.py`: SQLite bağlantısı (WAL, `busy_timeout=5000`, her süreç kendi bağlantısı), `BEGIN IMMEDIATE` işlem yardımcısı, numaralı SQL migration altyapısı (`state/migrations/0001_initial.sql`: `runs`, `usage`, `consents`, `health`), `runs` kayıtları.
+- `state/budget.py`: Mimari §6.1 rezervasyon → mutabakat, temkinli tahmin (karakter/3.5 + `max_output_tokens`), 4 limit türü, yerel gece yarısı sıfırlama, 1 saatten eski rezervasyonları saymama ve silme, enjekte edilebilir saat.
+- `state/consent.py`: verinin nereye gittiğini ve neyin çalıştırılacağını belirleyen ayarların SHA-256 özetiyle onay (D-027); onay ekranı metni (`describe`).
+- `providers/pricing.py`: `daily_usd` tahmini için fiyat kaynakları (config → OpenRouter `/models` fiyat listesi, 24 saat önbellek → geçmiş kullanım) (D-028).
+- `state/health.py`: devre kesici (3 geçici hata → 5 dk, auth → 1 saat, başarı sıfırlar).
+- `security/secrets_scan.py` (Mimari §11 desenleri + config'teki anahtar değerleri; `password` sadece uyarı), `security/redact.py` (maskeleyici + logging filtresi), `logging_setup.py` (koşu başına `orkestra.log`).
+- Sağlayıcı seçimine durum kontrolleri: onay, devre kesici, uzak sağlayıcıya gizli bilgi, bütçe ön kontrolü. Elenen her sağlayıcının nedeni yazılıyor; elenen yerine sıradaki seçiliyor.
+- `ask`: onay yoksa kod 4, bütçe/devre/gizli bilgi kod 3; bütçe rezervasyonu ve mutabakat; sağlık kaydı; `--allow-secrets`; tüm koşu dosyaları maskeleniyor; `runs` tablosuna kayıt.
+- Komutlar: `orkestra providers list|enable|disable`, `orkestra budget [--json]`. `doctor` artık onay eksiklerini ve beklemedeki sağlayıcıları gösteriyor.
+- README (en + tr) Faz 3'e göre güncellendi.
+
+**Kabul kriterleri:**
+- ✅ Eşzamanlılık: 10 ayrı süreç (multiprocessing, spawn, aynı anda başlayan bariyer) rezervasyon yapınca toplam limit aşılmıyor: tam 5 başarılı, 5 `BudgetExhausted`, toplam 500/500 token (`test_ten_processes_never_exceed_the_limit`, 5 kez arka arkaya geçti).
+- ✅ Gün değişince (sahte saat, 23:59 → 00:01) bütçe sıfırlanıyor.
+- ✅ `base_url` (ve model kimlikleri, anahtar değişkeni, başlıklar, ajan komutu/sandbox) değişince onay geçersiz; bütçe, `enabled`, zaman aşımı, kademe, fiyat değişince geçerli kalıyor.
+- ✅ Ek: config'te fiyat yokken OpenRouter fiyat listesiyle tahmin yapılıyor; tahmin `daily_usd`'yi aşınca istek hiç gönderilmeden sıradaki sağlayıcıya geçiliyor.
+- ✅ 3 geçici hata → sağlayıcı 5 dk kullanılmıyor; başarı sayacı sıfırlıyor (birim + CLI testleri).
+- ✅ Redaksiyon: ortamdaki anahtar değeri `orkestra.log` dahil hiçbir koşu dosyasında ve çıktıda yok (sağlayıcı hatası anahtarı yansıttığında bile).
+- ✅ Kullanıcının özel isteği: internet yokken uzak API 3 hatadan sonra beklemeye alınıyor, sonraki `ask` doğrudan Ollama'ya gidiyor (`test_offline_remote_is_paused_and_ollama_takes_over`). Bütçesi biten sağlayıcıdan sonrakine geçiş de testli.
+- ✅ ruff, ruff format, pyright, pytest (337 test) temiz.
+
+**Ertelenenler:**
+- Aynı komut içinde otomatik yeniden deneme ve sıradaki adaya geçiş (bir istek hata verince hemen diğer sağlayıcıyı denemek) → Faz 4 (router + retry). Şu an hatalı istek kod 3 ile biter; sağlayıcı 3 hatadan sonra beklemeye alınır.
+- `.orkestraignore` filtrelemesi → görev dosyası ve `globs` ile birlikte (Faz 5a).
+- `gc` komutu (eski rezervasyonları silen fonksiyon hazır: `budget.purge_stale_reservations`) → Faz 5b.
+- `-v/-q` log seviyesi seçenekleri.
+
+**Bilinen sorunlar:**
+- Fiyatı hiçbir kaynaktan bulunamayan (config'te yok, sağlayıcı yayınlamıyor, hiç kullanılmamış) bir modelin ilk isteği `daily_usd` sınırını aşabilir; `ask` ve `doctor` bunu uyarır (D-023, D-028).
+- İlk sürümde "bütçe hariç tüm ayarlar" olan onay özeti daraltıldı (D-027); daha önce verilen onaylar bir kez yeniden istenir.
 
 ### Faz 2 – Chat adapter'ları, `ask`, `doctor` (2026-11-09)
 **Yapılanlar:**

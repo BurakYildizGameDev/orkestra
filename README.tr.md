@@ -8,7 +8,7 @@
 
 **Güçlü bir "şef" modelin (ör. Claude) işi birçok ucuz veya yerel "işçi" modele dağıtmasını, sonuçları doğrulamasını ve bir sağlayıcı çökünce diğerine geçmesini sağlayan, bütçe farkındalıklı komut satırı aracı.**
 
-> **Durum: geliştirme aşamasında.** 14 fazın 0–2'si bitti: proje iskeleti, yapılandırma, Ollama ve OpenAI uyumlu adapter'lar, `ask` ve `doctor`. Yönlendirme, bütçe, yedeğe geçiş, yalıtılmış kod düzenleme ve diğerleri [yol haritasında](#yol-haritası). Bu README sadece bugün çalışan özellikleri anlatır.
+> **Durum: geliştirme aşamasında.** 14 fazın 0–3'ü bitti: proje iskeleti, yapılandırma, Ollama ve OpenAI uyumlu adapter'lar, `ask`, `doctor`, günlük bütçe, sağlayıcı onayı, devre kesici ve gizli bilgi taraması. Tam yedeğe geçişli yeniden deneme, yalıtılmış kod düzenleme ve diğerleri [yol haritasında](#yol-haritası). Bu README sadece bugün çalışan özellikleri anlatır.
 
 ```
 Sen ──► Claude (şef: planlar, böler, denetler)
@@ -39,7 +39,10 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Örnek config (genel veya projeye özel) | `orkestra init [--project] [--force]` |
 | Birleştirilmiş config ve kaynakları, okunur hatalarla doğrulama | `orkestra config show [--json]`, `orkestra config validate` |
 | İşçi modele tek soru; bağlam dosyaları ve isteğe bağlı JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
-| Ortam kontrolü: config, sağlayıcı erişimi, API anahtarı değişkenleri, Ollama modelleri, git, codex/agy | `orkestra doctor [--json] [--warm]` |
+| Ortam kontrolü: config, sağlayıcı erişimi, API anahtarı değişkenleri, Ollama modelleri, onaylar, beklemedeki sağlayıcılar, git, codex/agy | `orkestra doctor [--json] [--warm]` |
+| Sağlayıcı başına açık onay (vermeden önce ne yapabileceği gösterilir) | `orkestra providers enable <ad>`, `providers disable <ad>` |
+| Sağlayıcılar: onay, sağlık ve kalan bütçe | `orkestra providers list [--json]` |
+| Günlük bütçe (token, USD, istek, koşu), yerel gece yarısı sıfırlanır | `orkestra budget [--json]` |
 | Türkçe veya İngilizce arayüz | `--lang en\|tr`, `ORKESTRA_LANG` veya config'te `language:` |
 
 Şu an desteklenen sağlayıcılar:
@@ -70,9 +73,11 @@ uv run orkestra init                 # veya: init --project → ./orkestra.yaml
 #    API anahtarları ortam değişkenine gider. Config'te sadece değişkenin ADI durur.
 export OPENROUTER_API_KEY="..."      # PowerShell: $env:OPENROUTER_API_KEY="..."
 
-# 3. Her şeyi kontrol et
+# 3. Her şeyi kontrol et ve kullanmak istediğin sağlayıcılara izin ver
 uv run orkestra config validate
 uv run orkestra doctor               # --warm her Ollama modelini belleğe de yükler
+uv run orkestra providers enable ollama
+uv run orkestra providers enable openrouter   # URL'yi ve anahtar değişkenini gösterir, sonra sorar
 
 # 4. Sor
 uv run orkestra ask "Bu fonksiyon ne yapıyor?" --context src/util.py
@@ -80,9 +85,18 @@ uv run orkestra ask "Tek satırda özetle" --provider openrouter --tier 2
 uv run orkestra ask "İsimleri çıkar" --context kisiler.txt --schema isimler.schema.json --json
 ```
 
-`--provider`/`--model` verilmezse `ask`, istenen kademede (varsayılan 1) modeli olan ilk açık
-sağlayıcıyı config sırasıyla seçer. Kapalı olanlar, kod ajanları ve API anahtarı ortamda olmayanlar
-atlanır; hiçbiri kalmazsa her birinin nedeni listelenir.
+`--provider`/`--model` verilmezse `ask`, config sırasıyla, istenen kademede (varsayılan 1) modeli
+olan ve tüm kontrollerden geçen ilk sağlayıcıyı seçer. Bir sağlayıcı şu durumlarda atlanır:
+
+- kapalıysa, kod ajanıysa veya API anahtarı değişkeni tanımlı değilse
+- henüz onayı yoksa (`orkestra providers enable <ad>`) ya da onaydan sonra ayarları değiştiyse
+- **devre kesici tarafından beklemeye alındıysa**: arka arkaya 3 ağ/sunucu hatası (ör. internet yok) 5 dakika, kimlik doğrulama hatası 1 saat bekletir
+- günlük bütçesi aşılacaksa
+- uzak bir sağlayıcıysa ve bağlamda gizli bilgi varsa (API anahtarı, özel anahtar…)
+
+Yani internet kesildiğinde uzak API üç başarısız denemeden sonra beklemeye alınır ve sonraki
+`ask` doğrudan yerel Ollama'ya gider. Hiçbiri kalmazsa her sağlayıcı atlanma nedeniyle listelenir
+(onay eksikse kod 4, değilse 3). Aynı komut içinde otomatik yeniden deneme Faz 4'teki router ile gelir.
 
 ## Yapılandırma
 
@@ -92,7 +106,9 @@ Orkestra bir temel dosya ve bir proje dosyası okur; proje dosyası kazanır:
 2. Proje: bulunduğun dizinden git köküne kadar en yakın `orkestra.yaml`
 
 Eşlemeler derin birleştirilir, listeler değiştirilir, `providers.<ad>: null` bir sağlayıcıyı kaldırır.
-Yazım hataları sessizce geçmesin diye bilinmeyen anahtarlar reddedilir. Yorumlu tam örnek:
+Yazım hataları sessizce geçmesin diye bilinmeyen anahtarlar reddedilir. `daily_usd` sınırı her
+istekten önce `price_per_mtok` ile kontrol edilir; o yoksa sağlayıcının yayınladığı fiyat listesi
+(OpenRouter, bir gün önbelleklenir), o da yoksa geçmiş isteklerde görülen maliyet kullanılır. Yorumlu tam örnek:
 [`examples/orkestra.example.yaml`](examples/orkestra.example.yaml).
 
 ```yaml
@@ -155,8 +171,8 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 0 | Başarılı |
 | 1 | Doğrulama geçmedi (ör. cevap `--schema`'ya uymuyor); `doctor` için: bir kontrol başarısız |
 | 2 | Yapılandırma veya kullanım hatası |
-| 3 | Uygun sağlayıcı yok (erişilemiyor, kimlik doğrulama başarısız, anahtar yok, o kademede model yok) |
-| 4 | Kullanıcı onayı gerekli (Faz 3) |
+| 3 | Uygun sağlayıcı yok (erişilemiyor, beklemede, bütçe doldu, bağlamda gizli bilgi, anahtar yok, o kademede model yok) |
+| 4 | Kullanıcı onayı gerekli (`orkestra providers enable <ad>`) |
 | 5 | Worktree / uygulama çakışması (Faz 5) |
 | 10 | Beklenmeyen iç hata |
 
@@ -165,6 +181,9 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 - API anahtarları config dosyalarında tutulmaz. Orada sadece ortam değişkeninin adı durur; `doctor` değişkenin tanımlı olup olmadığını söyler, değerini asla göstermez.
 - Sağlayıcı hata mesajları temizlenir; bir API'nin geri yansıttığı anahtar (ör. 401 gövdesinde) çıktıya ulaşmaz.
 - Kod ajanları için `danger-full-access` config tarafından reddedilir.
+- Açık onay olmadan hiçbir sağlayıcı kullanılmaz. Onay, verinin nereye gittiğini ve neyin çalıştırılacağını belirleyen ayarlara bağlıdır (URL, anahtar değişkeni, başlıklar, komut, sandbox, model kimlikleri); bunlardan biri değişirse yeniden sorulur. Sağlayıcıyı kapatıp açmak, bütçesini veya zaman aşımını değiştirmek yeniden sormaz.
+- Bağlam dosyaları gizli bilgi için taranır (OpenAI/OpenRouter/AWS/GitHub/Slack/Google anahtarları, özel anahtarlar ve config'teki anahtar değişkenlerinin değerleri). Böyle bir bağlam `--allow-secrets` verilmedikçe uzak sağlayıcıya asla gitmez.
+- Orkestra'nın `~/.orkestra/runs/` altına yazdığı her şey (istek, yanıt, çıktı, envelope, log) maskelenir.
 - Telemetri yok. Her şey senin bilgisayarında ve senin seçtiğin sağlayıcılarda kalır.
 
 ## Yol haritası
@@ -174,7 +193,7 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 0 | İskelet, araçlar, çok dilli altyapı | ✅ |
 | 1 | Yapılandırma: şema, birleştirme, `init`, `config` | ✅ |
 | 2 | Ollama + OpenAI uyumlu adapter'lar, `ask`, `doctor` | ✅ |
-| 3 | Durum veritabanı, günlük bütçe, sağlayıcı onayı, devre kesici, gizli bilgi taraması | ⏳ |
+| 3 | Durum veritabanı, günlük bütçe, sağlayıcı onayı, devre kesici, gizli bilgi taraması | ✅ |
 | 4 | Router, yeniden deneme ve **yedeğe geçiş**: internet yok → yerel Ollama, çöken API → sıradaki sağlayıcı | ⏳ |
 | 5 | Görev dosyaları, doğrulayıcılar, git worktree, `edit`, `apply` | ⏳ |
 | 6 | Kod ajanları: Codex CLI, Antigravity CLI | ⏳ |

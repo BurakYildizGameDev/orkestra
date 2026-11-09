@@ -8,7 +8,7 @@
 
 **A budget-aware CLI that lets one strong "chief" model (e.g. Claude) hand work to many cheaper or local "worker" models, verify the results, and fall back to another provider when one fails.**
 
-> **Status: in development.** Phases 0–2 of 14 are done: the project skeleton, configuration, the Ollama and OpenAI-compatible adapters, `ask` and `doctor`. Routing, budgets, failover, isolated code edits and the rest are on the [roadmap](#roadmap). This README only describes what already works.
+> **Status: in development.** Phases 0–3 of 14 are done: the project skeleton, configuration, the Ollama and OpenAI-compatible adapters, `ask`, `doctor`, daily budgets, provider consent, the circuit breaker and secret scanning. Retries with full failover, isolated code edits and the rest are on the [roadmap](#roadmap). This README only describes what already works.
 
 ```
 You ──► Claude (chief: plans, splits, reviews)
@@ -39,7 +39,10 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | Example config, global or per project | `orkestra init [--project] [--force]` |
 | Merged config with its sources, validation with readable errors | `orkestra config show [--json]`, `orkestra config validate` |
 | One question to a worker model, with context files and an optional JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
-| Environment check: config, provider access, API key variables, Ollama models, git, codex/agy | `orkestra doctor [--json] [--warm]` |
+| Environment check: config, provider access, API key variables, Ollama models, consent, paused providers, git, codex/agy | `orkestra doctor [--json] [--warm]` |
+| Explicit consent per provider, shown before it is granted | `orkestra providers enable <name>`, `providers disable <name>` |
+| Providers with consent, health and remaining budget | `orkestra providers list [--json]` |
+| Daily budgets (tokens, USD, requests, runs), reset at local midnight | `orkestra budget [--json]` |
 | Interface in English or Turkish | `--lang en\|tr`, `ORKESTRA_LANG`, or `language:` in the config |
 
 Providers supported so far:
@@ -70,9 +73,11 @@ uv run orkestra init                 # or: init --project → ./orkestra.yaml
 #    API keys go into environment variables. The config holds only the variable's NAME.
 export OPENROUTER_API_KEY="..."      # PowerShell: $env:OPENROUTER_API_KEY="..."
 
-# 3. Check everything
+# 3. Check everything and allow the providers you want to use
 uv run orkestra config validate
 uv run orkestra doctor               # --warm also loads each Ollama model
+uv run orkestra providers enable ollama
+uv run orkestra providers enable openrouter   # shows the URL and key variable, then asks
 
 # 4. Ask
 uv run orkestra ask "What does this function do?" --context src/util.py
@@ -80,9 +85,19 @@ uv run orkestra ask "Summarize in one line" --provider openrouter --tier 2
 uv run orkestra ask "Extract the names" --context people.txt --schema names.schema.json --json
 ```
 
-Without `--provider`/`--model`, `ask` picks the first enabled provider that has a model on the
-requested tier (default 1), in config order. Providers that are disabled, are code agents, or have
-no API key in the environment are skipped, and the reasons are listed if nothing is left.
+Without `--provider`/`--model`, `ask` picks the first provider, in config order, that has a model
+on the requested tier (default 1) and passes every check. A provider is skipped when it:
+
+- is disabled, is a code agent, or its API key variable is not set
+- has no consent yet (`orkestra providers enable <name>`), or its settings changed since
+- is **paused by the circuit breaker**: 3 network/server errors in a row (e.g. no internet) pause it for 5 minutes, an authentication error for an hour
+- would exceed its daily budget
+- is remote while the context contains secrets (API keys, private keys…)
+
+So when the internet is down, the remote API is paused after three failed attempts and the
+next `ask` goes straight to local Ollama. If nothing is left, every provider is listed with the
+reason it was skipped (exit 4 when consent is missing, otherwise 3). Automatic retry within the
+same command comes with the router in Phase 4.
 
 ## Configuration
 
@@ -92,7 +107,9 @@ Orkestra reads a base file and a project file, and the project file wins:
 2. Project: the nearest `orkestra.yaml` from the current directory up to the git root
 
 Mappings are merged deeply, lists are replaced, and `providers.<name>: null` removes a provider.
-Unknown keys are rejected so that typos do not pass silently. The full example with comments is
+Unknown keys are rejected so that typos do not pass silently. A `daily_usd` limit is checked
+before each request using `price_per_mtok`; without it Orkestra uses the provider's published
+price list (OpenRouter, cached for a day) or, failing that, the cost seen in past requests. The full example with comments is
 [`examples/orkestra.example.yaml`](examples/orkestra.example.yaml).
 
 ```yaml
@@ -155,8 +172,8 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 0 | Success |
 | 1 | Verification failed (e.g. the answer does not match `--schema`); for `doctor`: a check failed |
 | 2 | Configuration or usage error |
-| 3 | No suitable provider (unreachable, auth failed, no key, no model on that tier) |
-| 4 | User consent required (Phase 3) |
+| 3 | No suitable provider (unreachable, paused, budget exhausted, secrets in context, no key, no model on that tier) |
+| 4 | User consent required (`orkestra providers enable <name>`) |
 | 5 | Worktree / apply conflict (Phase 5) |
 | 10 | Unexpected internal error |
 
@@ -165,6 +182,9 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 - API keys are never stored in config files. Only the environment variable's name is kept there, and `doctor` reports whether the variable is set, never its value.
 - Error messages from providers are scrubbed, so a key echoed back by an API (e.g. in a 401 body) does not reach the output.
 - `danger-full-access` sandboxing for code agents is rejected by the config.
+- No provider is used without explicit consent. Consent is tied to the settings that decide where data goes and what may run (URL, key variable, headers, command, sandbox, model ids), so changing one of them asks again. Turning a provider off and on, or changing its budget or timeouts, does not.
+- Context files are scanned for secrets (OpenAI/OpenRouter/AWS/GitHub/Slack/Google keys, private keys, and the values of your configured key variables). Such context never goes to a remote provider unless you pass `--allow-secrets`.
+- Everything Orkestra writes to `~/.orkestra/runs/` (request, response, output, envelope, log) is redacted.
 - No telemetry. Everything stays on your machine and with the providers you choose.
 
 ## Roadmap
@@ -174,7 +194,7 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 0 | Skeleton, tooling, i18n foundation | ✅ |
 | 1 | Configuration: schema, merge, `init`, `config` | ✅ |
 | 2 | Ollama + OpenAI-compatible adapters, `ask`, `doctor` | ✅ |
-| 3 | State DB, daily budgets, provider consent, circuit breaker, secret scanning | ⏳ |
+| 3 | State DB, daily budgets, provider consent, circuit breaker, secret scanning | ✅ |
 | 4 | Router, retries and **failover**: offline → local Ollama, failing API → next provider | ⏳ |
 | 5 | Task files, verifiers, git worktrees, `edit`, `apply` | ⏳ |
 | 6 | Code agents: Codex CLI, Antigravity CLI | ⏳ |

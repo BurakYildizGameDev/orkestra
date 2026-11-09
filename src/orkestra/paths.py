@@ -37,3 +37,7 @@ def run_dir(run_id: str) -> Path:
 
 def worktrees_dir() -> Path:
     return orkestra_home() / "worktrees"
+
+
+def cache_dir() -> Path:
+    return orkestra_home() / "cache"

@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import time
 from collections.abc import Callable, Mapping
+from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -17,15 +18,18 @@ from typing import Any, Literal
 from orkestra.config.loader import load_config
 from orkestra.config.schema import (
     CliAgentProvider,
+    Config,
     OllamaProvider,
     OpenAICompatProvider,
     Provider,
 )
 from orkestra.errors import ConfigError, ProviderError
 from orkestra.i18n import t
+from orkestra.providers import pricing
 from orkestra.providers.base import CompletionRequest
 from orkestra.providers.ollama import OllamaChat, has_model
 from orkestra.providers.openai_compat import OpenAICompatChat
+from orkestra.state import consent, db, health
 
 CheckStatus = Literal["ok", "warn", "fail", "info"]
 VERSION_TIMEOUT_S = 10
@@ -216,6 +220,83 @@ async def _check_provider(
     return _check_agent(name, cfg, which, probe)
 
 
+def _state_checks(providers: Mapping[str, Provider]) -> list[Check]:
+    """Consent and circuit breaker state from state.db."""
+    checks: list[Check] = []
+    now = db.local_now()
+    with closing(db.connect()) as conn:
+        for name, cfg in providers.items():
+            if not cfg.enabled:
+                continue
+            current = consent.state(conn, name, cfg)
+            if current != "granted":
+                checks.append(
+                    Check(
+                        f"provider:{name}",
+                        "warn",
+                        t(f"doctor.consent.{current}"),
+                        {"consent": current, "hint": f"orkestra providers enable {name}"},
+                    )
+                )
+            state = health.get(conn, name)
+            if state.is_open(now):
+                until = state.open_until.isoformat() if state.open_until else None
+                checks.append(
+                    Check(
+                        f"provider:{name}",
+                        "warn",
+                        t(
+                            "doctor.circuit_open",
+                            until=state.open_until.strftime("%H:%M") if state.open_until else "?",
+                            error=state.last_error or "-",
+                        ),
+                        {"open_until": until, "failures": state.consecutive_failures},
+                    )
+                )
+    return checks
+
+
+async def _price_checks(config: Config, environ: Mapping[str, str]) -> list[Check]:
+    """A ``daily_usd`` limit needs a price; refresh provider prices and report gaps."""
+    targets = {
+        name: cfg
+        for name, cfg in config.providers.items()
+        if cfg.enabled and pricing.needs_price(cfg)
+    }
+    if not targets:
+        return []
+    cache = await pricing.refresh(config, db.local_now(), environ=environ, force=True)
+    checks: list[Check] = []
+    with closing(db.connect()) as conn:
+        for name, cfg in targets.items():
+            for model in getattr(cfg, "models", []):
+                price = pricing.resolve(name, cfg, model, conn=conn, cache=cache)
+                if price is None:
+                    checks.append(
+                        Check(
+                            f"provider:{name}",
+                            "warn",
+                            t("doctor.price.missing", model=model.id),
+                            {"model": model.id, "price": None},
+                        )
+                    )
+                elif price.source != "config":
+                    checks.append(
+                        Check(
+                            f"provider:{name}",
+                            "info",
+                            t(
+                                f"doctor.price.{price.source}",
+                                model=model.id,
+                                input=f"{price.input_per_mtok:g}",
+                                output=f"{price.output_per_mtok:g}",
+                            ),
+                            {"model": model.id, "price_source": price.source},
+                        )
+                    )
+    return checks
+
+
 def _check_tool(tool: str, which: Which, probe: VersionProbe, *, required: bool) -> Check:
     path = which(tool)
     if path is None:
@@ -261,6 +342,8 @@ async def run_doctor(
             checks.extend(
                 await _check_provider(name, cfg, warm=warm, environ=env, which=which, probe=probe)
             )
+        checks.extend(_state_checks(loaded.config.providers))
+        checks.extend(await _price_checks(loaded.config, env))
     checks.append(_check_tool("git", which, probe, required=True))
     configured_commands = (
         {getattr(c, "command", None) for c in loaded.config.providers.values()} if loaded else set()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ import respx
 
 from orkestra import doctor
 from orkestra.cli import app
+from orkestra.config.loader import load_config
+from orkestra.state import consent, db
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 OLLAMA = "http://ollama.test:11434"
@@ -51,9 +54,14 @@ def _run(argv: list[str], capsys: pytest.CaptureFixture[str]) -> tuple[int, str,
 
 @pytest.fixture
 def home(tmp_path: Path) -> Path:
+    """Config with every provider already consented (consent itself: test_state_cli.py)."""
     path = tmp_path / "orkestra-home"
     path.mkdir()
     (path / "config.yaml").write_text(CONFIG, encoding="utf-8")
+    config = load_config(cwd=tmp_path, environ={}).config
+    with closing(db.connect()) as conn:
+        for name, provider in config.providers.items():
+            consent.grant(conn, name, provider, db.local_now())
     return path
 
 
