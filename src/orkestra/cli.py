@@ -19,6 +19,7 @@ from orkestra.config.schema import Provider
 from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
 from orkestra.i18n import t
 from orkestra.providers import registry
+from orkestra.routing.router import Route, describe_candidates
 from orkestra.state import consent, db
 from orkestra.tasks import runner
 
@@ -144,6 +145,47 @@ def _budget_text(row: registry.ProviderRow) -> str:
         t("budget.limit", limit=s.limit, used=_num(s.used), value=_num(s.value)) for s in row.limits
     )
     return f"{row.name}: {limits}"
+
+
+def _route_json(plan: Route) -> dict[str, Any]:
+    return {
+        "profile": plan.profile,
+        "tier_range": list(plan.tier_range),
+        "prompt_tokens": plan.prompt_tokens,
+        "candidates": describe_candidates(plan.candidates),
+        "eliminated": [
+            {"provider": e.provider, "model": e.model, "code": e.code, "reason": e.reason}
+            for e in plan.eliminated
+        ],
+    }
+
+
+def _route_text(plan: Route) -> str:
+    low, high = plan.tier_range
+    lines = [
+        t("route.dry.header", profile=plan.profile, low=low, high=high, tokens=plan.prompt_tokens)
+    ]
+    if plan.candidates:
+        lines.append(t("route.dry.candidates"))
+        for index, c in enumerate(plan.candidates, start=1):
+            lines.append(
+                t(
+                    "route.dry.candidate",
+                    index=index,
+                    label=c.label,
+                    tier=c.tier,
+                    window=c.model.context_window,
+                    priority=c.model.priority,
+                    budget=f"{c.budget_ratio:.0%}",
+                    where=t("route.dry.local") if c.config.local else t("route.dry.remote"),
+                )
+            )
+    else:
+        lines.append(t("route.dry.none"))
+    if plan.eliminated:
+        lines.append(t("route.dry.eliminated"))
+        lines.extend(f"  - {e.reason}" for e in plan.eliminated)
+    return "\n".join(lines)
 
 
 def build_app() -> typer.Typer:
@@ -329,6 +371,16 @@ def build_app() -> typer.Typer:
         allow_secrets: Annotated[
             bool, typer.Option("--allow-secrets", help=t("cli.ask.option.allow_secrets"))
         ] = False,
+        profile: Annotated[
+            str | None,
+            typer.Option("--profile", metavar="NAME", help=t("cli.ask.option.profile")),
+        ] = None,
+        local_only: Annotated[
+            bool, typer.Option("--local-only", help=t("cli.ask.option.local_only"))
+        ] = False,
+        dry_run: Annotated[
+            bool, typer.Option("--dry-run", help=t("cli.ask.option.dry_run"))
+        ] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
@@ -338,9 +390,22 @@ def build_app() -> typer.Typer:
             provider=provider,
             model=model,
             tier=tier,
+            profile=profile,
+            local_only=local_only,
             context=tuple(context or ()),
             schema=schema,
         )
+        if dry_run:
+            plan = asyncio.run(runner.plan_ask(request, loaded.config))
+            for warning in plan.warnings:
+                typer.echo(warning, err=True)
+            if as_json:
+                _echo_json(_route_json(plan.route))
+            else:
+                typer.echo(_route_text(plan.route))
+            if plan.exit_code:
+                raise typer.Exit(plan.exit_code)
+            return
         outcome = asyncio.run(runner.run_ask(request, loaded.config))
         for warning in outcome.warnings:
             typer.echo(warning, err=True)

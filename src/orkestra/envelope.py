@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from orkestra.i18n import t
 
-ENVELOPE_VERSION = 1
+ENVELOPE_VERSION = 2  # 2: failovers (Faz 4)
 SUMMARY_CHARS = 400
 
 Status = Literal["ok", "failed", "escalate", "error"]
@@ -24,6 +24,17 @@ class Escalation(BaseModel):
     model: str
     tier: int
     reason: str
+
+
+class Failover(BaseModel):
+    """A candidate that failed at runtime; the run moved on to the next one."""
+
+    provider: str
+    model: str
+    tier: int
+    error: str  # error class, e.g. ProviderTransient
+    reason: str  # human message, selected language
+    attempts: int
 
 
 class VerificationResult(BaseModel):
@@ -46,7 +57,7 @@ class EnvelopeUsage(BaseModel):
 
 
 class ResultEnvelope(BaseModel):
-    envelope_version: Literal[1] = ENVELOPE_VERSION
+    envelope_version: Literal[2] = ENVELOPE_VERSION
     run_id: str
     task_id: str
     status: Status
@@ -55,6 +66,7 @@ class ResultEnvelope(BaseModel):
     tier: int | None = None
     attempts: int = 0
     escalations: list[Escalation] = Field(default_factory=list)
+    failovers: list[Failover] = Field(default_factory=list)
     summary: str = ""
     verification: list[VerificationResult] = Field(default_factory=list)
     changes: Changes | None = None
@@ -107,6 +119,10 @@ def human_summary(envelope: ResultEnvelope) -> str:
     lines.extend(
         t("envelope.verify", type=v.type, result="ok" if v.ok else "FAIL", detail=v.detail).rstrip()
         for v in envelope.verification
+    )
+    lines.extend(
+        t("envelope.failover", provider=f.provider, model=f.model, reason=f.reason)
+        for f in envelope.failovers
     )
     if envelope.error:
         lines.append(t("errors.prefix", message=envelope.error))

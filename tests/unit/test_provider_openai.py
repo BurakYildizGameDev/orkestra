@@ -177,9 +177,9 @@ async def test_404_model_is_unavailable() -> None:
 
 
 @respx.mock
-async def test_connection_error_is_transient() -> None:
+async def test_connection_error_is_unavailable() -> None:
     respx.post(URL).mock(side_effect=httpx.ConnectError("refused"))
-    with pytest.raises(ProviderTransient):
+    with pytest.raises(ProviderUnavailable):
         await _chat().complete(_req())
 
 

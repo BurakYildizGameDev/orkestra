@@ -162,3 +162,27 @@ Açık sağlayıcılar için onay eksikliği (`warn`, çözüm: `orkestra provid
 - Geçmiş kullanım: `usage` tablosundaki gerçek kayıtlardan en yüksek `cost / (prompt + completion)` oranı, girdi ve çıktı için aynı oran (temkinli).
 - Fiyat yine bilinmiyorsa `ask` stderr'e, `doctor` `warn` olarak uyarır. `doctor` fiyat listesini her çalıştığında tazeler ve hangi kaynaktan geldiğini gösterir.
 
+## D-029 – "Bağlantı hiç kurulamadı" geçici değil, erişilemez sayılır (2026-11-09, Faz 4)
+**Bağlam:** Mimari §4.3/§5.2 bağlantı hatasını `ProviderTransient` sayıyor; §7.1'e göre bu 1+2+4 sn bekleyişli yeniden deneme demek. İnternet yokken her komut ~7 sn bekler, sonra yerel modele düşerdi. Kullanıcının önceliği internet yokken hızlı yedeğe geçiş.
+**Karar:** OpenAI uyumlu adapter'da zaman aşımı olmayan `APIConnectionError` (DNS, ağ yok, bağlantı reddi) → `ProviderUnavailable` (Ollama'da zaten öyleydi). Router bunu "sağlayıcıyı atla" olarak işler, beklemez. Zaman aşımı, 5xx ve 429 geçici kalır ve yeniden denenir. Devre kesici `ProviderUnavailable`'ı da sayar (D-022), yani 3 komut sonra uzak sağlayıcı hiç denenmez.
+
+## D-030 – Envelope v2: `failovers` (2026-11-09, Faz 4)
+Envelope'a `failovers` listesi eklendi (sağlayıcı, model, kademe, hata sınıfı, neden, deneme sayısı) ve `envelope_version` 2 oldu (§13). `escalations`'a, sıradaki aday daha yüksek kademedeyse son bırakılan aday yazılır (§8). Tüm adaylar başarısızsa `status=error`, `error="All N candidate(s) failed…"`, kod 3.
+
+## D-031 – Sıralama config sırasına değil kurala göre (2026-11-09, Faz 4)
+§7 adım 4'e birebir uyuldu: kademe ↑ → `priority` ↓ → kalan bütçe oranı ↓ → sağlayıcı adı → model adı. Faz 2/3'teki "config sırası" davranışı bırakıldı; tercih `priority` ile verilir. Görev kademesi verilmezse 1'dir ve aralık profilin üst sınırına kadar uzanır, yani üst kademeler yedek olarak denenir (yükseltme). Uzak sağlayıcıyı Ollama'dan önce denemek isteyen `priority` vermeli.
+
+## D-032 – Yeniden deneme ayrıntıları (2026-11-09, Faz 4)
+- Taşıma denemeleri `max_retries`'tan sayılmaz; aday başına en fazla 3 yeniden deneme (toplam 4 istek). Ama her başarısız deneme devre kesiciye yazılır; devre açılınca (3. ardışık hata) beklemeden sıradaki adaya geçilir ve aynı sağlayıcının diğer modelleri de bu koşuda atlanır.
+- `retry-after` 60 sn'den uzunsa beklenmez, sıradaki adaya geçilir.
+- `ProviderAuthError` ve `ProviderUnavailable` → sağlayıcının tüm modelleri bu koşuda atlanır. `ContextTooLong` → sadece daha büyük `context_window`'lu adaylar kalır. `ProviderBadOutput`, diğer 4xx ve rezervasyondaki bütçe yarışı → sıradaki aday.
+- Her deneme `attempts/<n>/request.json` (sağlayıcı adıyla) ve başarılıysa `response.txt`.
+
+## D-033 – Router ayrıntıları (2026-11-09, Faz 4)
+- Deneysel sağlayıcı ancak config'te `enabled: true` açıkça yazılmışsa aday olur (pydantic `model_fields_set` ile; varsayılan `true` yetmez).
+- Zorla sağlayıcı + config'te olmayan model: güvenilir, aralığın alt kademesine konur.
+- Bağlam kontrolü: tahmini istem token'ı (karakter/3.5) ≤ `context_window × 0.8`.
+- `ask --local-only` eklendi (`privacy: local_only`, Faz 5a'da görev dosyasında da var).
+- `--dry-run`: aday yoksa da raporu basar, kod 3 (onay eksikse 4). Bütçe, koşu dizini, istek yok. Fiyat listesi gerekiyorsa tazelenebilir (D-028).
+- D-014'teki `registry.select_chat_target` kaldırıldı; seçim router'da.
+

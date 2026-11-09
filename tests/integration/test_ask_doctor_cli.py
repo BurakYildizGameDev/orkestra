@@ -173,7 +173,10 @@ def test_ask_auth_error_envelope_and_exit_3(
     assert code == 3
     env = json.loads(out)
     assert env["status"] == "error"
-    assert "authentication failed" in env["error"]
+    assert env["error"].startswith("All 1 candidate(s) failed")
+    assert env["failovers"][0]["provider"] == "router"
+    assert env["failovers"][0]["error"] == "ProviderAuthError"
+    assert "authentication failed" in env["failovers"][0]["reason"]
     assert FAKE_KEY not in out + err
     run_dir = Path(env["output_path"] or (Path(home) / "runs" / env["run_id"] / "x")).parent
     assert FAKE_KEY not in (run_dir / "envelope.json").read_text(encoding="utf-8")
@@ -234,7 +237,7 @@ def test_ask_no_suitable_provider(
 ) -> None:
     code, _, err = _run(["ask", "hi", "--tier", "3"], capsys)
     assert code == 3
-    assert "no tier 3 model" in err
+    assert "tier 1 is outside 3-3" in err
 
 
 @respx.mock

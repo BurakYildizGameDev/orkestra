@@ -175,7 +175,8 @@ class OpenAICompatChat:
         if isinstance(exc, openai.APITimeoutError):  # subclass of APIConnectionError
             return ProviderTransient(t("provider.error.timeout", provider=name, seconds=timeout_s))
         if isinstance(exc, openai.APIConnectionError):
-            return ProviderTransient(
+            # No connection at all (offline, DNS, refused): retrying would not help (D-029).
+            return ProviderUnavailable(
                 t("provider.error.unreachable", provider=name, url=self.config.base_url)
             )
         if isinstance(exc, openai.APIStatusError):

@@ -28,6 +28,7 @@ providers:
     models:
       - id: provider/model
         tier: 1
+        priority: 1          # tried before ollama
     budget:
       daily_requests: 5
   ollama:
@@ -315,9 +316,10 @@ def test_budget_human(home: Path, capsys: pytest.CaptureFixture[str]) -> None:
 
 @respx.mock
 def test_offline_remote_is_paused_and_ollama_takes_over(
-    home: Path, capsys: pytest.CaptureFixture[str]
+    home: Path, capsys: pytest.CaptureFixture[str], sleeps: list[float]
 ) -> None:
-    """No internet: the remote API fails to connect; after 3 failures it is paused."""
+    """No internet: every ask still answers (from Ollama, in the same command, without
+    waiting); after 3 failed commands the remote API is paused and not even tried."""
     _enable(capsys, "router", "ollama")
     router = respx.post(f"{ROUTER}/chat/completions").mock(
         side_effect=httpx.ConnectError("network is unreachable")
@@ -325,14 +327,19 @@ def test_offline_remote_is_paused_and_ollama_takes_over(
     ollama = respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama_ok())
     for _ in range(3):
         code, out, _ = _run(["ask", "hi", "--json"], capsys)
-        assert code == 3
-        assert json.loads(out)["status"] == "error"
+        assert code == 0
+        env = json.loads(out)
+        assert (env["provider"], env["status"], env["attempts"]) == ("ollama", "ok", 2)
+        assert [(f["provider"], f["error"]) for f in env["failovers"]] == [
+            ("router", "ProviderUnavailable")
+        ]
+    assert sleeps == []  # no backoff for "no connection at all"
     code, out, _err = _run(["ask", "hi", "--json"], capsys)
     assert code == 0
     env = json.loads(out)
-    assert (env["provider"], env["status"]) == ("ollama", "ok")
+    assert (env["provider"], env["failovers"]) == ("ollama", [])
     assert router.call_count == 3  # paused: not even tried the 4th time
-    assert ollama.call_count == 1
+    assert ollama.call_count == 4
     rows = _providers(capsys)
     assert rows["router"]["health"]["open_until"] is not None  # type: ignore[index]
     assert rows["router"]["health"]["consecutive_failures"] == 3  # type: ignore[index]
@@ -355,10 +362,13 @@ def test_auth_error_pauses_provider(home: Path, capsys: pytest.CaptureFixture[st
     _enable(capsys, "router", "ollama")
     respx.post(f"{ROUTER}/chat/completions").mock(return_value=httpx.Response(401, json={}))
     respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama_ok())
-    code, _, _ = _run(["ask", "hi"], capsys)
-    assert code == 3
     code, out, _ = _run(["ask", "hi", "--json"], capsys)
-    assert json.loads(out)["provider"] == "ollama"
+    assert code == 0
+    env = json.loads(out)
+    assert env["provider"] == "ollama"
+    assert env["failovers"][0]["error"] == "ProviderAuthError"
+    code, out, _ = _run(["ask", "hi", "--json"], capsys)
+    assert json.loads(out)["failovers"] == []  # paused for an hour: not tried again
 
 
 # --- secrets ---------------------------------------------------------------------------
@@ -380,7 +390,7 @@ def test_secret_context_stays_local(home: Path, capsys: pytest.CaptureFixture[st
         ["--lang", "en", "ask", "explain", "--context", ".env", "--provider", "router"], capsys
     )
     assert code == 3
-    assert "context contains secrets (.env)" in err
+    assert "remote, and the context contains secrets" in err
 
     code, out, _ = _run(
         [
@@ -408,11 +418,11 @@ def test_key_value_never_reaches_run_records(
 ) -> None:
     _enable(capsys, "ollama")
     Path("notes.txt").write_text(f"the key is {FAKE_KEY}\n", encoding="utf-8")
+    responses = iter([_ollama_ok(f"You pasted {FAKE_KEY}")])
     respx.post(f"{OLLAMA}/api/chat").mock(
-        side_effect=[
-            _ollama_ok(f"You pasted {FAKE_KEY}"),
-            httpx.Response(500, json={"error": f"crash while reading {FAKE_KEY}"}),
-        ]
+        side_effect=lambda request: next(
+            responses, httpx.Response(500, json={"error": f"crash while reading {FAKE_KEY}"})
+        )
     )
     code, out, _ = _run(
         ["ask", "x", "--context", "notes.txt", "--provider", "ollama", "--json"], capsys

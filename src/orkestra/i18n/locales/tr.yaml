@@ -111,7 +111,6 @@ select.reason.agent: "{name}: kod ajanları henüz 'ask' cevaplayamıyor"
 select.reason.disabled: "{name}: kapalı"
 select.reason.key_missing: "{name}: {var} ortam değişkeni tanımlı değil"
 select.reason.no_such_model: "{name}: '{model}' modeli yok"
-select.reason.no_tier: "{name}: kademe {tier} modeli yok"
 
 context.error.not_found: "Bağlam dosyası bulunamadı: {path}"
 context.error.read: "Bağlam dosyası {path} okunamıyor: {reason}"
@@ -175,8 +174,6 @@ select.consent_needed: "Önce bir sağlayıcıya onay vermek gerekiyor (orkestra
 select.reason.consent: "{name}: onay yok (orkestra providers enable {name})"
 select.reason.consent_changed: "{name}: onaydan sonra ayarlar değişti (orkestra providers enable {name})"
 select.reason.circuit_open: "{name}: tekrarlayan hatalar yüzünden {until} saatine kadar beklemede ({error})"
-select.reason.secrets: "{name}: uzak sağlayıcı ve bağlamda gizli bilgi var ({files}); yerel bir sağlayıcı kullan veya --allow-secrets ver"
-select.reason.budget: "{name}: günlük bütçe aşılır ({limit})"
 
 secrets.warning.found: "{path} dosyasında, satır {line}: olası gizli bilgi ({kind})."
 
@@ -186,3 +183,25 @@ doctor.circuit_open: "tekrarlayan hatalar yüzünden {until} saatine kadar bekle
 doctor.price.missing: "daily_usd tanımlı ama '{model}' fiyatı bilinmiyor; ilk istek sınırı aşabilir (price_per_mtok ekle)"
 doctor.price.provider: "'{model}' fiyatı sağlayıcıdan: 1M token başına {input} / {output} USD (girdi / çıktı)"
 doctor.price.history: "'{model}' fiyatı geçmiş kullanımdan tahmin edildi: 1M token başına {input} USD"
+
+cli.ask.option.profile: "Yönlendirme profili: cheap, balanced, quality (varsayılan config'ten)."
+cli.ask.option.local_only: "Sadece yerel sağlayıcıları kullan (privacy: local_only)."
+cli.ask.option.dry_run: "Hangi sağlayıcıların hangi sırayla deneneceğini ve diğerlerinin neden elendiğini gösterir. Hiçbir şey göndermez."
+
+route.unknown_profile: "Bilinmeyen profil '{name}'. Var olanlar: {available}"
+route.reason.experimental: "{name}: deneysel; kullanmak için config'te açıkça 'enabled: true' yaz"
+route.reason.not_local: "{name}: yerel değil ve görev local_only"
+route.reason.secrets: "{name}: uzak sağlayıcı ve bağlamda gizli bilgi var; yerel bir sağlayıcı kullan veya --allow-secrets ver"
+route.reason.tier: "{name}/{model}: kademe {tier}, {low}-{high} aralığının dışında (profil {profile})"
+route.reason.context: "{name}/{model}: yaklaşık {tokens} istem token'ı {window} token'lık bağlamın %80'ine sığmıyor"
+route.reason.budget: "{name}/{model}: günlük bütçe aşılır ({limit})"
+route.all_failed: "{count} adayın hepsi başarısız oldu; failovers listesine bak."
+route.dry.header: "Profil {profile} (kademe {low}-{high}), yaklaşık {tokens} istem token'ı"
+route.dry.candidates: "Adaylar, denenecekleri sırayla:"
+route.dry.candidate: "  {index}. {label}  kademe {tier} | bağlam {window} | öncelik {priority} | kalan bütçe {budget} | {where}"
+route.dry.local: "yerel"
+route.dry.remote: "uzak"
+route.dry.none: "Aday yok."
+route.dry.eliminated: "Elenenler:"
+
+envelope.failover: "atlandı {provider}/{model}: {reason}"

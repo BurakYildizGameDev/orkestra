@@ -96,10 +96,10 @@ def test_summary_cut_at_word_boundary() -> None:
 def test_envelope_json_shape() -> None:
     env = ResultEnvelope(run_id="r", task_id="ask", status="ok", provider="p", model="m", tier=1)
     doc = json.loads(to_json(env))
-    assert doc["envelope_version"] == 1
+    assert doc["envelope_version"] == 2
     assert set(doc) == {
         "envelope_version", "run_id", "task_id", "status", "provider", "model", "tier",
-        "attempts", "escalations", "summary", "verification", "changes", "output_path",
+        "attempts", "escalations", "failovers", "summary", "verification", "changes", "output_path",
         "usage", "duration_s", "cached", "review", "error",
     }  # fmt: skip
     assert doc["usage"] == {"prompt_tokens": None, "completion_tokens": None, "cost_usd": None}
