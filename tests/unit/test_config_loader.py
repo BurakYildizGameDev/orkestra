@@ -132,7 +132,8 @@ def test_yaml_error_shows_line_number(tmp_path: Path) -> None:
     with pytest.raises(ConfigError) as exc_info:
         read_yaml(path)
     assert exc_info.value.exit_code == ExitCode.USAGE
-    assert "line 3" in exc_info.value.message or "line 4" in exc_info.value.message
+    assert "line 4" in exc_info.value.message  # where the parser noticed it (end of file)
+    assert "starts on line 3" in exc_info.value.message  # where the unclosed "[" is
     assert str(path) in exc_info.value.message
 
 

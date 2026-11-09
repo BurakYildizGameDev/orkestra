@@ -61,8 +61,8 @@ class Case:
 
 CASES = [
     Case(
-        "default: tier ascending, then name, agent left out",
-        expected=["local/big", "local/small", "router/r1", "local/mid", "router/r2"],
+        "default: tier ascending, then config order, agent left out",
+        expected=["local/small", "local/big", "router/r1", "local/mid", "router/r2"],
         eliminated={"codex": "agent_not_supported"},
     ),
     Case(
@@ -78,7 +78,7 @@ CASES = [
     Case(
         "profile cheap: only tier 1",
         profile="cheap",
-        expected=["local/big", "local/small", "router/r1"],
+        expected=["local/small", "local/big", "router/r1"],
         eliminated={"local/mid": "tier_out_of_range", "router/r2": "tier_out_of_range"},
     ),
     Case(
@@ -89,19 +89,19 @@ CASES = [
     Case(
         "local_only keeps only local providers",
         needs=TaskNeeds(privacy="local_only"),
-        expected=["local/big", "local/small", "local/mid"],
+        expected=["local/small", "local/big", "local/mid"],
         eliminated={"router": "not_local"},
     ),
     Case(
         "secrets in context: remote left out",
         needs=TaskNeeds(has_secrets=True),
-        expected=["local/big", "local/small", "local/mid"],
+        expected=["local/small", "local/big", "local/mid"],
         eliminated={"router": "secrets_remote"},
     ),
     Case(
         "secrets with --allow-secrets: remote allowed",
         needs=TaskNeeds(has_secrets=True, allow_secrets=True),
-        expected=["local/big", "local/small", "router/r1", "local/mid", "router/r2"],
+        expected=["local/small", "local/big", "router/r1", "local/mid", "router/r2"],
     ),
     Case(
         "context too big for small windows (80% rule)",
@@ -112,13 +112,13 @@ CASES = [
     Case(
         "no consent",
         states=_granted(router=ProviderState(consent="missing")),
-        expected=["local/big", "local/small", "local/mid"],
+        expected=["local/small", "local/big", "local/mid"],
         eliminated={"router": "consent_missing"},
     ),
     Case(
         "consent for changed settings",
         states=_granted(router=ProviderState(consent="changed")),
-        expected=["local/big", "local/small", "local/mid"],
+        expected=["local/small", "local/big", "local/mid"],
         eliminated={"router": "consent_changed"},
     ),
     Case(
@@ -126,7 +126,7 @@ CASES = [
         states=_granted(
             router=ProviderState(consent="granted", open_until=NOW + timedelta(minutes=3))
         ),
-        expected=["local/big", "local/small", "local/mid"],
+        expected=["local/small", "local/big", "local/mid"],
         eliminated={"router": "circuit_open"},
     ),
     Case(
@@ -134,28 +134,28 @@ CASES = [
         states=_granted(
             router=ProviderState(consent="granted", open_until=NOW - timedelta(seconds=1))
         ),
-        expected=["local/big", "local/small", "router/r1", "local/mid", "router/r2"],
+        expected=["local/small", "local/big", "router/r1", "local/mid", "router/r2"],
     ),
     Case(
         "API key missing",
         states=_granted(router=ProviderState(consent="granted", key_present=False)),
-        expected=["local/big", "local/small", "local/mid"],
+        expected=["local/small", "local/big", "local/mid"],
         eliminated={"router": "key_missing"},
     ),
     Case(
         "budget exhausted (requests)",
         states=_granted(router=ProviderState(consent="granted", used=Amount(requests=100))),
-        expected=["local/big", "local/small", "local/mid"],
+        expected=["local/small", "local/big", "local/mid"],
         eliminated={"router/r1": "budget", "router/r2": "budget"},
     ),
     Case(
         "budget: price makes the estimate exceed daily_usd",
         prices={("router", "r2"): Price(100.0, 300.0, "provider")},  # 4096 out ≈ $1.23
-        expected=["local/big", "local/small", "router/r1", "local/mid"],
+        expected=["local/small", "local/big", "router/r1", "local/mid"],
         eliminated={"router/r2": "budget"},
     ),
     Case(
-        "more remaining budget wins a tie",
+        "budget only filters: config order wins even with less budget left",
         providers={
             "a": {
                 "type": "ollama",
@@ -172,10 +172,10 @@ CASES = [
             "a": ProviderState(consent="granted", used=Amount(requests=8)),
             "b": ProviderState(consent="granted", used=Amount(requests=1)),
         },
-        expected=["b/m", "a/m"],
+        expected=["a/m", "b/m"],
     ),
     Case(
-        "priority beats name within a tier",
+        "priority beats config order within a tier",
         providers={
             "a": {"type": "ollama", "models": [{"id": "m", "tier": 1}]},
             "b": {"type": "ollama", "models": [{"id": "m", "tier": 1, "priority": 5}]},
@@ -184,7 +184,7 @@ CASES = [
         expected=["b/m", "a/m"],
     ),
     Case(
-        "deterministic tie break by provider then model name",
+        "config order: providers as written, then models as listed (not by name)",
         providers={
             "zeta": {"type": "ollama", "models": [{"id": "b", "tier": 1}, {"id": "a", "tier": 1}]},
             "alpha": {"type": "ollama", "models": [{"id": "z", "tier": 1}]},
@@ -193,7 +193,7 @@ CASES = [
             "zeta": ProviderState(consent="granted"),
             "alpha": ProviderState(consent="granted"),
         },
-        expected=["alpha/z", "zeta/a", "zeta/b"],
+        expected=["zeta/b", "zeta/a", "alpha/z"],
     ),
     Case(
         "forced provider: only its models",
@@ -314,3 +314,17 @@ def test_route_is_pure() -> None:
     first = route(TaskNeeds(), _config(), snapshot)
     second = route(TaskNeeds(), _config(), snapshot)
     assert first == second
+
+
+def test_project_provider_comes_after_global_ones() -> None:
+    """Merged configs keep the global order; providers new in the project file come last."""
+    from orkestra.config.loader import merge_dicts
+
+    merged = merge_dicts(
+        {"version": 1, "providers": {"g": {"type": "ollama", "models": [{"id": "m", "tier": 1}]}}},
+        {"providers": {"p": {"type": "ollama", "models": [{"id": "m", "tier": 1}]}}},
+    )
+    cfg = Config.model_validate(merged)
+    states = {"g": ProviderState(consent="granted"), "p": ProviderState(consent="granted")}
+    result = route(TaskNeeds(), cfg, Snapshot(NOW, states))
+    assert [c.label for c in result.candidates] == ["g/m", "p/m"]

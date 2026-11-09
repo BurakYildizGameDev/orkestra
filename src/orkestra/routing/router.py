@@ -4,8 +4,9 @@
 the state, so it can be tested without a database or network. ``take_snapshot()`` reads the
 state. Every candidate that is left out gets a reason; ``--dry-run`` prints them.
 
-Order: tier ascending → priority descending → remaining budget ratio descending →
-provider and model name (deterministic). Adaptive scoring arrives in Faz 12.
+Order: tier ascending → priority descending → the order in the config (providers as written,
+then their models as listed). The user states a preference by writing it first; ``priority``
+overrides that. Budgets only filter, they do not reorder (D-031). Adaptive scoring: Faz 12.
 """
 
 from __future__ import annotations
@@ -72,8 +73,9 @@ class Candidate:
     provider: str
     config: ChatConfig
     model: ModelSpec
-    budget_ratio: float  # 0..1, lowest remaining share over the provider's limits
+    budget_ratio: float  # 0..1, lowest remaining share over the provider's limits (shown only)
     price: Price | None
+    order: tuple[int, int] = (0, 0)  # position in the config: (provider, model)
 
     @property
     def tier(self) -> int:
@@ -166,6 +168,11 @@ def route(
 
     candidates: list[Candidate] = []
     eliminated: list[Elimination] = []
+    provider_order = {name: index for index, name in enumerate(config.providers)}
+
+    def model_order(cfg: ChatConfig, model: ModelSpec) -> int:
+        ids = [m.id for m in cfg.models]
+        return ids.index(model.id) if model.id in ids else 0
 
     def drop(
         name: str,
@@ -247,11 +254,10 @@ def route(
             if limit is not None:
                 drop(name, label, "budget", "route.reason.budget", model=label, limit=limit)
                 continue
-            candidates.append(Candidate(name, cfg, model, ratio, price))
+            position = (provider_order[name], model_order(cfg, model))
+            candidates.append(Candidate(name, cfg, model, ratio, price, position))
 
-    candidates.sort(
-        key=lambda c: (c.tier, -c.model.priority, -c.budget_ratio, c.provider, c.model.id)
-    )
+    candidates.sort(key=lambda c: (c.tier, -c.model.priority, c.order))
     return Route(profile_name, (low, high), tokens, tuple(candidates), tuple(eliminated))
 
 

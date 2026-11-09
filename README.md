@@ -88,8 +88,10 @@ uv run orkestra ask "Extract the names" --context people.txt --schema names.sche
 ```
 
 `ask` goes through the **router**. It lists every (provider, model) that may run the task, in
-this order: tier ascending → `priority` descending → most remaining budget → name. Use `priority`
-to prefer a model; the order of providers in the config does not matter. Tiers come from the
+this order: tier ascending → `priority` descending → the order you wrote them in the config
+(providers first to last, then each provider's models as listed). Use `priority` to override it.
+Budgets only filter: a provider that would exceed its limit is left out, but remaining budget
+does not reorder. Tiers come from the
 profile (`--profile cheap|balanced|quality`, default from the config) and `--tier` sets the lowest
 one, so higher tiers act as a fallback.
 
@@ -109,7 +111,7 @@ without sending anything.
 
 | Error | What happens |
 |---|---|
-| No connection at all (offline, DNS, refused) | next provider at once, no waiting |
+| No connection at all (offline, DNS, refused) | one quick retry after 0.5 s (network blip), then the next provider |
 | Timeout, 5xx, rate limit (429) | retry the same model after 1 s, 2 s, 4 s (+ jitter) or the server's `retry-after`; the third failure pauses the provider and moves on |
 | Authentication failed | provider skipped (and paused for an hour) |
 | Prompt too long for the model | next model with a bigger context window |

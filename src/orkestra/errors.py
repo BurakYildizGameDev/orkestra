@@ -126,6 +126,13 @@ class ProviderUnavailable(ProviderError):
     """Provider is not reachable or not installed."""
 
 
+class ProviderConnectionError(ProviderUnavailable):
+    """No connection at all (offline, DNS failure, connection refused).
+
+    Retried once after a short pause (a network blip), then the provider is skipped.
+    """
+
+
 def exit_code_for(exc: BaseException) -> int:
     """Return the process exit code for an exception."""
     if isinstance(exc, OrkestraError):

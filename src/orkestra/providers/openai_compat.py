@@ -20,6 +20,7 @@ from orkestra.errors import (
     ContextTooLong,
     ProviderAuthError,
     ProviderBadOutput,
+    ProviderConnectionError,
     ProviderError,
     ProviderRateLimit,
     ProviderTransient,
@@ -175,8 +176,8 @@ class OpenAICompatChat:
         if isinstance(exc, openai.APITimeoutError):  # subclass of APIConnectionError
             return ProviderTransient(t("provider.error.timeout", provider=name, seconds=timeout_s))
         if isinstance(exc, openai.APIConnectionError):
-            # No connection at all (offline, DNS, refused): retrying would not help (D-029).
-            return ProviderUnavailable(
+            # No connection at all (offline, DNS, refused): one quick retry, then skip (D-029).
+            return ProviderConnectionError(
                 t("provider.error.unreachable", provider=name, url=self.config.base_url)
             )
         if isinstance(exc, openai.APIStatusError):

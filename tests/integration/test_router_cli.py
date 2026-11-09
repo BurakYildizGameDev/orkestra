@@ -224,7 +224,8 @@ def test_whole_chain_down_lists_every_failover(
     assert env["status"] == "error"
     assert env["error"].startswith("All 3 candidate(s) failed")
     assert [f["provider"] for f in env["failovers"]] == ["router", "backup", "ollama"]
-    assert all(f["error"] == "ProviderUnavailable" for f in env["failovers"])
+    assert all(f["error"] == "ProviderConnectionError" for f in env["failovers"])
+    assert all(f["attempts"] == 2 for f in env["failovers"])  # one quick retry each
 
     code, _, err = _run(["--lang", "en", "ask", "hi"], capsys)
     assert "skipped router/fast/model" in err

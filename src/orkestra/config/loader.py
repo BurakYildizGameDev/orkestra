@@ -81,9 +81,12 @@ def read_yaml(path: Path) -> dict[str, Any]:
         problem = exc.problem or exc.context or str(exc)
         if mark is None:
             raise ConfigError(t("config.error.yaml", path=path, problem=problem)) from exc
-        raise ConfigError(
-            t("config.error.yaml_line", path=path, line=mark.line + 1, problem=problem)
-        ) from exc
+        message = t("config.error.yaml_line", path=path, line=mark.line + 1, problem=problem)
+        started = exc.context_mark
+        if started is not None and started.line != mark.line:
+            # e.g. an unclosed "[" is only noticed at the end of the file; show where it began
+            message += " " + t("config.error.yaml_started", line=started.line + 1)
+        raise ConfigError(message) from exc
     except YAMLError as exc:
         raise ConfigError(t("config.error.yaml", path=path, problem=exc)) from exc
     if data is None:

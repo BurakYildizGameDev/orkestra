@@ -419,7 +419,7 @@ class _AskRun:
                         await self.sleep(wait)
                         continue
                 if action is retry.Action.RETRY:
-                    action = retry.Action.NEXT
+                    action = retry.give_up(exc)
                 return self._fail(candidate, exc, tries, action)
             except BaseException:
                 budget.release(self.conn, reservation)  # interrupted: nothing to pay for

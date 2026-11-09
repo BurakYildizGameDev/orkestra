@@ -15,6 +15,7 @@ from orkestra.errors import (
     ContextTooLong,
     ProviderAuthError,
     ProviderBadOutput,
+    ProviderConnectionError,
     ProviderError,
     ProviderRateLimit,
     ProviderTransient,
@@ -66,7 +67,7 @@ class OllamaChat:
                 t("provider.error.timeout", provider=self.name, seconds=req.timeout_s)
             ) from exc
         except httpx.ConnectError as exc:
-            raise ProviderUnavailable(
+            raise ProviderConnectionError(
                 t("provider.error.unreachable", provider=self.name, url=self._base)
             ) from exc
         except httpx.HTTPError as exc:

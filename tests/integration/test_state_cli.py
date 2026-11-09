@@ -318,28 +318,34 @@ def test_budget_human(home: Path, capsys: pytest.CaptureFixture[str]) -> None:
 def test_offline_remote_is_paused_and_ollama_takes_over(
     home: Path, capsys: pytest.CaptureFixture[str], sleeps: list[float]
 ) -> None:
-    """No internet: every ask still answers (from Ollama, in the same command, without
-    waiting); after 3 failed commands the remote API is paused and not even tried."""
+    """No internet: every ask still answers from Ollama in the same command. The remote API
+    gets one quick retry (0.5 s, a network blip), then it is skipped; once 3 attempts have
+    failed it is paused and not even tried."""
     _enable(capsys, "router", "ollama")
     router = respx.post(f"{ROUTER}/chat/completions").mock(
         side_effect=httpx.ConnectError("network is unreachable")
     )
     ollama = respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama_ok())
-    for _ in range(3):
-        code, out, _ = _run(["ask", "hi", "--json"], capsys)
-        assert code == 0
-        env = json.loads(out)
-        assert (env["provider"], env["status"], env["attempts"]) == ("ollama", "ok", 2)
-        assert [(f["provider"], f["error"]) for f in env["failovers"]] == [
-            ("router", "ProviderUnavailable")
-        ]
-    assert sleeps == []  # no backoff for "no connection at all"
-    code, out, _err = _run(["ask", "hi", "--json"], capsys)
+
+    code, out, _ = _run(["ask", "hi", "--json"], capsys)  # 1st: 2 router tries, then ollama
     assert code == 0
     env = json.loads(out)
-    assert (env["provider"], env["failovers"]) == ("ollama", [])
-    assert router.call_count == 3  # paused: not even tried the 4th time
-    assert ollama.call_count == 4
+    assert (env["provider"], env["status"], env["attempts"]) == ("ollama", "ok", 3)
+    assert [(f["provider"], f["error"], f["attempts"]) for f in env["failovers"]] == [
+        ("router", "ProviderConnectionError", 2)
+    ]
+    assert sleeps == [0.5]
+
+    code, out, _ = _run(["ask", "hi", "--json"], capsys)  # 2nd: 3rd failure opens the circuit
+    env = json.loads(out)
+    assert (env["provider"], env["attempts"]) == ("ollama", 2)
+    assert sleeps == [0.5]  # no retry once the circuit is open
+
+    code, out, _ = _run(["ask", "hi", "--json"], capsys)  # 3rd: router paused, not tried
+    env = json.loads(out)
+    assert (env["provider"], env["failovers"], env["attempts"]) == ("ollama", [], 1)
+    assert router.call_count == 3
+    assert ollama.call_count == 3
     rows = _providers(capsys)
     assert rows["router"]["health"]["open_until"] is not None  # type: ignore[index]
     assert rows["router"]["health"]["consecutive_failures"] == 3  # type: ignore[index]
@@ -351,7 +357,7 @@ def test_success_resets_failures(home: Path, capsys: pytest.CaptureFixture[str])
     respx.post(f"{ROUTER}/chat/completions").mock(
         side_effect=[httpx.ConnectError("down"), httpx.ConnectError("down"), _router_ok()]
     )
-    for _ in range(3):
+    for _ in range(2):  # 1st: two failed tries; 2nd: success resets
         _run(["ask", "hi", "--provider", "router"], capsys)
     health = _providers(capsys)["router"]["health"]
     assert health == {"open_until": None, "consecutive_failures": 0, "last_error": None}

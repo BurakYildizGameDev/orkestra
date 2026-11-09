@@ -7,12 +7,13 @@ from orkestra.errors import (
     ContextTooLong,
     ProviderAuthError,
     ProviderBadOutput,
+    ProviderConnectionError,
     ProviderError,
     ProviderRateLimit,
     ProviderTransient,
     ProviderUnavailable,
 )
-from orkestra.routing.retry import Action, RetryPolicy, classify, delay
+from orkestra.routing.retry import Action, RetryPolicy, classify, delay, give_up
 
 
 @pytest.mark.parametrize(
@@ -20,7 +21,8 @@ from orkestra.routing.retry import Action, RetryPolicy, classify, delay
     [
         (ProviderTransient("5xx"), Action.RETRY),
         (ProviderRateLimit("429"), Action.RETRY),
-        (ProviderUnavailable("offline"), Action.SKIP_PROVIDER),
+        (ProviderConnectionError("offline"), Action.RETRY),
+        (ProviderUnavailable("model missing"), Action.SKIP_PROVIDER),
         (ProviderAuthError("401"), Action.SKIP_PROVIDER),
         (ContextTooLong("big"), Action.BIGGER_CONTEXT),
         (ProviderBadOutput("empty"), Action.NEXT),
@@ -50,3 +52,11 @@ def test_retry_after_is_honoured() -> None:
 
 def test_too_long_retry_after_moves_on() -> None:
     assert delay(1, ProviderRateLimit("x", retry_after=3600.0), RetryPolicy()) is None
+
+
+def test_no_connection_gets_one_quick_retry_then_skips_the_provider() -> None:
+    err = ProviderConnectionError("offline")
+    assert delay(1, err, RetryPolicy()) == 0.5
+    assert delay(2, err, RetryPolicy()) is None
+    assert give_up(err) is Action.SKIP_PROVIDER
+    assert give_up(ProviderTransient("5xx")) is Action.NEXT

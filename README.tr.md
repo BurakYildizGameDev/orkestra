@@ -88,8 +88,9 @@ uv run orkestra ask "İsimleri çıkar" --context kisiler.txt --schema isimler.s
 ```
 
 `ask` **router** üzerinden çalışır. Görevi yapabilecek her (sağlayıcı, model) çiftini şu sırayla
-listeler: kademe artan → `priority` azalan → en çok kalan bütçe → ad. Bir modeli öne almak için
-`priority` kullan; config'teki sağlayıcı sırası önemli değil. Kademeler profilden gelir
+listeler: kademe artan → `priority` azalan → config'e yazdığın sıra (sağlayıcılar baştan sona, sonra
+her sağlayıcının modelleri listelendiği sırayla). Bu sırayı ezmek için `priority` kullan. Bütçe
+sadece eler: limiti aşacak sağlayıcı atlanır, ama kalan bütçe sırayı değiştirmez. Kademeler profilden gelir
 (`--profile cheap|balanced|quality`, varsayılan config'ten); `--tier` en alt kademeyi belirler, üst
 kademeler yedek olarak kalır.
 
@@ -108,7 +109,7 @@ Bir sağlayıcı veya model şu durumlarda elenir:
 
 | Hata | Ne olur |
 |---|---|
-| Bağlantı hiç kurulamıyor (internet yok, DNS, reddedildi) | beklemeden hemen sıradaki sağlayıcı |
+| Bağlantı hiç kurulamıyor (internet yok, DNS, reddedildi) | 0.5 sn sonra bir kez daha (anlık dalgalanma için), sonra sıradaki sağlayıcı |
 | Zaman aşımı, 5xx, istek sınırı (429) | aynı model 1 sn, 2 sn, 4 sn (+ rastgele pay) sonra veya sunucunun `retry-after` süresi kadar beklenip yeniden denenir; üçüncü hata sağlayıcıyı beklemeye alır ve sıradakine geçilir |
 | Kimlik doğrulama başarısız | sağlayıcı atlanır (ve 1 saat beklemeye alınır) |
 | İstem modele göre uzun | daha büyük bağlam pencereli sıradaki model |
