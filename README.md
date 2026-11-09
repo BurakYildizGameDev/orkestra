@@ -113,9 +113,14 @@ without sending anything.
 |---|---|
 | No connection at all (offline, DNS, refused) | one quick retry after 0.5 s (network blip), then the next provider |
 | Timeout, 5xx, rate limit (429) | retry the same model after 1 s, 2 s, 4 s (+ jitter) or the server's `retry-after`; the third failure pauses the provider and moves on |
-| Authentication failed | provider skipped (and paused for an hour) |
+| Authentication failed | provider skipped (and paused for an hour; `providers enable` resumes it) |
+| Model not found (404) | next model; the provider's other models are still tried |
 | Prompt too long for the model | next model with a bigger context window |
 | Empty or broken answer | next candidate |
+| The model answers `CANNOT_DO: <reason>` | next candidate on a higher tier; none left → status `escalate`, exit code 1 |
+
+A timed-out request counts against the daily budget with its estimate (the provider may have
+billed it); retries and failovers count as one run per provider for `daily_runs`.
 
 So with no internet, `ask` answers from local Ollama in the same command, and the remote API is
 listed under `failovers` in the envelope. If every candidate fails, the envelope lists all of

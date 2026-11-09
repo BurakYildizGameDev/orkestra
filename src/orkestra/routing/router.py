@@ -11,7 +11,6 @@ overrides that. Budgets only filter, they do not reorder (D-031). Adaptive scori
 
 from __future__ import annotations
 
-import math
 import os
 import sqlite3
 from collections.abc import Mapping, Sequence
@@ -29,8 +28,9 @@ from orkestra.config.schema import (
 from orkestra.errors import ConfigError, ConsentRequired, NoProviderAvailable, UsageError
 from orkestra.i18n import t
 from orkestra.providers import pricing
+from orkestra.providers.base import estimate_tokens
 from orkestra.providers.pricing import Price
-from orkestra.providers.registry import ChatConfig
+from orkestra.providers.registry import ChatConfig, key_present
 from orkestra.state import budget, consent, health
 
 CONTEXT_FILL = 0.8  # the estimated prompt may use at most 80% of the context window
@@ -115,7 +115,30 @@ class Route:
 
 
 def prompt_tokens(chars: int) -> int:
-    return math.ceil(chars / budget.CHARS_PER_TOKEN)
+    return estimate_tokens(chars)
+
+
+def tier_range(needs: TaskNeeds, config: Config, profile: str | None) -> tuple[str, int, int]:
+    """Profile name and the allowed tiers ``[low, high]``.
+
+    The task's tier raises the lower bound. When it is above the profile's ``max_tier``: an
+    explicitly chosen ``--profile`` is a conflict (usage error); the default profile gives way
+    and the range becomes just that tier, because the user asked for it explicitly.
+    """
+    name, prof = resolve_profile(config, profile)
+    low, high = max(needs.tier, prof.min_tier), prof.max_tier
+    if low > high:
+        if profile is not None:
+            raise UsageError(
+                t("route.error.tier_above_profile", tier=needs.tier, profile=name, high=high)
+            )
+        high = low
+    return name, low, high
+
+
+def scope(needs: TaskNeeds, config: Config) -> list[str]:
+    """Providers the router looks at: the forced one, or all of them in config order."""
+    return [needs.provider] if needs.provider else list(config.providers)
 
 
 def resolve_profile(config: Config, name: str | None) -> tuple[str, Profile]:
@@ -161,10 +184,9 @@ def route(
         raise UsageError(
             t("select.unknown_provider", name=needs.provider, available=", ".join(config.providers))
         )
-    profile_name, prof = resolve_profile(config, profile)
-    low, high = max(needs.tier, prof.min_tier), prof.max_tier
+    profile_name, low, high = tier_range(needs, config, profile)
     tokens = prompt_tokens(needs.prompt_chars)
-    names = [needs.provider] if needs.provider else list(config.providers)
+    names = scope(needs, config)
 
     candidates: list[Candidate] = []
     eliminated: list[Elimination] = []
@@ -232,7 +254,8 @@ def route(
         ratio = _budget_ratio(cfg.budget, state.used)
         for model in models:
             label = model.id
-            if not low <= model.tier <= high:
+            # An explicitly chosen model is the user's decision; the profile does not overrule it.
+            if needs.model is None and not low <= model.tier <= high:
                 drop(
                     name, label, "tier_out_of_range", "route.reason.tier",
                     model=label, tier=model.tier, low=low, high=high, profile=profile_name,
@@ -268,25 +291,40 @@ def take_snapshot(
     *,
     environ: Mapping[str, str] | None = None,
     price_cache: Mapping[str, Any] | None = None,
+    names: Sequence[str] | None = None,
+    extra_model: tuple[str, str] | None = None,
 ) -> Snapshot:
+    """State for the providers in ``names`` (default: all) that ``route()`` will look at.
+
+    Code agents and disabled providers are left out before any state is needed. The price
+    lookup in past usage (an SQL query per model) only runs where a ``daily_usd`` limit needs
+    it. ``extra_model`` (provider, model id) prices an explicitly chosen model that the config
+    does not list.
+    """
     env = os.environ if environ is None else environ
+    cache = price_cache or {}
     states: dict[str, ProviderState] = {}
     prices: dict[tuple[str, str], Price | None] = {}
-    for name, cfg in config.providers.items():
+    for name in config.providers if names is None else names:
+        cfg = config.providers[name]
+        if isinstance(cfg, CliAgentProvider) or not cfg.enabled:
+            continue
         h = health.get(conn, name)
-        key_env = cfg.api_key_env if isinstance(cfg, OpenAICompatProvider) else None
         states[name] = ProviderState(
             consent=consent.state(conn, name, cfg),
             open_until=h.open_until,
             last_error=h.last_error,
-            key_present=bool(env.get(key_env, "").strip()) if key_env else True,
+            key_present=key_present(cfg, env) is not False,
             used=budget.used(conn, name, now),
         )
-        if not isinstance(cfg, CliAgentProvider):
-            for model in cfg.models:
-                prices[(name, model.id)] = pricing.resolve(
-                    name, cfg, model, conn=conn, cache=price_cache or {}
-                )
+        history = cfg.budget.daily_usd is not None
+        models = list(cfg.models)
+        if extra_model and extra_model[0] == name and all(m.id != extra_model[1] for m in models):
+            models.append(ModelSpec.model_validate({"id": extra_model[1], "tier": 1}))
+        for model in models:
+            prices[(name, model.id)] = pricing.resolve(
+                name, cfg, model, conn=conn, cache=cache, history=history
+            )
     return Snapshot(now, states, prices)
 
 

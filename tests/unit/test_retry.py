@@ -60,3 +60,9 @@ def test_no_connection_gets_one_quick_retry_then_skips_the_provider() -> None:
     assert delay(2, err, RetryPolicy()) is None
     assert give_up(err) is Action.SKIP_PROVIDER
     assert give_up(ProviderTransient("5xx")) is Action.NEXT
+
+
+def test_missing_model_moves_to_the_next_model_not_the_next_provider() -> None:
+    from orkestra.errors import ProviderModelNotFound
+
+    assert classify(ProviderModelNotFound("no such model")) is Action.NEXT

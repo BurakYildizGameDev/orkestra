@@ -6,7 +6,9 @@
 - No connection at all (offline, DNS, refused): one quick retry after 0.5 s to ride out a
   network blip, then skip the provider. Offline, the fallback to a local model costs half a
   second instead of seven.
-- Authentication failure, key or model missing: skip the provider for the rest of the run.
+- Authentication failure or key missing: skip the provider for the rest of the run.
+- Model missing (404): only that model is skipped; the next candidate may be the same provider.
+- Worker answered CANNOT_DO: next candidate on a higher tier (Mimari §8.1).
 - Context too long: next candidate with a bigger context window.
 - Anything else (bad output, other 4xx, budget race): next candidate.
 
@@ -26,6 +28,7 @@ from orkestra.errors import (
     ProviderAuthError,
     ProviderConnectionError,
     ProviderError,
+    ProviderModelNotFound,
     ProviderRateLimit,
     ProviderTransient,
     ProviderUnavailable,
@@ -37,6 +40,7 @@ class Action(Enum):
     NEXT = "next"  # next candidate
     SKIP_PROVIDER = "skip_provider"  # next candidate of another provider
     BIGGER_CONTEXT = "bigger_context"  # next candidate with a larger context window
+    ESCALATE = "escalate"  # worker said CANNOT_DO: next candidate on a higher tier
 
 
 @dataclass(frozen=True)
@@ -52,6 +56,8 @@ class RetryPolicy:
 def classify(error: ProviderError | BudgetExhausted) -> Action:
     if isinstance(error, ProviderTransient | ProviderRateLimit | ProviderConnectionError):
         return Action.RETRY
+    if isinstance(error, ProviderModelNotFound):
+        return Action.NEXT  # only this model is unknown; other models of the provider work
     if isinstance(error, ProviderAuthError | ProviderUnavailable):
         return Action.SKIP_PROVIDER
     if isinstance(error, ContextTooLong):

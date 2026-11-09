@@ -117,7 +117,12 @@ def human_summary(envelope: ResultEnvelope) -> str:
         ),
     ]
     lines.extend(
-        t("envelope.verify", type=v.type, result="ok" if v.ok else "FAIL", detail=v.detail).rstrip()
+        t(
+            "envelope.verify",
+            type=v.type,
+            result=t("envelope.verify.ok" if v.ok else "envelope.verify.fail"),
+            detail=v.detail,
+        ).rstrip()
         for v in envelope.verification
     )
     lines.extend(

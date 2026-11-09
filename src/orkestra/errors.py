@@ -115,7 +115,17 @@ class ProviderRateLimit(ProviderError):
 
 
 class ProviderTransient(ProviderError):
-    """Temporary failure: 5xx, connection error, timeout."""
+    """Temporary failure: 5xx, network error, timeout."""
+
+
+class ProviderTimeout(ProviderTransient):
+    """No answer in time. The provider may still have processed (and billed) the request,
+    so the reserved budget estimate is kept as spent (D-037)."""
+
+
+class ProviderModelNotFound(ProviderError):
+    """The provider works but does not know this model (404). Only that model is skipped and
+    the circuit breaker does not count it: the request was wrong, not the provider (D-037)."""
 
 
 class ContextTooLong(ProviderError):
@@ -127,7 +137,7 @@ class ProviderBadOutput(ProviderError):
 
 
 class ProviderUnavailable(ProviderError):
-    """Provider is not reachable or not installed."""
+    """Provider is not reachable, not installed or its API key is missing."""
 
 
 class ProviderConnectionError(ProviderUnavailable):

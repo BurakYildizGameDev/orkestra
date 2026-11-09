@@ -12,7 +12,9 @@ from orkestra.errors import (
     ContextTooLong,
     ProviderAuthError,
     ProviderBadOutput,
+    ProviderModelNotFound,
     ProviderRateLimit,
+    ProviderTimeout,
     ProviderTransient,
     ProviderUnavailable,
 )
@@ -98,10 +100,11 @@ async def test_openrouter_usage_cost_is_read() -> None:
 
 
 @respx.mock
-async def test_cost_from_price_list() -> None:
+async def test_unreported_cost_is_left_to_the_runner() -> None:
+    """Prices may come from the config, the provider's list or history: the runner knows."""
     respx.post(URL).mock(return_value=_completion())
     result = await _chat(prices={"input": 1.0, "output": 2.0}).complete(_req())
-    assert result.usage.cost_usd == pytest.approx((10 * 1.0 + 5 * 2.0) / 1_000_000)
+    assert result.usage.cost_usd is None
 
 
 @respx.mock
@@ -170,9 +173,9 @@ async def test_bad_request_detail_is_scrubbed() -> None:
 
 
 @respx.mock
-async def test_404_model_is_unavailable() -> None:
+async def test_404_model_is_model_not_found() -> None:
     respx.post(URL).mock(return_value=httpx.Response(404, json={"error": {"message": "nope"}}))
-    with pytest.raises(ProviderUnavailable):
+    with pytest.raises(ProviderModelNotFound):
         await _chat().complete(_req())
 
 
@@ -252,3 +255,54 @@ async def test_health_auth_failure() -> None:
     report = await _chat().health()
     assert not report.ok
     assert isinstance(report.error, ProviderAuthError)
+
+
+# --- code review fixes (Faz 2, PR #3) ---------------------------------------------------
+
+
+@respx.mock
+async def test_key_crossing_the_cut_point_is_still_masked() -> None:
+    message = "x" * 280 + FAKE_KEY + " tail"
+    respx.post(URL).mock(return_value=httpx.Response(400, json={"error": {"message": message}}))
+    with pytest.raises(Exception) as exc_info:
+        await _chat().complete(_req())
+    assert FAKE_KEY[:12] not in str(exc_info.value)
+
+
+@respx.mock
+async def test_max_completion_tokens_fallback_is_remembered() -> None:
+    rejected = httpx.Response(
+        400,
+        json={
+            "error": {
+                "message": "Unsupported parameter: 'max_tokens' is not supported with this "
+                "model. Use 'max_completion_tokens' instead."
+            }
+        },
+    )
+    route = respx.post(URL).mock(side_effect=[rejected, _completion('{"a": 1}'), _completion()])
+    chat = _chat()
+    await chat.complete(_req(json_mode=True))
+    bodies = [json.loads(call.request.content) for call in route.calls]
+    assert bodies[0]["max_tokens"] == 64
+    assert "max_tokens" not in bodies[1] and bodies[1]["max_completion_tokens"] == 64
+    assert bodies[1]["response_format"] == {"type": "json_object"}  # JSON mode not blamed
+    await chat.complete(_req())
+    assert "max_tokens" not in json.loads(route.calls.last.request.content)
+    assert route.call_count == 3
+
+
+@respx.mock
+async def test_timeout_is_provider_timeout() -> None:
+    respx.post(URL).mock(side_effect=httpx.ReadTimeout("slow"))
+    with pytest.raises(ProviderTimeout):
+        await _chat().complete(_req())
+
+
+@respx.mock
+async def test_health_404_points_at_base_url() -> None:
+    respx.get(f"{BASE}/models").mock(return_value=httpx.Response(404, json={"error": {}}))
+    report = await _chat().health()
+    assert not report.ok and report.error is not None
+    assert "model ''" not in report.error.message
+    assert BASE in report.error.message

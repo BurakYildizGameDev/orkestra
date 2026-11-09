@@ -5,6 +5,7 @@ Key values are never read into messages: only whether the variable is set.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import subprocess
@@ -19,16 +20,18 @@ from orkestra.config.loader import load_config
 from orkestra.config.schema import (
     CliAgentProvider,
     Config,
+    Defaults,
     OllamaProvider,
     OpenAICompatProvider,
     Provider,
 )
-from orkestra.errors import ConfigError, ProviderError
+from orkestra.errors import ConfigError, ProviderBadOutput, ProviderError
 from orkestra.i18n import t
 from orkestra.providers import pricing
 from orkestra.providers.base import CompletionRequest
 from orkestra.providers.ollama import OllamaChat, has_model
 from orkestra.providers.openai_compat import OpenAICompatChat
+from orkestra.providers.registry import request_timeout
 from orkestra.state import consent, db, health
 
 CheckStatus = Literal["ok", "warn", "fail", "info"]
@@ -77,7 +80,9 @@ def probe_version(executable: str) -> str | None:
     return None
 
 
-async def _check_ollama(name: str, cfg: OllamaProvider, *, warm: bool) -> list[Check]:
+async def _check_ollama(
+    name: str, cfg: OllamaProvider, *, warm: bool, defaults: Defaults
+) -> list[Check]:
     chat = OllamaChat(name, cfg)
     check_name = f"provider:{name}"
     report = await chat.health()
@@ -104,7 +109,8 @@ async def _check_ollama(name: str, cfg: OllamaProvider, *, warm: bool) -> list[C
                 )
             )
         elif warm:
-            checks.append(await _warm(chat, spec.id, cfg.timeout_s or 600, check_name))
+            timeout = request_timeout(cfg, defaults)
+            checks.append(await _warm(chat, spec.id, timeout, check_name))
     return checks
 
 
@@ -120,6 +126,10 @@ async def _warm(chat: OllamaChat, model: str, timeout_s: int, check_name: str) -
                 timeout_s=timeout_s,
             )
         )
+    except ProviderBadOutput:
+        # With one output token a model may answer only "\n" (or a thinking model nothing
+        # visible); it still loaded and answered, which is all warming up checks.
+        pass
     except ProviderError as exc:
         return Check(check_name, "fail", exc.message, {"model": model, "warm": False})
     seconds = round(time.monotonic() - started, 1)
@@ -205,6 +215,7 @@ async def _check_provider(
     cfg: Provider,
     *,
     warm: bool,
+    defaults: Defaults,
     environ: Mapping[str, str],
     which: Which,
     probe: VersionProbe,
@@ -214,7 +225,7 @@ async def _check_provider(
             Check(f"provider:{name}", "info", t("doctor.provider.disabled"), {"enabled": False})
         ]
     if isinstance(cfg, OllamaProvider):
-        return await _check_ollama(name, cfg, warm=warm)
+        return await _check_ollama(name, cfg, warm=warm, defaults=defaults)
     if isinstance(cfg, OpenAICompatProvider):
         return await _check_openai(name, cfg, environ)
     return _check_agent(name, cfg, which, probe)
@@ -257,17 +268,24 @@ def _state_checks(providers: Mapping[str, Provider]) -> list[Check]:
 
 
 async def _price_checks(config: Config, environ: Mapping[str, str]) -> list[Check]:
-    """A ``daily_usd`` limit needs a price; refresh provider prices and report gaps."""
-    targets = {
-        name: cfg
-        for name, cfg in config.providers.items()
-        if cfg.enabled and pricing.needs_price(cfg)
-    }
-    if not targets:
-        return []
-    cache = await pricing.refresh(config, db.local_now(), environ=environ, force=True)
+    """A ``daily_usd`` limit needs a price; refresh provider prices and report gaps.
+
+    Only consented providers are asked: the price request carries their API key.
+    """
     checks: list[Check] = []
     with closing(db.connect()) as conn:
+        targets = {
+            name: cfg
+            for name, cfg in config.providers.items()
+            if cfg.enabled
+            and pricing.needs_price(cfg)
+            and consent.state(conn, name, cfg) == "granted"
+        }
+        if not targets:
+            return []
+        cache = await pricing.refresh(
+            config, db.local_now(), only=set(targets), environ=environ, force=True
+        )
         for name, cfg in targets.items():
             for model in getattr(cfg, "models", []):
                 price = pricing.resolve(name, cfg, model, conn=conn, cache=cache)
@@ -338,10 +356,17 @@ async def run_doctor(
         )
         if not loaded.config.providers:
             checks.append(Check("config", "warn", t("select.no_providers")))
-        for name, cfg in loaded.config.providers.items():
-            checks.extend(
-                await _check_provider(name, cfg, warm=warm, environ=env, which=which, probe=probe)
+        # Providers are independent: check them at the same time, report in config order.
+        defaults = loaded.config.defaults
+        per_provider = await asyncio.gather(
+            *(
+                _check_provider(n, c, warm=warm, defaults=defaults, environ=env, which=which,
+                                probe=probe)
+                for n, c in loaded.config.providers.items()
             )
+        )  # fmt: skip
+        for provider_checks in per_provider:
+            checks.extend(provider_checks)
         checks.extend(_state_checks(loaded.config.providers))
         checks.extend(await _price_checks(loaded.config, env))
     checks.append(_check_tool("git", which, probe, required=True))

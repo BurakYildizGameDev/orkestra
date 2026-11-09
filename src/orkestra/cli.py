@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import sys
 from collections.abc import Sequence
@@ -20,6 +21,7 @@ from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
 from orkestra.i18n import t
 from orkestra.providers import registry
 from orkestra.routing.router import Route, describe_candidates
+from orkestra.security.redact import config_for_display
 from orkestra.state import consent, db
 from orkestra.tasks import runner
 
@@ -235,7 +237,7 @@ def build_app() -> typer.Typer:
                 typer.echo(t("consent.declined", name=name))
                 raise typer.Exit(int(ExitCode.CONSENT_REQUIRED))
         with closing(db.connect()) as conn:
-            consent.grant(conn, name, cfg, db.local_now())
+            registry.enable_provider(conn, name, cfg, db.local_now())
         typer.echo(t("consent.granted", name=name))
 
     @providers_app.command("disable", help=t("cli.providers.disable.help"))
@@ -306,7 +308,7 @@ def build_app() -> typer.Typer:
     ) -> None:
         state = ctx.ensure_object(_State)
         target = loader.init_target(state.config_path, project=project)
-        result = loader.init_config(target, force=force)
+        result = loader.init_config(target, force=force, project=project)
         if as_json:
             _echo_json(
                 {
@@ -331,7 +333,7 @@ def build_app() -> typer.Typer:
     @config_app.command("show", help=t("cli.config.show.help"))
     def config_show(ctx: typer.Context, as_json: Annotated[bool, _json_option()] = False) -> None:
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
-        data = loaded.config.model_dump(mode="json")
+        data = config_for_display(loaded.config)
         if as_json:
             _echo_json({"sources": _sources_json(loaded.sources), "config": data})
             return
@@ -494,22 +496,48 @@ def _report_error(exc: OrkestraError, *, as_json: bool) -> None:
         typer.echo(f"  - {detail}", err=True)
 
 
+def _safe_streams() -> None:
+    """Never crash on text the console code page cannot encode.
+
+    Redirected output on Windows uses the ANSI code page (e.g. cp1254) with strict errors,
+    so an emoji in a model answer would raise ``UnicodeEncodeError`` after a successful run.
+    Such characters become ``?``; the full text is always in the run's ``output.md``.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "")
+        reconfigure = getattr(stream, "reconfigure", None)
+        if encoding != "utf8" and reconfigure is not None:
+            with contextlib.suppress(ValueError, OSError):  # detached or closed: leave it
+                reconfigure(errors="replace")
+
+
 def app(argv: Sequence[str] | None = None) -> None:
     """Console entry point (``orkestra``)."""
     args = list(sys.argv[1:] if argv is None else argv)
-    config_flag = _find_option(args, "--config")
-    i18n.init_language(
-        cli=_find_lang_arg(args),
-        config=loader.read_language(Path(config_flag) if config_flag else None),
-    )
+    as_json = _wants_json(args)
     try:
+        _safe_streams()
+        config_flag = _find_option(args, "--config")
+        i18n.init_language(
+            cli=_find_lang_arg(args),
+            config=loader.read_language(Path(config_flag) if config_flag else None),
+        )
         build_app()(args=args, prog_name="orkestra")
     except OrkestraError as exc:
-        _report_error(exc, as_json=_wants_json(args))
+        _report_error(exc, as_json=as_json)
         raise SystemExit(exit_code_for(exc)) from None
     except Exception as exc:
-        typer.echo(_internal_error_text(exc), err=True)
+        _report_internal(exc, as_json=as_json)
         raise SystemExit(int(ExitCode.INTERNAL)) from None
+
+
+def _report_internal(exc: Exception, *, as_json: bool) -> None:
+    """Never raises. ``--json`` still gets one JSON document on stdout (D-011)."""
+    text = _internal_error_text(exc)
+    typer.echo(text, err=True)
+    if as_json:
+        error = {"code": int(ExitCode.INTERNAL), "type": "InternalError", "message": text}
+        _echo_json({"error": {**error, "details": []}})
 
 
 def _internal_error_text(exc: Exception) -> str:

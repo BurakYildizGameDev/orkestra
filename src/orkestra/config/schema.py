@@ -42,6 +42,14 @@ class ModelSpec(_Model):
     strengths: list[str] = Field(default_factory=list)
     priority: int = 0  # higher goes first within a tier
 
+    @field_validator("price_per_mtok")
+    @classmethod
+    def _both_prices(cls, value: dict[str, float] | None) -> dict[str, float] | None:
+        # Cost = input + output; a missing half would silently count as free.
+        if value is not None and set(value) != {"input", "output"}:
+            raise ValueError(t("config.validation.price_both"))
+        return value
+
 
 class ProviderBase(_Model):
     type: str
@@ -57,7 +65,7 @@ class OllamaProvider(ProviderBase):
     type: Literal["ollama"]
     base_url: str = "http://localhost:11434"
     local: bool = True
-    models: list[ModelSpec]
+    models: Annotated[list[ModelSpec], Field(min_length=1)]
 
 
 class OpenAICompatProvider(ProviderBase):
@@ -65,12 +73,12 @@ class OpenAICompatProvider(ProviderBase):
     base_url: str
     api_key_env: str | None = None  # name of the environment variable, never the key
     extra_headers: dict[str, str] = Field(default_factory=dict)
-    models: list[ModelSpec]
+    models: Annotated[list[ModelSpec], Field(min_length=1)]
 
 
 class CliAgentProvider(ProviderBase):
     type: Literal["cli_agent"]
-    command: str  # "codex" | "agy" | absolute path
+    command: Annotated[str, Field(min_length=1)]  # "codex" | "agy" | absolute path
     kind: Literal["codex", "agy", "generic"] | None = None  # inferred from command if unset
     tier: Tier = 3
     model: str | None = None
@@ -129,7 +137,7 @@ class Defaults(_Model):
 
 
 class Chief(_Model):
-    launch: list[str]
+    launch: Annotated[list[str], Field(min_length=1)]
     prompt_mode: Literal["arg", "stdin", "file"] = "file"
 
 

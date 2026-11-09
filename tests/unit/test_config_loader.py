@@ -306,3 +306,86 @@ def test_read_language_ignores_broken_config(home: Path, tmp_path: Path) -> None
 
 def test_read_language_missing(tmp_path: Path) -> None:
     assert loader.read_language(cwd=tmp_path, environ={}) is None
+
+
+# --- code review fixes (Faz 1, PR #2) ---------------------------------------------------
+
+
+def test_merge_null_removes_provider_without_base_providers() -> None:
+    merged = merge_dicts({}, {"providers": {"agy": None, "local": {"type": "ollama"}}})
+    assert merged == {"providers": {"local": {"type": "ollama"}}}
+
+
+def test_merge_null_in_only_source_is_dropped(tmp_path: Path) -> None:
+    project = _write(
+        tmp_path / "orkestra.yaml",
+        "version: 1\nproviders:\n  agy: null\n  local:\n    type: ollama\n"
+        "    models: [{id: m, tier: 1}]\n",
+    )
+    loaded = load_config(config_flag=project, cwd=tmp_path, environ={})
+    assert list(loaded.config.providers) == ["local"]
+
+
+def test_config_flag_expands_user(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    _write(tmp_path / "my.yaml", "version: 1\nlanguage: tr\n")
+    loaded = load_config(config_flag=Path("~/my.yaml"), cwd=tmp_path, environ={})
+    assert loaded.config.language == "tr"
+
+
+def test_read_language_survives_os_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken(*_: Any, **__: Any) -> Any:
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(loader, "find_sources", broken)
+    assert loader.read_language() is None
+
+
+def test_read_yaml_is_cached_until_file_changes(tmp_path: Path) -> None:
+    path = _write(tmp_path / "c.yaml", "version: 1\n")
+    first = read_yaml(path)
+    first["mutated"] = True  # callers get their own copy
+    assert read_yaml(path) == {"version": 1}
+    _write(path, "version: 1\nlanguage: tr\n")
+    assert read_yaml(path) == {"version": 1, "language": "tr"}
+
+
+def test_unmapped_validation_error_is_translated(home: Path, tmp_path: Path) -> None:
+    i18n.set_language("tr")
+    _write(home / "config.yaml", "version: 1\nchiefs:\n  x:\n    launch: []\n")
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(cwd=tmp_path, environ={})
+    assert exc_info.value.details == ("chiefs.x.launch: en az 1 öğe olmalı",)
+
+
+def test_init_force_twice_keeps_the_original_backup(tmp_path: Path) -> None:
+    target = _write(tmp_path / "config.yaml", "version: 1\n# mine\n")
+    first = loader.init_config(target, force=True, cwd=tmp_path)
+    assert first.backup == tmp_path / "config.yaml.bak"
+    target.write_text("version: 1\n# edited again\n", encoding="utf-8")
+    second = loader.init_config(target, force=True, cwd=tmp_path)
+    assert second.backup == tmp_path / "config.yaml.bak.1"
+    assert (tmp_path / "config.yaml.bak").read_text(encoding="utf-8") == "version: 1\n# mine\n"
+    edited = (tmp_path / "config.yaml.bak.1").read_text(encoding="utf-8")
+    assert edited == "version: 1\n# edited again\n"
+
+
+def test_init_force_on_untouched_example_makes_no_backup(tmp_path: Path) -> None:
+    target = tmp_path / "config.yaml"
+    loader.init_config(target, cwd=tmp_path)
+    result = loader.init_config(target, force=True, cwd=tmp_path)
+    assert result.written and result.backup is None
+    assert not (tmp_path / "config.yaml.bak").exists()
+
+
+def test_gitignore_that_is_not_utf8_is_kept_byte_for_byte(repo: Path) -> None:
+    original = b"# T\xfcrk\xe7e yorum\nnode_modules/\n"
+    (repo / ".gitignore").write_bytes(original)
+    loader.init_config(repo / "orkestra.yaml", project=True, cwd=repo)
+    assert (repo / ".gitignore").read_bytes() == original + b".orkestra/cache/\n"
+
+
+def test_global_init_does_not_touch_the_cwd_repository(repo: Path, tmp_path: Path) -> None:
+    loader.init_config(tmp_path / "home" / "config.yaml", cwd=repo)
+    assert not (repo / ".gitignore").exists()

@@ -61,6 +61,10 @@ config.validation.sandbox_danger: "'danger-full-access' desteklenmiyor; 'read-on
 config.validation.tier_order: "min_tier ({min}) max_tier'dan ({max}) büyük olamaz"
 config.validation.unknown_profile: "{field}: '{name}' profili profiles içinde tanımlı değil"
 config.validation.unknown_chief: "{field}: '{name}' şefi chiefs içinde tanımlı değil"
+config.validation.too_short: "en az {min} öğe olmalı"
+config.validation.empty: "boş olamaz"
+config.validation.price_both: "input ve output fiyatlarının ikisi de yazılmalı"
+config.validation.other: "geçersiz değer ({detail})"
 
 cli.ask.help: "Bir işçi modele tek bir soru sorar (metin veya JSON). Dosya değiştirmez."
 cli.ask.arg.prompt: "İşçiye verilecek görev."
@@ -94,6 +98,7 @@ doctor.tool.missing: "{command} PATH içinde bulunamadı"
 
 provider.error.timeout: "{provider}: {seconds} sn içinde cevap gelmedi"
 provider.error.unreachable: "{provider}: {url} adresine bağlanılamıyor"
+provider.error.endpoint_not_found: "{provider}: {url} 404 (bulunamadı) döndü; base_url'i kontrol et"
 provider.error.network: "{provider}: ağ hatası ({detail})"
 provider.error.bad_json: "{provider}: yanıt geçerli JSON değil"
 provider.error.empty: "{provider}: boş cevap"
@@ -121,6 +126,9 @@ context.error.file_size: "{path}: {size} bayt"
 context.warning.binary: "İkili dosya atlandı: {path}"
 
 ask.error.schema: "Geçersiz JSON Schema dosyası {path}: {reason}"
+ask.error.schema_not_object: "şema bir JSON nesnesi olmalı"
+ask.cannot_do: "işçi görevi yapamadı: {reason}"
+ask.interrupted: "yarıda kesildi"
 ask.verify.not_json: "cevap geçerli JSON değil: {reason}"
 ask.warning.truncated: "Uyarı: cevap çıktı sınırına ({tokens} token) ulaştı, kesik olabilir."
 
@@ -128,6 +136,8 @@ envelope.full_text: "(tam metin: {path})"
 envelope.line: "{status} | {run_id} | {provider}/{model} | kademe {tier}"
 envelope.usage: "token {prompt} girdi / {completion} çıktı | maliyet {cost} | {seconds} sn"
 envelope.verify: "doğrulama {type}: {result} {detail}"
+envelope.verify.ok: "geçti"
+envelope.verify.fail: "BAŞARISIZ"
 
 cli.ask.option.allow_secrets: "Gizli bilgi içeren bağlamı yine de uzak sağlayıcılara gönder."
 cli.providers.help: "Sağlayıcıları listeler ve onayları yönetir."
@@ -178,6 +188,7 @@ select.reason.consent_changed: "{name}: onaydan sonra ayarlar değişti (orkestr
 select.reason.circuit_open: "{name}: tekrarlayan hatalar yüzünden {until} saatine kadar beklemede ({error})"
 
 secrets.warning.found: "{path} dosyasında, satır {line}: olası gizli bilgi ({kind})."
+secrets.warning.found_prompt: "İstem metninde, satır {line}: olası gizli bilgi ({kind})."
 
 doctor.consent.missing: "henüz onay yok"
 doctor.consent.changed: "onaydan sonra ayarlar değişti"
@@ -191,6 +202,7 @@ cli.ask.option.local_only: "Sadece yerel sağlayıcıları kullan (privacy: loca
 cli.ask.option.dry_run: "Hangi sağlayıcıların hangi sırayla deneneceğini ve diğerlerinin neden elendiğini gösterir. Hiçbir şey göndermez."
 
 route.unknown_profile: "Bilinmeyen profil '{name}'. Var olanlar: {available}"
+route.error.tier_above_profile: "{tier}. kademe '{profile}' profilinin üstünde (max_tier {high}); başka bir --profile ya da daha düşük bir --tier seç."
 route.reason.experimental: "{name}: deneysel; kullanmak için config'te açıkça 'enabled: true' yaz"
 route.reason.not_local: "{name}: yerel değil ve görev local_only"
 route.reason.secrets: "{name}: uzak sağlayıcı ve bağlamda gizli bilgi var; yerel bir sağlayıcı kullan veya --allow-secrets ver"

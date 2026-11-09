@@ -265,3 +265,31 @@ def test_wrong_types_are_reported() -> None:
     assert "language: must be 'auto', 'en', 'tr', 'de', 'es' or 'fr'" in errors
     assert "defaults.timeout_s: must be an integer" in errors
     assert "providers.c.concurrency: must be at least 1" in errors
+
+
+# --- code review fixes (Faz 1, PR #2) ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [
+        ({"chiefs": {"x": {"launch": []}}}, "chiefs.x.launch: must have at least 1 item(s)"),
+        (
+            {"providers": {"c": {"type": "cli_agent", "command": ""}}},
+            "providers.c.command: must not be empty",
+        ),
+        (
+            {"providers": {"o": {"type": "ollama", "models": []}}},
+            "providers.o.models: must have at least 1 item(s)",
+        ),
+    ],
+)
+def test_empty_values_that_later_code_needs_are_rejected(
+    data: dict[str, Any], expected: str
+) -> None:
+    assert expected in _errors({"version": 1, **data})
+
+
+def test_partial_price_is_rejected() -> None:
+    errors = _errors({"version": 1, "providers": {"r": _openrouter(price_per_mtok={"input": 0.3})}})
+    assert any("price_per_mtok" in e and "input and output" in e for e in errors)

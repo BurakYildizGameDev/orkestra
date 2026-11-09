@@ -209,3 +209,35 @@ Envelope'a `failovers` listesi eklendi (sağlayıcı, model, kademe, hata sını
 - Atlanan: `--version --lang xx` (sürüm basıp çıkıyor) – önemsiz.
 Mimari §18 güncellendi (D-034 kuralı).
 
+## D-036 – Faz 1 ve Faz 2 kod denetimi düzeltmeleri (2026-11-10)
+`/code-review` (PR #2 ve #3) bulgularına göre:
+- **Config birleştirme:** `providers.<ad>: null`, daha önceki dosyada `providers` bölümü olmasa da sağlayıcıyı siler (boş eşlemeye birleştirilir).
+- **`init`:** `--force` önceki yedeği asla ezmez (`.bak`, `.bak.1`, …); dosya hâlâ değiştirilmemiş örnekse yedek almaz. `.gitignore`'a `.orkestra/cache/` sadece `--project` ile eklenir (genel config'in çalışılan depoyla ilgisi yok). UTF-8 olmayan `.gitignore` bayt bayt korunur.
+- **CLI:** `--json` modunda beklenmeyen hata da stdout'a tek JSON belgesi verir (D-011). Dil ön taraması hata yakalayıcının içinde ve dosya sistemi hatalarında çökmez. `--config ~/...` genişletilir. `config show`, `extra_headers` içindeki kimlik bilgisi gibi görünen başlıkları (`Authorization`, `*key*`, `*token*`…) ve anahtar desenine uyan değerleri `***` gösterir. Konsol kod sayfasının yazamadığı karakterler (ör. Windows'ta yönlendirilmiş çıktıda emoji) `?` olur; tam metin `output.md`'de.
+- **Şema:** boş `chiefs.*.launch`, boş `command`, boş `models` ve yarım `price_per_mtok` (sadece input ya da output) reddedilir. Eşlenmemiş pydantic hataları da çevrili çerçeveyle gösterilir. Config dosyaları bir çağrıda bir kez ayrıştırılır (içeriğe göre önbellek).
+- **OpenAI uyumlu adapter:** hata metninde anahtar önce maskelenir, sonra 300 karaktere kısaltılır. Model `max_tokens`'ı reddedip `max_completion_tokens` isterse (OpenAI o-serisi, gpt-5) o parametreyle tekrar gönderilir ve model için hatırlanır; bu durumda JSON modu suçlanmaz. Sağlık kontrolünde 404 artık "model '' bulunamadı" değil, `base_url`'i gösterir.
+- **Ollama:** tahmini istem `num_ctx`'e sığmıyorsa istek gönderilmeden `ContextTooLong` (Ollama aşan istemi hatasız keser; Mimari §5.1). İstek zaman aşımı varsayılanı en az 600 sn (`registry.request_timeout`, doctor da aynı). Sağlık kontrolünde 404 → adres hatası, JSON olmayan cevap → bozuk cevap (bağlantı hatası değil).
+- **`CANNOT_DO`:** işçi `CANNOT_DO: <neden>` derse koşu başarılı sayılmaz: aynı kademedeki diğer adaylar atlanır, daha üst kademeye geçilir (Mimari §8.1). Üst kademe kalmadıysa `status=escalate`, çıkış kodu 1. Failover kaydında hata sınıfı `CannotDo`. (Doğrulama geri bildirimiyle yeniden deneme hâlâ Faz 5a'da.)
+- **doctor:** `--warm` boş/tek satır sonu cevabı başarı sayar (model yüklendi ve cevap verdi). Sağlayıcılar aynı anda kontrol edilir, sırayla raporlanır.
+- **Bağlam:** boyut sınırı dosyalar tamamen okunmadan önce (`stat`) denetlenir; ikili dosyalar sayılmaz. `<file path="…">` içindeki yol HTML kaçışlı, dosya içindeki `</file>` `<\/file>` olarak yazılır.
+- **Küçükler:** `retry_after` iki adapter'da ortak (`providers/base.py`); anahtar varlığı tek yerde (`openai_compat.read_api_key`); envelope'taki "ok/FAIL" ve şemanın "nesne değil" hatası çevrili.
+- **Zaten çözülmüş:** bağlantı hatasının iki adapter'da farklı sınıflanması D-029 ile Faz 4'te giderilmişti.
+
+## D-037 – Faz 3 ve Faz 4 kod denetimi düzeltmeleri (2026-11-10)
+`/code-review` (PR #4 ve #5) bulgularına göre:
+- **Yeni hata sınıfları (Mimari §4.3):** `ProviderTimeout(ProviderTransient)` – cevap gelmedi ama sağlayıcı isteği işlemiş ve ücretlendirmiş olabilir. `ProviderModelNotFound(ProviderError)` – sağlayıcı çalışıyor ama modeli tanımıyor (404). `ProviderUnavailable` artık model yokluğunu kapsamıyor.
+- **Model yok (404):** sadece o model atlanır (`Action.NEXT`); aynı sağlayıcının diğer modelleri denenir ve devre kesici saymaz (istek hatalı, sağlayıcı değil). Önceden tüm sağlayıcı atlanıyor, 3 seferde 5 dk duraklatılıyordu.
+- **Bütçe:**
+  - Sağlayıcı maliyeti bildirmezse gerçek maliyet modelin çözülen fiyatıyla (config → fiyat listesi → geçmiş) hesaplanır; önceden fiyat listesinden geliyorsa 0 kaydediliyordu ve `daily_usd` hiç dolmuyordu. Geçmişten gelen fiyatla hesaplanan maliyet "tahmini" işaretlenir. Adapter artık fiyat hesaplamaz, sadece bildirilen maliyeti verir.
+  - Token sayısı bildirilmezse metinden tahmin edilir (0 değil).
+  - Zaman aşımında rezerve edilen tahmin harcanmış sayılır (`budget.settle_as_reserved`); diğer başarısız istekler 0 kalır.
+  - Yeniden denemeler ve yedeğe geçişler `daily_runs` için sağlayıcı başına tek koşu sayılır.
+  - Rezervasyon bütçe yarışında reddedilirse bu bir deneme sayılmaz (`attempts/<n>/` yazılmaz).
+  - Kullanılmayan `budget.check` kaldırıldı.
+- **Fiyat listesi çekimi (D-028'e ek):** sadece görevin kapsamındaki, açık, **onaylı** ve (`--local-only` değilse) uzak sağlayıcılardan çekilir; istek API anahtarını taşıdığı için onaysız sağlayıcıya hiç gitmez. `doctor` da sadece onaylılara sorar. `ask --dry-run` hiç ağa çıkmaz, önbellekteki fiyatları kullanır (D-033'teki "tazelenebilir" notu geçersiz).
+- **Router:** açıkça verilen `--model` profilin kademe aralığına takılmaz. Görev kademesi profilin üst sınırını aşarsa: profil açıkça verildiyse kullanım hatası (kod 2), varsayılan profilse aralık o kademeye daralır. Config'te listelenmeyen ama açıkça seçilen modelin fiyatı da çözülür. Snapshot sadece router'ın bakacağı sağlayıcıları okur (kod ajanları ve kapalılar hariç); geçmiş kullanımdan fiyat sorgusu sadece `daily_usd` olanlarda.
+- **Devre kesici:** `providers enable` devreyi kapatır (yanlış anahtar düzeltilince 1 saat beklemek gerekmez).
+- **Gizli bilgi:** istem metni de taranır (`ask "$(cat .env)"`). `sk-` deseni kelime içinde eşleşmez (`task-runner-…` artık anahtar sayılmaz). İşçinin cevabında sadece gerçek sırlar maskelenir; `password: …` örneği cevapta kalır ve şema doğrulaması maskelenmemiş cevaba yapılır (maskeleme geçerli JSON'u bozmasın). Kayıtlar ve loglar eskisi gibi tam maskelenir.
+- **Yarıda kalan koşu:** Ctrl+C veya beklenmeyen hata olsa da `runs` satırı `error` ile kapanır ve `envelope.json` yazılır; rezervasyon serbest bırakılır.
+Mimari §4.3, §5.1, §6.1, §6.2, §7, §7.1 ve §11 bu kararlarla güncellendi.
+

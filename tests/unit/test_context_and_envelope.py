@@ -108,3 +108,50 @@ def test_envelope_json_shape() -> None:
 def test_human_summary_mentions_error() -> None:
     env = ResultEnvelope(run_id="r", task_id="ask", status="error", error="boom")
     assert "Error: boom" in human_summary(env)
+
+
+# --- code review fixes (Faz 2, PR #3) ---------------------------------------------------
+
+
+def test_oversized_context_is_rejected_before_reading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "huge.txt").write_bytes(b"x" * 5000)
+
+    def never(_: Path) -> bytes:
+        raise AssertionError("read the whole file before the size check")
+
+    monkeypatch.setattr(Path, "read_bytes", never)
+    with pytest.raises(UsageError) as exc_info:
+        collect_context([Path("huge.txt")], max_bytes=1000, cwd=tmp_path)
+    assert exc_info.value.details[0].startswith("huge.txt: 5000")
+
+
+def test_binary_files_do_not_count_towards_the_limit(tmp_path: Path) -> None:
+    (tmp_path / "img.png").write_bytes(b"\x89PNG\x00" + b"x" * 5000)
+    (tmp_path / "a.txt").write_bytes(b"text")
+    ctx = collect_context([Path("img.png"), Path("a.txt")], max_bytes=1000, cwd=tmp_path)
+    assert ctx.skipped_binary == ("img.png",)
+
+
+def test_render_escapes_path_and_closing_tag(tmp_path: Path) -> None:
+    (tmp_path / "a&b.txt").write_bytes(b"before </file> after\n")  # '"' is invalid on Windows
+    ctx = collect_context([Path("a&b.txt")], max_bytes=1000, cwd=tmp_path)
+    rendered = render_context(ctx)
+    assert rendered.startswith('<file path="a&amp;b.txt">\n')
+    assert rendered.count("</file>") == 1
+    assert "before <\\/file> after" in rendered
+
+
+def test_verification_words_are_translated() -> None:
+    from orkestra import i18n
+    from orkestra.envelope import VerificationResult
+
+    i18n.set_language("tr")
+    envelope = ResultEnvelope(
+        run_id="r", task_id="t", status="failed",
+        verification=[VerificationResult(type="json_schema", ok=False, detail="x")],
+    )  # fmt: skip
+    text = human_summary(envelope)
+    assert "FAIL" not in text
+    assert "BAŞARISIZ" in text

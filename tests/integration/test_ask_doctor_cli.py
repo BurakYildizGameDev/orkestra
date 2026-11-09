@@ -364,3 +364,41 @@ def test_doctor_warm(
     assert json.loads(chat.calls.last.request.content)["options"]["num_predict"] == 1
     warm = [c for c in json.loads(out)["checks"] if c["data"].get("warm")]
     assert warm and warm[0]["data"]["model"] == "coder"
+
+
+# --- code review fixes (Faz 2, PR #3) ---------------------------------------------------
+
+
+@respx.mock
+def test_ollama_gets_the_cold_start_timeout(
+    home: Path, workdir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama_ok())
+    code, _, _ = _run(["ask", "hi", "--provider", "ollama", "--json"], capsys)
+    assert code == 0
+    run_dir = next((home / "runs").iterdir())
+    request = json.loads((run_dir / "attempts" / "1" / "request.json").read_text("utf-8"))
+    assert request["timeout_s"] == 600
+
+
+@respx.mock
+def test_doctor_warm_accepts_an_empty_first_token(
+    home: Path, workdir: Path, tools: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    respx.get(f"{OLLAMA}/api/tags").mock(
+        return_value=httpx.Response(200, json={"models": [{"name": "coder:latest"}]})
+    )
+    respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama_ok("\n"))
+    _, out, _ = _run(["doctor", "--warm", "--json"], capsys)
+    warm = [c for c in json.loads(out)["checks"] if c["data"].get("model") == "coder"]
+    assert warm and warm[0]["status"] == "ok" and warm[0]["data"]["warm"] is True
+
+
+def test_schema_that_is_not_an_object_is_translated(
+    home: Path, workdir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (workdir / "s.json").write_text("true", encoding="utf-8")  # valid schema, not an object
+    code, _, err = _run(["--lang", "tr", "ask", "hi", "--schema", "s.json"], capsys)
+    assert code == 2
+    assert "not an object" not in err
+    assert "nesne" in err

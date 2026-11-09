@@ -50,18 +50,27 @@ from orkestra.errors import (
     ExitCode,
     NoProviderAvailable,
     ProviderError,
+    ProviderTimeout,
     UsageError,
 )
 from orkestra.i18n import t
 from orkestra.logging_setup import run_log
 from orkestra.providers import pricing
-from orkestra.providers.base import CompletionRequest, CompletionResult
-from orkestra.providers.registry import create_chat_provider
+from orkestra.providers.base import CompletionRequest, CompletionResult, Usage, estimate_tokens
+from orkestra.providers.registry import create_chat_provider, request_timeout
 from orkestra.routing import retry
-from orkestra.routing.router import Candidate, Route, TaskNeeds, route, take_snapshot
+from orkestra.routing.router import (
+    Candidate,
+    Route,
+    Snapshot,
+    TaskNeeds,
+    route,
+    scope,
+    take_snapshot,
+)
 from orkestra.security.redact import Redactor, configured_secrets
 from orkestra.security.secrets_scan import Finding, blocking, scan_text
-from orkestra.state import budget, db, health
+from orkestra.state import budget, consent, db, health
 from orkestra.tasks.context import Context, collect_context
 from orkestra.tasks.prompts import build_ask_messages
 
@@ -121,7 +130,7 @@ def _load_schema(path: Path | None) -> dict[str, Any] | None:
     except (OSError, ValueError, SchemaError) as exc:
         raise UsageError(t("ask.error.schema", path=path, reason=exc)) from exc
     if not isinstance(schema, dict):
-        raise UsageError(t("ask.error.schema", path=path, reason="not an object"))
+        raise UsageError(t("ask.error.schema", path=path, reason=t("ask.error.schema_not_object")))
     return schema
 
 
@@ -151,11 +160,24 @@ def _check_json(text: str, schema: dict[str, Any]) -> VerificationResult:
     return VerificationResult(type="json_schema", ok=True)
 
 
-def _scan(context: Context, known: Sequence[str]) -> list[Finding]:
-    findings: list[Finding] = []
+PROMPT_SOURCE = "<prompt>"  # where a finding in the prompt text itself is reported
+CANNOT_DO = "CANNOT_DO:"  # worker protocol (prompts/worker_system.md, Mimari §8.1)
+
+
+def _scan(prompt: str, context: Context, known: Sequence[str]) -> list[Finding]:
+    """The prompt counts as much as the context: ``ask "$(cat .env)"`` must not leak either."""
+    findings = scan_text(PROMPT_SOURCE, prompt, known)
     for f in context.files:
         findings.extend(scan_text(f.display, f.text, known))
     return findings
+
+
+def _cannot_do(text: str) -> str | None:
+    """The worker's reason when it answered ``CANNOT_DO: <reason>``, else ``None``."""
+    stripped = text.strip()
+    if not stripped.startswith(CANNOT_DO):
+        return None
+    return stripped[len(CANNOT_DO) :].strip().splitlines()[0] if stripped != CANNOT_DO else ""
 
 
 @dataclass
@@ -165,7 +187,8 @@ class _Prepared:
     env: Mapping[str, str]
     schema: dict[str, Any] | None
     context: Context
-    redact: Redactor
+    redact: Redactor  # records and logs: everything that looks secret
+    redact_output: Redactor  # the answer: secrets only, so "password: changeme" stays intact
     findings: list[Finding]
     warnings: list[str]
     system: str
@@ -190,21 +213,56 @@ def _prepare(
     schema = _load_schema(request.schema)
     context = collect_context(request.context, max_bytes=config.security.max_context_bytes, cwd=cwd)
     known = configured_secrets(config, env)
-    findings = _scan(context, known)
+    findings = _scan(request.prompt, context, known)
     warnings = [t("context.warning.binary", path=p) for p in context.skipped_binary]
     warnings += [
-        t("secrets.warning.found", path=f.path, line=f.line, kind=f.kind) for f in findings
+        t("secrets.warning.found_prompt", line=f.line, kind=f.kind)
+        if f.path == PROMPT_SOURCE
+        else t("secrets.warning.found", path=f.path, line=f.line, kind=f.kind)
+        for f in findings
     ]
     system, user = build_ask_messages(request.prompt, context, schema)
     return _Prepared(
-        request, config, env, schema, context, Redactor(known), findings, warnings, system, user
-    )
+        request, config, env, schema, context, Redactor(known), Redactor(known, passwords=False),
+        findings, warnings, system, user,
+    )  # fmt: skip
 
 
-async def _route(prep: _Prepared, conn: sqlite3.Connection, moment: datetime) -> Route:
-    price_cache = await pricing.refresh(prep.config, moment, environ=prep.env)
-    snapshot = take_snapshot(conn, prep.config, moment, environ=prep.env, price_cache=price_cache)
-    return route(prep.needs(), prep.config, snapshot, profile=prep.request.profile)
+def _price_targets(prep: _Prepared, conn: sqlite3.Connection) -> set[str]:
+    """Providers whose price list may be fetched: in scope, enabled, consented, remote allowed.
+
+    The request carries the provider's API key, so it never goes to a provider the user has
+    not enabled, nor to one this task cannot use anyway (D-037).
+    """
+    needs = prep.needs()
+    targets: set[str] = set()
+    for name in scope(needs, prep.config):
+        cfg = prep.config.providers[name]
+        if needs.privacy == "local_only" and not cfg.local:
+            continue
+        if cfg.enabled and consent.state(conn, name, cfg) == "granted":
+            targets.add(name)
+    return targets
+
+
+async def _route(
+    prep: _Prepared, conn: sqlite3.Connection, moment: datetime, *, fetch_prices: bool
+) -> Route:
+    needs = prep.needs()
+    if needs.provider is not None and needs.provider not in prep.config.providers:
+        return route(needs, prep.config, Snapshot(moment), profile=prep.request.profile)  # error
+    if fetch_prices:
+        cache = await pricing.refresh(
+            prep.config, moment, only=_price_targets(prep, conn), environ=prep.env
+        )
+    else:  # --dry-run sends nothing: use whatever prices are cached
+        cache = pricing.load_cache()
+    extra = (needs.provider, needs.model) if needs.provider and needs.model else None
+    snapshot = take_snapshot(
+        conn, prep.config, moment, environ=prep.env, price_cache=cache,
+        names=scope(needs, prep.config), extra_model=extra,
+    )  # fmt: skip
+    return route(needs, prep.config, snapshot, profile=prep.request.profile)
 
 
 async def plan_ask(
@@ -221,7 +279,8 @@ async def plan_ask(
     prep = _prepare(request, config, env, cwd)
     state = db.connect() if conn is None else conn
     try:
-        return DryRun(await _route(prep, state, now()), tuple(prep.warnings))
+        planned = await _route(prep, state, now(), fetch_prices=False)
+        return DryRun(planned, tuple(prep.warnings))
     finally:
         if conn is None:
             state.close()
@@ -245,7 +304,7 @@ async def run_ask(
     state = db.connect() if conn is None else conn
     try:
         started_at = now()
-        planned = await _route(prep, state, started_at)
+        planned = await _route(prep, state, started_at, fetch_prices=True)
         if not planned.candidates:
             raise planned.error()
         runner = _AskRun(prep, state, planned, started_at, now, clock, sleep or _sleep, rand,
@@ -281,13 +340,19 @@ class _AskRun:
         self.run_id = new_run_id(started_at.replace(tzinfo=None))
         self.run_dir = paths.run_dir(self.run_id)
         self.attempts = 0
+        # daily_runs is per provider: one run each, however many requests it takes there.
+        self.run_counted: set[str] = set()
+        self.cannot_do: str | None = None  # last CANNOT_DO reason from a worker
         self.failovers: list[Failover] = []
         self.escalations: list[Escalation] = []
         self.log = logging.getLogger("orkestra")
+        self.started = clock()
 
-    def _write(self, path: Path, text: str) -> None:
+    def _write(self, path: Path, text: str, *, answer: bool = False) -> None:
+        """Write a run record, redacted. ``answer``: the worker's output (secrets only)."""
+        redact = self.prep.redact_output if answer else self.prep.redact
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(self.prep.redact(text).encode("utf-8"))  # bytes: no newline translation
+        path.write_bytes(redact(text).encode("utf-8"))  # bytes: no newline translation
 
     def _max_output(self, candidate: Candidate) -> int:
         return candidate.model.max_output_tokens or self.prep.config.defaults.max_output_tokens
@@ -299,7 +364,7 @@ class _AskRun:
             user=self.prep.user,
             max_output_tokens=self._max_output(candidate),
             json_mode=self.prep.schema is not None,
-            timeout_s=candidate.config.timeout_s or self.prep.config.defaults.timeout_s,
+            timeout_s=request_timeout(candidate.config, self.prep.config.defaults),
         )
 
     async def run(self) -> AskOutcome:
@@ -309,42 +374,53 @@ class _AskRun:
         )  # fmt: skip
         with run_log(self.run_dir, self.prep.redact) as log:
             self.log = log
-            self._write_task()
-            log.info(
-                "route: profile=%s tiers=%s-%s candidates=%s eliminated=%d",
-                self.route.profile, *self.route.tier_range,
-                [c.label for c in self.route.candidates], len(self.route.eliminated),
-            )  # fmt: skip
-            started = self.clock()
-            remaining = list(self.route.candidates)
-            skipped_providers: set[str] = set()
-            previous: Candidate | None = None
-            while remaining:
-                candidate = remaining.pop(0)
-                if candidate.provider in skipped_providers:
-                    continue
-                if health.get(self.conn, candidate.provider).is_open(self.now()):
-                    # Paused during this run (e.g. by our own failed retries).
-                    log.info("skipping %s: provider paused", candidate.label)
-                    skipped_providers.add(candidate.provider)
-                    continue
-                if previous is not None and candidate.tier > previous.tier and self.failovers:
-                    last = self.failovers[-1]
-                    self.escalations.append(
-                        Escalation(provider=last.provider, model=last.model, tier=last.tier,
-                                   reason=last.reason)
-                    )  # fmt: skip
-                previous = candidate
-                outcome = await self._try(candidate, started)
-                if isinstance(outcome, AskOutcome):
-                    return outcome
-                action = outcome
-                if action is retry.Action.SKIP_PROVIDER:
-                    skipped_providers.add(candidate.provider)
-                elif action is retry.Action.BIGGER_CONTEXT:
-                    window = candidate.model.context_window
-                    remaining = [c for c in remaining if c.model.context_window > window]
-            return self._all_failed(started)
+            try:
+                return await self._run()
+            except BaseException as exc:
+                # Ctrl+C or a bug: still close the run row and leave an envelope behind.
+                self._crashed(exc)
+                raise
+
+    async def _run(self) -> AskOutcome:
+        self._write_task()
+        self.log.info(
+            "route: profile=%s tiers=%s-%s candidates=%s eliminated=%d",
+            self.route.profile, *self.route.tier_range,
+            [c.label for c in self.route.candidates], len(self.route.eliminated),
+        )  # fmt: skip
+        remaining = list(self.route.candidates)
+        skipped_providers: set[str] = set()
+        previous: Candidate | None = None
+        while remaining:
+            candidate = remaining.pop(0)
+            if candidate.provider in skipped_providers:
+                continue
+            if health.get(self.conn, candidate.provider).is_open(self.now()):
+                # Paused during this run (e.g. by our own failed retries).
+                self.log.info("skipping %s: provider paused", candidate.label)
+                skipped_providers.add(candidate.provider)
+                continue
+            if previous is not None and candidate.tier > previous.tier and self.failovers:
+                last = self.failovers[-1]
+                self.escalations.append(
+                    Escalation(provider=last.provider, model=last.model, tier=last.tier,
+                               reason=last.reason)
+                )  # fmt: skip
+            previous = candidate
+            outcome = await self._try(candidate)
+            if isinstance(outcome, AskOutcome):
+                return outcome
+            action = outcome
+            if action is retry.Action.SKIP_PROVIDER:
+                skipped_providers.add(candidate.provider)
+            elif action is retry.Action.BIGGER_CONTEXT:
+                window = candidate.model.context_window
+                remaining = [c for c in remaining if c.model.context_window > window]
+            elif action is retry.Action.ESCALATE:
+                remaining = [c for c in remaining if c.tier > candidate.tier]
+        if self.cannot_do is not None:
+            return self._escalate()
+        return self._all_failed()
 
     def _write_task(self) -> None:
         req = self.prep.request
@@ -369,20 +445,32 @@ class _AskRun:
             ),
         )
 
-    async def _try(self, candidate: Candidate, started: float) -> AskOutcome | retry.Action:
+    def _prompt_chars(self) -> int:
+        return len(self.prep.system) + len(self.prep.user)
+
+    async def _try(self, candidate: Candidate) -> AskOutcome | retry.Action:
         """One candidate, with transport retries. Returns the outcome or what to do next."""
         provider = create_chat_provider(candidate.provider, candidate.config, self.prep.env)
         completion = self._completion(candidate)
-        amount = budget.estimate(
-            len(self.prep.system) + len(self.prep.user), completion.max_output_tokens,
-            candidate.price,
-        )  # fmt: skip
         if candidate.config.budget.daily_usd is not None and candidate.price is None:
             self.prep.warnings.append(
                 t("budget.warning.no_price", provider=candidate.provider, model=candidate.model.id)
             )
         tries = 0
         while True:
+            amount = budget.estimate(
+                self._prompt_chars(), completion.max_output_tokens, candidate.price,
+                runs=0 if candidate.provider in self.run_counted else 1,
+            )  # fmt: skip
+            try:
+                reservation = budget.reserve(
+                    self.conn, provider=candidate.provider, model=candidate.model.id,
+                    run_id=self.run_id, budget=candidate.config.budget, amount=amount,
+                    now=self.now(),
+                )  # fmt: skip
+            except BudgetExhausted as exc:  # nothing was sent: not an attempt
+                return self._fail(candidate, exc, tries, retry.Action.NEXT)
+            self.run_counted.add(candidate.provider)
             self.attempts += 1
             tries += 1
             attempt_dir = self.run_dir / "attempts" / str(self.attempts)
@@ -390,22 +478,18 @@ class _AskRun:
                 attempt_dir / "request.json",
                 json.dumps({"provider": candidate.provider, **asdict(completion)}, indent=2),
             )
-            try:
-                reservation = budget.reserve(
-                    self.conn, provider=candidate.provider, model=candidate.model.id,
-                    run_id=self.run_id, budget=candidate.config.budget, amount=amount,
-                    now=self.now(),
-                )  # fmt: skip
-            except BudgetExhausted as exc:
-                return self._fail(candidate, exc, tries, retry.Action.NEXT)
             self.log.info("attempt %d: %s (try %d)", self.attempts, candidate.label, tries)
             try:
                 result = await provider.complete(completion)
             except ProviderError as exc:
-                budget.settle(
-                    self.conn, reservation, prompt_tokens=0, completion_tokens=0, cost_usd=0.0,
-                    estimated=False, now=self.now(),
-                )  # fmt: skip
+                if isinstance(exc, ProviderTimeout):
+                    # The provider may have processed (and billed) it: keep the estimate.
+                    budget.settle_as_reserved(self.conn, reservation, now=self.now())
+                else:
+                    budget.settle(
+                        self.conn, reservation, prompt_tokens=0, completion_tokens=0,
+                        cost_usd=0.0, estimated=False, now=self.now(),
+                    )  # fmt: skip
                 state = health.record_failure(self.conn, candidate.provider, exc, self.now())
                 self.log.warning(
                     "attempt %d failed: %s %s (failures in a row: %d)",
@@ -425,34 +509,63 @@ class _AskRun:
                 budget.release(self.conn, reservation)  # interrupted: nothing to pay for
                 self.log.warning("interrupted; reservation released")
                 raise
+            usage = self._actual_usage(candidate, result)
             budget.settle(
-                self.conn, reservation, prompt_tokens=result.usage.prompt_tokens,
-                completion_tokens=result.usage.completion_tokens,
-                cost_usd=result.usage.cost_usd, estimated=result.usage.estimated, now=self.now(),
+                self.conn, reservation, prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens, cost_usd=usage.cost_usd,
+                estimated=usage.estimated, now=self.now(),
             )  # fmt: skip
             health.record_success(self.conn, candidate.provider)
-            return self._succeed(candidate, completion, result, attempt_dir, started)
+            reason = _cannot_do(result.text)
+            if reason is not None:
+                self._write(attempt_dir / "response.txt", result.text, answer=True)
+                self.cannot_do = reason
+                return self._fail(candidate, None, tries, retry.Action.ESCALATE, reason=reason)
+            return self._succeed(candidate, completion, result, usage, attempt_dir)
+
+    def _actual_usage(self, candidate: Candidate, result: CompletionResult) -> Usage:
+        """What the request used, for the budget and the envelope.
+
+        Tokens the provider did not report are estimated from the text; a cost it did not
+        report is priced with the model's resolved price (config, price list or history).
+        """
+        reported = result.usage
+        estimated = reported.estimated
+        prompt = reported.prompt_tokens
+        completion = reported.completion_tokens
+        if prompt is None:
+            prompt, estimated = estimate_tokens(self._prompt_chars()), True
+        if completion is None:
+            completion, estimated = estimate_tokens(len(result.text)), True
+        cost = reported.cost_usd
+        if cost is None and candidate.price is not None:
+            cost = candidate.price.cost(prompt, completion)
+            estimated = estimated or candidate.price.source == "history"
+        return Usage(prompt, completion, cost, estimated)
 
     def _fail(
         self,
         candidate: Candidate,
-        exc: ProviderError | BudgetExhausted,
+        exc: ProviderError | BudgetExhausted | None,
         tries: int,
         action: retry.Action,
+        *,
+        reason: str | None = None,
     ) -> retry.Action:
+        """Record an abandoned candidate. ``exc`` is ``None`` for a worker's CANNOT_DO."""
+        error = type(exc).__name__ if exc is not None else "CannotDo"
+        message = exc.message if exc is not None else t("ask.cannot_do", reason=reason or "-")
         self.failovers.append(
             Failover(
                 provider=candidate.provider,
                 model=candidate.model.id,
                 tier=candidate.tier,
-                error=type(exc).__name__,
-                reason=self.prep.redact(exc.message),
+                error=error,
+                reason=self.prep.redact(message),
                 attempts=tries,
             )
         )
-        self.log.warning(
-            "giving up on %s: %s → %s", candidate.label, type(exc).__name__, action.value
-        )
+        self.log.warning("giving up on %s: %s → %s", candidate.label, error, action.value)
         return action
 
     def _base(self, candidate: Candidate | None) -> dict[str, Any]:
@@ -472,45 +585,76 @@ class _AskRun:
         candidate: Candidate,
         completion: CompletionRequest,
         result: CompletionResult,
+        usage: Usage,
         attempt_dir: Path,
-        started: float,
     ) -> AskOutcome:
-        text = self.prep.redact(result.text)
+        # Files and the terminal get the answer with real secrets masked; the schema check
+        # sees the answer itself, so masking can never break valid JSON.
+        text = self.prep.redact_output(result.text)
         output_path = self.run_dir / "output.md"
-        self._write(attempt_dir / "response.txt", text)
-        self._write(output_path, text)
+        self._write(attempt_dir / "response.txt", text, answer=True)
+        self._write(output_path, text, answer=True)
         if result.raw_finish_reason == "length":
             self.prep.warnings.append(
                 t("ask.warning.truncated", tokens=completion.max_output_tokens)
             )
             self.log.warning("output hit max_output_tokens=%d", completion.max_output_tokens)
         schema = self.prep.schema
-        verification = [_check_json(text, schema)] if schema is not None else []
+        verification = [_check_json(result.text, schema)] if schema is not None else []
         ok = all(v.ok for v in verification)
         envelope = ResultEnvelope(
             **self._base(candidate),
             status="ok" if ok else "failed",
-            summary=summarize_text(text, str(output_path)),
+            summary=summarize_text(self.prep.redact(text), str(output_path)),
             verification=verification,
             output_path=str(output_path),
             usage=EnvelopeUsage(
                 prompt_tokens=result.usage.prompt_tokens,
                 completion_tokens=result.usage.completion_tokens,
-                cost_usd=result.usage.cost_usd,
+                cost_usd=usage.cost_usd,
             ),
-            duration_s=round(self.clock() - started, 3),
+            duration_s=self._duration(),
         )
         return self._finish(envelope, text, 0 if ok else int(ExitCode.TASK_FAILED))
 
-    def _all_failed(self, started: float) -> AskOutcome:
+    def _duration(self) -> float:
+        return round(self.clock() - self.started, 3)
+
+    def _escalate(self) -> AskOutcome:
+        """Workers said CANNOT_DO and no higher tier was left (or answered): exit code 1."""
+        reason = t("ask.cannot_do", reason=self.cannot_do or "-")
+        envelope = ResultEnvelope(
+            **self._base(None),
+            status="escalate",
+            summary=self.prep.redact(reason),
+            duration_s=self._duration(),
+        )
+        return self._finish(envelope, None, int(ExitCode.TASK_FAILED))
+
+    def _all_failed(self) -> AskOutcome:
         error = NoProviderAvailable(t("route.all_failed", count=len(self.failovers)))
         envelope = ResultEnvelope(
             **self._base(None),
             status="error",
             error=error.message,
-            duration_s=round(self.clock() - started, 3),
+            duration_s=self._duration(),
         )
         return self._finish(envelope, None, int(error.exit_code))
+
+    def _crashed(self, exc: BaseException) -> None:
+        """Best effort after an interrupt or a bug; never hides the original exception."""
+        detail = (
+            t("ask.interrupted")
+            if isinstance(exc, KeyboardInterrupt | asyncio.CancelledError)
+            else f"{type(exc).__name__}: {str(exc)[:300]}"
+        )
+        envelope = ResultEnvelope(
+            **self._base(None), status="error", error=detail, duration_s=self._duration()
+        )
+        try:
+            self._finish(envelope, None, int(ExitCode.INTERNAL))
+        except Exception:  # the database or disk may be what failed
+            self.log.exception("could not record the failed run")
 
     def _finish(self, envelope: ResultEnvelope, output: str | None, code: int) -> AskOutcome:
         text = to_json(envelope)

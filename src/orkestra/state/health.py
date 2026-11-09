@@ -2,7 +2,8 @@
 
 Three transient failures in a row (timeouts, 5xx, rate limits, no connection) open the circuit
 for 5 minutes, so an offline or broken provider is skipped instead of being waited on every
-time. An authentication failure opens it for an hour. Any success closes it.
+time. An authentication failure opens it for an hour. Any success, or ``providers enable``,
+closes it. A missing model (``ProviderModelNotFound``) is about the request and not counted.
 """
 
 from __future__ import annotations
@@ -67,6 +68,12 @@ def _store(conn: sqlite3.Connection, health: Health) -> None:
 def record_success(conn: sqlite3.Connection, provider: str) -> None:
     with transaction(conn):
         _store(conn, Health(provider))
+
+
+def reset(conn: sqlite3.Connection, provider: str) -> None:
+    """Close the circuit by hand (``providers enable``): e.g. after fixing a wrong API key,
+    which otherwise keeps the provider paused for an hour with no request to prove it works."""
+    record_success(conn, provider)
 
 
 def record_failure(

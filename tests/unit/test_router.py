@@ -328,3 +328,49 @@ def test_project_provider_comes_after_global_ones() -> None:
     states = {"g": ProviderState(consent="granted"), "p": ProviderState(consent="granted")}
     result = route(TaskNeeds(), cfg, Snapshot(NOW, states))
     assert [c.label for c in result.candidates] == ["g/m", "p/m"]
+
+
+# --- code review fixes (Faz 4, PR #5) ---------------------------------------------------
+
+
+def test_explicit_model_is_not_dropped_by_the_profile() -> None:
+    result = route(
+        TaskNeeds(provider="router", model="r2"), _config(), Snapshot(NOW, _granted()),
+        profile="cheap",
+    )  # fmt: skip
+    assert [c.label for c in result.candidates] == ["router/r2"]
+
+
+def test_task_tier_above_default_profile_narrows_to_that_tier() -> None:
+    cfg = _config(defaults={"profile": "cheap"})
+    result = route(TaskNeeds(tier=2), cfg, Snapshot(NOW, _granted()))
+    assert result.tier_range == (2, 2)
+    assert [c.label for c in result.candidates] == ["local/mid", "router/r2"]
+
+
+def test_task_tier_above_explicit_profile_is_a_usage_error() -> None:
+    with pytest.raises(UsageError) as exc_info:
+        route(TaskNeeds(tier=2), _config(), Snapshot(NOW, _granted()), profile="cheap")
+    assert "cheap" in exc_info.value.message
+
+
+def test_unlisted_explicit_model_uses_its_snapshot_price() -> None:
+    price = Price(1000.0, 1000.0, "provider")  # absurdly expensive: over daily_usd 1.0
+    result = route(
+        TaskNeeds(provider="router", model="other/model", prompt_chars=10),
+        _config(), Snapshot(NOW, _granted(), {("router", "other/model"): price}),
+    )  # fmt: skip
+    assert result.candidates == ()
+    assert result.eliminated[-1].code == "budget"
+
+
+def test_snapshot_only_reads_the_providers_it_needs(tmp_path: Any) -> None:
+    from contextlib import closing
+
+    from orkestra.routing.router import take_snapshot
+    from orkestra.state import db
+
+    with closing(db.connect(tmp_path / "s.db")) as conn:
+        snap = take_snapshot(conn, _config(), NOW, environ={}, names=["local"])
+    assert set(snap.providers) == {"local"}
+    assert ("router", "r1") not in snap.prices

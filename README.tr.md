@@ -111,9 +111,14 @@ Bir sağlayıcı veya model şu durumlarda elenir:
 |---|---|
 | Bağlantı hiç kurulamıyor (internet yok, DNS, reddedildi) | 0.5 sn sonra bir kez daha (anlık dalgalanma için), sonra sıradaki sağlayıcı |
 | Zaman aşımı, 5xx, istek sınırı (429) | aynı model 1 sn, 2 sn, 4 sn (+ rastgele pay) sonra veya sunucunun `retry-after` süresi kadar beklenip yeniden denenir; üçüncü hata sağlayıcıyı beklemeye alır ve sıradakine geçilir |
-| Kimlik doğrulama başarısız | sağlayıcı atlanır (ve 1 saat beklemeye alınır) |
+| Kimlik doğrulama başarısız | sağlayıcı atlanır (ve 1 saat beklemeye alınır; `providers enable` beklemeyi kaldırır) |
+| Model bulunamadı (404) | sıradaki model; sağlayıcının diğer modelleri yine denenir |
 | İstem modele göre uzun | daha büyük bağlam pencereli sıradaki model |
 | Boş veya bozuk cevap | sıradaki aday |
+| Model `CANNOT_DO: <neden>` cevabı verir | daha üst kademedeki sıradaki aday; kalmadıysa durum `escalate`, çıkış kodu 1 |
+
+Zaman aşımına uğrayan istek, günlük bütçeye tahminiyle sayılır (sağlayıcı ücretlendirmiş
+olabilir); yeniden denemeler ve yedeğe geçişler `daily_runs` için sağlayıcı başına tek koşu sayılır.
 
 Yani internet yokken `ask` aynı komut içinde yerel Ollama'dan cevap verir; uzak API envelope'ta
 `failovers` altında listelenir. Bütün adaylar başarısız olursa hepsi listelenir ve çıkış kodu 3 olur.

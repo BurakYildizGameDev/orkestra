@@ -27,6 +27,60 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 1–4 (PR #2–#5), 2026-11-10
+Dört PR'a `/code-review`; her birinde 10 bulgu (+ listeye girmeyen küçükler). Düzeltmeler en güncel dalda (`faz-4`) yapıldı, çünkü PR'lar üst üste kurulu. Kararlar D-036 (Faz 1–2) ve D-037 (Faz 3–4); yereldeki Mimari belgesi de güncellendi.
+
+**Faz 1 (PR #2) – 10/10 düzeltildi**
+- ✅ `providers.x: null`, önceki dosyada `providers` yoksa doğrulama hatası veriyordu → siliyor.
+- ✅ `init --force` iki kez çalışınca asıl yedek eziliyordu → `.bak`, `.bak.1`…; değişmemiş örnekte yedek yok.
+- ✅ UTF-8 olmayan `.gitignore` → dahili hata (kod 10) → bayt bayt korunuyor.
+- ✅ `--json`'da beklenmeyen hata stdout'a JSON vermiyordu → veriyor.
+- ✅ Dil ön taraması hata yakalayıcıdan önceydi (silinmiş cwd'de `--help` çöküyordu) → içeride ve çökmez.
+- ✅ Genel `init`, çalışılan deponun `.gitignore`'unu değiştiriyordu → sadece `--project`.
+- ✅ `config show`, `extra_headers` token'larını basıyordu → maskeli.
+- ✅ `--config ~/x.yaml` genişletilmiyordu → genişletiliyor.
+- ✅ Şema boş `launch`/`command`/`models` ve yarım `price_per_mtok`'u kabul ediyordu → reddediyor.
+- ✅ Config iki kez ayrıştırılıyordu, eşlenmemiş pydantic hataları İngilizceydi → içerik önbelleği, çevrili çerçeve.
+
+**Faz 2 (PR #3) – 9 düzeltildi, 1 zaten çözülmüştü; küçüklerin 5'i de düzeltildi**
+- ✅ `_scrub` kısaltıp sonra maskeliyordu (anahtar parçası sızabilirdi) → önce maskeliyor.
+- ✅ Ollama `num_ctx`'i aşan istemi sessizce kesiyordu → tahmin sığmıyorsa göndermeden `ContextTooLong`.
+- ✅ `ask` Ollama için 300 sn bekliyordu → en az 600 sn.
+- ✅ Windows'ta yönlendirilmiş çıktıda emoji `UnicodeEncodeError` (kod 10) → `?` yazılıyor (canlı denendi).
+- ✅ `doctor --warm` boş ilk token'da FAIL → başarı.
+- ✅ Sağlık kontrolünde 404 "model '' bulunamadı" diyordu → `base_url` hatası; Ollama'da JSON olmayan cevap "bağlanılamıyor" değil.
+- ➖ İki adapter'ın bağlantı hatasını farklı sınıflaması → D-029 ile Faz 4'te zaten çözülmüştü.
+- ✅ `CANNOT_DO` başarı sayılıyordu → üst kademeye geçiş, kalmadıysa `escalate` / kod 1.
+- ✅ o-serisi modeller `max_tokens`'ı reddediyordu → `max_completion_tokens`'a geçiş, JSON modu suçlanmıyor.
+- ✅ "ok/FAIL" ve "not an object" çevrisizdi → `t()`.
+- ✅ Küçükler: bağlam boyutu okumadan denetleniyor; `retry_after` ortak; anahtar kontrolü tek yerde; doctor sağlayıcıları paralel kontrol ediyor; `<file>` yolu ve içerikteki `</file>` kaçışlı.
+
+**Faz 3 (PR #4) – 10/10 düzeltildi**
+- ✅ Fiyat listesinden gelen fiyatla gerçek maliyet 0 kaydediliyordu (`daily_usd` hiç dolmuyordu) → çözülen fiyatla hesaplanıyor.
+- ✅ `sk-` deseni `task-runner-…` gibi kelimeleri anahtar sayıyordu → kelime sınırı.
+- ✅ Modelin cevabı maskeleniyor, şema doğrulaması bozuluyordu → cevapta sadece gerçek sırlar maskeli, doğrulama ham cevaba.
+- ✅ 404 (model yok) devre kesiciyi açıyordu → `ProviderModelNotFound`, sayılmıyor.
+- ✅ Fiyat listesi onaysız/kapalı sağlayıcılara anahtarla gidiyordu → sadece kapsamdaki onaylılar.
+- ✅ Token bildirilmezse 0 yazılıyordu → tahmin.
+- ✅ Kesinti/beklenmeyen hatada koşu `running` kalıyordu → `error` + `envelope.json`.
+- ✅ Yanlış anahtar düzeltilse de devre 1 saat açık kalıyordu → `providers enable` kapatıyor.
+- ✅ İstem metni taranmıyordu → taranıyor.
+- ✅ Gereksiz fiyat çözümü → snapshot kapsamı daraltıldı, geçmiş sorgusu sadece `daily_usd` olanlarda.
+
+**Faz 4 (PR #5) – 10/10 düzeltildi**
+- ✅ Her yeniden deneme ayrı koşu sayılıyordu → sağlayıcı başına bir koşu.
+- ✅ Model yok → tüm sağlayıcı atlanıyordu → sadece o model (canlı denendi: eksik model sonrası aynı Ollama'nın diğer modeli cevap verdi).
+- ✅ Listelenmemiş açık model $0 sayılıyordu → fiyatı çözülüyor.
+- ✅ Profil açık `--model`'i eziyordu; `--tier` > profil üstü boş aralık veriyordu → açık model serbest; açık profille çakışma kod 2, varsayılan profilde aralık o kademe.
+- ✅ Zaman aşımında olası ücret kaydedilmiyordu → tahmin harcanmış sayılıyor.
+- ✅ Bütçe yarışında gönderilmeyen istek deneme sayılıyordu → sayılmıyor.
+- ✅ `--dry-run` fiyat listesini ağdan çekiyordu → ağa çıkmıyor.
+- ✅ Boş `models` nedensiz eleniyordu → şema reddediyor.
+- ✅ Snapshot her sağlayıcıyı okuyordu → sadece kapsamdakiler.
+- ✅ Ölü `budget.check` → kaldırıldı.
+
+Testler: 459 geçti (+59); ruff, ruff format, pyright temiz. Canlı (gerçek Ollama, `qwen2.5-coder:1.5b`): çevrimdışı API + çekilmemiş model → aynı komutta Ollama'nın diğer modeli cevap verdi (kod 0); emoji cp1254'e yönlendirilince `?` (kod 0, eskiden 10); `CANNOT_DO` → `escalate`, kod 1.
+
 ### Kod denetimi – Faz 0 (PR #1), 2026-11-09
 Yeni kural (AGENTS.md faz bitiş listesi): her faz sonunda `/code-review`. Faz 0 için 10 bulgu; 9'u düzeltildi, 1'i önemsiz diye atlandı (D-035):
 - ✅ `--lang TR`/`tr_TR` reddediliyordu → normalize ediliyor.

@@ -62,6 +62,10 @@ config.validation.sandbox_danger: "'danger-full-access' is not supported; use 'r
 config.validation.tier_order: "min_tier ({min}) must not be greater than max_tier ({max})"
 config.validation.unknown_profile: "{field}: profile '{name}' is not defined in profiles"
 config.validation.unknown_chief: "{field}: chief '{name}' is not defined in chiefs"
+config.validation.too_short: "must have at least {min} item(s)"
+config.validation.empty: "must not be empty"
+config.validation.price_both: "needs both input and output prices"
+config.validation.other: "invalid value ({detail})"
 
 cli.ask.help: "Ask a worker model one question (text or JSON). Does not change files."
 cli.ask.arg.prompt: "The task for the worker."
@@ -95,6 +99,7 @@ doctor.tool.missing: "{command} not found in PATH"
 
 provider.error.timeout: "{provider}: no answer within {seconds}s"
 provider.error.unreachable: "{provider}: cannot connect to {url}"
+provider.error.endpoint_not_found: "{provider}: {url} answered 404 (not found); check base_url"
 provider.error.network: "{provider}: network error ({detail})"
 provider.error.bad_json: "{provider}: response is not valid JSON"
 provider.error.empty: "{provider}: empty answer"
@@ -122,6 +127,9 @@ context.error.file_size: "{path}: {size} bytes"
 context.warning.binary: "Skipped binary file: {path}"
 
 ask.error.schema: "Invalid JSON Schema file {path}: {reason}"
+ask.error.schema_not_object: "the schema must be a JSON object"
+ask.cannot_do: "the worker could not do the task: {reason}"
+ask.interrupted: "interrupted"
 ask.verify.not_json: "answer is not valid JSON: {reason}"
 ask.warning.truncated: "Warning: the answer hit the output limit ({tokens} tokens) and may be cut off."
 
@@ -129,6 +137,8 @@ envelope.full_text: "(full text: {path})"
 envelope.line: "{status} | {run_id} | {provider}/{model} | tier {tier}"
 envelope.usage: "tokens {prompt} in / {completion} out | cost {cost} | {seconds}s"
 envelope.verify: "verify {type}: {result} {detail}"
+envelope.verify.ok: "ok"
+envelope.verify.fail: "FAIL"
 
 cli.ask.option.allow_secrets: "Send context with secrets to remote providers anyway."
 cli.providers.help: "List providers and manage consent."
@@ -179,6 +189,7 @@ select.reason.consent_changed: "{name}: settings changed since consent (orkestra
 select.reason.circuit_open: "{name}: paused until {until} after repeated errors ({error})"
 
 secrets.warning.found: "Possible secret in {path}, line {line} ({kind})."
+secrets.warning.found_prompt: "Possible secret in the prompt, line {line} ({kind})."
 
 doctor.consent.missing: "no consent yet"
 doctor.consent.changed: "settings changed since consent"
@@ -192,6 +203,7 @@ cli.ask.option.local_only: "Only use local providers (privacy: local_only)."
 cli.ask.option.dry_run: "Show which providers would be tried, in order, and why others are left out. Sends nothing."
 
 route.unknown_profile: "Unknown profile '{name}'. Available: {available}"
+route.error.tier_above_profile: "Tier {tier} is above profile '{profile}' (max_tier {high}); choose another --profile or a lower --tier."
 route.reason.experimental: "{name}: experimental; set 'enabled: true' explicitly in the config to use it"
 route.reason.not_local: "{name}: not local, and the task is local_only"
 route.reason.secrets: "{name}: remote, and the context contains secrets; use a local provider or --allow-secrets"
