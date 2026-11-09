@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Annotated, Any
 
 import typer
 
-from orkestra import __version__, i18n
+from orkestra import __version__, doctor, envelope, i18n
 from orkestra.config import loader
 from orkestra.errors import ExitCode, OrkestraError, exit_code_for
 from orkestra.i18n import t
+from orkestra.tasks import runner
 
 
 @dataclass
@@ -150,6 +152,72 @@ def build_app() -> typer.Typer:
             return
         typer.echo(t("config.valid"))
         _echo_sources(loaded.sources, err=False)
+
+    @app.command("ask", help=t("cli.ask.help"))
+    def ask_command(
+        ctx: typer.Context,
+        prompt: Annotated[str, typer.Argument(metavar="PROMPT", help=t("cli.ask.arg.prompt"))],
+        provider: Annotated[
+            str | None, typer.Option("--provider", help=t("cli.ask.option.provider"))
+        ] = None,
+        model: Annotated[
+            str | None, typer.Option("--model", help=t("cli.ask.option.model"))
+        ] = None,
+        tier: Annotated[
+            int | None, typer.Option("--tier", min=1, max=3, help=t("cli.ask.option.tier"))
+        ] = None,
+        context: Annotated[
+            list[Path] | None,
+            typer.Option("--context", metavar="FILE", help=t("cli.ask.option.context")),
+        ] = None,
+        schema: Annotated[
+            Path | None, typer.Option("--schema", metavar="FILE", help=t("cli.ask.option.schema"))
+        ] = None,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+        request = runner.AskRequest(
+            prompt=prompt,
+            provider=provider,
+            model=model,
+            tier=tier,
+            context=tuple(context or ()),
+            schema=schema,
+        )
+        outcome = asyncio.run(runner.run_ask(request, loaded.config))
+        for warning in outcome.warnings:
+            typer.echo(warning, err=True)
+        if as_json:
+            typer.echo(envelope.to_json(outcome.envelope))
+        else:
+            if outcome.output is not None:
+                typer.echo(outcome.output)
+            typer.echo(envelope.human_summary(outcome.envelope), err=True)
+        if outcome.exit_code:
+            raise typer.Exit(outcome.exit_code)
+
+    @app.command("doctor", help=t("cli.doctor.help"))
+    def doctor_command(
+        ctx: typer.Context,
+        warm: Annotated[bool, typer.Option("--warm", help=t("cli.doctor.option.warm"))] = False,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        report = asyncio.run(
+            doctor.run_doctor(config_flag=ctx.ensure_object(_State).config_path, warm=warm)
+        )
+        if as_json:
+            _echo_json({"ok": report.ok, "checks": [asdict(c) for c in report.checks]})
+        else:
+            for check in report.checks:
+                label = t(f"doctor.status.{check.status}")
+                typer.echo(f"[{label}] {check.name}: {check.message}")
+                for detail in check.data.get("details", []):
+                    typer.echo(f"    - {detail}")
+                if "hint" in check.data:
+                    typer.echo(f"    {t('doctor.hint', command=check.data['hint'])}")
+            typer.echo(t("doctor.summary.ok" if report.ok else "doctor.summary.fail"))
+        if not report.ok:
+            raise typer.Exit(int(ExitCode.TASK_FAILED))
 
     return app
 

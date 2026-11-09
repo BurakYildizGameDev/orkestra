@@ -8,7 +8,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 |---|---|---|---|
 | 0 – İskelet + i18n altyapısı | ✅ | 2026-11-09 | Paket adı `orkestra-cli` (D-001) |
 | 1 – Config | ✅ | 2026-11-09 | init, config show/validate (D-006…D-012) |
-| 2 – Chat adapter, ask, doctor | ⏳ | | |
+| 2 – Chat adapter, ask, doctor | ✅ | 2026-11-09 | Ollama + OpenAI uyumlu, ask, doctor (D-013…D-019) |
 | 3 – Durum, bütçe, onay | ⏳ | | |
 | 4 – Router | ⏳ | | |
 | 5a – Görev + doğrulama | ⏳ | | |
@@ -26,6 +26,38 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 2 – Chat adapter'ları, `ask`, `doctor` (2026-11-09)
+**Yapılanlar:**
+- `providers/base.py`: Mimari §4.3 veri sınıfları (`Usage`, `CompletionRequest/Result`, `AgentRequest/Result`, `HealthReport`) ve `ChatProvider` / `AgentProvider` protokolleri.
+- `providers/ollama.py`: native `/api/chat`, her istekte `num_ctx` (modelin `context_window`'u) ve `num_predict`, `format: json`, `prompt_eval_count`/`eval_count`, `/api/tags` sağlık, hata eşleme (404 → `ollama pull` ipucu).
+- `providers/openai_compat.py`: `AsyncOpenAI(max_retries=0)`, anahtar ortam değişkeninden, hata eşleme (401/403, 429 + `retry-after`, 400 + context, 404, 5xx, bağlantı/zaman aşımı), `usage.cost` (OpenRouter) → yoksa `price_per_mtok`, `json_object` reddedilirse bir kez istemle JSON ve model bazında hatırlama, `/models` sağlık. Hata metinlerinde anahtar maskeleniyor, SDK istisnası zincirlenmiyor.
+- `providers/registry.py`: config → sağlayıcı nesnesi; router öncesi model seçimi.
+- `tasks/context.py` (ilk hal): `--context` dosyaları, ikili tespiti (ilk 8 KB'de NUL), `max_context_bytes` aşımında hata (dosya boyutlarıyla), `<file path>` biçimi.
+- `tasks/prompts.py` + `prompts/worker_system.md` (İngilizce işçi istemi, `CANNOT_DO:` kuralı).
+- `envelope.py`: `ResultEnvelope` (§13 / README alanları), JSON ve insan çıktısı, kural tabanlı özet.
+- `tasks/runner.py` (ilk hal): tek denemelik `ask`; `runs/<run_id>/` altında `task.yaml`, `attempts/1/request.json`, `attempts/1/response.txt`, `output.md`, `envelope.json`.
+- `doctor.py`: config, her sağlayıcı (erişim, kurulu/listelenen modeller, anahtar değişkeni *var mı*), `git --version`, `codex`/`agy` PATH ve sürüm (bilgi), `--warm`.
+- Komutlar: `orkestra ask "<istem>" [--provider] [--model] [--tier] [--context …] [--schema f.json] [--json]`, `orkestra doctor [--json] [--warm]`.
+- `tests/integration/test_live.py` (`@pytest.mark.live`): gerçek Ollama ve OpenRouter.
+
+**Kabul kriterleri:**
+- ✅ respx testleri: başarı, 401 → `ProviderAuthError`, 429 + `retry-after`, 500, `finish_reason=length`, OpenRouter `usage.cost` okunuyor, Ollama `num_ctx` istekte gidiyor (`tests/unit/test_provider_ollama.py`, `test_provider_openai.py`).
+- ✅ `ask --json` stdout'a sadece envelope JSON yazıyor (`json.loads(stdout)` testi; uyarılar stderr'de).
+- ✅ `doctor` anahtar değerini hiçbir koşulda yazmıyor: sahte anahtar, anahtarı geri yansıtan 401 gövdesiyle, JSON ve insan modunda aranıyor (`test_doctor_never_prints_key_value`).
+- ✅ Canlı (elle): yerel Ollama (`qwen2.5-coder:1.5b`) ile `orkestra ask "merhaba" --provider ollama` → "Merhaba", kod 0; `doctor --warm` modeli yükledi; `pytest -m live` Ollama testi geçti (OpenRouter testi anahtar olmadığı için atlandı).
+- ✅ ruff, ruff format, pyright, pytest (255 test, 2 live hariç) temiz.
+
+**Ertelenenler:**
+- Gizli bilgi taraması ve redaksiyon (`security/`) → Faz 3. Şimdilik sadece OpenAI adapter'ı kendi anahtarını hata metinlerinden maskeliyor.
+- Yeniden deneme, yükseltme, router → Faz 4/5a. `ask` tek deneme yapıyor.
+- `.orkestraignore`/`.gitignore` filtreleme ve `globs` → görev dosyasıyla (Faz 5a).
+- `runs` tablosu (state.db) → Faz 3. Koşu kaydı şimdilik sadece dosyalarda.
+- Loglama (`orkestra.log`, `-v/-q`) → henüz yok.
+
+**Bilinen sorunlar:**
+- OpenRouter canlı testi bu makinede çalıştırılmadı (anahtar yok).
+- `--context` tekrarlanan seçenek (`--context a --context b`); `--context a b` biçimi typer'da desteklenmiyor.
 
 ### Faz 1 – Yapılandırma (2026-11-09)
 **Yapılanlar:**
