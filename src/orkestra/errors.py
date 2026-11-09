@@ -13,6 +13,7 @@ Exit codes (README "Sonuç zarfı ve çıkış kodları"):
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import IntEnum
 
 
@@ -29,14 +30,16 @@ class ExitCode(IntEnum):
 class OrkestraError(Exception):
     """Base class for all Orkestra errors.
 
-    ``message`` is shown to the user, so callers pass an already translated ``t()`` string.
+    ``message`` and ``details`` are shown to the user, so callers pass already translated
+    ``t()`` strings. ``details`` holds one line per problem (e.g. each invalid config field).
     """
 
     exit_code: ExitCode = ExitCode.INTERNAL
 
-    def __init__(self, message: str = "") -> None:
+    def __init__(self, message: str = "", details: Sequence[str] = ()) -> None:
         super().__init__(message)
         self.message = message
+        self.details = tuple(details)
 
 
 class TaskFailed(OrkestraError):
