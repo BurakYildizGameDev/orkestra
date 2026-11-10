@@ -185,6 +185,8 @@ edit.error.search_not_found: "{index}. blok: SEARCH satırları {path} içinde y
 edit.error.search_ambiguous: "{index}. blok: SEARCH satırları {path} içinde {count} kez geçiyor. Tek bir yere uyması için çevresindeki satırlar da eklenmeli."
 edit.error.search_empty: "{index}. blok: boş SEARCH sadece yeni dosya oluşturur, ama {path} zaten var. Değişecek satırlar SEARCH'e yazılmalı."
 edit.error.missing_file: "{path} yok: oluşturmak için SEARCH boş bırakılmalı ve yeni dosyanın tamamı REPLACE'e yazılmalı."
+edit.error.not_a_file: "{path} bir klasör, dosya değil: değişecek dosyanın adı yazılmalı."
+edit.error.cannot_read: "{path} okunamıyor: {error}"
 edit.warning.not_utf8: "{path} UTF-8 değil; API işçisi onu bozmadan yeniden yazamaz, bu görevde sadece okunur."
 edit.warning.ignored: "{path} git tarafından ignore ediliyor, değişikliği uygulanamaz; bu görevde sadece okunur."
 envelope.changes_unverified: "kontrolleri geçmeyen değişiklik: {files} dosya (+{insertions}/-{deletions}) | incele: orkestra show {run_id} --diff"

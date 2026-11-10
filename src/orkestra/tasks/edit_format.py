@@ -16,7 +16,8 @@ Models break unified diffs, so an API worker answers with whole files::
   cannot be written is an ``EditFormatError`` too.
 - ``cannot_do``: ``{"cannot_do": "<reason>"}``, the JSON form of ``CANNOT_DO: <reason>``.
 
-SEARCH/REPLACE edits (Faz 9c, the default): the worker sends only the places it changes::
+SEARCH/REPLACE edits (Faz 9c; ``edit_format: auto`` picks them for files longer than
+``security.max_api_edit_lines``): the worker sends only the places it changes::
 
     src/util.py
     <<<<<<< SEARCH
@@ -167,6 +168,9 @@ class ReplaceBlock:
     search: str  # LF line endings; empty: a new file
     replace: str
     index: int  # 1-based, for feedback
+    # Other (search, replace) splits when the content itself has a "=======" line (a setext
+    # title underline): the first split that matches the file exactly once is used.
+    alternatives: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -175,26 +179,52 @@ class ReplaceAnswer:
     note: str = ""
 
 
-def _path_line(line: str) -> str | None:
-    """A file path on a line of its own (``src/a.py``, `` `src/a.py` ``, ``**src/a.py**:``)."""
-    text = line.strip().strip("`*").rstrip(":").strip().strip("`*")
-    if not text or any(c.isspace() for c in text) or not any(c in text for c in "./\\"):
-        return None  # prose, not a path
-    return text
+_HEADER = re.compile(r"^#+\s*")  # "### src/a.py"
+_LABEL = re.compile(r"^(?:file|path)\s*:\s*", re.IGNORECASE)  # "File: src/a.py"
+_EXTENSION = re.compile(r"\.\w+$")
 
 
-def _section(lines: list[str], start: int, end: re.Pattern[str], index: int) -> tuple[str, int]:
-    """Text from ``start`` up to the line matching ``end``, and the index after it."""
-    for i in range(start, len(lines)):
-        if end.match(lines[i]):
-            body = lines[start:i]
-            return ("\n".join(body) + "\n" if body else ""), i + 1
-        if _HEAD.match(lines[i]) or _DIVIDER.match(lines[i]) or _TAIL.match(lines[i]):
-            break  # a marker out of order: the block is broken
+def _path_line(line: str, known: Collection[str]) -> str | None:
+    """A file path on a line of its own, in the forms models write it.
+
+    ``src/a.py``, `` `src/a.py` ``, ``**src/a.py**:``, ``### src/a.py``, ``File: src/a.py``.
+    A path with spaces counts only when it is one of the ``known`` (editable) paths;
+    otherwise a line with spaces is prose.
+    """
+    text = _HEADER.sub("", line.strip()).replace("`", "").replace("**", "")
+    text = _LABEL.sub("", text.strip()).rstrip(":").strip()
+    if not text:
+        return None
+    if text in known:
+        return text
+    if any(c.isspace() for c in text):
+        return None
+    return text if ("/" in text or "\\" in text or _EXTENSION.search(text)) else None
+
+
+def _join(lines: list[str]) -> str:
+    return "\n".join(lines) + "\n" if lines else ""
+
+
+def _block_at(lines: list[str], head: int, path: str, index: int) -> tuple[ReplaceBlock, int]:
+    """The block starting at the SEARCH marker ``head``, and the line index after it."""
+    dividers: list[int] = []
+    for i in range(head + 1, len(lines)):
+        if _TAIL.match(lines[i]):
+            if not dividers:
+                break
+            splits = [(_join(lines[head + 1 : d]), _join(lines[d + 1 : i])) for d in dividers]
+            (search, replace), others = splits[0], tuple(splits[1:])
+            return ReplaceBlock(path, search, replace, index, others), i + 1
+        if _HEAD.match(lines[i]):
+            break  # a new block before this one ended
+        if _DIVIDER.match(lines[i]):
+            dividers.append(i)
     raise EditFormatError(Message("edit.error.block_unterminated", {"index": index}))
 
 
-def parse_replace(text: str) -> ReplaceAnswer:
+def parse_replace(text: str, *, known: Collection[str] = ()) -> ReplaceAnswer:
+    """``known``: the editable paths, so that a path with spaces is still seen as a path."""
     lines = text.replace("\r\n", "\n").split("\n")
     blocks: list[ReplaceBlock] = []
     prose: list[str] = []
@@ -206,15 +236,14 @@ def parse_replace(text: str) -> ReplaceAnswer:
             index = len(blocks) + 1
             if path is None:
                 raise EditFormatError(Message("edit.error.block_no_path", {"index": index}))
-            search, i = _section(lines, i + 1, _DIVIDER, index)
-            replace, i = _section(lines, i, _TAIL, index)
-            blocks.append(ReplaceBlock(path, search, replace, index))
+            block, i = _block_at(lines, i, path, index)
+            blocks.append(block)
             continue
-        if _DIVIDER.match(line) or _TAIL.match(line):
+        if _TAIL.match(line):
             index = len(blocks) + 1
             raise EditFormatError(Message("edit.error.block_unterminated", {"index": index}))
-        if not _FENCE.match(line) and line.strip():
-            found = _path_line(line)
+        if not _FENCE.match(line) and not _DIVIDER.match(line) and line.strip():
+            found = _path_line(line, known)
             if found is not None:
                 path = found
             else:
@@ -257,31 +286,50 @@ def _closest(lines: list[str], search: list[str]) -> str:
     return "\n".join(f"{n + 1}: {lines[n].rstrip()}" for n in range(low, high))
 
 
+def _matches(lines: list[str], search: list[str]) -> list[int]:
+    """Where the SEARCH lines are: exactly, else apart from trailing whitespace."""
+    starts = _windows(lines, search, lambda s: s.removesuffix("\n"))
+    return starts or _windows(lines, search, str.rstrip)
+
+
 def _apply_block(text: str, block: ReplaceBlock, rel: str) -> str:
     lines = _lines(text)
+    # With "=======" inside the content there are several ways to split the block; the
+    # longest SEARCH that matches exactly once is what the worker copied from the file.
+    fits: list[tuple[int, int, str]] = []  # (search lines, start, replace)
+    for search_text, replace_text in [(block.search, block.replace), *block.alternatives]:
+        search = [line.removesuffix("\n") for line in _lines(search_text)]
+        starts = _matches(lines, search) if search else []
+        if len(starts) == 1:
+            fits.append((len(search), starts[0], replace_text))
+    if fits:
+        size, start, replacement = max(fits, key=lambda fit: fit[0])
+        end = start + size
+        if replacement and not lines[end - 1].endswith("\n"):
+            replacement = replacement.removesuffix("\n")  # the last line had no newline
+        return "".join(lines[:start]) + replacement + "".join(lines[end:])
+    # Nothing fits: explain with the first split, the one the worker most likely meant.
     search = [line.removesuffix("\n") for line in _lines(block.search)]
+    params: dict[str, object] = {"path": rel, "index": block.index}
     if not search:
+        raise EditFormatError(Message("edit.error.search_empty", params))
+    starts = _matches(lines, search)
+    if starts:
+        params["count"] = len(starts)
+        raise EditFormatError(Message("edit.error.search_ambiguous", params))
+    params["closest"] = _closest(lines, search)
+    raise EditFormatError(Message("edit.error.search_not_found", params))
+
+
+def _read_text(target: Path, rel: str) -> str:
+    try:
+        raw = target.read_bytes()
+    except OSError as exc:  # locked or no permission: feedback, not a crash
+        detail = exc.strerror or type(exc).__name__
         raise EditFormatError(
-            Message("edit.error.search_empty", {"path": rel, "index": block.index})
-        )
-    starts = _windows(lines, search, lambda s: s.removesuffix("\n"))
-    if not starts:  # same lines apart from trailing whitespace
-        starts = _windows(lines, search, str.rstrip)
-    if len(starts) > 1:
-        raise EditFormatError(Message(
-            "edit.error.search_ambiguous",
-            {"path": rel, "index": block.index, "count": len(starts)},
-        ))  # fmt: skip
-    if not starts:
-        raise EditFormatError(Message(
-            "edit.error.search_not_found",
-            {"path": rel, "index": block.index, "closest": _closest(lines, search)},
-        ))  # fmt: skip
-    start, end = starts[0], starts[0] + len(search)
-    replacement = block.replace
-    if replacement and not lines[end - 1].endswith("\n"):
-        replacement = replacement.removesuffix("\n")  # the file's last line had no newline
-    return "".join(lines[:start]) + replacement + "".join(lines[end:])
+            Message("edit.error.cannot_read", {"path": rel, "error": detail})
+        ) from exc
+    return raw.decode("utf-8-sig", errors="replace").replace("\r\n", "\n")
 
 
 def resolve_replace(answer: ReplaceAnswer, workdir: Path) -> EditAnswer:
@@ -294,9 +342,10 @@ def resolve_replace(answer: ReplaceAnswer, workdir: Path) -> EditAnswer:
         if rel is None or target is None or not target.is_relative_to(root):
             raise InternalError(t("workspace.error.guard", path=block.path))
         if rel not in texts:
+            if target.is_dir():
+                raise EditFormatError(Message("edit.error.not_a_file", {"path": rel}))
             if target.is_file():
-                raw = target.read_bytes()
-                texts[rel] = raw.decode("utf-8-sig", errors="replace").replace("\r\n", "\n")
+                texts[rel] = _read_text(target, rel)
             elif block.search:
                 raise EditFormatError(Message("edit.error.missing_file", {"path": rel}))
             else:

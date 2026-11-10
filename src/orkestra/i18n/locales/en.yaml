@@ -186,6 +186,8 @@ edit.error.search_not_found: "Block {index}: the SEARCH lines are not in {path}.
 edit.error.search_ambiguous: "Block {index}: the SEARCH lines appear {count} times in {path}. Add more surrounding lines so they match exactly one place."
 edit.error.search_empty: "Block {index}: an empty SEARCH only creates a new file, but {path} already exists. Put the lines to change in SEARCH."
 edit.error.missing_file: "{path} does not exist: to create it, leave SEARCH empty and put the whole new file in REPLACE."
+edit.error.not_a_file: "{path} is a directory, not a file: name the file to change."
+edit.error.cannot_read: "{path} cannot be read: {error}"
 edit.warning.not_utf8: "{path} is not UTF-8; an API worker cannot rewrite it without damage, so it is read-only for this task."
 edit.warning.ignored: "{path} is ignored by git, so a change to it could not be applied; it is read-only for this task."
 envelope.changes_unverified: "changes that did not pass the checks: {files} file(s) (+{insertions}/-{deletions}) | review: orkestra show {run_id} --diff"

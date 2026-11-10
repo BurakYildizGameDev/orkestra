@@ -29,6 +29,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 9c (PR #11), 2026-11-10
+10 bulgu, hepsi düzeltildi (D-052):
+- ✅ Kod ajanının yeniden denemesi "baştan başla" ve "baştan başlama" talimatlarını birlikte alıyordu. Not artık sadece API işçilerine gidiyor.
+- ✅ İçerikteki `=======` satırı (setext başlık) bloğu bozuyordu. Artık en uzun eşleşen bölme seçiliyor.
+- ✅ `### yol`, `File: yol` ve boşluklu yollar tanınmıyordu. Düzeltildi, boşluklu yol ancak düzenlenebilir dosyalardan biriyse yol sayılıyor.
+- ✅ Ara/değiştir cevabındaki `{"cannot_do": …}` metni koşuyu yanlışlıkla üst kademeye geçiriyordu. JSON taraması artık sadece `whole`'da.
+- ✅ Biçimi olmayan adayda istem, JSON modu ve ayrıştırıcı birbirini tutmayabiliyordu. Artık tek kaynaktan.
+- ✅ Okunamayan dosya çökertiyordu, klasör yolu "dosya yok" diyordu. İkisi de geri bildirim oldu.
+- ✅ Belgeler ve varsayılanlar hâlâ `replace` diyordu. `auto`'ya göre düzeltildi, `build_edit_messages` biçimi zorunlu istiyor.
+- ✅ Bağlam iki kez oluşturulup tutuluyordu. Artık bir kez.
+- ✅ Envelope `EditFormat`'ı ikinci kez tanımlıyordu. Artık ortak tür kullanılıyor.
+- ✅ PROGRESS'te kişisel yerel yollar vardı. Çıkarıldı (eski iki commit'in geçmişinde duruyor, force-push gerekmesin diye dokunulmadı).
+Testler: 779 geçti (+11).
+
 ### Faz 9c – Ucuz modeller için ara/değiştir düzenlemesi (2026-11-10)
 **Neden:** 9b'de `qwen2.5-coder:14b`, tam dosya biçiminde JSDoc eklerken kodu iki kez bozdu. Kullanıcı kararıyla plana eklendi (D-051).
 
@@ -40,7 +54,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 - Skill: `edit_format` alanı ve ne zaman elle seçileceği, mantığı denetleyen doğrulayıcı önerisi. Skill testi, alan listesinin `TaskSpec` ile birebir aynı olmasını denetliyor.
 - README (en + tr), `example.yaml`, Mimari §8.2, router, `ModelSpec`, envelope örneği.
 
-**Elle ölçüm** (`qwen2.5-coder:14b`, `hesap-makinesi-2`'nin JSDoc öncesi kopyası, AST doğrulayıcısı):
+**Elle ölçüm** (`qwen2.5-coder:14b`, deneme projesinin JSDoc öncesi kopyası, AST doğrulayıcısı):
 | Görev | `whole` | `replace` |
 |---|---|---|
 | 4 dosyaya JSDoc | 0/2 (9b'de) | 0/2: bir satırı yine çoğalttı, sonra "yapılamaz" dedi |
@@ -51,11 +65,10 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 **Kabul kriterleri:**
 - ✅ Ayrıştırma, uygulama ve uçtan uca testler (geri bildirim → düzeltme → `apply`; `whole` seçimi; büyük dosya). ruff, pyright, pytest (768 test) temiz.
 - ❌ / dürüst sonuç: 9b'deki 4 dosyalı JSDoc görevi `replace` ile de geçmedi, model aynı hatayı yaptı. Plan bu durumda fazın biçim olarak kapanmasını öngörüyordu, sonuç yukarıda.
-- ⏳ Faz sonu kod denetimi.
+- ✅ Faz sonu kod denetimi (D-052, aşağıdaki kayıt).
 
 **Bilinen sorunlar:**
 - `qwen2.5-coder:14b` ara/değiştir bloklarını amacına uygun kullanmıyor (büyük SEARCH). Başka modellerle ölçülmedi (Faz 13 benchmark).
-- Deneme klasörü `Desktop/hesap-9c-deneme` ve masaüstündeki `hesap-9c-replace*.json/.err` dosyaları duruyor (kullanıcıya soruldu).
 
 ### Kod denetimi – Faz 9b değişiklikleri (PR #10), 2026-11-10
 10 bulgu: 9'u düzeltildi, 1'inin bir kısmı gerekçesiyle bırakıldı (D-050):
@@ -75,7 +88,7 @@ Testler: 721 geçti (+13).
 **Yapılanlar:**
 - PR #10'un kod denetimi: 10 bulgu, hepsi düzeltildi (D-047, aşağıda ayrı kayıt).
 - İlk elle deneme (skill yüklenmeden): 4 Orkestra hatası düzeltildi (D-048, aşağıda ayrı kayıt).
-- Skill genel olarak (`~/.claude/skills/orkestra`) kuruldu. Temiz bir Claude Code oturumu `hesap-makinesi-2` klasöründe 4 istemle senaryoları çalıştırdı. İşçiler Ollama ve agy idi. Ortaya React (Vite) hesap makinesi çıktı: 21 test, build temiz.
+- Skill genel olarak (`~/.claude/skills/orkestra`) kuruldu. Temiz bir Claude Code oturumu yeni bir deneme klasöründe 4 istemle senaryoları çalıştırdı. İşçiler Ollama ve agy idi. Ortaya React (Vite) hesap makinesi çıktı: 21 test, build temiz.
 - Çıktı kodlaması: yönlendirilmiş çıktı artık UTF-8 (D-049). Skill: Windows'ta `node --test` dosyaları tek tek alır.
 
 **Elle senaryolar (skill yüklü, temiz oturum):**
@@ -100,7 +113,7 @@ Genel: her `apply`'dan önce diff'in tamamı okundu. İşi işçiye vermeden ön
 - Faz 7, 8 ve 10 komutları skill'e o fazlar bitince geri eklenecek (D-046).
 
 **Bilinen sorunlar (D-048, D-049):**
-- agy bağlanamayan MCP sunucusunu beklerken takılıyor. Kullanıcının agy MCP ayarları bu yüzden boşaltıldı; geri kurma notu `~/.gemini/KALDIRILANLAR.md`.
+- agy bağlanamayan MCP sunucusunu beklerken takılıyor. Kullanıcının agy MCP ayarları deneme süresince boşaltılıp sonra yedekten geri kuruldu.
 - Tam dosya edit biçiminde küçük model kod satırı kaybedebiliyor. Doğrulayıcılar yakalıyor.
 - `node_modules` gibi ignore edilen klasörler worktree'de yok.
 - Dışarıdan öldürülen koşu `running` olarak kalıyor.
@@ -109,7 +122,7 @@ Genel: her `apply`'dan önce diff'in tamamı okundu. İşi işçiye vermeden ön
 Claude Code şef, Ollama (qwen2.5-coder:14b) ve agy işçi olarak React (Vite) hesap makinesi yaptı: 3 görev, üçü de ilk denemede geçti, 29 test, build temiz. Şef her `apply`'dan önce diff'i okudu, işçilerin 2 hatasını kendisi düzeltti.
 - ⚠️ **Skill testi sayılmaz:** oturum skill'in olmadığı bir klasörde açıldı, skill yüklenmedi. Şef görev biçimini `--help` ve eski koşu kayıtlarından öğrendi. Senaryolar skill genel kurulu olarak tekrarlanacak.
 - ❌ Onay (senaryo 3'ün karşılığı): şef onay metnini aldı ama kullanıcıya göstermedi, "kullanıcı agy istedi" diye `--yes` kullandı. Skill (yüklü olsaydı) artık bunu yasaklıyor: önce metni göster, açık kabul al.
-- İlk denemede (önceki oturum) agy, Unity MCP sunucusunu beklerken her koşuda ~90 sn takıldı. agy'nin MCP ayarları yedeklenip boşaltıldı (kullanıcının isteğiyle; geri kurma notu `~/.gemini/KALDIRILANLAR.md`).
+- İlk denemede (önceki oturum) agy, Unity MCP sunucusunu beklerken her koşuda ~90 sn takıldı. agy'nin MCP ayarları kullanıcının isteğiyle yedeklenip boşaltıldı, deneme bitince geri kuruldu.
 Bulunan hatalar ve düzeltmeler (D-048):
 - ✅ `gc` deposu silinmiş worktree'yi 30 gün tutuyordu → hemen temizliyor.
 - ✅ `apply`/`discard` sonrası boş depo klasörü kalıyordu → siliniyor.

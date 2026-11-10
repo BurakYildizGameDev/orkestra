@@ -31,8 +31,8 @@ OLLAMA = "http://ollama.test:11434"
 ROUTER = "https://router.test/api/v1"
 MakeRepo = Callable[..., Path]
 
-# These workers answer with whole files (Faz 5c); SEARCH/REPLACE answers (the default since
-# Faz 9c) are tested with ``edit_format: replace`` in the task file.
+# These workers are pinned to whole files (Faz 5c); SEARCH/REPLACE answers (Faz 9c; `auto`
+# picks them above 400 lines) are tested with ``edit_format: replace`` in the task file.
 CONFIG = f"""\
 version: 1
 providers:
@@ -510,3 +510,16 @@ def test_auto_uses_whole_files_for_small_files_and_blocks_for_large_ones(
     route = json.loads(out)
     assert {c["edit_format"] for c in route["candidates"]} == {"replace"}
     assert "edit_too_large" not in {e["code"] for e in route["eliminated"]}
+
+
+@respx.mock
+def test_a_json_cannot_do_literal_inside_a_block_is_code_not_a_refusal(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Review of PR #11: the JSON {"cannot_do": ...} scan belongs to whole-file answers only.
+    answer = _blocks(("calc.py", "    return a - b\n", '    return a + b  # {"cannot_do": "no"}\n'))
+    respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama(answer))
+    task = _task(tmp_path, edit_format="replace", verify=[])
+    code, out, _ = _run(["run", task, "--json"], capsys)
+    assert code == 0, out
+    assert json.loads(out)["status"] == "ok"

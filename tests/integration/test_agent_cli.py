@@ -270,3 +270,4 @@ def test_a_feedback_run_continues_from_the_agents_previous_change(
         (paths.run_dir(envelope["run_id"]) / "attempts" / "2" / "request.json").read_bytes()
     )
     assert "still in the working tree" in second["prompt"]
+    assert "discarded" not in second["prompt"]  # only chat workers start again (Faz 9c)

@@ -220,6 +220,71 @@ def test_the_replace_prompt_shows_how_to_add_lines_above_a_line() -> None:
     from orkestra.tasks.prompts import build_edit_messages
 
     _, user = build_edit_messages(
-        "Add a comment.", Context(), editable=["a.py"], allow_new=False, protected=[]
+        "Add a comment.",
+        Context(),
+        editable=["a.py"],
+        allow_new=False,
+        protected=[],
+        edit_format="replace",
     )
     assert "exactly once" in user and "above" in user
+
+
+# --- code review fixes (PR #11) ----------------------------------------------------------
+
+
+def test_a_divider_line_inside_the_file_content_is_content(tmp_path: Path) -> None:
+    # A setext title underline or a conflict-marker sample looks like "=======".
+    (tmp_path / "README.md").write_bytes(b"Title\n=======\n\nold text\n")
+    text = _block("README.md", "Title\n=======\n\nold text\n", "Title\n=======\n\nnew text\n")
+    assert _resolve(tmp_path, text) == {"README.md": "Title\n=======\n\nnew text\n"}
+
+
+def test_a_divider_line_only_in_replace(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_bytes(b"Title\n\ntext\n")
+    text = _block("README.md", "Title\n", "Title\n=======\n")
+    assert _resolve(tmp_path, text) == {"README.md": "Title\n=======\n\ntext\n"}
+
+
+@pytest.mark.parametrize(
+    "header",
+    ["### src/a.py", "File: src/a.py", "**File:** `src/a.py`", "src/a.py:", "# src/a.py"],
+)
+def test_common_path_headers(header: str) -> None:
+    text = f"{header}\n<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE\n"
+    assert ef.parse_replace(text).blocks[0].path == "src/a.py"
+
+
+def test_a_known_path_with_spaces() -> None:
+    text = _block("docs/user guide.md", "x\n", "y\n")
+    assert ef.parse_replace(text, known=["docs/user guide.md"]).blocks[0].path == (
+        "docs/user guide.md"
+    )
+
+
+def test_a_directory_or_an_unreadable_file_is_feedback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "src" / "pkg").mkdir(parents=True)
+    with pytest.raises(ef.EditFormatError) as exc:
+        ef.resolve_replace(ef.parse_replace(_block("src/pkg", "x\n", "y\n")), tmp_path)
+    assert _keys(exc) == "edit.error.not_a_file"
+    (tmp_path / "a.py").write_bytes(b"x\n")
+
+    def locked(self: Path) -> bytes:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "read_bytes", locked)
+    with pytest.raises(ef.EditFormatError) as exc:
+        ef.resolve_replace(ef.parse_replace(_block("a.py", "x\n", "y\n")), tmp_path)
+    assert _keys(exc) == "edit.error.cannot_read"
+
+
+def test_the_prompt_builder_needs_an_explicit_format() -> None:
+    from orkestra.tasks.context import Context
+    from orkestra.tasks.prompts import build_edit_messages
+
+    with pytest.raises(TypeError):
+        build_edit_messages(  # type: ignore[call-arg]
+            "p", Context(), editable=["a.py"], allow_new=False, protected=[]
+        )

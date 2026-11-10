@@ -51,16 +51,32 @@ def build_edit_messages(
     editable: Sequence[str],
     allow_new: bool,
     protected: Sequence[str],
-    edit_format: EditFormat = "replace",
+    edit_format: EditFormat,
 ) -> tuple[str, str]:
     """Return ``(system, user)`` for an ``edit`` task (Mimari §8.2).
 
-    ``replace``: SEARCH/REPLACE blocks (Faz 9c); ``whole``: whole files as JSON.
+    ``replace``: SEARCH/REPLACE blocks (Faz 9c); ``whole``: whole files as JSON. The format
+    is required: the router chooses it per candidate (``edit_format: auto``).
     """
+    rules = edit_rules(
+        editable=editable, allow_new=allow_new, protected=protected, edit_format=edit_format
+    )
+    return load_prompt("worker_system.md").strip(), f"{edit_body(prompt, context)}\n\n{rules}"
+
+
+def edit_body(prompt: str, context: Context) -> str:
+    """The context and the task: the same for every answer format (rendered once per run)."""
     parts: list[str] = []
     if context.files:
         parts.append("Context files:\n\n" + render_context(context))
     parts.append("Task:\n" + prompt.strip())
+    return "\n\n".join(parts)
+
+
+def edit_rules(
+    *, editable: Sequence[str], allow_new: bool, protected: Sequence[str], edit_format: EditFormat
+) -> str:
+    """The answer format's rules (``prompts/edit_replace.md`` or ``edit_format.md``)."""
     new_files = (
         "You may also create new files."
         if allow_new
@@ -76,8 +92,7 @@ def build_edit_messages(
         .replace("{new_files}", new_files)
         .replace("{protected}", guarded)
     )
-    parts.append(rules.strip())
-    return load_prompt("worker_system.md").strip(), "\n\n".join(parts)
+    return rules.strip()
 
 
 def build_agent_prompt(
