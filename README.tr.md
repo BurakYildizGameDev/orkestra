@@ -42,6 +42,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Profil, gizlilik ve yedeğe geçişli yönlendirme; her sağlayıcının neden seçildiğini/elendiğini görme | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Görev dosyaları (YAML/JSON): cevabı doğrula, geri bildirimle tekrar dene, üst kademeye geç | `orkestra run gorev.yaml [--dry-run] [--json]` |
 | Düzenleme görevleri: işçi kodu yalıtılmış worktree'de değiştirir, karar senin testlerinin | `orkestra run duzenle.yaml`, sonra `show --diff`, `apply` |
+| Batch: bağımlılıklarıyla birçok görev, paralel, her sağlayıcı kendi concurrency sınırında | `orkestra batch tasks.yaml [--parallel N] [--fail-fast] [--json]` |
 | İşçi olarak kod ajanları (Codex CLI, Antigravity): worktree'de, süreç ağacı temizliğiyle | `cli_agent` sağlayıcıları |
 | Bir koşunun envelope'u, tam çıktısı, log'u veya değişikliği | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | Koşunun değişikliğini çalışma ağacına al ya da at | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
@@ -304,6 +305,47 @@ providers:
 
 codex-cli 0.160.0 ve agy 1.5.3 ile denendi.
 
+## Batch: birçok görev birden
+
+```yaml
+parallel: 4                  # aynı anda çalışan görev (varsayılan 4; --parallel ezer)
+tasks:
+  - id: docs-a
+    kind: edit
+    prompt: src/a.py'ye docstring ekle; kodu değiştirme.
+    context: {files: [src/a.py]}
+    verify: [{type: command, run: "python -m pytest -q"}]
+  - id: docs-b
+    kind: edit
+    prompt: src/b.py'ye docstring ekle; kodu değiştirme.
+    context: {files: [src/b.py]}
+    verify: [{type: command, run: "python -m pytest -q"}]
+  - id: ozet
+    kind: ask
+    prompt: src/a.py ve src/b.py'nin ne yaptığını özetle.
+    context: {files: [src/a.py, src/b.py]}
+    depends_on: [docs-a, docs-b]
+```
+
+```bash
+orkestra batch tasks.yaml --json              # tek JSON belgesi: batch_id, results, totals
+orkestra batch tasks.yaml --parallel 2 --fail-fast
+```
+
+- Hiçbir şey başlamadan önce her görev, tek görev dosyası gibi denetlenir. Tekrarlanan
+  kimlikler ve bilinmeyen ya da döngüsel `depends_on` kod 2 verir.
+- `--parallel` ne derse desin, her sağlayıcıya bütün batch boyunca aynı anda en fazla kendi
+  `concurrency` değeri kadar istek gider (Ollama: varsayılan 1).
+- Bağlam dosyaları kesişen düzenleme görevleri uyarıyla sırayla çalışır. İkisi de kendi
+  worktree'sinde senin dosyalarından başlar, bu yüzden ikisini birden uygulamak çakışabilir.
+- Bağımlılığı `ok` bitmeyen görev `skipped` olur. `--fail-fast` ilk başarısızlıktan sonra yeni
+  görev başlatmaz. Çöken bir görev `error` olur, diğerleri devam eder.
+- Bağımlılık sadece sırayı belirler, uygulanmamış değişikliği sonraki göreve aktarmaz.
+  Başka bir görevin değişikliğine ihtiyaç duyan görev, `apply`'dan sonra ayrı bir batch'e
+  konur.
+- Çıkış kodu: her görev `ok` ise 0, değilse 1. Her sonuçta görevin zarfı vardır; iyi olanları
+  `orkestra apply <run_id>` ile uygula (toplu apply Faz 7b'de geliyor).
+
 ## Worktree'ler: yalıtılmış değişiklikler
 
 İşçiler senin çalışma kopyanı asla değiştirmez. Kod değiştiren bir koşu `~/.orkestra/worktrees/`
@@ -454,7 +496,8 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 5b | Git worktree, `show`, `apply`, `discard`, `gc` | ✅ |
 | 5c | API işçileriyle düzenleme görevleri | ✅ |
 | 6 | Kod ajanları: Codex CLI, Antigravity CLI | ✅ |
-| 7 | Toplu çalıştırma, paralellik, maliyet tahmini | ⏳ |
+| 7a | Batch: bağımlılıklar, paralellik, sağlayıcı başına sınır | ✅ |
+| 7b | Maliyet tahmini, toplu apply, `stats` | ⏳ |
 | 8 | Şef araçları: `status`, `review`, `map`, şablonlar, `plan expand`, önbellek, tasarruf sayacı | ⏳ |
 | 9a | Claude skill: `SKILL.md`, CLI ile denetlenmiş | ✅ |
 | 9b | Claude skill: denetim ve elle senaryolar | ✅ |

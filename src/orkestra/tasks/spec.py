@@ -220,6 +220,11 @@ def effective_verifiers(task: TaskSpec) -> list[VerifierSpec]:
 TASK_UNION_TAGS = {"verify": VERIFIER_TYPES}
 
 
+def read_document(path: Path) -> Any:
+    """A task or batch file as data: YAML, or JSON for ``.json``; problems are usage errors."""
+    return _read(path)
+
+
 def _read(path: Path) -> Any:
     if path.suffix.lower() != ".json":
         try:

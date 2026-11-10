@@ -443,3 +443,16 @@ Mimari §8.2, router (edit kuralı), `ModelSpec`, envelope örneği güncellendi
 - **Envelope**, `EditFormat` türünü `config/schema.py`'den alıyor; iki kopya yok.
 - **Belgeler:** modül açıklaması ve test yorumu `auto` varsayılanını anlatıyor. PROGRESS/DECISIONS'tan kullanıcının yerel klasör adları ve not dosyası yolu çıkarıldı (AGENTS.md: kişisel yol commit'e girmez). Daha önce `main`'e girmiş iki commit'in geçmişinde bu adlar duruyor; geçmişi yeniden yazmak force-push gerektirdiği için dokunulmadı.
 Mimari §8.2 güncellendi.
+
+## D-053 – Batch motoru (2026-11-10, Faz 7a)
+**Bağlam:** Faz 7, kota yüzünden 7a (batch motoru) ve 7b (tahmin, toplu apply, stats) olarak ikiye bölündü. Mimari §12 bazı ayrıntıları açık bırakıyordu.
+**Karar:**
+- **Batch dosyası:** `{tasks: [...], parallel: N}` dışında anahtar kabul edilmiyor. Her görev, tek görev dosyası gibi `parse_task` ile denetleniyor; hata mesajında `dosya tasks[i]` geçiyor. Tekrarlanan id, bilinmeyen ya da döngüsel `depends_on` → kod 2. Döngü hatası sadece döngüdeki görevleri listeliyor.
+- **Sıra:** önce bağımlılıklar (topolojik), eşitlikte dosya sırası. Kesişen düzenleme görevleri bu sıraya göre sırayla çalışıyor ("after", bekleme ama `skipped` yok). Böylece dosya sırası bağımlılıkla çelişse bile döngü oluşmuyor.
+- **Kesişim:** `context.files` ve `context.globs`'un `workspace`'e göre çözülmüş mutlak yollarıyla bulunuyor. Farklı `workspace`'teki aynı adlı dosyalar kesişmiyor. Uyarı, ikisini birden uygulamanın çakışabileceğini söylüyor, çünkü iki görev de kullanıcının dosyalarından başlıyor.
+- **Bağımlılığın anlamı:** sadece sıra ve "başarısızsa atla". Bağımlı görev, bağımlı olduğu görevin uygulanmamış değişikliğini görmüyor. Değişikliğe ihtiyaç varsa önce `apply`, sonra ayrı bir batch. Bu README'de ve (7b'de) skill'de yazıyor.
+- **Eşzamanlılık:** `--parallel` (varsayılan: dosyadaki `parallel`, o da yoksa 4) aynı anda çalışan görev sayısı. Ayrıca her sağlayıcı için `concurrency` boyutunda bir semafor (`runner.ProviderSlots`) bütün görevlerce paylaşılıyor, chat istekleri ve ajan koşuları ondan geçiyor. Tek koşu (`run`/`ask`) kendi semaforunu alıyor.
+- **Hatalar:** bir görevin `OrkestraError`'ı (sağlayıcı yok, onay, bozuk bağlam) ya da beklenmeyen istisnası o görevin `error` maddesi oluyor, batch devam ediyor. `KeyboardInterrupt`/iptal yayılıyor. `--fail-fast`: ilk `ok` olmayan sonuçtan sonra başlamamış görevler `skipped`, çalışanlar bitiyor.
+- **Çıktı:** `BatchEnvelope` (`batch_version: 1`): sonuçlar dosya sırasında, her biri görevin zarfıyla. İnsan modunda her görev bitince stderr'e bir satır, sonda stdout'a liste ve toplam. Çıkış kodu: hepsi `ok` ise 0, değilse 1 (2: batch dosyası hatası).
+- **`runs.batch_id`** sütunu (ilk şemadan beri vardı) artık yazılıyor, yeni migration gerekmedi. Batch kimliği `b-` + koşu kimliği biçiminde.
+Mimari §12, §13 güncellendi.

@@ -15,7 +15,8 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 5b – Worktree | ✅ | 2026-11-10 | worktree (kirli ağaç dahil), `show`, `apply`, `discard`, `gc` (D-040) |
 | 5c – API ile edit | ✅ | 2026-11-10 | tam dosya JSON, yol güvenliği, worktree'de doğrulama, kesilmede kademe 3 (D-042) |
 | 6 – CLI ajanları | ✅ | 2026-11-10 | codex, agy (deneysel), generic; süreç ağacı temizliği, dışarı yazma tespiti (D-044) |
-| 7 – Batch + tahmin | ⏳ | | |
+| 7a – Batch motoru | ✅ | 2026-11-10 | `orkestra batch`, DAG, sağlayıcı semaforu, kesişen edit'ler sırayla (D-053) |
+| 7b – Tahmin, toplu apply, stats | ⏳ | | |
 | 8a – status, şablon, önbellek, sayaç | ⏳ | | |
 | 8b – review, map, plan expand | ⏳ | | |
 | 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
@@ -28,6 +29,33 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 7a – Batch motoru (2026-11-10)
+**Yapılanlar:**
+- `tasks/batch.py`:
+  - `load_batch`: batch dosyası, her görev için `parse_task`, id/bağımlılık/döngü denetimi.
+  - `plan_batch`: topolojik sıra, kesişen edit görevleri için "sonra" sırası ve uyarı.
+  - `run_batch`: `--parallel` kapısı, paylaşılan sağlayıcı semaforu, `skipped`, `--fail-fast`, görev hatası/istisnası `error` maddesi.
+- `runner.ProviderSlots`: sağlayıcı başına `concurrency` semaforu. Chat istekleri ve ajan koşuları ondan geçiyor. `run_task(slots=…, batch_id=…)`.
+- `runs.batch_id` yazılıyor (`db.record_run_start`).
+- `envelope.BatchEnvelope` (`batch_version: 1`), insan modu satırları ve toplamı.
+- `orkestra batch <dosya> [--parallel N] [--fail-fast] [--profile] [--allow-secrets] [--json]`.
+- README (en + tr): "Batch" bölümü, özellik tablosu, yol haritası (7a/7b).
+
+**Kabul kriterleri (7a kısmı):**
+- ✅ 20 sahte görev, `--parallel 4`, `concurrency: 1` olan sağlayıcıya aynı anda en fazla 1 istek gidiyor. Sayaçlı sahte sağlayıcıyla doğrulandı (`test_twenty_tasks_never_send_more_than_the_provider_concurrency`). `concurrency: 3` ile tam 3, `--parallel 2` ile tam 2 ayrıca denendi.
+- ✅ Kesişen dosyalı iki edit görevi sırayla çalışıyor, uyarı yazılıyor (`test_edit_tasks_on_the_same_file_run_one_after_the_other`; gerçek git, kesişmeyen görev paralel).
+- ✅ Döngüsel `depends_on` → kod 2, hiçbir istek gitmiyor.
+- ✅ Bir görev başarısız → bağımlısı ve onun bağımlısı `skipped`, diğerleri devam ediyor.
+- ✅ Tuzak: bir görevin istisnası batch'i düşürmüyor (`test_a_crashing_task_does_not_bring_the_batch_down`). Sağlayıcısı olmayan görev `error` maddesi oluyor.
+- ⏳ `--estimate` / `--yes-cost` → Faz 7b.
+- ✅ ruff, ruff format, pyright, pytest (806 test) temiz.
+
+**Ertelenenler (7b):** `batch --estimate` ve `--yes-cost`, `apply --batch <id> --only-ok`, `stats`, skill'e `batch`'in geri eklenmesi (D-046).
+
+**Bilinen sorunlar:**
+- Kesişen edit görevleri sırayla çalışsa da ikisi de kullanıcının dosyalarından başlıyor, ikisini birden uygulamak çakışabilir (uyarıda yazıyor; toplu apply 7b'de).
+- Bağımlı görev, bağımlı olduğu görevin uygulanmamış değişikliğini görmüyor (tasarım gereği, D-053).
 
 ### Kod denetimi – Faz 9c (PR #11), 2026-11-10
 10 bulgu, hepsi düzeltildi (D-052):

@@ -99,12 +99,13 @@ def record_run_start(
     kind: str,
     started_at: datetime,
     tags: Sequence[str] = (),
+    batch_id: str | None = None,
 ) -> None:
     with transaction(conn):
         conn.execute(
-            "INSERT INTO runs (run_id, task_id, kind, status, started_at, attempts, tags) "
-            "VALUES (?, ?, ?, 'running', ?, 0, ?)",
-            (run_id, task_id, kind, started_at.isoformat(), json.dumps(list(tags))),
+            "INSERT INTO runs (run_id, task_id, kind, status, started_at, attempts, tags, "
+            "batch_id) VALUES (?, ?, ?, 'running', ?, 0, ?, ?)",
+            (run_id, task_id, kind, started_at.isoformat(), json.dumps(list(tags)), batch_id),
         )
 
 

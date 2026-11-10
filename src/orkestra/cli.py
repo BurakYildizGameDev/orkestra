@@ -25,7 +25,7 @@ from orkestra.providers import registry
 from orkestra.routing.router import Route, describe_candidates
 from orkestra.security.redact import Redactor, config_for_display, configured_secrets
 from orkestra.state import consent, db
-from orkestra.tasks import runner, spec
+from orkestra.tasks import batch, runner, spec
 from orkestra.workspace import service
 
 
@@ -469,6 +469,46 @@ def build_app() -> typer.Typer:
         task = spec.load_task(task_file)
         options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets)
         _execute(task, loaded.config, options, dry_run=dry_run, as_json=as_json)
+
+    @app.command("batch", help=t("cli.batch.help"))
+    def batch_command(
+        ctx: typer.Context,
+        batch_file: Annotated[Path, typer.Argument(metavar="FILE", help=t("cli.batch.arg.file"))],
+        parallel: Annotated[
+            int | None,
+            typer.Option("--parallel", metavar="N", min=1, help=t("cli.batch.option.parallel")),
+        ] = None,
+        fail_fast: Annotated[
+            bool, typer.Option("--fail-fast", help=t("cli.batch.option.fail_fast"))
+        ] = False,
+        allow_secrets: Annotated[
+            bool, typer.Option("--allow-secrets", help=t("cli.ask.option.allow_secrets"))
+        ] = False,
+        profile: Annotated[
+            str | None,
+            typer.Option("--profile", metavar="NAME", help=t("cli.ask.option.profile")),
+        ] = None,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+        spec = batch.load_batch(batch_file)
+        plan = batch.plan_batch(spec, cwd=Path.cwd())
+        for warning in plan.warnings:
+            typer.echo(warning, err=True)
+        progress = (
+            None if as_json else (lambda item: typer.echo(envelope.batch_line(item), err=True))
+        )
+        document, code = asyncio.run(
+            batch.run_batch(
+                spec, plan, loaded.config,
+                runner.RunOptions(profile=profile, allow_secrets=allow_secrets),
+                parallel=parallel or spec.parallel or batch.DEFAULT_PARALLEL,
+                fail_fast=fail_fast, on_done=progress,
+            )
+        )  # fmt: skip
+        typer.echo(envelope.to_json(document) if as_json else envelope.batch_summary(document))
+        if code:
+            raise typer.Exit(code)
 
     @app.command("show", help=t("cli.show.help"))
     def show_command(

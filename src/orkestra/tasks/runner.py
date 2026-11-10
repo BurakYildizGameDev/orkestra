@@ -153,6 +153,22 @@ def new_run_id(now: datetime | None = None, token: str | None = None) -> str:
     return f"{moment:%Y%m%d-%H%M%S}-{token or secrets.token_hex(2)}"
 
 
+class ProviderSlots:
+    """Requests in flight per provider, at most its ``concurrency`` (Mimari §12).
+
+    One instance is shared by all tasks of a batch; a single run gets its own.
+    """
+
+    def __init__(self, config: Config) -> None:
+        self._limits = {name: provider.concurrency for name, provider in config.providers.items()}
+        self._slots: dict[str, asyncio.Semaphore] = {}
+
+    def __call__(self, provider: str) -> asyncio.Semaphore:
+        if provider not in self._slots:
+            self._slots[provider] = asyncio.Semaphore(self._limits.get(provider, 1))
+        return self._slots[provider]
+
+
 @dataclass(frozen=True)
 class RunOptions:
     """Command line choices that are not part of the task itself."""
@@ -448,7 +464,10 @@ async def run_task(
     sleep: Sleep | None = None,
     rand: Callable[[], float] = random.random,
     policy: retry.RetryPolicy | None = None,
+    slots: ProviderSlots | None = None,
+    batch_id: str | None = None,
 ) -> TaskOutcome:
+    """Run one task. A batch passes shared ``slots`` and its ``batch_id`` (Faz 7a)."""
     env = os.environ if environ is None else environ
     prep = _prepare(task, options or RunOptions(), config, env, cwd)
     state = db.connect() if conn is None else conn
@@ -458,7 +477,8 @@ async def run_task(
         if not planned.candidates:
             raise planned.error()
         runner = _TaskRun(prep, state, planned, started_at, now, clock, sleep or _sleep, rand,
-                          policy or retry.RetryPolicy())  # fmt: skip
+                          policy or retry.RetryPolicy(),
+                          slots=slots, batch_id=batch_id)  # fmt: skip
         return await runner.run()
     finally:
         if conn is None:
@@ -502,6 +522,9 @@ class _TaskRun:
         sleep: Sleep,
         rand: Callable[[], float],
         policy: retry.RetryPolicy,
+        *,
+        slots: ProviderSlots | None = None,
+        batch_id: str | None = None,
     ) -> None:
         self.prep = prep
         self.task = prep.task
@@ -513,6 +536,8 @@ class _TaskRun:
         self.sleep = sleep
         self.rand = rand
         self.policy = policy
+        self.slots = slots or ProviderSlots(prep.config)
+        self.batch_id = batch_id
         self.run_id = new_run_id(started_at.replace(tzinfo=None))
         self.run_dir = paths.run_dir(self.run_id)
         self.attempts = 0
@@ -559,7 +584,7 @@ class _TaskRun:
     async def run(self) -> TaskOutcome:
         db.record_run_start(
             self.conn, run_id=self.run_id, task_id=self.task.id, kind=self.task.kind,
-            started_at=self.started_at, tags=self.task.tags,
+            started_at=self.started_at, tags=self.task.tags, batch_id=self.batch_id,
         )  # fmt: skip
         with run_log(self.run_dir, self.prep.redact) as log:
             self.log = log
@@ -687,7 +712,8 @@ class _TaskRun:
                 f", edit_format {self.edit_format}" if self.edit_format else "",
             )  # fmt: skip
             try:
-                result = await provider.complete(completion)
+                async with self.slots(candidate.provider):  # the provider's concurrency
+                    result = await provider.complete(completion)
             except ProviderError as exc:
                 if isinstance(exc, ProviderTimeout):
                     # The provider may have processed (and billed) it: keep the estimate.
@@ -834,7 +860,8 @@ class _TaskRun:
             before = gw.status_snapshot(repo) if repo is not None else None
             scope = _Scope(repo, before)
             try:
-                result = await agent.run(req)
+                async with self.slots(candidate.provider):
+                    result = await agent.run(req)
             except ProviderError as exc:
                 if isinstance(exc, ProviderTimeout):
                     budget.settle_as_reserved(self.conn, reservation, now=self.now())

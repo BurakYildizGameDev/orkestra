@@ -80,7 +80,42 @@ class ResultEnvelope(BaseModel):
     error: str | None = None
 
 
-def to_json(envelope: ResultEnvelope) -> str:
+BATCH_VERSION = 1
+BatchStatus = Literal["ok", "failed", "escalate", "error", "skipped"]
+
+
+class BatchItem(BaseModel):
+    """One task of a batch: its envelope, or why it has none (skipped, failed to start)."""
+
+    task_id: str
+    status: BatchStatus
+    exit_code: int
+    run_id: str | None = None
+    envelope: ResultEnvelope | None = None
+    error: str | None = None  # skipped: why; error: what went wrong
+
+
+class BatchTotals(BaseModel):
+    ok: int = 0
+    failed: int = 0
+    escalate: int = 0
+    error: int = 0
+    skipped: int = 0
+    cost_usd: float | None = None  # None when no task reported a cost
+
+
+class BatchEnvelope(BaseModel):
+    """``orkestra batch --json``: one document for the whole batch (Mimari §13)."""
+
+    batch_version: Literal[1] = BATCH_VERSION
+    batch_id: str
+    results: list[BatchItem] = Field(default_factory=list)
+    totals: BatchTotals = Field(default_factory=BatchTotals)
+    warnings: list[str] = Field(default_factory=list)
+    duration_s: float = 0.0
+
+
+def to_json(envelope: ResultEnvelope | BatchEnvelope) -> str:
     # ASCII escapes keep the document intact on non-UTF-8 Windows pipes.
     return json.dumps(envelope.model_dump(mode="json"), indent=2)
 
@@ -95,6 +130,33 @@ def summarize_text(text: str, output_path: str | None, limit: int = SUMMARY_CHAR
         cut = cut.rsplit(" ", 1)[0]
     suffix = t("envelope.full_text", path=output_path) if output_path else ""
     return f"{cut}… {suffix}".rstrip()
+
+
+def batch_line(item: BatchItem) -> str:
+    """One task of a batch, for humans (progress on stderr, and the final list)."""
+    env = item.envelope
+    where = f"{env.provider}/{env.model}" if env is not None and env.provider else "-"
+    detail = item.error or (env.summary if env is not None else "") or ""
+    return t(
+        "batch.line", status=item.status, id=item.task_id, where=where,
+        run_id=item.run_id or "-", detail=" ".join(detail.split())[:120],
+    ).rstrip()  # fmt: skip
+
+
+def batch_summary(document: BatchEnvelope) -> str:
+    """The whole batch for humans: one line per task, then the totals."""
+    totals = document.totals
+    cost = "-" if totals.cost_usd is None else f"${totals.cost_usd:.4f}"
+    lines = [t("batch.header", batch_id=document.batch_id)]
+    lines += [batch_line(item) for item in document.results]
+    lines.append(
+        t(
+            "batch.totals", ok=totals.ok, failed=totals.failed, escalate=totals.escalate,
+            error=totals.error, skipped=totals.skipped, cost=cost,
+            seconds=f"{document.duration_s:.1f}",
+        )
+    )  # fmt: skip
+    return "\n".join(lines)
 
 
 def human_summary(envelope: ResultEnvelope) -> str:
