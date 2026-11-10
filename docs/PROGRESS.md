@@ -19,7 +19,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 8a – status, şablon, önbellek, sayaç | ⏳ | | |
 | 8b – review, map, plan expand | ⏳ | | |
 | 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
-| 9b – Skill doğrulama | ⏳ | | kod denetimi, elle senaryolar, düzeltmeler |
+| 9b – Skill doğrulama | 🔄 | | kod denetimi ✅ (D-047); elle senaryolar ve düzeltmeler bekliyor |
 | 10 – Şef devri | ⏳ | | |
 | 11 – Arayüz, sihirbaz, 5 dil | ⏳ | | |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
@@ -27,6 +27,21 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 9a (PR #10), 2026-11-10 (Faz 9b)
+10 bulgu, hepsi düzeltildi (D-047):
+- ✅ Çakışma talimatı (`apply` kod 5) çakışmayan dosyalardaki değişiklikleri kaybettiriyordu: `apply` çakışmada hiçbir dosya yazmaz, skill ise sadece çakışanları düzeltip `discard` diyordu. Artık diff'teki her dosya elle uygulanıyor, sonra `discard`.
+- ✅ "Her `--json` hatası `{"error": …}`" yanlıştı: bütün adaylar koşu sırasında başarısız olunca sonuç zarfı gelir (`status: error`, `failovers`). Ayrıştırıcı hatasında stdout boştur. İkisi de skill'de anlatılıyor.
+- ✅ `consent: changed` ve `enabled: false` skill'de yoktu. Eklendi.
+- ✅ `providers enable` etkileşimsiz terminalde kod 2 veriyor, skill bunu "görev dosyasını düzelt" diye okutuyordu. Artık kullanıcıdan komutu kendi terminalinde çalıştırması isteniyor, kod 2 tablosu genişletildi.
+- ✅ Görev alanları eksikti: `id` harf veya rakamla başlamalı (hata mesajı da düzeltildi), `verify_defaults`, `tags`, `depends_on` eklendi, 2000 satır sınırı aşılınca ne yapılacağı yazıldı.
+- ✅ Test: `--lang=en` biçimi sonraki kelimeyi yutuyordu. Düzeltildi.
+- ✅ Test: `--help` ve `orkestra --version` "yok" sayılıyordu. Düzeltildi.
+- ✅ Test: önekleri olmadan geçen komut ve bayraklar (`apply --force`, `providers enable`, `--dry-run`, `--local-only`, `--schema`) denetlenmiyordu. Artık denetleniyor. Faz 9a'daki "sadece `orkestra` ile başlayan çağrılar denetlenir" bilinen sorunu kapandı.
+- ✅ Test: eksik ya da fazla argüman ve olmayan kısa seçenek (`show --diff`, `ask x -y`) geçiyordu. Artık kod bloklarındaki çağrılarda yakalanıyor. Satır içi kod bir komutu sadece andığı için orada argüman sayısı denetlenmiyor.
+- ✅ Test: değer alan global seçenekler elle yazılmış listeden okunuyordu. Artık click parametresinden okunuyor.
+Mutasyon denetimi: skill'de `--local-only`, `--dry-run`, `apply --force`, `providers enable` ve `show <run_id>` bozulunca test kırılıyor.
+Testler: 703 geçti (+20). SKILL.md 165 satır.
 
 ### Faz 9a – Skill dosyası (2026-11-10)
 **Yapılanlar:**

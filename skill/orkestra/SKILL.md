@@ -34,7 +34,8 @@ orkestra doctor --json            # config, sağlayıcı erişimi, anahtar deği
 orkestra providers list --json    # onay (consent), sağlık, kalan bütçe
 ```
 
-- `providers list` içinde `"consent": "missing"` olan sağlayıcıyı Orkestra kullanmaz. Kullanmak istediğin sağlayıcı onaysızsa **kullanıcıya sor** ve komutu onun çalıştırmasını iste: `orkestra providers enable <ad>`. Komut, sağlayıcının neler yapabileceğini gösterip kullanıcıdan onay ister. `--yes` bayrağını kullanıcı açıkça izin vermeden **asla** kullanma.
+- Orkestra yalnızca `"enabled": true` ve `"consent": "granted"` olan sağlayıcıları kullanır. `"consent": "missing"` hiç onay verilmemiş demektir. `"consent": "changed"` ise onaydan sonra sağlayıcının ayarları (adres, model vb.) değişmiş demektir ve yeniden onay gerekir. `"enabled": false` olan sağlayıcıyı kullanıcı kapatmıştır, onu açmayı önerme.
+- Kullanmak istediğin sağlayıcının onayı eksikse **kullanıcıya sor** ve `orkestra providers enable <ad>` komutunu **kendi terminalinde** çalıştırmasını iste. Komut, sağlayıcının neler yapabileceğini gösterip etkileşimli olarak onay ister. Bu yüzden komutu sen çalıştırma: terminal etkileşimli olmadığında kod 2 ile `consent.not_interactive` hatası verir. Bu hata görev dosyasıyla ilgili değildir. `--yes` bayrağını kullanıcı açıkça izin vermeden **asla** kullanma.
 - Hiç sağlayıcı yoksa (`orkestra init` ile config oluşturulmamış) kurulumu kullanıcıya bırak, işi kendin yap.
 - Bir görevin nereye gideceğini merak ediyorsan önce `--dry-run` ile bak; hiçbir şey göndermez, adayları ve elenen sağlayıcıları nedenleriyle listeler (`candidates`, `eliminated`).
 
@@ -44,13 +45,16 @@ orkestra providers list --json    # onay (consent), sağlık, kalan bütçe
 |---|---|---|
 | 0 | Başarılı | Zarfı oku, denetle |
 | 1 | Görev doğrulamayı geçemedi (`failed` / `escalate`) | Bkz. §6 |
-| 2 | Config veya kullanım hatası (görev dosyası geçersiz vb.) | Mesajı oku, görev dosyasını düzelt |
+| 2 | Config veya kullanım hatası (görev dosyası geçersiz, yanlış bayrak/değer, etkileşimsiz onay vb.) | Mesajı oku; görev dosyası veya komut hatalıysa düzelt |
 | 3 | Uygun sağlayıcı yok (bütçe bitti, hepsi erişilemez, gizli bilgi, anahtar yok) | Nedenleri kullanıcıya özetle; limitleri kendin değiştirme |
-| 4 | Kullanıcı onayı gerekli | Kullanıcıya sor, `providers enable` komutunu onun çalıştırmasını iste |
+| 4 | Kullanıcı onayı gerekli | Kullanıcıya sor, `providers enable` komutunu kendi terminalinde çalıştırmasını iste |
 | 5 | `apply` çakışması: hiçbir şey yazılmadı, worktree duruyor | Bkz. §6 |
 | 10 | Beklenmeyen iç hata | Kullanıcıya bildir, işi kendin yap |
 
-`--json` ile hata da tek bir JSON belgesi olarak gelir: `{"error": {"code": 4, "type": "ConsentRequired", "message": "...", "details": ["..."]}}`. `details` satırları hangi sağlayıcının neden elendiğini söyler.
+`--json` ile hatalar üç biçimde gelir:
+- Koşu başlamadan çıkan hata (onay yok, uygun sağlayıcı yok, görev dosyası geçersiz) stdout'ta tek bir JSON belgesidir: `{"error": {"code": 4, "type": "ConsentRequired", "message": "...", "details": ["..."]}}`. `details` satırları hangi sağlayıcının neden elendiğini söyler.
+- Koşu başladıktan sonra bütün adaylar başarısız olursa normal sonuç zarfı gelir: `status: error`, `error` alanında kısa metin, nedenler `failovers` içinde (kod 3).
+- Komut satırı ayrıştırılamazsa (bilinmeyen bayrak, aralık dışı değer, eksik argüman) stdout boş kalır, mesaj stderr'e yazılır (kod 2). Komutu düzelt.
 
 ## 3. Kademe seçimi
 
@@ -94,7 +98,7 @@ verify:
 allow_new_files: false
 ```
 
-Alanlar: `id` (harf/rakam, `.`, `_`, `-`), `kind` (`ask` | `edit`), `tier` (1–3), `prompt`, `context.files` / `context.globs`, `verify`, `privacy` (`normal` | `local_only`), `allow_new_files`, `output` (`format: json`, `schema: dosya.json`), `limits` (`timeout_s`, `max_retries`), `workspace`, `provider`, `model`. Bilinmeyen alan hata verir (kod 2).
+Alanlar: `id` (harf veya rakamla başlar, sonra harf/rakam, `.`, `_`, `-`), `kind` (`ask` | `edit`), `tier` (1–3), `prompt`, `context.files` / `context.globs`, `verify`, `verify_defaults` (bkz. aşağı), `privacy` (`normal` | `local_only`), `allow_new_files`, `output` (`format: json`, `schema: dosya.json`), `limits` (`timeout_s`, `max_retries`), `workspace`, `provider`, `model`, `tags` (kayıtta görünen etiketler), `depends_on` (şimdilik kullanılmıyor). Bilinmeyen alan hata verir (kod 2).
 
 Doğrulayıcılar (`verify`):
 - `command`: komut 0 ile bitmeli (`run`, `timeout_s`; boru veya `&&` gerekiyorsa `shell: true`).
@@ -102,7 +106,7 @@ Doğrulayıcılar (`verify`):
 - `max_changed_files`, `max_diff_lines`: değişikliğin boyut sınırı (`value`).
 - `files_exist`: dosyalar oluşmalı (`paths`). `regex`: cevapta `must_match` / `must_not_match`. `json_schema`: cevap JSON ve şemaya uygun (`schema`).
 
-Her `edit` görevine Orkestra kendiliğinden `.env`, `*.pem`, `*.key`, `.git/**` yasağı ve `max_diff_lines: 2000` ekler; yine de **her `edit` görevinde en az bir anlamlı doğrulayıcı** (genelde testleri çalıştıran `command` + `protect_paths`) olsun.
+Her `edit` görevine Orkestra kendiliğinden `.env`, `*.pem`, `*.key`, `.git/**` yasağı ve `max_diff_lines: 2000` ekler. Meşru bir değişiklik 2000 satırı aşıyorsa görevi bölmeyi tercih et. Bölünemiyorsa `verify_defaults: false` yaz ve dosya yasağını kendi `forbid_paths` doğrulayıcınla geri ekle. Yine de **her `edit` görevinde en az bir anlamlı doğrulayıcı** (genelde testleri çalıştıran `command` + `protect_paths`) olsun.
 
 Düzenleme görevleri hakkında bilmen gerekenler:
 - İşçi, kullanıcının deposunda değil ayrı bir git worktree'sinde çalışır; senin onayın (`apply`) olmadan kullanıcının dosyalarına hiçbir şey yazılmaz. Depoda en az bir commit olmalı; commit edilmemiş değişiklikler worktree'ye taşınır.
@@ -141,7 +145,7 @@ orkestra show <run_id> --json     # zarfı tekrar al
 `status: ok` olsa bile:
 1. `orkestra show <run_id> --diff` ile değişikliği oku. Değişiklik güvenlik, kimlik doğrulama veya veri silme ile ilgiliyse diff'in **tamamını** satır satır oku. Doğrulayıcıların yakalayamayacağı şeylere bak: mantık hatası, gereksiz değişiklik, stil uyumsuzluğu, güvenlik, istenmeyen dosyalar.
 2. Uygunsa: `orkestra apply <run_id>`. Değilse: `orkestra discard <run_id>` ve ya istemi iyileştirip tekrar çalıştır ya da kendin yap.
-3. `apply` çakışma verirse (kod 5) hiçbir şey yazılmamıştır ve worktree durur: çakışan dosyaları kullanıcının son haline göre kendin düzenle (diff'i rehber al), sonra `orkestra discard <run_id>`.
+3. `apply` çakışma verirse (kod 5) **hiçbir dosya** yazılmamıştır, çakışmayanlar da yazılmamıştır. Worktree durur. Hata `details` içinde sadece çakışan dosyaları listeler. Değişikliğin tamamı `orkestra show <run_id> --diff` içindedir. Diff'teki **her dosyayı** kendin uygula: çakışmayanları olduğu gibi, çakışanları kullanıcının son haliyle birleştirerek. Bütün dosyaları uyguladıktan sonra `orkestra discard <run_id>` çalıştır. Emin değilsen önce kullanıcıya sor.
 
 `apply` sadece `status: ok` koşuları uygular. `--force` (doğrulamayı geçmemiş değişikliği uygulamak) bayrağını kullanıcı açıkça istemeden **asla** kullanma.
 

@@ -370,3 +370,13 @@ Mimari §5.3, §5.4 güncellendi.
 4. **Dil:** Ek'teki gibi Türkçe (Faz 14'te İngilizceye çevrilecek); ön bilgi (`description`) İngilizce.
 5. **Test** (`tests/unit/test_skill.py`): skill'deki her `orkestra …` çağrısı (kod blokları ve satır içi kod) gerçek typer uygulamasına karşı denetlenir: komut, alt komut ve bayraklar var olmalı. Örnek görev dosyaları `parse_task` ile geçerli olmalı; dosya ≤ 500 satır. Böylece bir komut yeniden adlandırılırsa veya skill'e henüz olmayan bir komut yazılırsa test kırılır.
 Mimari "Ek: Skill dosyası" hedef (tam) sürüm olarak kaldı; başına bu karara işaret eden not eklendi ve `--context` kullanımı düzeltildi.
+
+## D-047 – Faz 9a kod denetimi düzeltmeleri (2026-11-10, Faz 9b)
+**Bağlam:** PR #10 için `/code-review`: 10 bulgu (5'i skill metninde, 5'i skill testinde). Hepsi düzeltildi.
+**Karar:**
+- **Çakışmada değişikliğin tamamı elle uygulanır:** `apply` çakışmada hiçbir dosya yazmaz ve hata sadece çakışan dosyaları listeler. Skill önceden "çakışan dosyaları düzenle, sonra `discard`" diyordu, bu da çakışmayan dosyalardaki doğrulanmış değişiklikleri kaybettiriyordu. Artık diff'teki her dosya uygulanır, sonra `discard` çalıştırılır.
+- **Hata biçimleri:** `--json` hatası her zaman `{"error": …}` değildir. Koşu başladıktan sonra bütün adaylar başarısız olursa sonuç zarfı gelir (`status: error`, nedenler `failovers` içinde, kod 3). Ayrıştırıcı hatasında (bilinmeyen bayrak, aralık dışı değer) stdout boştur, mesaj stderr'e yazılır (kod 2). Skill ikisini de anlatıyor.
+- **Onay durumları:** skill `consent: changed` (onaydan sonra ayar değişti) ve `enabled: false` durumlarını da anlatıyor. `providers enable` etkileşimli terminal ister (yoksa kod 2, `consent.not_interactive`). Claude bu komutu kendisi çalıştırmaz, kullanıcıdan kendi terminalinde çalıştırmasını ister.
+- **Görev alanları:** `id` harf veya rakamla başlar (hata mesajı da bunu söylüyor, en/tr). `verify_defaults`, `tags`, `depends_on` (şimdilik kullanılmıyor) alanları eklendi. 2000 satırı aşan meşru değişiklik için önce görev bölünür; bölünemiyorsa `verify_defaults: false` ve kendi `forbid_paths`.
+- **Skill testi** (`tests/unit/test_skill.py`): komut satırı kelimeleri `shlex` ile ayrılır. Global seçeneklerin değer alıp almadığı click parametresinden okunur (`--lang=en` de olur). `--help` ve `--version` kabul edilir, kısa seçenekler de denetlenir. Kod bloklarındaki çağrılarda argüman sayısı denetlenir. Satır içi `orkestra …` ve önekleri olmadan geçen komut ve bayraklar (`apply --force`, `providers enable`, `--dry-run`, `--local-only`) da denetlenir; önekleri olmadan geçen bayrak en az bir komutta bulunmalıdır.
+Mimari "Ek: Skill dosyası" (onay ve çakışma maddeleri) güncellendi.
