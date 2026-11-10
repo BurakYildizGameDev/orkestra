@@ -18,7 +18,8 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 7 – Batch + tahmin | ⏳ | | |
 | 8a – status, şablon, önbellek, sayaç | ⏳ | | |
 | 8b – review, map, plan expand | ⏳ | | |
-| 9 – Skill | ⏳ | | |
+| 9a – Skill dosyası | ⏳ | | SKILL.md, CLI ile tutarlılık, test |
+| 9b – Skill doğrulama | ⏳ | | kod denetimi, elle senaryolar, düzeltmeler |
 | 10 – Şef devri | ⏳ | | |
 | 11 – Arayüz, sihirbaz, 5 dil | ⏳ | | |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
