@@ -391,3 +391,14 @@ Mimari "Ek: Skill dosyası" (onay ve çakışma maddeleri) güncellendi.
 - **Bilinen sorun:** agy, istekten önce ayarlarındaki bütün MCP sunucularının bağlanmasını bekliyor. Bağlanamayan bir sunucu (ör. Unity editörü kapalıyken unity) her koşuyu ~90 sn bekletip boşa bitiriyor. `agy mcp list`'teki "disabled" durumu print modunda dikkate alınmıyor. Orkestra bunu engelleyemiyor. İleride `doctor` agy'nin MCP ayarlarında sunucu görünce uyarabilir. Şimdilik README/skill notu yok, PROGRESS'te bilinen sorun.
 - **Görülen davranış (değişiklik yok):** görev dosyasındaki `model:` config'te olmayan bir Ollama modelini (`qwen2.5-coder:14b`) adlandırabiliyor. Router bunu kabul ediyor, bağlam penceresi varsayılandan (8192) geliyor.
 Mimari §5.5 (agy), §9 (`uygula`, `gc`) güncellendi.
+
+## D-049 – Skill ile elle senaryolar; çıktı kodlaması (2026-11-10, Faz 9b)
+**Bağlam:** Skill genel olarak (`~/.claude/skills/orkestra`) kuruldu. Temiz bir Claude Code oturumu, `hesap-makinesi-2` klasöründe 4 istemle 5 senaryonun hepsini çalıştırdı. İşçiler Ollama (qwen2.5-coder 1.5b/14b) ve agy idi.
+**Karar:**
+- **Yönlendirilmiş çıktı UTF-8:** Windows'ta boruya ya da dosyaya giden çıktı ANSI kod sayfasıyla (cp1254) yazılıyordu. Okuyan taraf (Claude Code, Git Bash, editör) ise UTF-8 bekliyor, bu yüzden Türkçe harfler bozuk geliyordu (`ko�usu`). Şef çıktıyı `iconv -f cp1254` ya da `--lang en` + `PYTHONIOENCODING` ile çevirmek zorunda kaldı. Artık TTY olmayan stdout/stderr `utf-8` (`errors="replace"`) ile yazıyor. Konsol kendi kod sayfasında kalıyor, yazamadığı karakter `?` oluyor (eski davranış, D-016 dönemi).
+- **Skill:** Windows'ta `node --test <klasör>` çalışmıyor, test dosyaları tek tek verilmeli. Bu not worktree notlarına eklendi.
+- **Bilinen sorunlar (değişiklik yok):**
+  - API ile edit tam dosya JSON'u kullanıyor (D-042). Küçük bir model sadece yorum eklerken bile kod satırlarını kaybedebiliyor: qwen2.5-coder:14b iki koşuda bir satırı çoğalttı, sonra bir tanımı sildi. Doğrulayıcılar yakaladı, hiçbir şey uygulanmadı. Daha güvenli bir edit biçimi (ara/değiştir) ileride düşünülebilir.
+  - Ignore edilen klasörler (`node_modules/`) worktree'de yok. Şef `node_modules`'ü worktree'ye junction ile bağlayan bir doğrulama betiği yazdı. Bu yol işçiye kullanıcının `node_modules`'üne yazma imkânı verir, bu yüzden skill'de önerilmiyor. İleride config'te "worktree'ye salt okunur bağlanacak klasörler" düşünülebilir.
+  - Dışarıdan öldürülen bir koşu (ör. MCP'de takılan agy) `runs` tablosunda `running` olarak kalıyor. Bütçe rezervasyonunu `gc` temizliyor, koşunun durumunu temizlemiyor.
+Mimari §Teknoloji (Kodlama satırı) güncellendi.

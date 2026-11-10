@@ -633,17 +633,27 @@ def _report_error(exc: OrkestraError, *, as_json: bool) -> None:
 
 
 def _safe_streams() -> None:
-    """Never crash on text the console code page cannot encode.
+    """Redirected output is UTF-8; a console never crashes on text its code page lacks.
 
-    Redirected output on Windows uses the ANSI code page (e.g. cp1254) with strict errors,
-    so an emoji in a model answer would raise ``UnicodeEncodeError`` after a successful run.
-    Such characters become ``?``; the full text is always in the run's ``output.md``.
+    Redirected output on Windows defaults to the ANSI code page (e.g. cp1254), but whoever
+    reads a pipe or a file (Claude Code, Git Bash, an editor) expects UTF-8, so Turkish
+    letters arrived broken (D-049). A legacy console keeps its code page: characters it
+    cannot show become ``?`` instead of raising ``UnicodeEncodeError`` after a successful
+    run; the full text is always in the run's ``output.md``.
     """
     for stream in (sys.stdout, sys.stderr):
         encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "")
         reconfigure = getattr(stream, "reconfigure", None)
-        if encoding != "utf8" and reconfigure is not None:
-            with contextlib.suppress(ValueError, OSError):  # detached or closed: leave it
+        if encoding == "utf8" or reconfigure is None:
+            continue
+        try:
+            redirected = not stream.isatty()
+        except (ValueError, OSError):
+            continue  # detached or closed: leave it
+        with contextlib.suppress(ValueError, OSError):
+            if redirected:
+                reconfigure(encoding="utf-8", errors="replace")
+            else:
                 reconfigure(errors="replace")
 
 

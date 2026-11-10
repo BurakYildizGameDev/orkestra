@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import json
 import re
+import sys
 from io import StringIO
 from pathlib import Path
 from typing import Any
@@ -351,16 +353,34 @@ def test_config_show_masks_secret_headers(
         assert "Orkestra" in out
 
 
-def test_streams_never_crash_on_unencodable_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    import io
-    import sys
+class _Console(io.TextIOWrapper):
+    """A text stream that says it is a terminal (a console with a legacy code page)."""
 
+    def isatty(self) -> bool:
+        return True
+
+
+def test_redirected_output_is_utf8(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Windows pipes default to the ANSI code page (cp1254), but the reader (Claude Code,
+    # Git Bash, a file) expects UTF-8: Turkish letters came out as "ko�usu".
     from orkestra import cli
 
     raw = io.BytesIO()
-    stream = io.TextIOWrapper(raw, encoding="cp1254")
-    monkeypatch.setattr(sys, "stdout", stream)
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1254"))
     cli._safe_streams()
-    print("Merhaba \U0001f600 → ğüş")
+    print("Merhaba 😀 → koşusu ğüş")
+    sys.stdout.flush()
+    assert raw.getvalue().decode("utf-8").startswith("Merhaba 😀 → koşusu ğüş")
+
+
+def test_a_legacy_console_never_crashes_on_unencodable_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from orkestra import cli
+
+    raw = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", _Console(raw, encoding="cp1254"))
+    cli._safe_streams()
+    print("Merhaba 😀 → ğüş")
     sys.stdout.flush()
     assert raw.getvalue().decode("cp1254").startswith("Merhaba ? ? ğüş")

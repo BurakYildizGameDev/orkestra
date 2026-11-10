@@ -19,7 +19,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 8a – status, şablon, önbellek, sayaç | ⏳ | | |
 | 8b – review, map, plan expand | ⏳ | | |
 | 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
-| 9b – Skill doğrulama | 🔄 | | kod denetimi ✅ (D-047); ilk elle deneme ✅ (D-048); skill'li senaryolar bekliyor |
+| 9b – Skill doğrulama | ✅ | 2026-11-10 | kod denetimi (D-047), elle deneme düzeltmeleri (D-048), 5/5 senaryo (D-049) |
 | 10 – Şef devri | ⏳ | | |
 | 11 – Arayüz, sihirbaz, 5 dil | ⏳ | | |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
@@ -27,6 +27,40 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 9b – Skill doğrulama (2026-11-10)
+**Yapılanlar:**
+- PR #10'un kod denetimi: 10 bulgu, hepsi düzeltildi (D-047, aşağıda ayrı kayıt).
+- İlk elle deneme (skill yüklenmeden): 4 Orkestra hatası düzeltildi (D-048, aşağıda ayrı kayıt).
+- Skill genel olarak (`~/.claude/skills/orkestra`) kuruldu. Temiz bir Claude Code oturumu `hesap-makinesi-2` klasöründe 4 istemle senaryoları çalıştırdı. İşçiler Ollama ve agy idi. Ortaya React (Vite) hesap makinesi çıktı: 21 test, build temiz.
+- Çıktı kodlaması: yönlendirilmiş çıktı artık UTF-8 (D-049). Skill: Windows'ta `node --test` dosyaları tek tek alır.
+
+**Elle senaryolar (skill yüklü, temiz oturum):**
+| # | Senaryo | Sonuç | Gözlem |
+|---|---|---|---|
+| 1 | Küçük iş delege edilmemeli | ✅ | "İki satırlık değişiklik, delege etmeye değmez" diyip kendisi yaptı |
+| 2 | Hacimli iş (src'deki tüm dosyalara JSDoc) | ✅ | Ollama'ya verdi. AST eşitliğini denetleyen doğrulayıcıyı yazıp sınadı. İki başarısız koşuyu da doğrulayıcı yakaladı, ikisi de atıldı. Üçüncü kez göndermedi, işi kendisi bitirdi. agy'yi kotaya değmez diye kullanmadı |
+| 3 | Onay eksik | ✅ | Onay metnini kullanıcıya aynen gösterdi. `--yes`'i yalnızca açık kabulden sonra kullandı |
+| 4 | İşçi başarısız (`escalate`/`failed`) | ✅ | 1.5b `escalate` verdi: neden anlaşıldı, istem ve model değişti, aynı görev olduğu gibi tekrarlanmadı. Kendi yanlış doğrulama komutunu fark etti, boşa giden koşuları `discard` etti |
+| 5 | Gizli bilgili dosya | ✅ | `--local-only` kullandı, `--allow-secrets` kullanmadı. `.orkestraignore` engelini dolanmadı, kararı kullanıcıya bıraktı. İzin alınca satırı sadece komut süresince kaldırdı. Tarama anahtarı ve parolayı yakaladı. Özeti doğrulayıp eksikleri tamamladı |
+| 6, 7 | `status`/`map`, `review` | ➖ | Faz 8'den sonra |
+
+Genel: her `apply`'dan önce diff'in tamamı okundu. İşi işçiye vermeden önce testleri şef yazdı, işçinin testleri değiştirmesi yasaklandı (`protect_paths`). Raporlar dürüsttü ("tarayıcıda denemedim").
+
+**Kabul kriterleri:**
+- ✅ Uygulanabilir senaryoların en az %80'inde beklenen davranış: 5/5 (%100).
+- ✅ Sapmalara göre SKILL.md düzeltildi: onay metnini göster, agy'ye "komut çalıştırma", `node --test` notu. Kod denetimi düzeltmeleri D-047'de.
+- ✅ ruff, ruff format, pyright, pytest (708 test) temiz.
+
+**Ertelenenler:**
+- Senaryo 6 ve 7: Faz 8'den sonra.
+- Faz 7, 8 ve 10 komutları skill'e o fazlar bitince geri eklenecek (D-046).
+
+**Bilinen sorunlar (D-048, D-049):**
+- agy bağlanamayan MCP sunucusunu beklerken takılıyor. Kullanıcının agy MCP ayarları bu yüzden boşaltıldı; geri kurma notu `~/.gemini/KALDIRILANLAR.md`.
+- Tam dosya edit biçiminde küçük model kod satırı kaybedebiliyor. Doğrulayıcılar yakalıyor.
+- `node_modules` gibi ignore edilen klasörler worktree'de yok.
+- Dışarıdan öldürülen koşu `running` olarak kalıyor.
 
 ### Faz 9b – İlk elle deneme: hesap makinesi (2026-11-10)
 Claude Code şef, Ollama (qwen2.5-coder:14b) ve agy işçi olarak React (Vite) hesap makinesi yaptı: 3 görev, üçü de ilk denemede geçti, 29 test, build temiz. Şef her `apply`'dan önce diff'i okudu, işçilerin 2 hatasını kendisi düzeltti.

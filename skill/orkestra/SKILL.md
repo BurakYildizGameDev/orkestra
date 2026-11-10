@@ -112,7 +112,7 @@ Her `edit` görevine Orkestra kendiliğinden `.env`, `*.pem`, `*.key`, `.git/**`
 Düzenleme görevleri hakkında bilmen gerekenler:
 - İşçi, kullanıcının deposunda değil ayrı bir git worktree'sinde çalışır; senin onayın (`apply`) olmadan kullanıcının dosyalarına hiçbir şey yazılmaz. Depoda en az bir commit olmalı; commit edilmemiş değişiklikler worktree'ye taşınır.
 - Görev dosyasındaki göreli yollar görev dosyasının klasörüne değil, `workspace` alanına (yoksa komutun çalıştığı dizine) göre çözülür. `orkestra run` komutunu proje kökünden çalıştır.
-- Git'in ignore ettiği klasörler (`node_modules/`, `.venv/`) worktree'de yoktur; onlara ihtiyaç duyan doğrulama komutları (ör. `npm test`) başarısız olur. Python'da etkin yorumlayıcıyla `python -m pytest` çalışır.
+- Git'in ignore ettiği klasörler (`node_modules/`, `.venv/`) worktree'de yoktur; onlara ihtiyaç duyan doğrulama komutları (ör. `npm test`) başarısız olur. Python'da etkin yorumlayıcıyla `python -m pytest` çalışır. Windows'ta `node --test test/` gibi klasör vermek çalışmaz; test dosyalarını tek tek yaz (`node --test test/a.test.js test/b.test.js`).
 - Bağlamdaki dosyalar işçiye tamamen gönderilir; `.env` ve anahtar dosyalarını bağlama koyma. `.orkestraignore` kapsamındaki dosyaları Orkestra hiç göndermez, gizli bilgi taraması da uzağa gitmeyi engeller.
 
 İyi istem kuralları: tek bir sorumluluk; kapsam dışını açıkça yaz; çıktı biçimini belirt; mevcut stil örneği ver.

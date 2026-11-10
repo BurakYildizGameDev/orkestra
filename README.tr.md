@@ -433,7 +433,7 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 7 | Toplu çalıştırma, paralellik, maliyet tahmini | ⏳ |
 | 8 | Şef araçları: `status`, `review`, `map`, şablonlar, `plan expand`, önbellek, tasarruf sayacı | ⏳ |
 | 9a | Claude skill: `SKILL.md`, CLI ile denetlenmiş | ✅ |
-| 9b | Claude skill: denetim ve elle senaryolar | ⏳ |
+| 9b | Claude skill: denetim ve elle senaryolar | ✅ |
 | 10 | Şef devri (Claude ↔ Codex ↔ Antigravity) | ⏳ |
 | 11 | Terminal arayüzü, kurulum sihirbazı, 5 dil | ⏳ |
 | 12 | Gece vardiyası kuyruğu, bildirimler, öğrenen yönlendirme | ⏳ |

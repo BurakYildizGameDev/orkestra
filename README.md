@@ -436,7 +436,7 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 7 | Batch runs, parallelism, cost estimate | ⏳ |
 | 8 | Chief tools: `status`, `review`, `map`, templates, `plan expand`, cache, savings counter | ⏳ |
 | 9a | Claude skill: `SKILL.md`, checked against the CLI | ✅ |
-| 9b | Claude skill: review and manual scenarios | ⏳ |
+| 9b | Claude skill: review and manual scenarios | ✅ |
 | 10 | Chief handoff (Claude ↔ Codex ↔ Antigravity) | ⏳ |
 | 11 | Terminal UI, setup wizard, 5 languages | ⏳ |
 | 12 | Night shift queue, notifications, adaptive routing | ⏳ |
