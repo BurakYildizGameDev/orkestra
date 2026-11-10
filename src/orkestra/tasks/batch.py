@@ -31,6 +31,7 @@ from orkestra.envelope import BatchEnvelope, BatchItem, BatchTotals
 from orkestra.errors import ExitCode, OrkestraError, UsageError
 from orkestra.i18n import t
 from orkestra.tasks import runner
+from orkestra.tasks.context import glob_files
 from orkestra.tasks.spec import TaskSpec, parse_task, read_document
 
 DEFAULT_PARALLEL = 4
@@ -44,6 +45,7 @@ class BatchSpec:
     tasks: tuple[TaskSpec, ...]
     parallel: int | None
     source: str
+    order: tuple[str, ...] = ()  # task ids, dependencies first (``load_batch`` checks it once)
 
 
 @dataclass(frozen=True)
@@ -86,19 +88,18 @@ def load_batch(path: Path) -> BatchSpec:
         if not isinstance(item, dict):
             raise _usage("config.error.not_mapping", path=source)
         tasks.append(parse_task(item, source=source))
-    spec = BatchSpec(tuple(tasks), _parallel(data.get("parallel")), str(path))
-    _check_ids(spec)
-    _order(spec.tasks)  # raises on a cycle
-    return spec
+    _check_ids(tasks)
+    order = _order(tasks)  # raises on a cycle
+    return BatchSpec(tuple(tasks), _parallel(data.get("parallel")), str(path), order)
 
 
-def _check_ids(spec: BatchSpec) -> None:
+def _check_ids(tasks: Sequence[TaskSpec]) -> None:
     seen: set[str] = set()
-    for task in spec.tasks:
+    for task in tasks:
         if task.id in seen:
             raise _usage("batch.error.duplicate", id=task.id)
         seen.add(task.id)
-    for task in spec.tasks:
+    for task in tasks:
         for dep in task.depends_on:
             if dep not in seen:
                 raise _usage("batch.error.unknown_dependency", id=task.id, dep=dep)
@@ -142,21 +143,23 @@ def _cycle(waiting: dict[str, set[str]], position: Mapping[str, int]) -> list[st
 # --- planning --------------------------------------------------------------------------
 
 
-def _edit_files(task: TaskSpec, cwd: Path) -> frozenset[Path]:
-    """The context files of an edit task, resolved (globs included)."""
+def _edit_files(task: TaskSpec, cwd: Path, ignore_file: str | None) -> frozenset[Path]:
+    """The context files of an edit task, resolved; globs expand as in ``orkestra run``
+    (``.git/``, ``.gitignore`` and the ignore file are left out, bad patterns are usage
+    errors)."""
     if task.kind != "edit":
         return frozenset()
     base = task.base_dir(cwd)
     files = {(base / name).resolve() for name in task.context.files}
-    for pattern in task.context.globs:
-        files.update(p.resolve() for p in base.glob(pattern) if p.is_file())
-    return frozenset(files)
+    files.update(p.resolve() for p in glob_files(task.context.globs, base, ignore_file))
+    return frozenset(p for p in files if not p.is_dir())
 
 
-def plan_batch(spec: BatchSpec, *, cwd: Path) -> BatchPlan:
-    order = _order(spec.tasks)
+def plan_batch(spec: BatchSpec, *, cwd: Path, ignore_file: str | None = None) -> BatchPlan:
+    """``ignore_file``: ``security.ignore_file``, so overlaps use the files a run would use."""
+    order = spec.order or _order(spec.tasks)
     tasks = {task.id: task for task in spec.tasks}
-    files = {tid: _edit_files(tasks[tid], cwd) for tid in order}
+    files = {tid: _edit_files(tasks[tid], cwd, ignore_file) for tid in order}
     after: dict[str, set[str]] = {tid: set() for tid in order}
     warnings: list[str] = []
     for later_index, later in enumerate(order):
@@ -203,18 +206,20 @@ async def _run_one(
     batch_id: str,
     warnings: list[str],
 ) -> BatchItem:
+    started: list[str] = []  # the run id once the run is recorded, even if it crashes later
     try:
         outcome = await runner.run_task(
-            task, config, options, cwd=cwd, slots=slots, batch_id=batch_id
-        )
+            task, config, options, cwd=cwd, slots=slots, batch_id=batch_id,
+            on_start=started.append,
+        )  # fmt: skip
     except OrkestraError as exc:  # no provider, consent, a bad context file ...
         detail = "; ".join([exc.message, *exc.details])[:ERROR_CHARS]
         return BatchItem(task_id=task.id, status="error", exit_code=int(exc.exit_code),
-                         error=detail)  # fmt: skip
+                         run_id=started[0] if started else None, error=detail)  # fmt: skip
     except Exception as exc:  # a bug in one task must not bring the batch down
         detail = f"{type(exc).__name__}: {exc}"[:ERROR_CHARS]
         return BatchItem(task_id=task.id, status="error", exit_code=int(ExitCode.INTERNAL),
-                         error=detail)  # fmt: skip
+                         run_id=started[0] if started else None, error=detail)  # fmt: skip
     warnings.extend(f"{task.id}: {w}" for w in outcome.warnings)
     return _item_from_outcome(task, outcome)
 
@@ -235,6 +240,11 @@ def _totals(items: Sequence[BatchItem]) -> BatchTotals:
         if i.envelope is not None and i.envelope.usage.cost_usd is not None
     ]
     return BatchTotals(**counts, cost_usd=round(sum(costs), 6) if costs else None)
+
+
+def run_warnings(document: BatchEnvelope, plan: BatchPlan) -> list[str]:
+    """Warnings the tasks raised while running (the plan's own were shown before)."""
+    return document.warnings[len(plan.warnings) :]
 
 
 def new_batch_id() -> str:

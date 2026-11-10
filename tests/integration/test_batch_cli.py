@@ -293,3 +293,109 @@ def test_human_output_lists_every_task(
     code, out, _ = _run(["--lang", "en", "batch", _batch(work, [_ask("a"), _ask("b")])], capsys)
     assert code == 0
     assert "a" in out and "b" in out and "2 ok" in out
+
+
+# --- code review fixes (PR #13) ----------------------------------------------------------
+
+
+def _budget_config(home: Path) -> None:
+    # One estimate ($0.41 for 4096 output tokens) fits into $0.50, two do not.
+    (home / "config.yaml").write_text(
+        _config(1)
+        .replace(
+            "        edit_format: whole\n",
+            "        edit_format: whole\n        price_per_mtok: {input: 1.0, output: 100.0}\n",
+        )
+        .replace("    concurrency: 1\n", "    concurrency: 1\n    budget: {daily_usd: 0.5}\n"),
+        encoding="utf-8",
+    )
+
+
+def test_waiting_tasks_hold_no_budget_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    _budget_config(tmp_path / "orkestra-home")  # budgets and prices keep the consent (D-027)
+    tasks = [_ask(f"t{n}") for n in range(3)]
+    code, out, _ = _run(["batch", _batch(work, tasks), "--parallel", "3", "--json"], capsys)
+    assert code == 0, out  # one at a time, each settles at its real cost (0) first
+    assert json.loads(out)["totals"]["ok"] == 3
+
+
+def test_queued_requests_do_not_go_to_a_provider_that_was_just_paused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    from orkestra.errors import ProviderAuthError
+
+    calls: list[str] = []
+
+    async def refuse(self: OllamaChat, req: CompletionRequest) -> CompletionResult:
+        calls.append(req.user)
+        await asyncio.sleep(0.01)
+        raise ProviderAuthError("bad key")  # opens the circuit at once
+
+    monkeypatch.setattr(OllamaChat, "complete", refuse)
+    work = _setup(tmp_path, monkeypatch)
+    tasks = [_ask(f"t{n}") for n in range(4)]
+    code, out, _ = _run(["batch", _batch(work, tasks), "--parallel", "4", "--json"], capsys)
+    assert code == 1
+    assert len(calls) == 1  # the others saw the paused provider after their wait
+    reasons = [f["error"] for r in _results(out).values() if r["envelope"]
+               for f in r["envelope"]["failovers"]]  # fmt: skip
+    assert reasons.count("CircuitOpen") == 3
+
+
+def test_price_lists_are_fetched_by_one_task_at_a_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    from orkestra.providers import pricing
+
+    active, peak = 0, 0
+    real = pricing.refresh
+
+    async def counting(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        try:
+            await asyncio.sleep(0.01)
+            return await real(*args, **kwargs)
+        finally:
+            active -= 1
+
+    monkeypatch.setattr(pricing, "refresh", counting)
+    work = _setup(tmp_path, monkeypatch, concurrency=4)
+    code, out, _ = _run(
+        ["batch", _batch(work, [_ask(f"t{n}") for n in range(4)]), "--json"], capsys
+    )
+    assert code == 0, out
+    assert peak == 1
+
+
+def test_task_warnings_are_shown_in_human_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    tasks = [_ask("a", prompt="Explain this line: password = hunter2secret")]
+    code, _, err = _run(["--lang", "en", "batch", _batch(work, tasks)], capsys)
+    assert code == 0
+    assert "a:" in err and "secret" in err.lower()
+
+
+def test_a_run_that_crashes_after_it_started_keeps_its_run_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    async def crash(self: Any, candidate: Any) -> Any:
+        raise RuntimeError("bug inside the run")
+
+    monkeypatch.setattr(runner._TaskRun, "_try", crash)
+    work = _setup(tmp_path, monkeypatch)
+    code, out, _ = _run(["batch", _batch(work, [_ask("a")]), "--json"], capsys)
+    assert code == 1
+    item = _results(out)["a"]
+    assert item["status"] == "error" and item["run_id"]
+    assert paths.run_dir(item["run_id"]).is_dir()

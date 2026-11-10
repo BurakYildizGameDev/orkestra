@@ -67,8 +67,15 @@ def _day(now: datetime) -> str:
     return now.date().isoformat()
 
 
-def used(conn: sqlite3.Connection, provider: str, now: datetime) -> Amount:
-    """Today's actual usage plus fresh reservations."""
+def used(
+    conn: sqlite3.Connection, provider: str, now: datetime, *, reservations: bool = True
+) -> Amount:
+    """Today's actual usage plus fresh reservations.
+
+    ``reservations=False``: actual usage only. The router uses it: a reservation belongs to a
+    request in flight (in a batch, one waiting for the same provider) that settles before this
+    task sends; ``reserve`` still counts it when this task's request goes out (D-054).
+    """
     rows = conn.execute(
         "SELECT kind, prompt_tokens, completion_tokens, cost_usd, requests, runs, created_at "
         "FROM usage WHERE provider = ? AND day = ?",
@@ -77,6 +84,8 @@ def used(conn: sqlite3.Connection, provider: str, now: datetime) -> Amount:
     total = Amount()
     for row in rows:
         if row["kind"] == "reservation":
+            if not reservations:
+                continue
             created = datetime.fromisoformat(row["created_at"])
             if now - created > STALE_RESERVATION:
                 continue

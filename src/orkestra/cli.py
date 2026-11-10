@@ -491,8 +491,10 @@ def build_app() -> typer.Typer:
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
-        spec = batch.load_batch(batch_file)
-        plan = batch.plan_batch(spec, cwd=Path.cwd())
+        batch_spec = batch.load_batch(batch_file)
+        plan = batch.plan_batch(
+            batch_spec, cwd=Path.cwd(), ignore_file=loaded.config.security.ignore_file
+        )
         for warning in plan.warnings:
             typer.echo(warning, err=True)
         progress = (
@@ -500,12 +502,15 @@ def build_app() -> typer.Typer:
         )
         document, code = asyncio.run(
             batch.run_batch(
-                spec, plan, loaded.config,
+                batch_spec, plan, loaded.config,
                 runner.RunOptions(profile=profile, allow_secrets=allow_secrets),
-                parallel=parallel or spec.parallel or batch.DEFAULT_PARALLEL,
+                parallel=parallel or batch_spec.parallel or batch.DEFAULT_PARALLEL,
                 fail_fast=fail_fast, on_done=progress,
             )
         )  # fmt: skip
+        if not as_json:  # in --json they are in the document
+            for warning in batch.run_warnings(document, plan):
+                typer.echo(warning, err=True)
         typer.echo(envelope.to_json(document) if as_json else envelope.batch_summary(document))
         if code:
             raise typer.Exit(code)

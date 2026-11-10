@@ -30,6 +30,18 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 7a (PR #13), 2026-11-10
+10 bulgu, hepsi düzeltildi (D-054):
+- ✅ `src/**.py` gibi geçerli bir glob batch'i planlama aşamasında çökertiyordu, ignore edilen dosyalar yanlış kesişim veriyordu. Artık `run` ile aynı glob kuralları kullanılıyor.
+- ✅ Sağlayıcıda yer bekleyen görevler bütçe rezervasyonu tutuyordu. Artık önce yer, sonra rezervasyon. Router da rezervasyonları saymıyor.
+- ✅ Devre kesiciyi başka bir görev açtığında kuyruktaki istekler yine gidiyordu. Artık yer bulununca sağlığa yeniden bakılıyor (`CircuitOpen`).
+- ✅ Her görev fiyat listesini ayrı çekiyor, önbellekler birbirini eziyordu. Artık tek kilit var.
+- ✅ İnsan modunda görev uyarıları kayboluyordu. Artık stderr'e yazılıyor.
+- ✅ Başladıktan sonra çöken koşunun `run_id`'si batch çıktısında yoktu. Artık var.
+- ✅ Aynı saniyede başlayan koşularda kimlik çakışabilirdi. Artık süreç içinde tekil.
+- ✅ Topolojik sıra iki kez hesaplanıyordu. ✅ Aynı okuyucunun iki adı vardı. ✅ CLI'de `spec` gölgeleniyordu.
+Testler: 814 geçti (+8).
+
 ### Faz 7a – Batch motoru (2026-11-10)
 **Yapılanlar:**
 - `tasks/batch.py`:

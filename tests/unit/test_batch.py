@@ -133,3 +133,43 @@ def test_files_in_different_workspaces_do_not_overlap(tmp_path: Path) -> None:
         [_edit("a", ["x.py"], workspace="one"), _edit("b", ["x.py"], workspace="two")],
     )
     assert not any(plan.after.values())
+
+
+# --- code review fixes (PR #13) ----------------------------------------------------------
+
+
+def test_edit_globs_are_expanded_like_orkestra_run_does(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("node_modules/\n", encoding="utf-8")
+    tasks = [
+        {**_edit("one", []), "context": {"globs": ["src/**.py"]}},  # Path.glob rejects this
+        {**_edit("two", []), "context": {"globs": ["**/a.py"]}},
+        {**_edit("three", []), "context": {"globs": ["node_modules/*.py"]}},
+    ]
+    plan = _plan(tmp_path, tasks)
+    assert plan.after["two"] == frozenset({"one"})
+    assert plan.after["three"] == frozenset()  # git ignores node_modules: never in context
+
+
+def test_an_absolute_glob_is_a_usage_error_not_a_crash(tmp_path: Path) -> None:
+    tasks = [{**_edit("one", []), "context": {"globs": [str(tmp_path / "*.py")]}}]
+    with pytest.raises(UsageError) as exc:
+        _plan(tmp_path, tasks)
+    assert exc.value.exit_code == 2
+
+
+def test_run_ids_issued_in_the_same_second_never_repeat(monkeypatch: pytest.MonkeyPatch) -> None:
+    import secrets
+    from datetime import datetime
+
+    from orkestra.tasks import runner
+
+    tokens = iter(["abcd", "abcd", "abcd", "beef"])
+    monkeypatch.setattr(secrets, "token_hex", lambda _n: next(tokens))
+    moment = datetime(2026, 11, 10, 12, 0, 0)
+    first = runner.new_run_id(moment)
+    second = runner.new_run_id(moment)
+    assert first != second and second.endswith("-beef")

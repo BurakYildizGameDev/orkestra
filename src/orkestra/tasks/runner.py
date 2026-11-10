@@ -38,6 +38,7 @@ and ``orkestra.log``, plus ``worktree.json`` and ``changes.patch`` for edit task
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -147,10 +148,23 @@ async def _sleep(seconds: float) -> None:
     await asyncio.sleep(seconds)
 
 
+_ISSUED: set[str] = set()  # run ids handed out by this process (a batch starts several a second)
+
+
 def new_run_id(now: datetime | None = None, token: str | None = None) -> str:
-    """``YYYYMMDD-HHMMSS-<4 hex>``: sortable and practically collision free."""
+    """``YYYYMMDD-HHMMSS-<4 hex>``: sortable and collision free within this process.
+
+    A random token that was already handed out, or whose run directory exists, is drawn
+    again; ``token`` (tests) is used as given.
+    """
     moment = datetime.now() if now is None else now
-    return f"{moment:%Y%m%d-%H%M%S}-{token or secrets.token_hex(2)}"
+    if token is not None:
+        return f"{moment:%Y%m%d-%H%M%S}-{token}"
+    while True:
+        run_id = f"{moment:%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
+        if run_id not in _ISSUED and not paths.run_dir(run_id).exists():
+            _ISSUED.add(run_id)
+            return run_id
 
 
 class ProviderSlots:
@@ -162,6 +176,7 @@ class ProviderSlots:
     def __init__(self, config: Config) -> None:
         self._limits = {name: provider.concurrency for name, provider in config.providers.items()}
         self._slots: dict[str, asyncio.Semaphore] = {}
+        self.prices = asyncio.Lock()  # price list fetches, one task at a time
 
     def __call__(self, provider: str) -> asyncio.Semaphore:
         if provider not in self._slots:
@@ -409,16 +424,24 @@ def _price_targets(prep: _Prepared, conn: sqlite3.Connection) -> set[str]:
 
 
 async def _route(
-    prep: _Prepared, conn: sqlite3.Connection, moment: datetime, *, fetch_prices: bool
+    prep: _Prepared,
+    conn: sqlite3.Connection,
+    moment: datetime,
+    *,
+    fetch_prices: bool,
+    price_lock: asyncio.Lock | None = None,
 ) -> Route:
+    """``price_lock``: a batch's tasks fetch price lists one at a time, so the first fetch is
+    cached for the others and no task overwrites another's cache."""
     needs = prep.needs()
     profile = prep.options.profile
     if needs.provider is not None and needs.provider not in prep.config.providers:
         return route(needs, prep.config, Snapshot(moment), profile=profile)  # raises
     if fetch_prices:
-        cache = await pricing.refresh(
-            prep.config, moment, only=_price_targets(prep, conn), environ=prep.env
-        )
+        async with price_lock or contextlib.nullcontext():
+            cache = await pricing.refresh(
+                prep.config, moment, only=_price_targets(prep, conn), environ=prep.env
+            )
     else:  # --dry-run sends nothing: use whatever prices are cached
         cache = pricing.load_cache()
     extra = (needs.provider, needs.model) if needs.provider and needs.model else None
@@ -466,19 +489,22 @@ async def run_task(
     policy: retry.RetryPolicy | None = None,
     slots: ProviderSlots | None = None,
     batch_id: str | None = None,
+    on_start: Callable[[str], object] | None = None,
 ) -> TaskOutcome:
-    """Run one task. A batch passes shared ``slots`` and its ``batch_id`` (Faz 7a)."""
+    """Run one task. A batch passes shared ``slots``, its ``batch_id`` and ``on_start``
+    (called with the run id once the run is recorded) (Faz 7a)."""
     env = os.environ if environ is None else environ
     prep = _prepare(task, options or RunOptions(), config, env, cwd)
     state = db.connect() if conn is None else conn
     try:
         started_at = now()
-        planned = await _route(prep, state, started_at, fetch_prices=True)
+        lock = slots.prices if slots is not None else None
+        planned = await _route(prep, state, started_at, fetch_prices=True, price_lock=lock)
         if not planned.candidates:
             raise planned.error()
         runner = _TaskRun(prep, state, planned, started_at, now, clock, sleep or _sleep, rand,
                           policy or retry.RetryPolicy(),
-                          slots=slots, batch_id=batch_id)  # fmt: skip
+                          slots=slots, batch_id=batch_id, on_start=on_start)  # fmt: skip
         return await runner.run()
     finally:
         if conn is None:
@@ -525,7 +551,9 @@ class _TaskRun:
         *,
         slots: ProviderSlots | None = None,
         batch_id: str | None = None,
+        on_start: Callable[[str], object] | None = None,
     ) -> None:
+        self.on_start = on_start
         self.prep = prep
         self.task = prep.task
         self.conn = conn
@@ -586,6 +614,8 @@ class _TaskRun:
             self.conn, run_id=self.run_id, task_id=self.task.id, kind=self.task.kind,
             started_at=self.started_at, tags=self.task.tags, batch_id=self.batch_id,
         )  # fmt: skip
+        if self.on_start is not None:
+            self.on_start(self.run_id)  # a batch keeps it even if the run crashes later
         with run_log(self.run_dir, self.prep.redact) as log:
             self.log = log
             try:
@@ -691,58 +721,72 @@ class _TaskRun:
                 prompt_chars, completion.max_output_tokens, candidate.price,
                 runs=0 if candidate.provider in self.run_counted else 1,
             )  # fmt: skip
+            # Wait for the provider (its concurrency) before reserving budget, and check its
+            # health again after the wait: another task may have paused it meanwhile (D-054).
+            slot = self.slots(candidate.provider)
+            await slot.acquire()
+            backoff: float | None = None
+            result: CompletionResult | None = None
             try:
-                reservation = budget.reserve(
-                    self.conn, provider=candidate.provider, model=candidate.model.id,
-                    run_id=self.run_id, budget=candidate.config.budget, amount=amount,
-                    now=self.now(),
-                )  # fmt: skip
-            except BudgetExhausted as exc:  # nothing was sent: not an attempt
-                return self._fail(candidate, exc, tries, retry.Action.NEXT)
-            self.run_counted.add(candidate.provider)
-            self.attempts += 1
-            tries += 1
-            attempt_dir = self.run_dir / "attempts" / str(self.attempts)
-            self._write(
-                attempt_dir / "request.json",
-                json.dumps({"provider": candidate.provider, **asdict(completion)}, indent=2),
-            )
-            self.log.info(
-                "attempt %d: %s (try %d%s)", self.attempts, candidate.label, tries,
-                f", edit_format {self.edit_format}" if self.edit_format else "",
-            )  # fmt: skip
-            try:
-                async with self.slots(candidate.provider):  # the provider's concurrency
-                    result = await provider.complete(completion)
-            except ProviderError as exc:
-                if isinstance(exc, ProviderTimeout):
-                    # The provider may have processed (and billed) it: keep the estimate.
-                    budget.settle_as_reserved(self.conn, reservation, now=self.now())
-                else:
-                    budget.settle(
-                        self.conn, reservation, prompt_tokens=0, completion_tokens=0,
-                        cost_usd=0.0, estimated=False, now=self.now(),
+                paused = self._paused(candidate, tries)
+                if paused is not None:
+                    return paused
+                try:
+                    reservation = budget.reserve(
+                        self.conn, provider=candidate.provider, model=candidate.model.id,
+                        run_id=self.run_id, budget=candidate.config.budget, amount=amount,
+                        now=self.now(),
                     )  # fmt: skip
-                state = health.record_failure(self.conn, candidate.provider, exc, self.now())
-                self.log.warning(
-                    "attempt %d failed: %s %s (failures in a row: %d)",
-                    self.attempts, type(exc).__name__, exc.message, state.consecutive_failures,
+                except BudgetExhausted as exc:  # nothing was sent: not an attempt
+                    return self._fail(candidate, exc, tries, retry.Action.NEXT)
+                self.run_counted.add(candidate.provider)
+                self.attempts += 1
+                tries += 1
+                attempt_dir = self.run_dir / "attempts" / str(self.attempts)
+                self._write(
+                    attempt_dir / "request.json",
+                    json.dumps({"provider": candidate.provider, **asdict(completion)}, indent=2),
+                )
+                self.log.info(
+                    "attempt %d: %s (try %d%s)", self.attempts, candidate.label, tries,
+                    f", edit_format {self.edit_format}" if self.edit_format else "",
                 )  # fmt: skip
-                transport += 1
-                action = retry.classify(exc)
-                if action is retry.Action.RETRY and not state.is_open(self.now()):
-                    wait = retry.delay(transport, exc, self.policy, self.rand)
-                    if wait is not None:
-                        self.log.info("retrying %s in %.2fs", candidate.label, wait)
-                        await self.sleep(wait)
-                        continue
-                if action is retry.Action.RETRY:
-                    action = retry.give_up(exc)
-                return self._fail(candidate, exc, tries, action)
-            except BaseException:
-                budget.release(self.conn, reservation)  # interrupted: nothing to pay for
-                self.log.warning("interrupted; reservation released")
-                raise
+                try:
+                    result = await provider.complete(completion)
+                except ProviderError as exc:
+                    if isinstance(exc, ProviderTimeout):
+                        # The provider may have processed (and billed) it: keep the estimate.
+                        budget.settle_as_reserved(self.conn, reservation, now=self.now())
+                    else:
+                        budget.settle(
+                            self.conn, reservation, prompt_tokens=0, completion_tokens=0,
+                            cost_usd=0.0, estimated=False, now=self.now(),
+                        )  # fmt: skip
+                    state = health.record_failure(self.conn, candidate.provider, exc, self.now())
+                    self.log.warning(
+                        "attempt %d failed: %s %s (failures in a row: %d)",
+                        self.attempts, type(exc).__name__, exc.message,
+                        state.consecutive_failures,
+                    )  # fmt: skip
+                    transport += 1
+                    action = retry.classify(exc)
+                    if action is retry.Action.RETRY and not state.is_open(self.now()):
+                        backoff = retry.delay(transport, exc, self.policy, self.rand)
+                    if backoff is None:
+                        if action is retry.Action.RETRY:
+                            action = retry.give_up(exc)
+                        return self._fail(candidate, exc, tries, action)
+                except BaseException:
+                    budget.release(self.conn, reservation)  # interrupted: nothing to pay for
+                    self.log.warning("interrupted; reservation released")
+                    raise
+            finally:
+                slot.release()
+            if backoff is not None:
+                self.log.info("retrying %s in %.2fs", candidate.label, backoff)
+                await self.sleep(backoff)  # the slot is free for other tasks meanwhile
+                continue
+            assert result is not None
             transport = 0
             usage = self._actual_usage(prompt_chars, candidate, result)
             budget.settle(
@@ -829,59 +873,65 @@ class _TaskRun:
             amount = budget.estimate(
                 len(prompt), 0, None, runs=0 if candidate.provider in self.run_counted else 1
             )
-            try:
-                reservation = budget.reserve(
-                    self.conn, provider=candidate.provider, model=candidate.model.id,
-                    run_id=self.run_id, budget=cfg.budget, amount=amount, now=self.now(),
-                )  # fmt: skip
-            except BudgetExhausted as exc:
-                return self._fail(candidate, exc, tries, retry.Action.NEXT)
-            self.run_counted.add(candidate.provider)
-            self.attempts += 1
-            tries += 1
-            attempt_dir = self.run_dir / "attempts" / str(self.attempts)
-            attempt_dir.mkdir(parents=True, exist_ok=True)
-            req = AgentRequest(
-                prompt=prompt,
-                workdir=self.workdir,
-                model=self.task.model or cfg.model,
-                sandbox="workspace-write" if self.wt is not None else "read-only",
-                timeout_s=timeout,
-                output_file=attempt_dir / "agent_output.md",
-            )
-            self._write(
-                attempt_dir / "request.json",
-                json.dumps({"provider": candidate.provider, "kind": cfg.kind,
-                            **asdict(req)}, indent=2, default=str),
-            )  # fmt: skip
-            self.log.info("attempt %d: %s (agent, try %d)", self.attempts, candidate.label, tries)
-            if self.wt is not None and tries == 1:
-                gw.reset(self.wt)  # a new candidate starts from the user's files
-            before = gw.status_snapshot(repo) if repo is not None else None
-            scope = _Scope(repo, before)
-            try:
-                async with self.slots(candidate.provider):
-                    result = await agent.run(req)
-            except ProviderError as exc:
-                if isinstance(exc, ProviderTimeout):
-                    budget.settle_as_reserved(self.conn, reservation, now=self.now())
-                else:
-                    budget.settle(
-                        self.conn, reservation, prompt_tokens=0, completion_tokens=0,
-                        cost_usd=0.0, estimated=False, now=self.now(),
+            # As for chat workers: the slot first, then health and budget (D-054).
+            async with self.slots(candidate.provider):
+                paused = self._paused(candidate, tries)
+                if paused is not None:
+                    return paused
+                try:
+                    reservation = budget.reserve(
+                        self.conn, provider=candidate.provider, model=candidate.model.id,
+                        run_id=self.run_id, budget=cfg.budget, amount=amount, now=self.now(),
                     )  # fmt: skip
-                health.record_failure(self.conn, candidate.provider, exc, self.now())
-                self.log.warning("attempt %d failed: %s %s", self.attempts,
-                                 type(exc).__name__, exc.message)  # fmt: skip
-                self._scope_checks(scope)  # a crashed agent may still have written outside
-                action = retry.classify(exc)
-                if action is retry.Action.RETRY:
-                    action = retry.give_up(exc)
-                return self._fail(candidate, exc, tries, action)
-            except BaseException:
-                budget.release(self.conn, reservation)  # interrupted: nothing to pay for
-                self.log.warning("interrupted; reservation released")
-                raise
+                except BudgetExhausted as exc:
+                    return self._fail(candidate, exc, tries, retry.Action.NEXT)
+                self.run_counted.add(candidate.provider)
+                self.attempts += 1
+                tries += 1
+                attempt_dir = self.run_dir / "attempts" / str(self.attempts)
+                attempt_dir.mkdir(parents=True, exist_ok=True)
+                req = AgentRequest(
+                    prompt=prompt,
+                    workdir=self.workdir,
+                    model=self.task.model or cfg.model,
+                    sandbox="workspace-write" if self.wt is not None else "read-only",
+                    timeout_s=timeout,
+                    output_file=attempt_dir / "agent_output.md",
+                )
+                self._write(
+                    attempt_dir / "request.json",
+                    json.dumps({"provider": candidate.provider, "kind": cfg.kind,
+                                **asdict(req)}, indent=2, default=str),
+                )  # fmt: skip
+                self.log.info(
+                    "attempt %d: %s (agent, try %d)", self.attempts, candidate.label, tries
+                )
+                if self.wt is not None and tries == 1:
+                    gw.reset(self.wt)  # a new candidate starts from the user's files
+                before = gw.status_snapshot(repo) if repo is not None else None
+                scope = _Scope(repo, before)
+                try:
+                    result = await agent.run(req)
+                except ProviderError as exc:
+                    if isinstance(exc, ProviderTimeout):
+                        budget.settle_as_reserved(self.conn, reservation, now=self.now())
+                    else:
+                        budget.settle(
+                            self.conn, reservation, prompt_tokens=0, completion_tokens=0,
+                            cost_usd=0.0, estimated=False, now=self.now(),
+                        )  # fmt: skip
+                    health.record_failure(self.conn, candidate.provider, exc, self.now())
+                    self.log.warning("attempt %d failed: %s %s", self.attempts,
+                                     type(exc).__name__, exc.message)  # fmt: skip
+                    self._scope_checks(scope)  # a crashed agent may still have written outside
+                    action = retry.classify(exc)
+                    if action is retry.Action.RETRY:
+                        action = retry.give_up(exc)
+                    return self._fail(candidate, exc, tries, action)
+                except BaseException:
+                    budget.release(self.conn, reservation)  # interrupted: nothing to pay for
+                    self.log.warning("interrupted; reservation released")
+                    raise
             usage = self._agent_usage(len(prompt), result)
             budget.settle(
                 self.conn, reservation, prompt_tokens=usage.prompt_tokens,
@@ -1056,6 +1106,18 @@ class _TaskRun:
             cost = candidate.price.cost(prompt, completion)
             estimated = estimated or candidate.price.source == "history"
         return Usage(prompt, completion, cost, estimated)
+
+    def _paused(self, candidate: Candidate, tries: int) -> retry.Action | None:
+        """Give up on a provider that another task paused while this one waited for a slot."""
+        state = health.get(self.conn, candidate.provider)
+        if state.open_until is None or not state.is_open(self.now()):
+            return None
+        reason = t(
+            "select.reason.circuit_open", name=candidate.provider,
+            until=state.open_until.strftime("%H:%M"), error=state.last_error or "-",
+        )  # fmt: skip
+        return self._fail(candidate, None, tries, retry.Action.NEXT, reason=reason,
+                          error="CircuitOpen")  # fmt: skip
 
     def _fail(
         self,

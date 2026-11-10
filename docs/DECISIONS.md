@@ -456,3 +456,17 @@ Mimari §8.2 güncellendi.
 - **Çıktı:** `BatchEnvelope` (`batch_version: 1`): sonuçlar dosya sırasında, her biri görevin zarfıyla. İnsan modunda her görev bitince stderr'e bir satır, sonda stdout'a liste ve toplam. Çıkış kodu: hepsi `ok` ise 0, değilse 1 (2: batch dosyası hatası).
 - **`runs.batch_id`** sütunu (ilk şemadan beri vardı) artık yazılıyor, yeni migration gerekmedi. Batch kimliği `b-` + koşu kimliği biçiminde.
 Mimari §12, §13 güncellendi.
+
+## D-054 – Faz 7a kod denetimi düzeltmeleri (2026-11-10, Faz 7a)
+**Bağlam:** PR #13 için `/code-review`: 10 bulgu, hepsi düzeltildi.
+**Karar:**
+- **Önce yer, sonra bütçe:** istek önce sağlayıcının semaforunda yer bekliyor, sonra bütçeyi rezerve ediyor. Önceden bütün görevler bekleme sırasında rezervasyon tutuyordu ve sırayla çalışınca bütçeye sığacak görevler `BudgetExhausted` alıyordu. Yeniden deneme beklemesinde yer bırakılıyor, böylece diğer görevler beklemiyor.
+- **Router bütçesi:** router'ın bütçe elemesi rezervasyonları saymıyor (`budget.used(reservations=False)`), sadece gerçekleşmiş kullanıma bakıyor. Bir rezervasyon, süren bir isteğe ait (batch'te aynı sağlayıcıyı bekleyen bir göreve) ve bu görev isteğini göndermeden önce kapanıyor. Rezervasyonları, istek gönderilirken yapılan `reserve` sayıyor; birden çok süreç birlikte yine bütçeyi aşamıyor. Tek bir koşu için davranış değişmedi.
+- **Devre kesici yerde yeniden bakılıyor:** yer bulunca sağlayıcının sağlığı tekrar okunuyor. Başka bir görevin hataları devreyi açtıysa istek gönderilmiyor, koşu hemen sonraki adaya geçiyor (`failovers` içinde `CircuitOpen`). Önceden kuyruktaki her görev kendi zaman aşımını bekliyordu.
+- **Fiyat listeleri tek kilitle:** batch'teki görevler fiyat listelerini sırayla çekiyor (`ProviderSlots.prices`). İlk görev çekip önbelleğe yazıyor, diğerleri taze önbelleği kullanıyor. Aynı liste 20 kez çekilmiyor, görevler birbirinin önbelleğini ezmiyor.
+- **Glob'lar `run` ile aynı:** kesişim hesabı `context.glob_files` kullanıyor (`collect_context` ile aynı kurallar). `src/**.py` gibi bir desen batch'i çökertmiyor, mutlak desen kod 2 veriyor, `.gitignore`/ignore dosyası kapsamındaki dosyalar kesişim sayılmıyor.
+- **Uyarılar:** görevlerin koşu sırasında ürettiği uyarılar (gizli bilgi, fiyatsız bütçe…) insan modunda da stderr'e yazılıyor.
+- **Çöken koşunun `run_id`'si:** koşu kaydedildiği anda batch'e bildiriliyor (`run_task(on_start=…)`), sonradan çökse bile `error` maddesinde `run_id` var, `show`/`discard` kullanılabiliyor.
+- **Koşu kimliği çakışması:** `new_run_id`, süreç içinde verdiği kimlikleri ve diskte var olan koşu klasörlerini atlıyor. Batch aynı saniyede birkaç koşu başlattığı için gerekli oldu.
+- **Temizlik:** topolojik sıra bir kez hesaplanıyor (`BatchSpec.order`), `spec.read_document` tek okuyucu, CLI'de `spec` modül adı gölgelenmiyor.
+Mimari §12 güncellendi.

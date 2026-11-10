@@ -222,10 +222,6 @@ TASK_UNION_TAGS = {"verify": VERIFIER_TYPES}
 
 def read_document(path: Path) -> Any:
     """A task or batch file as data: YAML, or JSON for ``.json``; problems are usage errors."""
-    return _read(path)
-
-
-def _read(path: Path) -> Any:
     if path.suffix.lower() != ".json":
         try:
             return read_yaml(path)
@@ -241,7 +237,7 @@ def _read(path: Path) -> Any:
 
 def load_task(path: Path) -> TaskSpec:
     """Read and validate a task file. Problems raise ``UsageError`` (exit code 2)."""
-    data = _read(path)
+    data = read_document(path)
     if not isinstance(data, dict):
         raise UsageError(t("config.error.not_mapping", path=path))
     return parse_task(data, source=str(path))
