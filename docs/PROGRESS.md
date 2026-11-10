@@ -203,7 +203,7 @@ Testler: 667 geçti (+4).
 - ✅ Ajan worktree dışına (kullanıcının deposuna) yazarsa `workspace_scope` doğrulaması yakalıyor, uyarı veriliyor, hiçbir şey uygulanmıyor (`test_writing_outside_the_worktree_is_caught`). Not: ajanın kendisinin yazdığını Orkestra engelleyemez; asıl koruma ajanın sandbox'ı (D-044).
 - ✅ 50 KB istem Windows'ta stdin ile geçiyor (`test_a_50_kb_prompt_goes_through_stdin`).
 - ✅ Uçtan uca (sahte ajan, gerçek git, gerçek pytest): testleri kıran deneme → geri bildirim → geçti, `apply` çalıştı; ajan commit'i baseline'a göre diff'leniyor.
-- ⏸ Canlı (gerçek Codex, `-m live`): test yazıldı (`test_live.py::test_live_codex_edit_and_apply`); kullanıcının kararıyla **sonraya ertelendi** (2026-11-10). Çalıştırmak için: `uv run pytest -m live -k codex` (Codex oturumu açık olmalı, kotadan bir görev harcar).
+- ✅ Canlı (gerçek Codex, `-m live`): `test_live.py::test_live_codex_edit_and_apply` önce ertelenmişti. Faz 9c'den sonra çalıştırıldı ve geçti (2026-11-10, 61 sn, codex-cli 0.160.0): gerçek `codex exec` worktree'de testleri kıran hatayı düzeltti, doğrulama geçti, `apply` değişikliği getirdi.
 - ✅ ruff, ruff format, pyright, pytest (663 test) temiz.
 
 **Ertelenenler:**
