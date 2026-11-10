@@ -25,6 +25,7 @@ import shutil
 import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -196,6 +197,10 @@ class CodexAgent(CliAgent):
         return parse_codex_usage(_read(stdout_path))
 
 
+def _prompt(name: str) -> str:
+    return resources.files("orkestra").joinpath("prompts", name).read_text(encoding="utf-8")
+
+
 class AgyAgent(CliAgent):
     """Antigravity CLI, experimental and defensive (Mimari §5.5).
 
@@ -207,8 +212,11 @@ class AgyAgent(CliAgent):
     def invocation(self, req: AgentRequest) -> Invocation:
         prompt_file = req.output_file.parent / PROMPT_FILE
         prompt_file.parent.mkdir(parents=True, exist_ok=True)
-        prompt_file.write_bytes(req.prompt.encode("utf-8"))
-        mode = "accept-edits" if req.sandbox == "workspace-write" else "plan"
+        edit = req.sandbox == "workspace-write"
+        # Print mode rejects shell commands; agy then stops with an empty answer (D-048).
+        rule = _prompt("agy_edit.md" if edit else "agy_read.md")
+        prompt_file.write_bytes(f"{req.prompt}\n\n{rule}".encode())
+        mode = "accept-edits" if edit else "plan"
         argv = [
             self.executable,
             "--output-format", "json",

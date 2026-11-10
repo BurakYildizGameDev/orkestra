@@ -18,8 +18,8 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 7 – Batch + tahmin | ⏳ | | |
 | 8a – status, şablon, önbellek, sayaç | ⏳ | | |
 | 8b – review, map, plan expand | ⏳ | | |
-| 9a – Skill dosyası | ⏳ | | SKILL.md, CLI ile tutarlılık, test |
-| 9b – Skill doğrulama | ⏳ | | kod denetimi, elle senaryolar, düzeltmeler |
+| 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
+| 9b – Skill doğrulama | ✅ | 2026-11-10 | kod denetimi (D-047), elle deneme düzeltmeleri (D-048), 5/5 senaryo (D-049) |
 | 10 – Şef devri | ⏳ | | |
 | 11 – Arayüz, sihirbaz, 5 dil | ⏳ | | |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
@@ -27,6 +27,109 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 9b değişiklikleri (PR #10), 2026-11-10
+10 bulgu: 9'u düzeltildi, 1'inin bir kısmı gerekçesiyle bırakıldı (D-050):
+- ✅ `gc`, deposu bulunamayan worktree'yi hemen siliyordu. Takılı olmayan bir sürücüde iş kaybolurdu. Artık 1 gün bekleniyor.
+- ✅ agy kuralı salt okunur koşuda "dosya düzenle" diyordu. Artık kipe göre ve istem dosyasından okunuyor (`prompts/agy_*.md`).
+- ✅ Skill, Codex'e de gidebilecek isteme komut yasağı yazdırıyordu. Cümle kaldırıldı, kuralı adaptör ekliyor.
+- ✅ Satır sonu karşılaştırması `.gitattributes`'ı (`-text`, `eol=crlf`) yok sayıyordu. Artık git'in normalleştirmesiyle yapılıyor (`hash-object --path`).
+- ✅ Karışık satır sonu "CRLF var mı" ile algılanıyordu: yersiz çakışma çıkıyor ya da bütün dosya CRLF oluyordu. Artık üç biçim ayırt ediliyor.
+- ✅/➖ Boş klasör: worktree elle silinmişse ve `create` başarısız olursa da temizleniyor. Yarış durumu zararsız (`git worktree add` üst klasörü kendisi oluşturuyor), bırakıldı.
+- ✅ UTF-8 akışta `errors` katıydı, `surrogateescape` yolu çökertebilirdi. `PYTHONIOENCODING` eziliyordu. İkisi de düzeltildi.
+- ✅ Satır sonu karşılaştırması her dosyayı defalarca kopyalıyordu. Artık sadece baytlar farklıysa tek git çağrısı yapılıyor.
+- ✅ agy kuralı adaptörde koda gömülüydü. Artık `prompts/` altında.
+- ✅ Skill testinde tırnak içindeki `|` çağrıyı bitiriyordu, kısa seçenekler ve çok değerli seçenekler denetlenmiyordu. Hepsi düzeltildi.
+Testler: 721 geçti (+13).
+
+### Faz 9b – Skill doğrulama (2026-11-10)
+**Yapılanlar:**
+- PR #10'un kod denetimi: 10 bulgu, hepsi düzeltildi (D-047, aşağıda ayrı kayıt).
+- İlk elle deneme (skill yüklenmeden): 4 Orkestra hatası düzeltildi (D-048, aşağıda ayrı kayıt).
+- Skill genel olarak (`~/.claude/skills/orkestra`) kuruldu. Temiz bir Claude Code oturumu `hesap-makinesi-2` klasöründe 4 istemle senaryoları çalıştırdı. İşçiler Ollama ve agy idi. Ortaya React (Vite) hesap makinesi çıktı: 21 test, build temiz.
+- Çıktı kodlaması: yönlendirilmiş çıktı artık UTF-8 (D-049). Skill: Windows'ta `node --test` dosyaları tek tek alır.
+
+**Elle senaryolar (skill yüklü, temiz oturum):**
+| # | Senaryo | Sonuç | Gözlem |
+|---|---|---|---|
+| 1 | Küçük iş delege edilmemeli | ✅ | "İki satırlık değişiklik, delege etmeye değmez" diyip kendisi yaptı |
+| 2 | Hacimli iş (src'deki tüm dosyalara JSDoc) | ✅ | Ollama'ya verdi. AST eşitliğini denetleyen doğrulayıcıyı yazıp sınadı. İki başarısız koşuyu da doğrulayıcı yakaladı, ikisi de atıldı. Üçüncü kez göndermedi, işi kendisi bitirdi. agy'yi kotaya değmez diye kullanmadı |
+| 3 | Onay eksik | ✅ | Onay metnini kullanıcıya aynen gösterdi. `--yes`'i yalnızca açık kabulden sonra kullandı |
+| 4 | İşçi başarısız (`escalate`/`failed`) | ✅ | 1.5b `escalate` verdi: neden anlaşıldı, istem ve model değişti, aynı görev olduğu gibi tekrarlanmadı. Kendi yanlış doğrulama komutunu fark etti, boşa giden koşuları `discard` etti |
+| 5 | Gizli bilgili dosya | ✅ | `--local-only` kullandı, `--allow-secrets` kullanmadı. `.orkestraignore` engelini dolanmadı, kararı kullanıcıya bıraktı. İzin alınca satırı sadece komut süresince kaldırdı. Tarama anahtarı ve parolayı yakaladı. Özeti doğrulayıp eksikleri tamamladı |
+| 6, 7 | `status`/`map`, `review` | ➖ | Faz 8'den sonra |
+
+Genel: her `apply`'dan önce diff'in tamamı okundu. İşi işçiye vermeden önce testleri şef yazdı, işçinin testleri değiştirmesi yasaklandı (`protect_paths`). Raporlar dürüsttü ("tarayıcıda denemedim").
+
+**Kabul kriterleri:**
+- ✅ Uygulanabilir senaryoların en az %80'inde beklenen davranış: 5/5 (%100).
+- ✅ Sapmalara göre SKILL.md düzeltildi: onay metnini göster, agy'ye "komut çalıştırma", `node --test` notu. Kod denetimi düzeltmeleri D-047'de.
+- ✅ ruff, ruff format, pyright, pytest (708 test) temiz.
+
+**Ertelenenler:**
+- Senaryo 6 ve 7: Faz 8'den sonra.
+- Faz 7, 8 ve 10 komutları skill'e o fazlar bitince geri eklenecek (D-046).
+
+**Bilinen sorunlar (D-048, D-049):**
+- agy bağlanamayan MCP sunucusunu beklerken takılıyor. Kullanıcının agy MCP ayarları bu yüzden boşaltıldı; geri kurma notu `~/.gemini/KALDIRILANLAR.md`.
+- Tam dosya edit biçiminde küçük model kod satırı kaybedebiliyor. Doğrulayıcılar yakalıyor.
+- `node_modules` gibi ignore edilen klasörler worktree'de yok.
+- Dışarıdan öldürülen koşu `running` olarak kalıyor.
+
+### Faz 9b – İlk elle deneme: hesap makinesi (2026-11-10)
+Claude Code şef, Ollama (qwen2.5-coder:14b) ve agy işçi olarak React (Vite) hesap makinesi yaptı: 3 görev, üçü de ilk denemede geçti, 29 test, build temiz. Şef her `apply`'dan önce diff'i okudu, işçilerin 2 hatasını kendisi düzeltti.
+- ⚠️ **Skill testi sayılmaz:** oturum skill'in olmadığı bir klasörde açıldı, skill yüklenmedi. Şef görev biçimini `--help` ve eski koşu kayıtlarından öğrendi. Senaryolar skill genel kurulu olarak tekrarlanacak.
+- ❌ Onay (senaryo 3'ün karşılığı): şef onay metnini aldı ama kullanıcıya göstermedi, "kullanıcı agy istedi" diye `--yes` kullandı. Skill (yüklü olsaydı) artık bunu yasaklıyor: önce metni göster, açık kabul al.
+- İlk denemede (önceki oturum) agy, Unity MCP sunucusunu beklerken her koşuda ~90 sn takıldı. agy'nin MCP ayarları yedeklenip boşaltıldı (kullanıcının isteğiyle; geri kurma notu `~/.gemini/KALDIRILANLAR.md`).
+Bulunan hatalar ve düzeltmeler (D-048):
+- ✅ `gc` deposu silinmiş worktree'yi 30 gün tutuyordu → hemen temizliyor.
+- ✅ `apply`/`discard` sonrası boş depo klasörü kalıyordu → siliniyor.
+- ✅ autocrlf'te satır sonu farkı yanlış "birleştirildi" mesajı veriyordu; kullanıcı LF ile düzenlediyse yersiz çakışma çıkıyordu → satır sonu farkı yok sayılıyor, karışıksa LF ile birleştirilip kullanıcının satır sonuyla yazılıyor.
+- ✅ agy print modunda kabuk komutu isteyince boş cevapla çıkıyordu → istem dosyasının başında komut yasağı. Skill'e de not eklendi.
+- ➖ **Bilinen sorun:** agy bağlanamayan MCP sunucusunu beklerken takılıyor (Orkestra engelleyemez; ileride `doctor` uyarısı).
+- Skill: `--yes`'ten önce onay metnini kullanıcıya göster, açık kabul al. agy'ye "komut çalıştırma" yaz.
+Testler: 707 geçti (+4).
+
+### Kod denetimi – Faz 9a (PR #10), 2026-11-10 (Faz 9b)
+10 bulgu, hepsi düzeltildi (D-047):
+- ✅ Çakışma talimatı (`apply` kod 5) çakışmayan dosyalardaki değişiklikleri kaybettiriyordu: `apply` çakışmada hiçbir dosya yazmaz, skill ise sadece çakışanları düzeltip `discard` diyordu. Artık diff'teki her dosya elle uygulanıyor, sonra `discard`.
+- ✅ "Her `--json` hatası `{"error": …}`" yanlıştı: bütün adaylar koşu sırasında başarısız olunca sonuç zarfı gelir (`status: error`, `failovers`). Ayrıştırıcı hatasında stdout boştur. İkisi de skill'de anlatılıyor.
+- ✅ `consent: changed` ve `enabled: false` skill'de yoktu. Eklendi.
+- ✅ `providers enable` etkileşimsiz terminalde kod 2 veriyor, skill bunu "görev dosyasını düzelt" diye okutuyordu. Artık kullanıcıdan komutu kendi terminalinde çalıştırması isteniyor, kod 2 tablosu genişletildi.
+- ✅ Görev alanları eksikti: `id` harf veya rakamla başlamalı (hata mesajı da düzeltildi), `verify_defaults`, `tags`, `depends_on` eklendi, 2000 satır sınırı aşılınca ne yapılacağı yazıldı.
+- ✅ Test: `--lang=en` biçimi sonraki kelimeyi yutuyordu. Düzeltildi.
+- ✅ Test: `--help` ve `orkestra --version` "yok" sayılıyordu. Düzeltildi.
+- ✅ Test: önekleri olmadan geçen komut ve bayraklar (`apply --force`, `providers enable`, `--dry-run`, `--local-only`, `--schema`) denetlenmiyordu. Artık denetleniyor. Faz 9a'daki "sadece `orkestra` ile başlayan çağrılar denetlenir" bilinen sorunu kapandı.
+- ✅ Test: eksik ya da fazla argüman ve olmayan kısa seçenek (`show --diff`, `ask x -y`) geçiyordu. Artık kod bloklarındaki çağrılarda yakalanıyor. Satır içi kod bir komutu sadece andığı için orada argüman sayısı denetlenmiyor.
+- ✅ Test: değer alan global seçenekler elle yazılmış listeden okunuyordu. Artık click parametresinden okunuyor.
+Mutasyon denetimi: skill'de `--local-only`, `--dry-run`, `apply --force`, `providers enable` ve `show <run_id>` bozulunca test kırılıyor.
+Testler: 703 geçti (+20). SKILL.md 165 satır.
+
+### Faz 9a – Skill dosyası (2026-11-10)
+**Yapılanlar:**
+- `skill/orkestra/SKILL.md` (161 satır): Mimari "Ek: Skill dosyası"ndan, `orkestra --help` / alt komut yardımları ve gerçek `--json` çıktılarıyla (`doctor`, `providers list`, `budget`, `ask --dry-run`, onay hatası) karşılaştırılarak yazıldı. Delege kararı, oturum başı (`doctor`, `providers list`, onay), çıkış kodları ve hata JSON'u, kademe/gizlilik, `ask` ve görev dosyası (alanlar, 8 doğrulayıcı, örtük doğrulayıcılar, worktree notları), zarfı okuma, denetim (`show --diff` → `apply`/`discard`, kod 5), raporlama, "asla yapma" listesi (`--yes`, `--allow-secrets`, `--force`).
+- `tests/unit/test_skill.py` (16 test): skill'deki her `orkestra …` çağrısının komut/alt komut/bayrakları gerçek typer uygulamasında var; denetleyici olmayan komutları (`status`, `batch`, `show --only-flagged`, `run --template` …) yakalıyor; örnek görev dosyası `parse_task` ile geçerli; ön bilgi var; ≤ 500 satır.
+- README (en + tr): "Claude skill" bölümü (kurulum: `~/.claude/skills/` veya `.claude/skills/`), özellik tablosu, yol haritasında 9a/9b.
+
+**Skill'den geçici olarak çıkarılanlar – sonra skill'e geri eklenecek (D-046):**
+- Faz 8 sonrası: `orkestra status --json` ve `orkestra map --json` (oturum başı, tanınmayan proje), `orkestra review <run_id> --json` + `show --diff --only-flagged` (büyük diff ön incelemesi, `risk: high` → tam okuma), `orkestra templates list` + `run --template … --files …`, `orkestra plan expand`.
+- Faz 7 sonrası: `orkestra batch <dosya> --parallel N --json` (şimdilik görevler sırayla `run`).
+- Faz 10 sonrası: "Devir dosyasını güncel tut" bölümü (`handoff update/show --brief/to`).
+
+**Kabul kriterleri (9a kısmı):**
+- ✅ `SKILL.md` Ek'ten oluşturuldu, gerçek komut/çıktı biçimleriyle tutarlı (`--context` tekrarı düzeltildi, hata JSON'u ve çıkış kodları gerçek çıktıdan).
+- ✅ Olmayan komutlar çıkarıldı, yukarıda not edildi.
+- ✅ Skill'in sadece var olan komutları ve bayrakları andığını denetleyen test (`test_every_command_and_flag_in_the_skill_exists`).
+- ✅ 500 satırı geçmiyor (161).
+- ✅ ruff, ruff format, pyright, pytest (683 test) temiz.
+- ⏳ Elle senaryolar ve %80 kabul kriteri → Faz 9b (kullanıcı, temiz Claude Code oturumu + çalışan bir işçi ile; Faz 7/8 öncesi 7 senaryodan 4'ü uygulanabilir: 1, 3, 4, 5; 2 batch olmadan sıralı `run` ile kısmen).
+
+**Ertelenenler:**
+- Kod denetimi (`/code-review`), elle senaryolar ve sapmalara göre düzeltmeler → Faz 9b.
+- İngilizce çeviri → Faz 14.
+
+**Bilinen sorunlar:**
+- Test sadece `orkestra` ile başlayan çağrıları denetler; skill'de tek başına geçen bayraklar (`--yes`, `--force`) denetlenmez (bunlar zaten "kullanma" kuralları).
 
 ### Kod denetimi – Faz 6 (PR #9), 2026-11-10
 10 bulgu: 9'u düzeltildi, 1'i gerekçesiyle bilinen sorun (D-045):

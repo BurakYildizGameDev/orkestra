@@ -360,3 +360,58 @@ Mimari §2, §5.3, §5.4, §5.5, §7 güncellendi.
 - Kullanılmayan `CliAgent.health()` ve tekrar eden `probe_version` kaldırıldı (sürüm `doctor.probe_version`'dan).
 - **Bilinen sınır:** `generic` türdeki ajanın (codex/agy dışındaki her program) sandbox'ı yoktur; `ask` görevinde kullanıcının proje dizininde çalışır. Onay metni bunu söyler (`consent.describe.generic_no_sandbox`), yazdıkları `workspace_scope` ile raporlanır. Bilerek bırakıldı: genel bir programa sandbox dayatmanın taşınabilir yolu yok.
 Mimari §5.3, §5.4 güncellendi.
+
+## D-046 – Skill dosyası bugünkü CLI'ye göre (2026-11-10, Faz 9a)
+**Bağlam:** Mimari "Ek: Skill dosyası" tam ürünü (Faz 7, 8, 10 komutlarıyla) anlatıyor; Faz 9 MVP sırasıyla Faz 7/8/10'dan önce yapılıyor. Plan, olmayan komutların geçici olarak çıkarılmasını istiyor.
+**Karar:**
+1. **Çıkarılanlar (o fazlar bitince geri eklenecek):** `status`, `map` (oturum başı) ve `review` + `show --only-flagged` (denetim) → Faz 8; `templates list`, `run --template/--files`, `plan expand` → Faz 8; `batch` → Faz 7; "Devir dosyasını güncel tut" bölümü (`handoff …`) → Faz 10. Bölümler yeniden numaralandı (Raporlama §7).
+2. **Gerçek CLI'ye göre düzeltmeler:** `ask` için her dosyaya ayrı `--context` (Ek'teki `--context <dosyalar>` yanlıştı); oturum başı `doctor --json` + `providers list --json`; örnek görev dosyasında `workspace: .` yerine göreli yolların neye göre çözüldüğü yazıldı (D-038), `allow_new_files: false` eklendi; birden çok görev şimdilik sırayla `run` ile.
+3. **Önceki fazların kararlarından eklenenler:** çıkış kodları tablosu ve `--json` hata belgesi (`{"error": {...}}`), `--dry-run`, görev alanları ve 8 doğrulayıcı, edit görevlerine kendiliğinden eklenen doğrulayıcılar (§10), worktree notları (en az bir commit, ignore edilen klasörler yok, D-040/D-043), `apply` sadece `ok` ve `--force` kullanıcı istemeden yok (D-043), `--allow-secrets` kullanıcı istemeden yok, başarısız koşunun worktree'si için `discard`, `show --log`, `gc`.
+4. **Dil:** Ek'teki gibi Türkçe (Faz 14'te İngilizceye çevrilecek); ön bilgi (`description`) İngilizce.
+5. **Test** (`tests/unit/test_skill.py`): skill'deki her `orkestra …` çağrısı (kod blokları ve satır içi kod) gerçek typer uygulamasına karşı denetlenir: komut, alt komut ve bayraklar var olmalı. Örnek görev dosyaları `parse_task` ile geçerli olmalı; dosya ≤ 500 satır. Böylece bir komut yeniden adlandırılırsa veya skill'e henüz olmayan bir komut yazılırsa test kırılır.
+Mimari "Ek: Skill dosyası" hedef (tam) sürüm olarak kaldı; başına bu karara işaret eden not eklendi ve `--context` kullanımı düzeltildi.
+
+## D-047 – Faz 9a kod denetimi düzeltmeleri (2026-11-10, Faz 9b)
+**Bağlam:** PR #10 için `/code-review`: 10 bulgu (5'i skill metninde, 5'i skill testinde). Hepsi düzeltildi.
+**Karar:**
+- **Çakışmada değişikliğin tamamı elle uygulanır:** `apply` çakışmada hiçbir dosya yazmaz ve hata sadece çakışan dosyaları listeler. Skill önceden "çakışan dosyaları düzenle, sonra `discard`" diyordu, bu da çakışmayan dosyalardaki doğrulanmış değişiklikleri kaybettiriyordu. Artık diff'teki her dosya uygulanır, sonra `discard` çalıştırılır.
+- **Hata biçimleri:** `--json` hatası her zaman `{"error": …}` değildir. Koşu başladıktan sonra bütün adaylar başarısız olursa sonuç zarfı gelir (`status: error`, nedenler `failovers` içinde, kod 3). Ayrıştırıcı hatasında (bilinmeyen bayrak, aralık dışı değer) stdout boştur, mesaj stderr'e yazılır (kod 2). Skill ikisini de anlatıyor.
+- **Onay durumları:** skill `consent: changed` (onaydan sonra ayar değişti) ve `enabled: false` durumlarını da anlatıyor. `providers enable` etkileşimli terminal ister (yoksa kod 2, `consent.not_interactive`). Claude bu komutu kendisi çalıştırmaz, kullanıcıdan kendi terminalinde çalıştırmasını ister.
+- **Görev alanları:** `id` harf veya rakamla başlar (hata mesajı da bunu söylüyor, en/tr). `verify_defaults`, `tags`, `depends_on` (şimdilik kullanılmıyor) alanları eklendi. 2000 satırı aşan meşru değişiklik için önce görev bölünür; bölünemiyorsa `verify_defaults: false` ve kendi `forbid_paths`.
+- **Skill testi** (`tests/unit/test_skill.py`): komut satırı kelimeleri `shlex` ile ayrılır. Global seçeneklerin değer alıp almadığı click parametresinden okunur (`--lang=en` de olur). `--help` ve `--version` kabul edilir, kısa seçenekler de denetlenir. Kod bloklarındaki çağrılarda argüman sayısı denetlenir. Satır içi `orkestra …` ve önekleri olmadan geçen komut ve bayraklar (`apply --force`, `providers enable`, `--dry-run`, `--local-only`) da denetlenir; önekleri olmadan geçen bayrak en az bir komutta bulunmalıdır.
+Mimari "Ek: Skill dosyası" (onay ve çakışma maddeleri) güncellendi.
+
+## D-048 – İlk elle deneme (hesap makinesi) düzeltmeleri (2026-11-10, Faz 9b)
+**Bağlam:** Claude Code (şef) + Ollama + agy ile gerçek bir React hesap makinesi projesi. Oturum yanlış klasörde açıldığı için skill yüklenmedi; bu yüzden bu deneme skill testi sayılmaz, ama Orkestra'da hatalar çıkardı.
+**Karar:**
+- **`gc`, deposu silinmiş worktree'yi hemen temizler.** Etkin bir kayıt, deposu olmasa da 30 gün tutuluyordu; böyle bir koşu hiçbir zaman `apply` edilemez.
+- **Son worktree'si giden deponun klasörü silinir** (`worktrees/<depo-özeti>/`). Önceden sadece `gc` siliyordu; `apply` ve `discard` boş klasör bırakıyordu. Temizlik `remove_path`'e taşındı.
+- **Satır sonları:** `core.autocrlf=true` ile checkout biçimi CRLF, araçların yazdığı dosya LF olabilir. `apply` bunu "kullanıcı dosyayı sonradan değiştirdi" sanıp yanlış "birleştirildi" mesajı veriyordu. Kullanıcı gerçekten LF ile düzenlediyse de `merge-file` her satırı farklı görüp yersiz çakışma veriyordu (test yakaladı). Artık sadece satır sonu farkı değişiklik sayılmaz. Satır sonları karışıksa üç taraf LF ile birleştirilir, sonuç kullanıcının dosyasının satır sonuyla yazılır.
+- **agy istemine komut yasağı:** print modu kabuk komutlarını reddediyor ve agy boş cevapla çıkıyordu. İstem dosyasının başına "kabuk komutu çalıştırma, sadece dosya oku/düzenle, denetimi Orkestra yapar" kuralı eklenir. Codex'e eklenmez, çünkü Codex `workspace-write` sandbox'ında komut çalıştırabiliyor.
+- **Bilinen sorun:** agy, istekten önce ayarlarındaki bütün MCP sunucularının bağlanmasını bekliyor. Bağlanamayan bir sunucu (ör. Unity editörü kapalıyken unity) her koşuyu ~90 sn bekletip boşa bitiriyor. `agy mcp list`'teki "disabled" durumu print modunda dikkate alınmıyor. Orkestra bunu engelleyemiyor. İleride `doctor` agy'nin MCP ayarlarında sunucu görünce uyarabilir. Şimdilik README/skill notu yok, PROGRESS'te bilinen sorun.
+- **Görülen davranış (değişiklik yok):** görev dosyasındaki `model:` config'te olmayan bir Ollama modelini (`qwen2.5-coder:14b`) adlandırabiliyor. Router bunu kabul ediyor, bağlam penceresi varsayılandan (8192) geliyor.
+Mimari §5.5 (agy), §9 (`uygula`, `gc`) güncellendi.
+
+## D-049 – Skill ile elle senaryolar; çıktı kodlaması (2026-11-10, Faz 9b)
+**Bağlam:** Skill genel olarak (`~/.claude/skills/orkestra`) kuruldu. Temiz bir Claude Code oturumu, `hesap-makinesi-2` klasöründe 4 istemle 5 senaryonun hepsini çalıştırdı. İşçiler Ollama (qwen2.5-coder 1.5b/14b) ve agy idi.
+**Karar:**
+- **Yönlendirilmiş çıktı UTF-8:** Windows'ta boruya ya da dosyaya giden çıktı ANSI kod sayfasıyla (cp1254) yazılıyordu. Okuyan taraf (Claude Code, Git Bash, editör) ise UTF-8 bekliyor, bu yüzden Türkçe harfler bozuk geliyordu (`ko�usu`). Şef çıktıyı `iconv -f cp1254` ya da `--lang en` + `PYTHONIOENCODING` ile çevirmek zorunda kaldı. Artık TTY olmayan stdout/stderr `utf-8` (`errors="replace"`) ile yazıyor. Konsol kendi kod sayfasında kalıyor, yazamadığı karakter `?` oluyor (eski davranış, D-016 dönemi).
+- **Skill:** Windows'ta `node --test <klasör>` çalışmıyor, test dosyaları tek tek verilmeli. Bu not worktree notlarına eklendi.
+- **Bilinen sorunlar (değişiklik yok):**
+  - API ile edit tam dosya JSON'u kullanıyor (D-042). Küçük bir model sadece yorum eklerken bile kod satırlarını kaybedebiliyor: qwen2.5-coder:14b iki koşuda bir satırı çoğalttı, sonra bir tanımı sildi. Doğrulayıcılar yakaladı, hiçbir şey uygulanmadı. Daha güvenli bir edit biçimi (ara/değiştir) ileride düşünülebilir.
+  - Ignore edilen klasörler (`node_modules/`) worktree'de yok. Şef `node_modules`'ü worktree'ye junction ile bağlayan bir doğrulama betiği yazdı. Bu yol işçiye kullanıcının `node_modules`'üne yazma imkânı verir, bu yüzden skill'de önerilmiyor. İleride config'te "worktree'ye salt okunur bağlanacak klasörler" düşünülebilir.
+  - Dışarıdan öldürülen bir koşu (ör. MCP'de takılan agy) `runs` tablosunda `running` olarak kalıyor. Bütçe rezervasyonunu `gc` temizliyor, koşunun durumunu temizlemiyor.
+Mimari §Teknoloji (Kodlama satırı) güncellendi.
+
+## D-050 – Faz 9b değişikliklerinin kod denetimi (2026-11-10, Faz 9b)
+**Bağlam:** PR #10 için ikinci `/code-review`, bu sefer D-048 ve D-049 değişikliklerini kapsadı: 10 bulgu. 9'u düzeltildi, 1'inin bir kısmı gerekçesiyle bırakıldı.
+**Karar:**
+- **`gc` bir gün bekler:** deposu bulunamayan worktree D-048'de hemen siliniyordu. Ama "bulunamayan" sadece takılı olmayan bir sürücü de olabilir ve uygulanmamış değişiklik yalnızca worktree'de duruyor. Artık kayıtsız worktree'deki gibi 1 gün bekleniyor.
+- **Satır sonu karşılaştırması git'e bırakıldı:** iki sürüm, git o yol için aynı blob'u saklayacaksa aynı sayılıyor (`git hash-object --stdin --path=<yol>`: `core.autocrlf` ve `.gitattributes` uygulanır). Böylece `-text` ya da `eol=crlf` dosyada kullanıcının satır sonu değişikliği artık sessizce geri alınmıyor. Git yalnızca baytlar farklıysa çağrılıyor, dosya kopyaları da azaldı.
+- **Karışık satır sonları:** "içinde CRLF var mı" yerine üç biçim ayırt ediliyor: hep CRLF, hep LF, karışık. Üç taraf aynı ve karışık değilse ham birleştirme yapılıyor. Değilse LF ile birleştiriliyor, sonuç sadece kullanıcının dosyası baştan sona CRLF ise CRLF yazılıyor. Böylece yersiz çakışma ve bütün dosyanın CRLF'e dönmesi engelleniyor.
+- **Boş klasör:** `remove_path` worktree zaten yoksa da depo klasörünü temizliyor. `create` başarısız olunca boş klasör bırakmıyor. **Bırakılan kısım:** bir koşu boş klasörü silerken başka bir koşunun aynı klasöre worktree eklemesiyle oluşan yarış zararsız, çünkü `git worktree add` eksik üst klasörleri kendisi oluşturuyor (denendi).
+- **agy kuralı kipe göre ve istem dosyasından:** kural artık `prompts/agy_edit.md` ve `prompts/agy_read.md`'den okunuyor ve istemin sonuna ekleniyor. Salt okunur (`ask`, `--mode plan`) koşuda "dosya düzenle" denmiyor, önceki çelişki kalktı.
+- **Skill:** şefe "agy istemine komut yasağı yaz" demiyor. Sağlayıcıyı router seçiyor, görev Codex'e de gidebilir ve Codex komut çalıştırabilir. Kuralı adaptör kendisi ekliyor.
+- **Akışlar:** UTF-8 akışlar da `errors="replace"` alıyor, böylece `surrogateescape` ile okunmuş git yolları çökertmiyor. Açıkça verilmiş `PYTHONIOENCODING` yönlendirilmiş çıktıda korunuyor.
+- **Skill testi:** çağrılar artık kabuk sözcükleriyle ayrılıyor. Tırnak içindeki `|`, `;` ve `&` çağrıyı bitirmiyor. Düzyazıdaki kısa seçenekler (`-f`) denetleniyor. Birden çok değer alan seçeneklerin bütün değerleri atlanıyor.
+Mimari §5.5 (agy), §9 (`uygula`, `gc`), §Teknoloji (Kodlama) güncellendi.

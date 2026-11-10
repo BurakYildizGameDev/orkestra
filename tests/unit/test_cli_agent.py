@@ -170,7 +170,10 @@ def test_agy_gets_the_prompt_from_a_file_outside_the_workdir(tmp_path: Path) -> 
     req = _request(tmp_path, prompt="a long prompt " * 1000)
     inv = _agy(model="gemini-3").invocation(req)
     prompt_file = req.output_file.parent / ca.PROMPT_FILE
-    assert prompt_file.read_bytes().decode() == req.prompt
+    written = prompt_file.read_bytes().decode()
+    assert written.startswith(req.prompt)
+    assert "do not run shell commands" in written.lower()  # agy's print mode rejects them
+    assert "edit files" in written.lower()
     assert not (req.workdir / ca.PROMPT_FILE).exists()
     assert all(req.prompt not in a for a in inv.argv) and inv.stdin is None
     argv = inv.argv
@@ -240,3 +243,11 @@ def test_enabling_agy_warns_about_its_deny_list(tmp_path: Path) -> None:
     assert any("rm" in line and "sudo" in line for line in lines)
     generic = _generic("echo")
     assert any("sandbox" in line for line in consent.describe("fake", generic))
+
+
+def test_agy_read_only_prompt_does_not_ask_for_edits(tmp_path: Path) -> None:
+    req = _request(tmp_path, sandbox="read-only")
+    _agy().invocation(req)
+    written = (req.output_file.parent / ca.PROMPT_FILE).read_bytes().decode().lower()
+    assert "do not run shell commands" in written
+    assert "edit files" not in written and "checks are run" not in written

@@ -50,6 +50,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Sağlayıcı başına açık onay (vermeden önce ne yapabileceği gösterilir) | `orkestra providers enable <ad>`, `providers disable <ad>` |
 | Sağlayıcılar: onay, sağlık ve kalan bütçe | `orkestra providers list [--json]` |
 | Günlük bütçe (token, USD, istek, koşu), yerel gece yarısı sıfırlanır | `orkestra budget [--json]` |
+| Claude skill: Claude işi Orkestra'ya ne zaman ve nasıl verir | `skill/orkestra/SKILL.md` |
 | Türkçe veya İngilizce arayüz | `--lang en\|tr`, `ORKESTRA_LANG` veya config'te `language:` |
 
 Şu an desteklenen sağlayıcılar:
@@ -302,6 +303,27 @@ işlenmez (uyarı verilir). Worktree yolları derin olduğu için `doctor` Windo
 kopyalanmaz; bunlara ihtiyaç duyan bir kontrol kendi getirmeli (etkin yorumlayıcınla çalışan
 bir Python kontrolü çalışır).
 
+## Claude skill
+
+`skill/orkestra/SKILL.md`, Claude'a (Claude Code'da ya da yerel kabuğu olan her yerde) işi ne
+zaman ve nasıl Orkestra'ya vereceğini öğretir: sadece büyük ve denetlenebilir işleri delege et,
+gerçek doğrulayıcılarla görev dosyası yaz, sadece sonuç zarfını oku, `apply` etmeden önce diff'i
+oku; onay vermeyi (`--yes`), gizli bilgiyi uzağa göndermeyi (`--allow-secrets`) ve doğrulanmamış
+değişikliği zorla uygulamayı (`--force`) asla kendi başına yapma. Bir test, skill'in andığı her
+komutun ve bayrağın CLI'de var olduğunu denetler.
+
+```bash
+# kişisel skill olarak
+mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
+# veya sadece bir proje için
+mkdir -p .claude/skills && cp -r skill/orkestra .claude/skills/
+```
+
+Sonra Claude'a örneğin şunu söyle: *"Bu 20 dosyaya docstring ekleme işini orkestra ile dağıt,
+sonucu sen denetle."* Skill şimdilik Türkçe (yayında İngilizceye çevrilecek) ve bugün var olan
+komutları kapsıyor; `status`, `map`, `review`, şablonlar, toplu koşu ve devir o fazlar
+bitince skill'e geri eklenecek.
+
 ## Yapılandırma
 
 Orkestra bir temel dosya ve bir proje dosyası okur; proje dosyası kazanır:
@@ -410,7 +432,8 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 6 | Kod ajanları: Codex CLI, Antigravity CLI | ✅ |
 | 7 | Toplu çalıştırma, paralellik, maliyet tahmini | ⏳ |
 | 8 | Şef araçları: `status`, `review`, `map`, şablonlar, `plan expand`, önbellek, tasarruf sayacı | ⏳ |
-| 9 | Claude skill | ⏳ |
+| 9a | Claude skill: `SKILL.md`, CLI ile denetlenmiş | ✅ |
+| 9b | Claude skill: denetim ve elle senaryolar | ✅ |
 | 10 | Şef devri (Claude ↔ Codex ↔ Antigravity) | ⏳ |
 | 11 | Terminal arayüzü, kurulum sihirbazı, 5 dil | ⏳ |
 | 12 | Gece vardiyası kuyruğu, bildirimler, öğrenen yönlendirme | ⏳ |

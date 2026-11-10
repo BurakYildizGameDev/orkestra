@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import sys
 from collections.abc import Sequence
 from contextlib import closing
@@ -633,17 +634,29 @@ def _report_error(exc: OrkestraError, *, as_json: bool) -> None:
 
 
 def _safe_streams() -> None:
-    """Never crash on text the console code page cannot encode.
+    """Redirected output is UTF-8; no stream ever crashes on text it cannot encode.
 
-    Redirected output on Windows uses the ANSI code page (e.g. cp1254) with strict errors,
-    so an emoji in a model answer would raise ``UnicodeEncodeError`` after a successful run.
-    Such characters become ``?``; the full text is always in the run's ``output.md``.
+    Redirected output on Windows defaults to the ANSI code page (e.g. cp1254), but whoever
+    reads a pipe or a file (Claude Code, Git Bash, an editor) expects UTF-8, so Turkish
+    letters arrived broken (D-049). An explicit ``PYTHONIOENCODING`` still wins. A legacy
+    console keeps its code page. Characters a stream cannot encode (an emoji on a legacy
+    console, a git path decoded with ``surrogateescape``) become ``?`` instead of raising
+    ``UnicodeEncodeError`` after a successful run; the full text is always in ``output.md``.
     """
+    chosen = bool(os.environ.get("PYTHONIOENCODING"))
     for stream in (sys.stdout, sys.stderr):
-        encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "")
         reconfigure = getattr(stream, "reconfigure", None)
-        if encoding != "utf8" and reconfigure is not None:
-            with contextlib.suppress(ValueError, OSError):  # detached or closed: leave it
+        if reconfigure is None:
+            continue
+        encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "")
+        try:
+            to_utf8 = encoding != "utf8" and not chosen and not stream.isatty()
+        except (ValueError, OSError):
+            continue  # detached or closed: leave it
+        with contextlib.suppress(ValueError, OSError):
+            if to_utf8:
+                reconfigure(encoding="utf-8", errors="replace")
+            else:
                 reconfigure(errors="replace")
 
 

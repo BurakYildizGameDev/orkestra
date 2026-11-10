@@ -21,6 +21,7 @@ Safety rules:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -208,7 +209,11 @@ def create(path: Path, run_id: str) -> Worktree:
     repo = check_repo(path)
     target = worktree_path(repo, run_id)
     target.parent.mkdir(parents=True, exist_ok=True)
-    _git(["worktree", "add", "--detach", str(target), "HEAD"], repo)
+    try:
+        _git(["worktree", "add", "--detach", str(target), "HEAD"], repo)
+    except BaseException:
+        _remove_if_empty(target.parent)
+        raise
     try:
         # Without this the worker would see the last commit, not the code on disk.
         snapshot = _git(["diff", *_DIFF_FLAGS, "--binary", "HEAD"], repo).stdout
@@ -221,6 +226,7 @@ def create(path: Path, run_id: str) -> Worktree:
         baseline = _out(["rev-parse", "HEAD"], target)
     except BaseException:
         _git(["worktree", "remove", "--force", str(target)], repo, check=False)
+        _remove_if_empty(target.parent)
         raise
     return Worktree(repo, target, baseline, run_id, tuple(_warnings(repo)))
 
@@ -312,24 +318,83 @@ def _read(path: Path) -> bytes | None:
 _CONFLICT = object()  # _merge result: the file cannot be merged
 
 
-def _needs_merge(base: bytes | None, ours: bytes | None, theirs: bytes | None) -> bool:
+def _lf(data: bytes) -> bytes:
+    return data.replace(b"\r\n", b"\n")
+
+
+def _style(data: bytes) -> str:
+    """``crlf`` when every line ends with CRLF, ``lf`` when none does, else ``mixed``."""
+    crlf = data.count(b"\r\n")
+    if crlf == 0:
+        return "lf"
+    return "crlf" if crlf == data.count(b"\n") else "mixed"
+
+
+@dataclass
+class _Sides:
+    """One file in three versions: the baseline, the user's file now and the worker's file.
+
+    Two versions count as the same when git would store the same blob for them at this path:
+    with ``core.autocrlf`` a CRLF checkout and an LF file a tool wrote are the same, while
+    for a ``-text`` or ``eol=crlf`` file a line-ending change is a real change (D-048).
+    """
+
+    repo: Path
+    rel: str
+    base: bytes | None
+    ours: bytes | None
+    theirs: bytes | None
+    _ids: dict[str, str] = field(default_factory=dict)
+
+    def _id(self, side: str) -> str:
+        if side not in self._ids:
+            data = getattr(self, side)
+            done = _git(["hash-object", "--stdin", f"--path={self.rel}"], self.repo, stdin=data)
+            self._ids[side] = done.stdout.strip().decode("ascii")
+        return self._ids[side]
+
+    def same(self, a: str, b: str) -> bool:
+        first, second = getattr(self, a), getattr(self, b)
+        if first == second:
+            return True
+        if first is None or second is None:
+            return False
+        return self._id(a) == self._id(b)  # only when the bytes differ: one git call per side
+
+
+def _needs_merge(sides: _Sides) -> bool:
     """Both the user and the worker changed the file, and not in the same way."""
-    return ours != base and theirs not in (ours, base)
+    return not sides.same("ours", "base") and not (
+        sides.same("theirs", "ours") or sides.same("theirs", "base")
+    )
 
 
-def _merge(base: bytes | None, ours: bytes | None, theirs: bytes | None, cwd: Path) -> object:
+def _merge(sides: _Sides, cwd: Path) -> object:
     """Three-way merge of one file (``None`` = the file is absent).
 
     Returns the merged content, ``None`` for "delete the file", or ``_CONFLICT``.
     """
-    if ours == base:
-        return theirs  # only the worker changed (or deleted) it
-    if theirs in (ours, base):
-        return ours  # same change on both sides, or only the user changed it
+    if sides.same("ours", "base"):
+        return sides.theirs  # only the worker changed (or deleted) it
+    if sides.same("theirs", "ours") or sides.same("theirs", "base"):
+        return sides.ours  # same change on both sides, or only the user changed it
+    base, ours, theirs = sides.base, sides.ours, sides.theirs
     if base is None or ours is None or theirs is None:
         return _CONFLICT  # created on both sides, or deleted on one side and edited on the other
-    if b"\0" in base + ours + theirs:
+    if b"\0" in base or b"\0" in ours or b"\0" in theirs:
         return _CONFLICT  # binary: no line merge
+    styles = {_style(base), _style(ours), _style(theirs)}
+    if len(styles) == 1 and "mixed" not in styles:
+        return _merge_file(base, ours, theirs, cwd)
+    # Different line endings would make every line differ: merge with LF, then write the
+    # result in the user's style (CRLF only if the user's file was CRLF throughout).
+    merged = _merge_file(_lf(base), _lf(ours), _lf(theirs), cwd)
+    if isinstance(merged, bytes) and _style(ours) == "crlf":
+        return merged.replace(b"\n", b"\r\n")
+    return merged
+
+
+def _merge_file(base: bytes, ours: bytes, theirs: bytes, cwd: Path) -> object:
     scratch = paths.worktrees_dir() / ".merge"
     scratch.mkdir(parents=True, exist_ok=True)
     files: list[Path] = []
@@ -368,9 +433,10 @@ def apply(wt: Worktree, change: ChangeSet | None = None) -> ApplyResult:
         return ApplyResult(files)
     # Per file: the baseline, the user's file now and the worker's file. "Merged" are only
     # the files the user also changed after the run started.
-    sides = {rel: (_blob(wt, wt.baseline, rel), _read(wt.repo / rel), _read(wt.path / rel))
+    sides = {rel: _Sides(wt.repo, rel, _blob(wt, wt.baseline, rel), _read(wt.repo / rel),
+                         _read(wt.path / rel))
              for rel in files}  # fmt: skip
-    both = tuple(rel for rel in files if _needs_merge(*sides[rel]))
+    both = tuple(rel for rel in files if _needs_merge(sides[rel]))
     check = _git([*_APPLY, "--check", "-"], wt.repo, stdin=change.patch, check=False)
     if check.returncode == 0:
         _git([*_APPLY, "-"], wt.repo, stdin=change.patch)
@@ -379,7 +445,7 @@ def apply(wt: Worktree, change: ChangeSet | None = None) -> ApplyResult:
     results: dict[str, bytes | None] = {}
     conflicts: list[str] = []
     for rel in files:
-        merged = _merge(*sides[rel], wt.repo)
+        merged = _merge(sides[rel], wt.repo)
         if merged is _CONFLICT:
             conflicts.append(rel)
         else:
@@ -410,16 +476,25 @@ def remove_path(path: Path) -> None:
     Anything outside the worktrees directory raises ``WorkspaceGuardError``.
     """
     _require_under_worktrees(path)
-    if not path.exists():
-        return
-    common = _common_dir(path) if _is_linked_worktree(path) else None
-    if common is not None:
-        _git(["--git-dir", str(common), "worktree", "remove", "--force", str(path)],
-             paths.worktrees_dir(), check=False)  # fmt: skip
     if path.exists():
-        remove_directory(path)
-    if common is not None and common.is_dir():
-        _git(["--git-dir", str(common), "worktree", "prune"], paths.worktrees_dir(), check=False)
+        common = _common_dir(path) if _is_linked_worktree(path) else None
+        if common is not None:
+            _git(["--git-dir", str(common), "worktree", "remove", "--force", str(path)],
+                 paths.worktrees_dir(), check=False)  # fmt: skip
+        if path.exists():
+            remove_directory(path)
+        if common is not None and common.is_dir():
+            _git(["--git-dir", str(common), "worktree", "prune"], paths.worktrees_dir(),
+                 check=False)  # fmt: skip
+    _remove_if_empty(path.parent)
+
+
+def _remove_if_empty(folder: Path) -> None:
+    """Drop a repository's folder under the worktrees directory once its last run is gone."""
+    if folder.resolve() == paths.worktrees_dir().resolve() or not folder.is_dir():
+        return
+    with contextlib.suppress(OSError):  # another worktree of the repository is still there
+        folder.rmdir()  # only succeeds when empty
 
 
 def _require_under_worktrees(path: Path) -> Path:

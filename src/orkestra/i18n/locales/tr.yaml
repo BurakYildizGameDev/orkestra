@@ -58,7 +58,7 @@ config.validation.provider_type_unknown: "bilinmeyen sağlayıcı tipi '{tag}'; 
 config.validation.provider_type_missing: "'type' zorunlu; şunlardan biri olmalı: {expected}"
 config.validation.type_unknown: "bilinmeyen tür '{tag}'; şunlardan biri olmalı: {expected}"
 config.validation.type_missing: "'type' zorunlu; şunlardan biri olmalı: {expected}"
-task.validation.id: "geçersiz görev kimliği '{id}': sadece harf, rakam, '.', '_' ve '-' kullan"
+task.validation.id: "geçersiz görev kimliği '{id}': harf veya rakamla başla, sonra sadece harf, rakam, '.', '_' ve '-' kullan"
 task.validation.regex_invalid: "geçersiz düzenli ifade '{pattern}': {error}"
 task.validation.regex_empty: "must_match veya must_not_match içinde en az bir desen yaz"
 task.validation.schema_needs_json: "output.schema için format: json gerekli"

@@ -59,7 +59,7 @@ config.validation.provider_type_unknown: "unknown provider type '{tag}'; expecte
 config.validation.provider_type_missing: "'type' is required; expected one of: {expected}"
 config.validation.type_unknown: "unknown type '{tag}'; expected one of: {expected}"
 config.validation.type_missing: "'type' is required; expected one of: {expected}"
-task.validation.id: "invalid task id '{id}': use letters, digits, '.', '_' and '-'"
+task.validation.id: "invalid task id '{id}': start with a letter or digit, then use letters, digits, '.', '_' and '-'"
 task.validation.regex_invalid: "invalid regular expression '{pattern}': {error}"
 task.validation.regex_empty: "give at least one pattern in must_match or must_not_match"
 task.validation.schema_needs_json: "output.schema needs format: json"

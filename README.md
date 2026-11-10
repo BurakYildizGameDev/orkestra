@@ -50,6 +50,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | Explicit consent per provider, shown before it is granted | `orkestra providers enable <name>`, `providers disable <name>` |
 | Providers with consent, health and remaining budget | `orkestra providers list [--json]` |
 | Daily budgets (tokens, USD, requests, runs), reset at local midnight | `orkestra budget [--json]` |
+| Claude skill: when and how Claude delegates to Orkestra | `skill/orkestra/SKILL.md` |
 | Interface in English or Turkish | `--lang en\|tr`, `ORKESTRA_LANG`, or `language:` in the config |
 
 Providers supported so far:
@@ -306,6 +307,26 @@ worktree paths are deep. Ignored files (`node_modules/`, `.venv/`) are not copie
 worktree, so a check that needs them must bring its own (a Python check run with your active
 interpreter works).
 
+## Claude skill
+
+`skill/orkestra/SKILL.md` teaches Claude (in Claude Code, or anywhere it has a local shell) when
+to hand work to Orkestra and how: delegate only large, checkable work, write a task file with
+real verifiers, read only the result envelope, read the diff before `apply`, and never grant
+consent (`--yes`), send secrets (`--allow-secrets`) or force an unverified change (`--force`)
+on its own. A test checks that every command and flag the skill names exists in the CLI.
+
+```bash
+# as a personal skill
+mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
+# or only for one project
+mkdir -p .claude/skills && cp -r skill/orkestra .claude/skills/
+```
+
+Then ask Claude, for example: *"Add docstrings to these 20 files with orkestra, and review the
+result."* The skill is in Turkish for now (it will be translated with the release) and covers
+the commands that exist today; `status`, `map`, `review`, templates, batch runs and handoff
+come back into it once those phases land.
+
 ## Configuration
 
 Orkestra reads a base file and a project file, and the project file wins:
@@ -414,7 +435,8 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 6 | Code agents: Codex CLI, Antigravity CLI | ✅ |
 | 7 | Batch runs, parallelism, cost estimate | ⏳ |
 | 8 | Chief tools: `status`, `review`, `map`, templates, `plan expand`, cache, savings counter | ⏳ |
-| 9 | Claude skill | ⏳ |
+| 9a | Claude skill: `SKILL.md`, checked against the CLI | ✅ |
+| 9b | Claude skill: review and manual scenarios | ✅ |
 | 10 | Chief handoff (Claude ↔ Codex ↔ Antigravity) | ⏳ |
 | 11 | Terminal UI, setup wizard, 5 languages | ⏳ |
 | 12 | Night shift queue, notifications, adaptive routing | ⏳ |

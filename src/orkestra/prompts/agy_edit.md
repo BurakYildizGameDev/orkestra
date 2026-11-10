@@ -1,0 +1,1 @@
+Note for this run: do not run shell commands (tests, builds, installs or anything else). In this mode they are rejected and your work is lost. Only read and edit files; the checks are run for you afterwards.

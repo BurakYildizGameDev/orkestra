@@ -193,7 +193,8 @@ def _is_old(run_id: str, cutoff: datetime) -> bool:
 
 
 def _abandoned(path: Path, cutoff: datetime, now: datetime) -> bool:
-    """A worktree nothing will apply: no run, a finished record, or the run is old.
+    """A worktree nothing will apply: no run, a finished record, a repository missing for a
+    day, or the run is old.
 
     Without a record the run may still be starting, so only older ones count.
     """
@@ -206,6 +207,11 @@ def _abandoned(path: Path, cutoff: datetime, now: datetime) -> bool:
         return True
     if record.worktree.path.resolve() != path.resolve():
         return True
+    if not record.worktree.repo.is_dir():
+        # Deleted or moved, or only an unplugged drive: the unapplied change lives only in
+        # this worktree, so give the repository a day to come back (D-048).
+        started = run_started(run_id)
+        return started is None or started < now - RECORDLESS_GRACE
     return _is_old(run_id, cutoff)
 
 
@@ -213,9 +219,6 @@ def _remove_worktree(path: Path) -> str | None:
     """Remove one worktree; the reason it failed, or ``None``."""
     try:
         gw.remove_path(path)
-        parent = path.parent
-        if parent.is_dir() and not any(parent.iterdir()):
-            parent.rmdir()
     except (OrkestraError, OSError) as exc:
         return str(exc)
     return None
