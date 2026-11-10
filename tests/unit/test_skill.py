@@ -262,7 +262,7 @@ def test_every_command_and_flag_in_the_skill_exists(skill_text: str) -> None:
     "words",
     [
         ["status", "--json"],  # Faz 8
-        ["batch", "tasks.yaml"],  # Faz 7
+        ["batch", "tasks.yaml", "--estimate"],  # Faz 7b
         ["show", "x", "--diff", "--only-flagged"],  # Faz 8
         ["run", "--template", "docstring"],  # Faz 8
         ["providers"],
@@ -289,6 +289,7 @@ def test_the_checker_catches_what_does_not_exist(words: list[str]) -> None:
         ["--config", "x.yaml", "doctor"],
         ["--version"],
         ["run", "--help"],
+        ["batch", "tasks.yaml", "--parallel", "4", "--fail-fast", "--json"],
         ["ask", "--schema=s.json", "x"],
     ],
 )

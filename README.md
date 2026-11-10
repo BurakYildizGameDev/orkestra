@@ -42,6 +42,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | Routing with profiles, privacy and failover; see why each provider was chosen or skipped | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Task files (YAML/JSON): verify the answer, retry with feedback, move up a tier | `orkestra run task.yaml [--dry-run] [--json]` |
 | Edit tasks: a worker changes code in an isolated worktree, your tests decide | `orkestra run edit.yaml`, then `show --diff`, `apply` |
+| Batches: many tasks with dependencies, in parallel, each provider within its concurrency | `orkestra batch tasks.yaml [--parallel N] [--fail-fast] [--json]` |
 | Code agents (Codex CLI, Antigravity) as workers, in the worktree, with process-tree cleanup | `cli_agent` providers |
 | A run's envelope, full output, log or change | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | Bring a run's change into your working tree, or throw it away | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
@@ -308,6 +309,46 @@ providers:
 
 Tested with codex-cli 0.160.0 and agy 1.5.3.
 
+## Batches: many tasks at once
+
+```yaml
+parallel: 4                  # tasks in flight at once (default 4; --parallel overrides)
+tasks:
+  - id: docs-a
+    kind: edit
+    prompt: Add docstrings to src/a.py; do not change the code.
+    context: {files: [src/a.py]}
+    verify: [{type: command, run: "python -m pytest -q"}]
+  - id: docs-b
+    kind: edit
+    prompt: Add docstrings to src/b.py; do not change the code.
+    context: {files: [src/b.py]}
+    verify: [{type: command, run: "python -m pytest -q"}]
+  - id: summary
+    kind: ask
+    prompt: Summarize what src/a.py and src/b.py do.
+    context: {files: [src/a.py, src/b.py]}
+    depends_on: [docs-a, docs-b]
+```
+
+```bash
+orkestra batch tasks.yaml --json              # one JSON document: batch_id, results, totals
+orkestra batch tasks.yaml --parallel 2 --fail-fast
+```
+
+- Every task is checked like a task file before anything starts. Duplicate ids and unknown
+  or cyclic `depends_on` are exit code 2.
+- Each provider gets at most its `concurrency` requests at a time across the whole batch
+  (Ollama: 1 by default), whatever `--parallel` says.
+- Edit tasks whose context files overlap run one after the other, with a warning. Each still
+  starts from your files in its own worktree, so applying both may conflict.
+- A task whose dependency did not end `ok` is `skipped`. `--fail-fast` starts nothing after
+  the first failure. A task that crashes is an `error` item; the rest goes on.
+- A dependency only orders tasks: it does not hand its unapplied change to the next task.
+  A task that needs another one's change goes into a later batch, after `apply`.
+- Exit code: 0 when every task is `ok`, else 1. Each result has the task's envelope; apply the
+  good ones with `orkestra apply <run_id>` (batch apply comes in phase 7b).
+
 ## Worktrees: isolated changes
 
 Workers never change your checkout. A run that changes code gets its own git worktree under
@@ -457,7 +498,8 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 5b | Git worktrees, `show`, `apply`, `discard`, `gc` | ✅ |
 | 5c | Edit tasks with API workers | ✅ |
 | 6 | Code agents: Codex CLI, Antigravity CLI | ✅ |
-| 7 | Batch runs, parallelism, cost estimate | ⏳ |
+| 7a | Batch runs: dependencies, parallelism, per-provider limits | ✅ |
+| 7b | Cost estimate, batch apply, `stats` | ⏳ |
 | 8 | Chief tools: `status`, `review`, `map`, templates, `plan expand`, cache, savings counter | ⏳ |
 | 9a | Claude skill: `SKILL.md`, checked against the CLI | ✅ |
 | 9b | Claude skill: review and manual scenarios | ✅ |

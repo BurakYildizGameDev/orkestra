@@ -144,6 +144,20 @@ def expand_globs(
     return sorted(found)
 
 
+def _specs(
+    base: Path, ignore_file: str | None
+) -> tuple[list[tuple[str, pathspec.GitIgnoreSpec | None]], ...]:
+    """Ignore specs for listed files (the ignore file) and for globs (it plus .gitignore)."""
+    explicit = [(ignore_file, _ignore_spec(base, ignore_file))] if ignore_file else []
+    return explicit, [*explicit, (GITIGNORE, _ignore_spec(base, GITIGNORE))]
+
+
+def glob_files(globs: Sequence[str], base: Path, ignore_file: str | None = None) -> list[Path]:
+    """The files ``context.globs`` stands for, exactly as ``collect_context`` finds them."""
+    root = base.resolve()
+    return expand_globs(globs, root, _specs(root, ignore_file)[1])
+
+
 def collect_context(
     paths: Sequence[Path],
     *,
@@ -154,8 +168,7 @@ def collect_context(
 ) -> Context:
     """Read the context files. Sizes are checked before any file is read in full."""
     base = (Path.cwd() if cwd is None else cwd).resolve()
-    explicit_specs = [(ignore_file, _ignore_spec(base, ignore_file))] if ignore_file else []
-    glob_specs = [*explicit_specs, (GITIGNORE, _ignore_spec(base, GITIGNORE))]
+    explicit_specs, glob_specs = _specs(base, ignore_file)
     candidates = [(raw, explicit_specs) for raw in paths]
     candidates += [(p, glob_specs) for p in expand_globs(globs, base, glob_specs)]
     found: list[tuple[Path, str, int]] = []

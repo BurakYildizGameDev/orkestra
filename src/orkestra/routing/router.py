@@ -402,7 +402,7 @@ def take_snapshot(
             open_until=h.open_until,
             last_error=h.last_error,
             key_present=key_present(cfg, env) is not False,
-            used=budget.used(conn, name, now),
+            used=budget.used(conn, name, now, reservations=False),  # D-054
             installed=not isinstance(cfg, CliAgentProvider)
             or cli_agent.find_program(cfg.command, env) is not None,
         )
