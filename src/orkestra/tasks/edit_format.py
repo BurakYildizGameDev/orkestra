@@ -15,12 +15,32 @@ Models break unified diffs, so an API worker answers with whole files::
 - ``write``: keeps the original file's line endings (CRLF/LF) and UTF-8 BOM; a path that
   cannot be written is an ``EditFormatError`` too.
 - ``cannot_do``: ``{"cannot_do": "<reason>"}``, the JSON form of ``CANNOT_DO: <reason>``.
+
+SEARCH/REPLACE edits (Faz 9c, the default): the worker sends only the places it changes::
+
+    src/util.py
+    <<<<<<< SEARCH
+    <lines exactly as they are in the file>
+    =======
+    <the new lines>
+    >>>>>>> REPLACE
+
+- ``parse_replace``: blocks in order; fences and prose around them are fine (the prose is the
+  note). A block without a path line reuses the previous block's path.
+- ``paths_only``: one ``FileEdit`` per file, for ``check_paths`` before anything is read.
+- ``resolve_replace``: applies the blocks to the files in memory and returns whole files, so
+  ``write`` keeps line endings and BOM as for whole-file answers. A SEARCH matches whole lines
+  exactly once (line endings ignored; a second pass also ignores trailing whitespace); an
+  empty SEARCH creates a new file. Any block that does not fit is an ``EditFormatError`` and
+  nothing of that answer is used.
 """
 
 from __future__ import annotations
 
+import difflib
 import json
-from collections.abc import Collection, Sequence
+import re
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
@@ -40,10 +60,15 @@ __all__ = [
     "EditFormatError",
     "FileEdit",
     "Message",
+    "ReplaceAnswer",
+    "ReplaceBlock",
     "cannot_do",
     "check_paths",
     "normalize_path",
     "parse",
+    "parse_replace",
+    "paths_only",
+    "resolve_replace",
     "write",
 ]
 
@@ -124,6 +149,161 @@ def parse(text: str) -> EditAnswer:
         edits.append(FileEdit(path, content))
     note = data.get("note")
     return EditAnswer(tuple(edits), note if isinstance(note, str) else "")
+
+
+# --- SEARCH/REPLACE --------------------------------------------------------------------
+
+_HEAD = re.compile(r"^\s*<{5,9}\s*SEARCH\s*$")
+_DIVIDER = re.compile(r"^\s*={5,9}\s*$")
+_TAIL = re.compile(r"^\s*>{5,9}\s*REPLACE\s*$")
+_FENCE = re.compile(r"^\s*(```|~~~)")
+NOTE_CHARS = 300
+HINT_LINES = 3  # lines shown around the closest match when a SEARCH is not found
+
+
+@dataclass(frozen=True)
+class ReplaceBlock:
+    path: str  # as the worker wrote it; ``normalize_path`` makes it safe
+    search: str  # LF line endings; empty: a new file
+    replace: str
+    index: int  # 1-based, for feedback
+
+
+@dataclass(frozen=True)
+class ReplaceAnswer:
+    blocks: tuple[ReplaceBlock, ...]
+    note: str = ""
+
+
+def _path_line(line: str) -> str | None:
+    """A file path on a line of its own (``src/a.py``, `` `src/a.py` ``, ``**src/a.py**:``)."""
+    text = line.strip().strip("`*").rstrip(":").strip().strip("`*")
+    if not text or any(c.isspace() for c in text) or not any(c in text for c in "./\\"):
+        return None  # prose, not a path
+    return text
+
+
+def _section(lines: list[str], start: int, end: re.Pattern[str], index: int) -> tuple[str, int]:
+    """Text from ``start`` up to the line matching ``end``, and the index after it."""
+    for i in range(start, len(lines)):
+        if end.match(lines[i]):
+            body = lines[start:i]
+            return ("\n".join(body) + "\n" if body else ""), i + 1
+        if _HEAD.match(lines[i]) or _DIVIDER.match(lines[i]) or _TAIL.match(lines[i]):
+            break  # a marker out of order: the block is broken
+    raise EditFormatError(Message("edit.error.block_unterminated", {"index": index}))
+
+
+def parse_replace(text: str) -> ReplaceAnswer:
+    lines = text.replace("\r\n", "\n").split("\n")
+    blocks: list[ReplaceBlock] = []
+    prose: list[str] = []
+    path: str | None = None
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if _HEAD.match(line):
+            index = len(blocks) + 1
+            if path is None:
+                raise EditFormatError(Message("edit.error.block_no_path", {"index": index}))
+            search, i = _section(lines, i + 1, _DIVIDER, index)
+            replace, i = _section(lines, i, _TAIL, index)
+            blocks.append(ReplaceBlock(path, search, replace, index))
+            continue
+        if _DIVIDER.match(line) or _TAIL.match(line):
+            index = len(blocks) + 1
+            raise EditFormatError(Message("edit.error.block_unterminated", {"index": index}))
+        if not _FENCE.match(line) and line.strip():
+            found = _path_line(line)
+            if found is not None:
+                path = found
+            else:
+                prose.append(line.strip())
+        i += 1
+    if not blocks:
+        raise EditFormatError(Message("edit.error.no_blocks"))
+    return ReplaceAnswer(tuple(blocks), " ".join(prose)[:NOTE_CHARS])
+
+
+def paths_only(answer: ReplaceAnswer) -> EditAnswer:
+    """One entry per file the blocks touch, for ``check_paths`` (contents are not read yet)."""
+    seen = dict.fromkeys(normalize_path(b.path) or b.path for b in answer.blocks)
+    return EditAnswer(tuple(FileEdit(path, "") for path in seen), answer.note)
+
+
+def _lines(text: str) -> list[str]:
+    """Lines with their ``\\n`` (only ``\\n`` ends a line, unlike ``str.splitlines``)."""
+    return re.findall(r"[^\n]*\n|[^\n]+$", text)
+
+
+def _windows(lines: list[str], search: list[str], key: Callable[[str], str]) -> list[int]:
+    wanted = [key(s) for s in search]
+    size = len(wanted)
+    return [
+        start
+        for start in range(len(lines) - size + 1)
+        if all(key(lines[start + j]) == wanted[j] for j in range(size))
+    ]
+
+
+def _closest(lines: list[str], search: list[str]) -> str:
+    """The file's lines around the one most like the SEARCH's first non-blank line."""
+    first = next((s.strip() for s in search if s.strip()), "")
+    scores = [difflib.SequenceMatcher(None, first, line.strip()).ratio() for line in lines]
+    if not first or not scores or max(scores) < 0.5:
+        return "-"
+    best = scores.index(max(scores))
+    low, high = max(0, best - 1), min(len(lines), best + HINT_LINES)
+    return "\n".join(f"{n + 1}: {lines[n].rstrip()}" for n in range(low, high))
+
+
+def _apply_block(text: str, block: ReplaceBlock, rel: str) -> str:
+    lines = _lines(text)
+    search = [line.removesuffix("\n") for line in _lines(block.search)]
+    if not search:
+        raise EditFormatError(
+            Message("edit.error.search_empty", {"path": rel, "index": block.index})
+        )
+    starts = _windows(lines, search, lambda s: s.removesuffix("\n"))
+    if not starts:  # same lines apart from trailing whitespace
+        starts = _windows(lines, search, str.rstrip)
+    if len(starts) > 1:
+        raise EditFormatError(Message(
+            "edit.error.search_ambiguous",
+            {"path": rel, "index": block.index, "count": len(starts)},
+        ))  # fmt: skip
+    if not starts:
+        raise EditFormatError(Message(
+            "edit.error.search_not_found",
+            {"path": rel, "index": block.index, "closest": _closest(lines, search)},
+        ))  # fmt: skip
+    start, end = starts[0], starts[0] + len(search)
+    replacement = block.replace
+    if replacement and not lines[end - 1].endswith("\n"):
+        replacement = replacement.removesuffix("\n")  # the file's last line had no newline
+    return "".join(lines[:start]) + replacement + "".join(lines[end:])
+
+
+def resolve_replace(answer: ReplaceAnswer, workdir: Path) -> EditAnswer:
+    """Whole files after the blocks (paths already checked). Nothing is written here."""
+    root = workdir.resolve()
+    texts: dict[str, str] = {}
+    for block in answer.blocks:
+        rel = normalize_path(block.path)
+        target = (root / rel).resolve() if rel is not None else None
+        if rel is None or target is None or not target.is_relative_to(root):
+            raise InternalError(t("workspace.error.guard", path=block.path))
+        if rel not in texts:
+            if target.is_file():
+                raw = target.read_bytes()
+                texts[rel] = raw.decode("utf-8-sig", errors="replace").replace("\r\n", "\n")
+            elif block.search:
+                raise EditFormatError(Message("edit.error.missing_file", {"path": rel}))
+            else:
+                texts[rel] = block.replace  # an empty SEARCH: the new file
+                continue
+        texts[rel] = _apply_block(texts[rel], block, rel)
+    return EditAnswer(tuple(FileEdit(rel, text) for rel, text in texts.items()), answer.note)
 
 
 # --- paths -----------------------------------------------------------------------------

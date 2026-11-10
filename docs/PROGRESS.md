@@ -20,6 +20,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 8b – review, map, plan expand | ⏳ | | |
 | 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
 | 9b – Skill doğrulama | ✅ | 2026-11-10 | kod denetimi (D-047), elle deneme düzeltmeleri (D-048), 5/5 senaryo (D-049) |
+| 9c – Ucuz modeller için ara/değiştir | ✅ | 2026-11-10 | `edit_format: auto` (küçük dosya `whole`, büyük dosya `replace`), D-051 |
 | 10 – Şef devri | ⏳ | | |
 | 11 – Arayüz, sihirbaz, 5 dil | ⏳ | | |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
@@ -27,6 +28,34 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 9c – Ucuz modeller için ara/değiştir düzenlemesi (2026-11-10)
+**Neden:** 9b'de `qwen2.5-coder:14b`, tam dosya biçiminde JSDoc eklerken kodu iki kez bozdu. Kullanıcı kararıyla plana eklendi (D-051).
+
+**Yapılanlar:**
+- `tasks/edit_format.py`: SEARCH/REPLACE ayrıştırma (`parse_replace`), dosya okumadan yol listesi (`paths_only`), bellekte uygulama (`resolve_replace`). Eşleşme tam satır ve tek yer olmalı. Satır sonu her zaman, satır sonundaki boşluk ikinci denemede yok sayılıyor. Bulunamayan SEARCH için dosyanın en yakın satırları geri bildirimle gidiyor. Bir blok tutmazsa hiçbir şey yazılmıyor. Yol güvenliği, satır sonu ve BOM kuralları aynı.
+- `edit_format` (görev dosyası ve config'te model): `auto` (varsayılan) | `replace` | `whole`. `auto`: en büyük düzenlenebilir dosya 400 satıra kadarsa `whole`, daha büyükse `replace`. Biçimi router seçip adaya yazıyor. İstem ve JSON modu adaya göre seçiliyor. `run --dry-run` ve zarf (sürüm 3, `edit_format`) biçimi gösteriyor.
+- Router: `max_api_edit_lines` sadece açıkça seçilmiş `whole`'u sınırlıyor, eleme model düzeyinde. `auto` ile 400 satırdan büyük dosya artık ajana değil ucuz modele gidiyor.
+- Düzenlemede yeniden deneme mesajı "önceki değişikliğin atıldı" diyor (`prompts/retry_edit.md`). `prompts/edit_replace.md` eklendi.
+- Skill: `edit_format` alanı ve ne zaman elle seçileceği, mantığı denetleyen doğrulayıcı önerisi. Skill testi, alan listesinin `TaskSpec` ile birebir aynı olmasını denetliyor.
+- README (en + tr), `example.yaml`, Mimari §8.2, router, `ModelSpec`, envelope örneği.
+
+**Elle ölçüm** (`qwen2.5-coder:14b`, `hesap-makinesi-2`'nin JSDoc öncesi kopyası, AST doğrulayıcısı):
+| Görev | `whole` | `replace` |
+|---|---|---|
+| 4 dosyaya JSDoc | 0/2 (9b'de) | 0/2: bir satırı yine çoğalttı, sonra "yapılamaz" dedi |
+| Tek dosyaya JSDoc (`calculatorState.js`) | 2/2 (~22 sn, ~3,3 KB cevap) | 1/2 (bir koşuda "bağlam eksik" diye vazgeçti; geçen koşuda ~6,8 KB cevap) |
+- Model blokların içine büyük parçalar kopyaladı, yani bu model için `replace` token da kazandırmadı. Kanıtlanmış fayda büyük dosyalarda: testte 500 satırlık dosyada sadece 1 satır değişti, eski biçimde o dosya ucuz modele hiç gidemiyordu. Bu ölçümle kullanıcı `auto`'yu seçti.
+- Hiçbir koşuda bozuk değişiklik uygulanmadı, doğrulayıcılar hepsini yakaladı.
+
+**Kabul kriterleri:**
+- ✅ Ayrıştırma, uygulama ve uçtan uca testler (geri bildirim → düzeltme → `apply`; `whole` seçimi; büyük dosya). ruff, pyright, pytest (768 test) temiz.
+- ❌ / dürüst sonuç: 9b'deki 4 dosyalı JSDoc görevi `replace` ile de geçmedi, model aynı hatayı yaptı. Plan bu durumda fazın biçim olarak kapanmasını öngörüyordu, sonuç yukarıda.
+- ⏳ Faz sonu kod denetimi.
+
+**Bilinen sorunlar:**
+- `qwen2.5-coder:14b` ara/değiştir bloklarını amacına uygun kullanmıyor (büyük SEARCH). Başka modellerle ölçülmedi (Faz 13 benchmark).
+- Deneme klasörü `Desktop/hesap-9c-deneme` ve masaüstündeki `hesap-9c-replace*.json/.err` dosyaları duruyor (kullanıcıya soruldu).
 
 ### Kod denetimi – Faz 9b değişiklikleri (PR #10), 2026-11-10
 10 bulgu: 9'u düzeltildi, 1'inin bir kısmı gerekçesiyle bırakıldı (D-050):

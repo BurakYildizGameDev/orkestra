@@ -99,7 +99,7 @@ verify:
 allow_new_files: false
 ```
 
-Alanlar: `id` (harf veya rakamla başlar, sonra harf/rakam, `.`, `_`, `-`), `kind` (`ask` | `edit`), `tier` (1–3), `prompt`, `context.files` / `context.globs`, `verify`, `verify_defaults` (bkz. aşağı), `privacy` (`normal` | `local_only`), `allow_new_files`, `output` (`format: json`, `schema: dosya.json`), `limits` (`timeout_s`, `max_retries`), `workspace`, `provider`, `model`, `tags` (kayıtta görünen etiketler), `depends_on` (şimdilik kullanılmıyor). Bilinmeyen alan hata verir (kod 2).
+Alanlar: `id` (harf veya rakamla başlar, sonra harf/rakam, `.`, `_`, `-`), `kind` (`ask` | `edit`), `tier` (1–3), `prompt`, `context.files` / `context.globs`, `verify`, `verify_defaults` (bkz. aşağı), `privacy` (`normal` | `local_only`), `allow_new_files`, `output` (`format: json`, `schema: dosya.json`), `limits` (`timeout_s`, `max_retries`), `workspace`, `provider`, `model`, `edit_format` (`auto` | `replace` | `whole`, bkz. aşağı), `tags` (kayıtta görünen etiketler), `depends_on` (şimdilik kullanılmıyor). Bilinmeyen alan hata verir (kod 2).
 
 Doğrulayıcılar (`verify`):
 - `command`: komut 0 ile bitmeli (`run`, `timeout_s`; boru veya `&&` gerekiyorsa `shell: true`).
@@ -113,6 +113,8 @@ Düzenleme görevleri hakkında bilmen gerekenler:
 - İşçi, kullanıcının deposunda değil ayrı bir git worktree'sinde çalışır; senin onayın (`apply`) olmadan kullanıcının dosyalarına hiçbir şey yazılmaz. Depoda en az bir commit olmalı; commit edilmemiş değişiklikler worktree'ye taşınır.
 - Görev dosyasındaki göreli yollar görev dosyasının klasörüne değil, `workspace` alanına (yoksa komutun çalıştığı dizine) göre çözülür. `orkestra run` komutunu proje kökünden çalıştır.
 - Git'in ignore ettiği klasörler (`node_modules/`, `.venv/`) worktree'de yoktur; onlara ihtiyaç duyan doğrulama komutları (ör. `npm test`) başarısız olur. Python'da etkin yorumlayıcıyla `python -m pytest` çalışır. Windows'ta `node --test test/` gibi klasör vermek çalışmaz; test dosyalarını tek tek yaz (`node --test test/a.test.js test/b.test.js`).
+- API işçilerinin (Ollama, OpenRouter vb.) düzenleme biçimi varsayılan olarak `edit_format: auto`: dosyalar 400 satıra (`security.max_api_edit_lines`) kadarsa işçi dosyanın tamamını yazar (`whole`), daha büyükse sadece değiştirdiği satırları ara/değiştir bloklarıyla gönderir (`replace`), böylece büyük dosyalar da ucuz modele gidebilir. Genelde dokunma. `replace`'i elle seç: işçi küçük bir dosyada tam dosya yazarken satır kaybediyorsa. `whole`'u elle seç: model ara/değiştir bloklarında sürekli hata yapıyorsa (o zaman 400 satırdan büyük dosya ajana gider). Kullanılan biçim zarfta `edit_format` alanında görünür.
+- Yorum, docstring ya da biçim gibi "mantığı değiştirme" denen işlerde testler yetmeyebilir: mantığın aynı kaldığını denetleyen bir `command` doğrulayıcısı ekle (ör. yorumlar çıkarıldığında kodun aynı kaldığını karşılaştıran küçük bir betik).
 - Bağlamdaki dosyalar işçiye tamamen gönderilir; `.env` ve anahtar dosyalarını bağlama koyma. `.orkestraignore` kapsamındaki dosyaları Orkestra hiç göndermez, gizli bilgi taraması da uzağa gitmeyi engeller.
 
 İyi istem kuralları: tek bir sorumluluk; kapsam dışını açıkça yaz; çıktı biçimini belirt; mevcut stil örneği ver.
@@ -128,7 +130,7 @@ orkestra run .orkestra/tasks/kisa-ad.yaml --json
 
 Sadece **sonuç zarfını** oku. Token tasarrufunun anahtarı bu; tam çıktıyı ancak gerekirse oku. Önemli alanlar:
 - `status`: `ok` · `failed` (doğrulama geçmedi, yükseltme yapılamadı) · `escalate` (iş şefe dönmeli) · `error` (sistem hatası; `error` alanında neden).
-- `run_id`, `provider`, `model`, `tier`, `attempts`, `escalations`, `failovers` (hangi sağlayıcı neden atlandı).
+- `run_id`, `provider`, `model`, `tier`, `edit_format`, `attempts`, `escalations`, `failovers` (hangi sağlayıcı neden atlandı).
 - `summary`: işçinin kısa özeti. `verification`: her doğrulayıcı için `ok` ve `detail`.
 - `changes`: `files`, `insertions`, `deletions` (sadece `edit`). `usage.cost_usd`: maliyet.
 

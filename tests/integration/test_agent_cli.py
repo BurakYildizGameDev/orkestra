@@ -172,7 +172,7 @@ def test_a_large_file_goes_to_the_agent(
 ) -> None:
     _setup(home, repo, {
         "ollama": {"type": "ollama", "base_url": "http://ollama.test:11434",
-                   "models": [{"id": "coder", "tier": 1}]},
+                   "models": [{"id": "coder", "tier": 1, "edit_format": "whole"}]},
         "agent": _agent("right"),
     })  # fmt: skip
     (repo / "big.py").write_bytes(b"x = 1\n" * 401)
@@ -228,7 +228,8 @@ def test_a_failing_agent_keeps_the_rejected_answer_of_an_earlier_worker(
     import respx
 
     _setup(home, repo, {
-        "ollama": {"type": "ollama", "base_url": OLLAMA, "models": [{"id": "coder", "tier": 1}]},
+        "ollama": {"type": "ollama", "base_url": OLLAMA,
+                   "models": [{"id": "coder", "tier": 1, "edit_format": "whole"}]},
         "agent": _agent("fail"),
     })  # fmt: skip
     answer = json.dumps({"files": [{"path": "calc.py", "content": WRONG}], "note": "x"})

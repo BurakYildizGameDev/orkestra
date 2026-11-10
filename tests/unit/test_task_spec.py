@@ -195,3 +195,10 @@ def test_output_schema_is_still_checked_next_to_another_schema() -> None:
     )
     schemas = sorted(getattr(v, "schema_path", "") for v in effective_verifiers(task))
     assert schemas == ["other.json", "s.json"]
+
+
+def test_edit_format_is_optional_and_checked(tmp_path: Path) -> None:
+    assert _task().edit_format is None  # the model's setting, then "replace" (Faz 9c)
+    assert _task(kind="edit", edit_format="whole").edit_format == "whole"
+    details = _details(tmp_path, "id: t\nkind: edit\nprompt: p\nedit_format: diff\n")
+    assert any("edit_format" in d for d in details)

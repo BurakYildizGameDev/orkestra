@@ -202,11 +202,34 @@ verify:
 allow_new_files: true        # varsayılan; false: sadece bağlamdaki dosyalar değişebilir
 ```
 
-API işçileri **dosyanın tamamını** JSON olarak verir (`{"files": [{"path", "content"}], "note"}`);
-modellerin ürettiği unified diff'ler çok sık bozulur. Orkestra sonra:
+API işçileri iki biçimden biriyle cevap verir. Biçimi `edit_format` seçer (görev dosyasında ya
+da config'te model bazında). Varsayılan `auto`, dosya boyutuna göre seçer:
 
-1. JSON'u kod çiti veya etrafında metin olsa da alır; bozuk ya da kesik JSON geri bildirim
-   olarak işçiye döner (`edit_format` kontrolü);
+- **`whole`** (auto'da `security.max_api_edit_lines`'a, 400 satıra kadar): dosyanın tamamı JSON
+  olarak, `{"files": [{"path", "content"}], "note"}`.
+- **`replace`** (auto'da 400 satırdan büyük dosyalarda): sadece değişen yerler,
+  ara/değiştir (SEARCH/REPLACE) blokları olarak:
+
+```
+calc.py
+<<<<<<< SEARCH
+    return a - b
+=======
+    return a + b
+>>>>>>> REPLACE
+```
+
+`replace` ile dosyanın geri kalanı hiç yeniden yazılmaz, böylece büyük dosyalar da ucuz
+modellere gidebilir (o boyutta tam dosya cevapları kesilir). SEARCH, dosyada tam satırlar olarak
+tek bir yere uymalıdır (satır sonu ve satır sonundaki boşluklar önemli değil). Boş SEARCH yeni
+dosya oluşturur. Neden her zaman `replace` değil de `auto`: elle denemelerimizde 14B yerel bir
+model küçük dosyada tam dosya biçimiyle daha iyi sonuç verdi, bloklarına da zaten büyük
+parçalar kopyaladı (`docs/DECISIONS.md`, D-051). Modellerin ürettiği unified diff'ler çok sık
+bozulduğu için kullanılmaz. Orkestra sonra:
+
+1. blokları (ya da JSON'u) kod çiti veya etrafında metin olsa da alır; bulunamayan SEARCH
+   (dosyanın en yakın satırları geri gönderilir), birden çok yere uyan SEARCH, bozuk ya da
+   kesik cevap geri bildirim olarak işçiye döner (`edit_format` kontrolü);
 2. her yolu denetler: göreli, proje içinde, `..` ve `.git` yok, `forbid_paths`'e uymuyor ve ya
    bağlamdaki bir dosya ya da yeni bir dosya. İşçiye gösterilmemiş bir dosyanın üstüne asla
    yazılmaz;
@@ -216,9 +239,10 @@ modellerin ürettiği unified diff'ler çok sık bozulur. Orkestra sonra:
    deneme, üst kademeye geçiş.
 
 Cevap çıktı sınırında kesilirse dosya o model için çok büyüktür: koşu doğrudan kademe 3'e geçer.
-`security.max_api_edit_lines`'tan (400) uzun dosyalar API işçilerine hiç verilmez; onları kod
-ajanları yerinde düzenler. Envelope'ta `changes: {files, insertions, deletions, patch_path}`
-var; sonra:
+Sadece açıkça `edit_format: whole` seçilirse `security.max_api_edit_lines`'tan (400) uzun
+dosyalar API işçilerine hiç verilmez; onları kod ajanları yerinde düzenler. Envelope'ta `edit_format` ve
+`changes: {files, insertions, deletions, patch_path}` var, `run --dry-run` her adayın biçimini
+gösterir; sonra:
 
 ```bash
 orkestra show <run_id> --diff      # incele
@@ -228,8 +252,8 @@ orkestra apply <run_id>            # al
 Kontrolleri geçmeyen koşu, değişikliğe bakabilmen için worktree'sini korur ama `apply` o zaman
 `--force` ister. Değişikliksiz biten koşu worktree'sini siler. UTF-8 olmayan, git'in ignore
 ettiği veya `protect_paths`/`forbid_paths`'e uyan bağlam dosyaları işçiye sadece okunur
-gösterilir. Görevi yapamayan işçi `{"cannot_do": "<neden>"}` der ve koşu hemen üst kademeye
-geçer.
+gösterilir. Görevi yapamayan işçi `CANNOT_DO: <neden>` (`whole` ile `{"cannot_do": "<neden>"}`)
+der ve koşu hemen üst kademeye geçer.
 
 Koşu sırasında Ctrl+C bütçe rezervasyonunu serbest bırakır, `error: interrupted` içeren bir
 envelope yazar ve worktree'yi korur.
@@ -434,6 +458,7 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 8 | Şef araçları: `status`, `review`, `map`, şablonlar, `plan expand`, önbellek, tasarruf sayacı | ⏳ |
 | 9a | Claude skill: `SKILL.md`, CLI ile denetlenmiş | ✅ |
 | 9b | Claude skill: denetim ve elle senaryolar | ✅ |
+| 9c | Ucuz modeller için ara/değiştir (SEARCH/REPLACE) düzenlemesi | ✅ |
 | 10 | Şef devri (Claude ↔ Codex ↔ Antigravity) | ⏳ |
 | 11 | Terminal arayüzü, kurulum sihirbazı, 5 dil | ⏳ |
 | 12 | Gece vardiyası kuyruğu, bildirimler, öğrenen yönlendirme | ⏳ |

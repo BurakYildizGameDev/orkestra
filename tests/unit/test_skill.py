@@ -361,3 +361,13 @@ def test_an_option_with_two_values_consumes_both() -> None:
     command = typer.main.get_command(app)
     positionals, problems = _split_options(command, ["--point", "1", "2"], ["pair"])
     assert positionals == [] and problems == []
+
+
+def test_the_field_list_names_every_task_field_and_nothing_else(skill_text: str) -> None:
+    from orkestra.tasks.spec import TaskSpec
+
+    line = next(line for line in skill_text.splitlines() if line.startswith("Alanlar:"))
+    top_level = re.sub(r"\([^)]*\)", "", line)  # values and sub-fields are in parentheses
+    named = {name.split(".")[0] for name in re.findall(r"`([a-z_][a-z_.]*)`", top_level)}
+    fields = {info.alias or name for name, info in TaskSpec.model_fields.items()}
+    assert named == fields

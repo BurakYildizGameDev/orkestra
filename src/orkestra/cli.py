@@ -185,6 +185,7 @@ def _route_text(plan: Route) -> str:
                     budget=f"{c.budget_ratio:.0%}",
                     where=t("route.dry.local") if c.config.local else t("route.dry.remote"),
                 )
+                + (t("route.dry.edit_format", format=c.edit_format) if c.edit_format else "")
             )
     else:
         lines.append(t("route.dry.none"))

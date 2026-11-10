@@ -21,9 +21,12 @@ from typing import Any, Literal, Protocol
 from orkestra.config.schema import (
     CliAgentProvider,
     Config,
+    EditFormat,
+    EditFormatSetting,
     ModelSpec,
     OpenAICompatProvider,
     Profile,
+    resolve_edit_format,
 )
 from orkestra.errors import ConfigError, ConsentRequired, NoProviderAvailable, UsageError
 from orkestra.i18n import t
@@ -52,6 +55,22 @@ class TaskNeeds:
     has_secrets: bool = False
     allow_secrets: bool = False
     edit_lines: int = 0  # edit tasks: lines of the largest context file
+    edit_format: EditFormatSetting | None = None  # the task file's choice; None: each model's
+
+
+def _edit_format(needs: TaskNeeds, model: ModelSpec, config: Config) -> EditFormat:
+    return resolve_edit_format(
+        needs.edit_format, model.edit_format,
+        lines=needs.edit_lines, limit=config.security.max_api_edit_lines,
+    )  # fmt: skip
+
+
+def _whole_file_too_large(needs: TaskNeeds, model: ModelSpec, config: Config) -> bool:
+    """``max_api_edit_lines`` only limits whole-file answers; ``auto`` never picks them for a
+    large file, so only an explicit ``whole`` drops a model (D-051)."""
+    if needs.kind != "edit" or needs.edit_lines <= config.security.max_api_edit_lines:
+        return False
+    return _edit_format(needs, model, config) == "whole"
 
 
 @dataclass(frozen=True)
@@ -79,6 +98,7 @@ class Candidate:
     budget_ratio: float  # 0..1, lowest remaining share over the provider's limits (shown only)
     price: Price | None
     order: tuple[int, int] = (0, 0)  # position in the config: (provider, model)
+    edit_format: EditFormat | None = None  # how an API worker answers an edit task (Faz 9c)
 
     @property
     def tier(self) -> int:
@@ -304,12 +324,6 @@ def route(
             if agent is not None:
                 candidates.append(replace(agent, order=(provider_order[name], 0)))
             continue
-        limit = config.security.max_api_edit_lines
-        if needs.kind == "edit" and needs.edit_lines > limit:
-            # Whole-file answers of that size get cut off; a code agent edits in place.
-            drop(name, None, "edit_too_large", "route.reason.edit_too_large",
-                 lines=needs.edit_lines, limit=limit)  # fmt: skip
-            continue
         models = _models_for(name, cfg, needs, low)
         if not models and needs.model is not None:
             drop(
@@ -326,6 +340,12 @@ def route(
                     name, label, "tier_out_of_range", "route.reason.tier",
                     model=label, tier=model.tier, low=low, high=high, profile=profile_name,
                 )  # fmt: skip
+                continue
+            if _whole_file_too_large(needs, model, config):
+                # Whole-file answers of that size get cut off; a code agent edits in place.
+                # SEARCH/REPLACE sends only the changed lines, so only the context limits it.
+                drop(name, label, "edit_too_large", "route.reason.edit_too_large",
+                     lines=needs.edit_lines, limit=config.security.max_api_edit_lines)  # fmt: skip
                 continue
             if tokens > model.context_window * CONTEXT_FILL:
                 drop(
@@ -344,7 +364,8 @@ def route(
                 drop(name, label, "budget", "route.reason.budget", model=label, limit=limit)
                 continue
             position = (provider_order[name], model_order(cfg, model))
-            candidates.append(Candidate(name, cfg, model, ratio, price, position))
+            edit_format = _edit_format(needs, model, config) if needs.kind == "edit" else None
+            candidates.append(Candidate(name, cfg, model, ratio, price, position, edit_format))
 
     candidates.sort(key=lambda c: (c.tier, -c.model.priority, c.order))
     return Route(profile_name, (low, high), tokens, tuple(candidates), tuple(eliminated))
@@ -409,6 +430,7 @@ def describe_candidates(candidates: Sequence[Candidate]) -> list[dict[str, Any]]
             "budget_ratio": round(c.budget_ratio, 4),
             "price_source": c.price.source if c.price else None,
             "local": c.config.local,
+            "edit_format": c.edit_format,
         }
         for c in candidates
     ]
