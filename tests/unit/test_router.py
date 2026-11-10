@@ -83,15 +83,41 @@ CASES = [
         eliminated={"codex": "agent_missing"},
     ),
     Case(
-        "a large file: only the code agent can edit it",
+        "a large file answered with whole files: only the code agent can edit it",
+        providers=AGENTS,
+        needs=TaskNeeds(kind="edit", edit_lines=5000, edit_format="whole"),
+        states={
+            "local": ProviderState(consent="granted"),
+            "codex": ProviderState(consent="granted"),
+        },
+        expected=["codex/codex"],
+        eliminated={"local/small": "edit_too_large", "local/big": "edit_too_large"},
+    ),
+    Case(
+        "a large file with edit_format auto (the default): the API worker keeps it (Faz 9c)",
         providers=AGENTS,
         needs=TaskNeeds(kind="edit", edit_lines=5000),
         states={
             "local": ProviderState(consent="granted"),
             "codex": ProviderState(consent="granted"),
         },
-        expected=["codex/codex"],
-        eliminated={"local": "edit_too_large"},
+        expected=["local/small", "local/big", "local/mid", "codex/codex"],
+    ),
+    Case(
+        "a model set to whole files drops out for a large file; the others stay",
+        providers={
+            "local": {
+                "type": "ollama",
+                "models": [
+                    {"id": "small", "tier": 1, "context_window": 4096, "edit_format": "whole"},
+                    {"id": "big", "tier": 1, "context_window": 32768},
+                ],
+            }
+        },
+        needs=TaskNeeds(kind="edit", edit_lines=5000),
+        states={"local": ProviderState(consent="granted")},
+        expected=["local/big"],
+        eliminated={"local/small": "edit_too_large"},
     ),
     Case(
         "a read-only agent cannot edit",
@@ -430,3 +456,18 @@ def test_snapshot_only_reads_the_providers_it_needs(tmp_path: Any) -> None:
         snap = take_snapshot(conn, _config(), NOW, environ={}, names=["local"])
     assert set(snap.providers) == {"local"}
     assert ("router", "r1") not in snap.prices
+
+
+@pytest.mark.parametrize(("lines", "expected"), [(120, "whole"), (401, "replace")])
+def test_auto_picks_the_edit_format_by_file_size(lines: int, expected: str) -> None:
+    result = route(
+        TaskNeeds(kind="edit", edit_lines=lines),
+        _config(AGENTS),
+        Snapshot(NOW, {"local": ProviderState(consent="granted")}),
+    )
+    assert {c.edit_format for c in result.candidates} == {expected}
+
+
+def test_ask_tasks_have_no_edit_format() -> None:
+    result = route(TaskNeeds(), _config(), Snapshot(NOW, _granted()))
+    assert {c.edit_format for c in result.candidates} == {None}

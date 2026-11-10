@@ -33,6 +33,27 @@ class Budget(_Model):
     daily_runs: NonNegInt | None = None
 
 
+EditFormat = Literal["replace", "whole"]  # how an API worker actually answers an edit task
+EditFormatSetting = Literal["auto", "replace", "whole"]  # what a task file or a model asks for
+DEFAULT_EDIT_FORMAT: EditFormatSetting = "auto"
+
+
+def resolve_edit_format(
+    task: EditFormatSetting | None, model: EditFormatSetting | None, *, lines: int, limit: int
+) -> EditFormat:
+    """The task file's choice, then the model's, then ``auto`` (D-051).
+
+    ``auto``: whole files while the largest editable file has at most ``limit`` lines
+    (``security.max_api_edit_lines``), SEARCH/REPLACE above it. In the Faz 9c manual runs a
+    14B local model did better with whole files on a small file; above the limit whole-file
+    answers get cut off, and only SEARCH/REPLACE lets a cheap model edit at all.
+    """
+    choice = task or model or DEFAULT_EDIT_FORMAT
+    if choice == "auto":
+        return "whole" if lines <= limit else "replace"
+    return choice
+
+
 class ModelSpec(_Model):
     id: str
     tier: Tier
@@ -41,6 +62,7 @@ class ModelSpec(_Model):
     price_per_mtok: dict[Literal["input", "output"], NonNegFloat] | None = None
     strengths: list[str] = Field(default_factory=list)
     priority: int = 0  # higher goes first within a tier
+    edit_format: EditFormatSetting | None = None  # None: DEFAULT_EDIT_FORMAT, auto (D-051)
 
     @field_validator("price_per_mtok")
     @classmethod

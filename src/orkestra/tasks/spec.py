@@ -16,7 +16,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from orkestra.config.loader import format_validation_error, read_yaml
-from orkestra.config.schema import NonNegInt, PosInt, Tier
+from orkestra.config.schema import EditFormatSetting, NonNegInt, PosInt, Tier
 from orkestra.errors import ConfigError, UsageError
 from orkestra.i18n import t
 
@@ -161,6 +161,7 @@ class TaskSpec(_Model):
     output: OutputSpec = Field(default_factory=OutputSpec)
     verify: list[VerifierSpec] = Field(default_factory=list)
     verify_defaults: bool = True
+    edit_format: EditFormatSetting | None = None  # API workers: None = the model's, then auto
     allow_new_files: bool = True  # edit: the worker may create files that are not in context
     limits: Limits = Field(default_factory=Limits)
     privacy: Literal["normal", "local_only"] = "normal"

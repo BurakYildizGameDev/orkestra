@@ -393,7 +393,7 @@ Mimari "Ek: Skill dosyası" (onay ve çakışma maddeleri) güncellendi.
 Mimari §5.5 (agy), §9 (`uygula`, `gc`) güncellendi.
 
 ## D-049 – Skill ile elle senaryolar; çıktı kodlaması (2026-11-10, Faz 9b)
-**Bağlam:** Skill genel olarak (`~/.claude/skills/orkestra`) kuruldu. Temiz bir Claude Code oturumu, `hesap-makinesi-2` klasöründe 4 istemle 5 senaryonun hepsini çalıştırdı. İşçiler Ollama (qwen2.5-coder 1.5b/14b) ve agy idi.
+**Bağlam:** Skill genel olarak (`~/.claude/skills/orkestra`) kuruldu. Temiz bir Claude Code oturumu, yeni bir deneme klasöründe 4 istemle 5 senaryonun hepsini çalıştırdı. İşçiler Ollama (qwen2.5-coder 1.5b/14b) ve agy idi.
 **Karar:**
 - **Yönlendirilmiş çıktı UTF-8:** Windows'ta boruya ya da dosyaya giden çıktı ANSI kod sayfasıyla (cp1254) yazılıyordu. Okuyan taraf (Claude Code, Git Bash, editör) ise UTF-8 bekliyor, bu yüzden Türkçe harfler bozuk geliyordu (`ko�usu`). Şef çıktıyı `iconv -f cp1254` ya da `--lang en` + `PYTHONIOENCODING` ile çevirmek zorunda kaldı. Artık TTY olmayan stdout/stderr `utf-8` (`errors="replace"`) ile yazıyor. Konsol kendi kod sayfasında kalıyor, yazamadığı karakter `?` oluyor (eski davranış, D-016 dönemi).
 - **Skill:** Windows'ta `node --test <klasör>` çalışmıyor, test dosyaları tek tek verilmeli. Bu not worktree notlarına eklendi.
@@ -415,3 +415,31 @@ Mimari §Teknoloji (Kodlama satırı) güncellendi.
 - **Akışlar:** UTF-8 akışlar da `errors="replace"` alıyor, böylece `surrogateescape` ile okunmuş git yolları çökertmiyor. Açıkça verilmiş `PYTHONIOENCODING` yönlendirilmiş çıktıda korunuyor.
 - **Skill testi:** çağrılar artık kabuk sözcükleriyle ayrılıyor. Tırnak içindeki `|`, `;` ve `&` çağrıyı bitirmiyor. Düzyazıdaki kısa seçenekler (`-f`) denetleniyor. Birden çok değer alan seçeneklerin bütün değerleri atlanıyor.
 Mimari §5.5 (agy), §9 (`uygula`, `gc`), §Teknoloji (Kodlama) güncellendi.
+
+## D-051 – Ucuz modeller için ara/değiştir düzenlemesi (2026-11-10, Faz 9c)
+**Bağlam:** Faz 9b'nin elle denemesinde `qwen2.5-coder:14b`, sadece JSDoc eklerken tam dosya biçiminde (D-042) iki koşuda da kodu bozdu: bir satırı çoğalttı, bir tanımı sildi. Doğrulayıcılar yakaladı ama iş şefe kaldı. Kullanıcı kararıyla plana yeni bir faz (9c) eklendi, Faz 10'dan önce.
+**Karar:**
+- **Yeni biçim `replace`:** işçi düz metin SEARCH/REPLACE blokları gönderir. Dosyanın geri kalanı hiç yeniden yazılmaz. JSON modu bu biçimde kapalı, kodu JSON kaçışıyla yazmak gerekmiyor.
+- **Varsayılan `auto` (ölçümden sonra, kullanıcı kararı):** önce `replace` varsayılan olacaktı. Elle ölçüm (`qwen2.5-coder:14b`, deneme projesinin bir kopyası, AST doğrulayıcısıyla JSDoc): 4 dosyalı görevde `replace` 0/2 (model yine bir satırı çoğalttı, sonra vazgeçti; 9b'de `whole` da 0/2). Tek dosyalı görevde `whole` 2/2, `replace` 1/2. Model blokların içine fonksiyonun ya da dosyanın neredeyse tamamını kopyaladı, cevap tam dosyadan uzun çıktı (6,8 KB / 3,3 KB). Küçük dosyalarda `replace`'in daha iyi olduğuna dair kanıt yok. Kanıtlanmış faydası büyük dosyalarda: değişmeyen satırlar garanti korunuyor ve ucuz model bu dosyaları da düzenleyebiliyor. Bu yüzden `auto`: en büyük düzenlenebilir dosya `max_api_edit_lines`'a (400) kadarsa `whole`, daha büyükse `replace`.
+- **Geri bildirim:** düzenleme görevlerinde yeniden deneme mesajı artık "önceki değişikliğin atıldı, dosyalar bağlamda gösterildiği gibi" diyor (`prompts/retry_edit.md`). Ölçümde model "duplicated export" hatasını orijinal dosyanın kusuru sanıp vazgeçmişti. `replace` istemine de "bir satırın üstüne ekleme" kuralı eklendi.
+- **Eşleşme katı:** SEARCH tam satırlar olarak tam bir kez eşleşmeli. Satır sonu farkı her zaman, satır sonundaki boşluk ise ikinci denemede yok sayılır. Daha bulanık eşleşme yanlış yere uygulama riski taşıdığı için yok (kullanıcı onayı). Eşleşmeyen blokta dosyanın en yakın satırları işçiye geri bildirim olarak gider.
+- **Güvenlik zinciri aynı:** önce yollar dosya okunmadan denetlenir, sonra bloklar bellekte tam dosyaya çevrilir ve mevcut `check_paths`/`write` kuralları (satır sonu, BOM, korunan/yasak/ignore edilen yollar) aynen uygulanır. Bir blok bile tutmazsa hiçbir şey yazılmaz.
+- **Seçim:** görev dosyasında `edit_format` (`auto` | `replace` | `whole`), yoksa config'te modelin `edit_format` ayarı, yoksa `auto`. Biçimi router seçer ve adaya yazar. Runner, kuru çalıştırma ve envelope aynı değeri kullanır. `whole` kalır, ara/değiştirde zorlanan modeller ya da küçük yeni dosyalar için seçilebilir.
+- **Router:** `max_api_edit_lines` (400) artık sadece açıkça seçilmiş `whole` biçimini sınırlıyor (`auto` büyük dosyada `replace` seçer) ve eleme model düzeyinde (`edit_too_large`, etiket `sağlayıcı/model`). `replace` biçiminde sadece bağlam penceresi sınırlar.
+- **Envelope sürüm 3:** `edit_format` alanı eklendi. Saklanmış sürüm 2 zarflar okunmaya devam ediyor (`Literal[2, 3]`).
+- **Skill:** `edit_format` alanı, ne zaman `whole` seçileceği, "mantığı değiştirme" işlerinde mantığı denetleyen doğrulayıcı. Skill testi, skill'deki alan listesinin `TaskSpec` alanlarıyla birebir aynı olmasını denetliyor.
+Mimari §8.2, router (edit kuralı), `ModelSpec`, envelope örneği güncellendi.
+
+## D-052 – Faz 9c kod denetimi düzeltmeleri (2026-11-10, Faz 9c)
+**Bağlam:** PR #11 için `/code-review`: 10 bulgu, hepsi düzeltildi.
+**Karar:**
+- **Kod ajanına çelişkili talimat:** "değişikliğin atıldı, baştan başla" notu ajanların yeniden denemesine de gidiyordu. Oysa ajanın değişikliği yerinde duruyor ve ona "baştan başlama" deniyor. Not artık sadece API işçilerine gidiyor.
+- **İçerikte `=======` satırı:** setext başlık alt çizgisi ya da çakışma işareti örneği bloğu bozuyordu. Artık bloktaki bütün `=======` satırları olası bölme noktası sayılıyor. Dosyada tam bir kez eşleşenler arasından SEARCH'ü en uzun olan seçiliyor, çünkü işçinin dosyadan kopyaladığı kısım odur. Bloklar dışındaki `=======` satırı düz yazı sayılıyor.
+- **Yol satırları:** `### yol`, `File: yol` ve kalın yazı ya da ters tırnak içindeki yol biçimleri tanınıyor. Boşluk içeren yol ancak düzenlenebilir dosyalardan biriyse yol sayılıyor (`parse_replace(known=…)`). Uzantısı olmayan ve `/` içermeyen satır yol sayılmıyor (`Summary.` gibi düz yazı).
+- **JSON `cannot_do` taraması** sadece `whole` cevaplarında yapılıyor. Ara/değiştir cevabı ham kod içerir, oradaki `{"cannot_do": …}` sadece içeriktir.
+- **Biçim her zaman tek kaynaktan:** adayda biçim yoksa runner onu aynı kuralla çözüyor. İstem, JSON modu ve ayrıştırıcı hep aynı değeri kullanıyor. Biçimsiz bir API düzenlemesi iç hata. `build_edit_messages` biçimi zorunlu istiyor.
+- **Bağlam bir kez işleniyor:** bağlam ve görev metni bir kez oluşturuluyor (`edit_body`), biçime göre sadece kurallar ekleniyor (`edit_rules`). Önceden bağlam her biçim için ayrı ayrı oluşturulup ikisi de bellekte tutuluyordu.
+- **Okuma hataları:** okunamayan dosya (`cannot_read`) ve klasör yolu (`not_a_file`) artık çökme değil, geri bildirim.
+- **Envelope**, `EditFormat` türünü `config/schema.py`'den alıyor; iki kopya yok.
+- **Belgeler:** modül açıklaması ve test yorumu `auto` varsayılanını anlatıyor. PROGRESS/DECISIONS'tan kullanıcının yerel klasör adları ve not dosyası yolu çıkarıldı (AGENTS.md: kişisel yol commit'e girmez). Daha önce `main`'e girmiş iki commit'in geçmişinde bu adlar duruyor; geçmişi yeniden yazmak force-push gerektirdiği için dokunulmadı.
+Mimari §8.2 güncellendi.

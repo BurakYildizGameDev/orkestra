@@ -11,9 +11,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
+from orkestra.config.schema import EditFormat
 from orkestra.i18n import t
 
-ENVELOPE_VERSION = 2  # 2: failovers (Faz 4)
+ENVELOPE_VERSION = 3  # 2: failovers (Faz 4); 3: edit_format (Faz 9c)
 SUMMARY_CHARS = 400
 
 Status = Literal["ok", "failed", "escalate", "error"]
@@ -57,13 +58,14 @@ class EnvelopeUsage(BaseModel):
 
 
 class ResultEnvelope(BaseModel):
-    envelope_version: Literal[2] = ENVELOPE_VERSION
+    envelope_version: Literal[2, 3] = ENVELOPE_VERSION  # stored version-2 envelopes still load
     run_id: str
     task_id: str
     status: Status
     provider: str | None = None
     model: str | None = None
     tier: int | None = None
+    edit_format: EditFormat | None = None  # API edits only (Faz 9c)
     attempts: int = 0
     escalations: list[Escalation] = Field(default_factory=list)
     failovers: list[Failover] = Field(default_factory=list)

@@ -49,13 +49,13 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import pathspec
 
 from orkestra import paths
 from orkestra.config.loader import dump_yaml
-from orkestra.config.schema import CliAgentProvider, Config
+from orkestra.config.schema import CliAgentProvider, Config, EditFormat, resolve_edit_format
 from orkestra.envelope import (
     Changes,
     EnvelopeUsage,
@@ -69,6 +69,7 @@ from orkestra.envelope import (
 from orkestra.errors import (
     BudgetExhausted,
     ExitCode,
+    InternalError,
     NoProviderAvailable,
     OrkestraError,
     ProviderError,
@@ -111,8 +112,10 @@ from orkestra.tasks.context import Context, collect_context
 from orkestra.tasks.prompts import (
     build_agent_prompt,
     build_ask_messages,
-    build_edit_messages,
     build_retry_message,
+    edit_body,
+    edit_rules,
+    load_prompt,
 )
 from orkestra.tasks.spec import ForbidPaths, ProtectPaths, TaskSpec, effective_verifiers
 from orkestra.verify import CheckResult, Verifier, VerifyContext, build_verifiers, run_verifiers
@@ -262,21 +265,47 @@ class _Prepared:
     findings: list[Finding]
     warnings: list[str]
     system: str
-    user: str
+    user: str  # edit tasks: the context and the task only; the rules depend on the format
     edit: _EditPlan | None = None
     agent_user: str = ""  # the prompt for code agents
+    # edit tasks: the answer format's rules, appended to ``user`` (the context is rendered once)
+    edit_rules: Mapping[EditFormat, str] = field(default_factory=dict)
+
+    def messages(self, edit_format: EditFormat | None) -> tuple[str, str]:
+        """``(system, user)`` for a chat worker; an edit task needs its answer format."""
+        if self.edit is None:
+            return self.system, self.user
+        if edit_format is None:
+            raise InternalError("an API edit needs an answer format")
+        return self.system, f"{self.user}\n\n{self.edit_rules[edit_format]}"
+
+    def edit_format(self, candidate: Candidate) -> EditFormat | None:
+        """How this candidate answers an edit task; ``None``: not an API edit.
+
+        The router writes it into the candidate; a candidate made elsewhere is resolved the
+        same way, so the prompt, JSON mode and parser always agree.
+        """
+        if self.edit is None or isinstance(candidate.config, CliAgentProvider):
+            return None
+        return candidate.edit_format or resolve_edit_format(
+            self.task.edit_format, candidate.model.edit_format,
+            lines=self.edit.lines, limit=self.config.security.max_api_edit_lines,
+        )  # fmt: skip
 
     def needs(self) -> TaskNeeds:
+        rules = max((len(r) for r in self.edit_rules.values()), default=0)
+        prompt_chars = len(self.system) + len(self.user) + rules
         return TaskNeeds(
             kind=self.task.kind,
             tier=self.task.tier,
             privacy=self.task.privacy,
             provider=self.task.provider,
             model=self.task.model,
-            prompt_chars=len(self.system) + len(self.user),
+            prompt_chars=prompt_chars,
             has_secrets=bool(blocking(self.findings)),
             allow_secrets=self.options.allow_secrets,
             edit_lines=self.edit.lines if self.edit else 0,
+            edit_format=self.task.edit_format,
         )
 
 
@@ -319,15 +348,22 @@ def _prepare(
         edit, read_only = _edit_plan(task, context, base)
         warnings += read_only
         guarded = [*edit.protected, *edit.forbidden]
-        system, user = build_edit_messages(
-            task.prompt, context, editable=sorted(edit.editable), allow_new=task.allow_new_files,
-            protected=guarded,
-        )  # fmt: skip
+        rules: dict[EditFormat, str] = {
+            fmt: edit_rules(
+                editable=sorted(edit.editable),
+                allow_new=task.allow_new_files,
+                protected=guarded,
+                edit_format=fmt,
+            )
+            for fmt in get_args(EditFormat)
+        }
+        system, user = load_prompt("worker_system.md").strip(), edit_body(task.prompt, context)
         agent_user = build_agent_prompt(
             task.prompt, context, edit=True, editable=sorted(edit.editable),
             allow_new=task.allow_new_files, protected=guarded,
         )  # fmt: skip
     else:
+        rules = {}
         system, user = build_ask_messages(task.prompt, context, schema, json_output=json_output)
         agent_user = build_agent_prompt(
             task.prompt, context, edit=False, schema=schema, json_output=json_output
@@ -335,6 +371,7 @@ def _prepare(
     return _Prepared(
         task, options, config, env, base, checks, context, Redactor(known),
         Redactor(known, passwords=False), findings, warnings, system, user, edit, agent_user,
+        rules,
     )  # fmt: skip
 
 
@@ -490,6 +527,7 @@ class _TaskRun:
         self.wt: gw.Worktree | None = None  # edit tasks
         self.workdir = prep.base_dir  # where verifiers run (inside the worktree for edits)
         self.note = ""  # the last edit answer's note
+        self.edit_format: EditFormat | None = None  # the current chat candidate's answer format
         self.failovers: list[Failover] = []
         self.escalations: list[Escalation] = []
         self.used: list[Usage] = []  # every answered request of the run (envelope usage)
@@ -507,12 +545,14 @@ class _TaskRun:
 
     def _completion(self, candidate: Candidate, config: ChatConfig, user: str) -> CompletionRequest:
         timeout = self.task.limits.timeout_s or request_timeout(config, self.prep.config.defaults)
+        edit_format = self.prep.edit_format(candidate)
         return CompletionRequest(
             model=candidate.model.id,
-            system=self.prep.system,
+            system=self.prep.messages(edit_format)[0],
             user=user,
             max_output_tokens=self._max_output(candidate),
-            json_mode=self.task.output.format == "json" or self.task.kind == "edit",
+            # SEARCH/REPLACE blocks are plain text; only whole-file edits are JSON.
+            json_mode=self.task.output.format == "json" or edit_format == "whole",
             timeout_s=timeout,
         )
 
@@ -613,7 +653,9 @@ class _TaskRun:
             self.prep.warnings.append(
                 t("budget.warning.no_price", provider=candidate.provider, model=candidate.model.id)
             )
-        user = self.prep.user
+        self.edit_format = self.prep.edit_format(candidate)
+        base_user = self.prep.messages(self.edit_format)[1]
+        user = base_user
         tries = 0  # requests sent to this candidate
         transport = 0  # failed requests in a row (backoff counter)
         answers = 0
@@ -640,7 +682,10 @@ class _TaskRun:
                 attempt_dir / "request.json",
                 json.dumps({"provider": candidate.provider, **asdict(completion)}, indent=2),
             )
-            self.log.info("attempt %d: %s (try %d)", self.attempts, candidate.label, tries)
+            self.log.info(
+                "attempt %d: %s (try %d%s)", self.attempts, candidate.label, tries,
+                f", edit_format {self.edit_format}" if self.edit_format else "",
+            )  # fmt: skip
             try:
                 result = await provider.complete(completion)
             except ProviderError as exc:
@@ -683,8 +728,10 @@ class _TaskRun:
             self.used.append(usage)
             self._write(attempt_dir / "response.txt", result.text, answer=True)
             reason = _cannot_do(result.text)
-            if reason is None and self.prep.edit is not None:
-                reason = ef.cannot_do(result.text)  # JSON mode: {"cannot_do": "..."}
+            if reason is None and self.edit_format == "whole":
+                # JSON mode: {"cannot_do": "..."}. SEARCH/REPLACE answers hold raw code, where
+                # such a literal is content, not a refusal.
+                reason = ef.cannot_do(result.text)
             if reason is not None:
                 self.escalate_reason = t("ask.cannot_do", reason=reason or "-")
                 self.last_problem = "escalate"
@@ -699,7 +746,7 @@ class _TaskRun:
             checks = await self._verify(result.text, attempt_dir)
             verdict = self._judge(
                 candidate, result, checks, tries, answers, completion.max_output_tokens,
-                self.prep.user,
+                base_user,
             )  # fmt: skip
             if not isinstance(verdict, str):
                 return verdict
@@ -729,11 +776,15 @@ class _TaskRun:
             message = t("verify.failed", checks=names)
             return self._fail(candidate, None, tries, retry.Action.ESCALATE, reason=message,
                               error=VERIFICATION_FAILED)  # fmt: skip
-        # Feedback goes to a model: mask everything secret, as in the records.
+        # Feedback goes to a model: mask everything secret, as in the records. An API worker's
+        # answer is undone before the retry; a code agent continues from its change instead
+        # (``AGENT_CONTINUE``), so only chat workers are told their change was discarded.
+        api_edit = self.prep.edit is not None and not isinstance(candidate.config, CliAgentProvider)
         return build_retry_message(
             base_prompt,
             self.prep.redact_output(result.text),
             [self.prep.redact(f) for f in failures],
+            edit=api_edit,
         )
 
     async def _try_agent(
@@ -882,8 +933,13 @@ class _TaskRun:
         """Write an edit answer into the worktree (from the baseline) and verify it."""
         assert self.prep.edit is not None
         gw.reset(wt)  # every answer starts from the user's files, not the last answer
+        blocks: ef.ReplaceAnswer | None = None
         try:
-            answer = ef.parse(text)
+            if self.edit_format == "replace":
+                blocks = ef.parse_replace(text, known=self.prep.edit.editable)
+                answer = ef.paths_only(blocks)  # paths are checked before any file is read
+            else:
+                answer = ef.parse(text)
         except ef.EditFormatError as exc:
             return [failed(ef.FORMAT_CHECK, exc.problem)]
         rels = [rel for e in answer.files if (rel := ef.normalize_path(e.path)) is not None]
@@ -895,6 +951,8 @@ class _TaskRun:
         if problems:
             return [failed(ef.FORMAT_CHECK, problems)]
         try:
+            if blocks is not None:
+                answer = ef.resolve_replace(blocks, self.workdir)  # whole files, in memory
             ef.write(answer, self.workdir)
         except ef.EditFormatError as exc:
             return [failed(ef.FORMAT_CHECK, exc.problem)]
@@ -1007,6 +1065,7 @@ class _TaskRun:
         return {
             "run_id": self.run_id,
             "task_id": self.task.id,
+            "edit_format": self.prep.edit_format(candidate) if candidate else None,
             "provider": candidate.provider if candidate else None,
             "model": candidate.model.id if candidate else None,
             "tier": candidate.tier if candidate else None,

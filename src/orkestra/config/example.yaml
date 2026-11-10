@@ -25,6 +25,8 @@ providers:
         tier: 1
         context_window: 32768      # sent to Ollama as num_ctx
         strengths: [code, summary]
+        # edit_format: auto        # edits: auto (default: whole files up to 400 lines, else
+                                   #   only the changed lines) | replace | whole
     budget: {}              # empty = unlimited
 
   openrouter:

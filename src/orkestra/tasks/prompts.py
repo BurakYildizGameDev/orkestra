@@ -11,6 +11,7 @@ from functools import cache
 from importlib import resources
 from typing import Any
 
+from orkestra.config.schema import EditFormat
 from orkestra.tasks.context import Context, render_context
 
 
@@ -50,12 +51,32 @@ def build_edit_messages(
     editable: Sequence[str],
     allow_new: bool,
     protected: Sequence[str],
+    edit_format: EditFormat,
 ) -> tuple[str, str]:
-    """Return ``(system, user)`` for an ``edit`` task answered with whole files (Mimari §8.2)."""
+    """Return ``(system, user)`` for an ``edit`` task (Mimari §8.2).
+
+    ``replace``: SEARCH/REPLACE blocks (Faz 9c); ``whole``: whole files as JSON. The format
+    is required: the router chooses it per candidate (``edit_format: auto``).
+    """
+    rules = edit_rules(
+        editable=editable, allow_new=allow_new, protected=protected, edit_format=edit_format
+    )
+    return load_prompt("worker_system.md").strip(), f"{edit_body(prompt, context)}\n\n{rules}"
+
+
+def edit_body(prompt: str, context: Context) -> str:
+    """The context and the task: the same for every answer format (rendered once per run)."""
     parts: list[str] = []
     if context.files:
         parts.append("Context files:\n\n" + render_context(context))
     parts.append("Task:\n" + prompt.strip())
+    return "\n\n".join(parts)
+
+
+def edit_rules(
+    *, editable: Sequence[str], allow_new: bool, protected: Sequence[str], edit_format: EditFormat
+) -> str:
+    """The answer format's rules (``prompts/edit_replace.md`` or ``edit_format.md``)."""
     new_files = (
         "You may also create new files."
         if allow_new
@@ -66,13 +87,12 @@ def build_edit_messages(
     )
     # Plain replacement: the template is full of JSON braces.
     rules = (
-        load_prompt("edit_format.md")
+        load_prompt("edit_replace.md" if edit_format == "replace" else "edit_format.md")
         .replace("{editable}", ", ".join(editable) if editable else "(none)")
         .replace("{new_files}", new_files)
         .replace("{protected}", guarded)
     )
-    parts.append(rules.strip())
-    return load_prompt("worker_system.md").strip(), "\n\n".join(parts)
+    return rules.strip()
 
 
 def build_agent_prompt(
@@ -125,12 +145,18 @@ def _cut(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + "\n[... truncated]"
 
 
-def build_retry_message(user: str, answer: str, failures: list[str]) -> str:
-    """The original task plus what went wrong last time (``prompts/retry_feedback.md``)."""
+def build_retry_message(user: str, answer: str, failures: list[str], *, edit: bool = False) -> str:
+    """The original task plus what went wrong last time (``prompts/retry_feedback.md``).
+
+    ``edit``: say that the previous change was discarded. Otherwise a model may read an error
+    such as "duplicated export" as a fault of the original file and give up (Faz 9c).
+    """
     details = _cut("\n".join(f"- {f}" for f in failures), FEEDBACK_CHARS)
     feedback = (
         load_prompt("retry_feedback.md")
         .strip()
         .format(answer=_cut(answer.strip(), PREVIOUS_ANSWER_CHARS), failures=details)
     )
+    if edit:
+        feedback += "\n\n" + load_prompt("retry_edit.md").strip()
     return f"{user}\n\n{feedback}"

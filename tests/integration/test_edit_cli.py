@@ -31,6 +31,8 @@ OLLAMA = "http://ollama.test:11434"
 ROUTER = "https://router.test/api/v1"
 MakeRepo = Callable[..., Path]
 
+# These workers are pinned to whole files (Faz 5c); SEARCH/REPLACE answers (Faz 9c; `auto`
+# picks them above 400 lines) are tested with ``edit_format: replace`` in the task file.
 CONFIG = f"""\
 version: 1
 providers:
@@ -40,6 +42,7 @@ providers:
     models:
       - id: coder
         tier: 1
+        edit_format: whole
   router:
     type: openai_compat
     base_url: {ROUTER}
@@ -47,8 +50,10 @@ providers:
     models:
       - id: smart/model
         tier: 2
+        edit_format: whole
       - id: big/model
         tier: 3
+        edit_format: whole
 """
 
 FILES = {
@@ -426,3 +431,95 @@ def test_a_repository_without_commits_is_a_usage_error_before_the_run(
     code, _, err = _run(["--lang", "en", "run", _task(tmp_path)], capsys)
     assert code == 2 and "no commits" in err
     assert not paths.runs_dir().exists() or not any(paths.runs_dir().iterdir())
+
+
+# --- SEARCH/REPLACE (Faz 9c) -------------------------------------------------------------
+
+
+def _blocks(*blocks: tuple[str, str, str], note: str = "fixed it") -> str:
+    body = "".join(
+        f"{path}\n<<<<<<< SEARCH\n{search}=======\n{replace}>>>>>>> REPLACE\n"
+        for path, search, replace in blocks
+    )
+    return f"```\n{body}```\n{note}\n"
+
+
+@respx.mock
+def test_search_replace_feedback_then_apply(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wrong = _blocks(("calc.py", "    return a -b\n", "    return a + b\n"))  # not in the file
+    right = _blocks(("calc.py", "    return a - b\n", "    return a + b\n"), note="add adds")
+    chat = respx.post(f"{OLLAMA}/api/chat").mock(side_effect=[_ollama(wrong), _ollama(right)])
+    code, out, _ = _run(["run", _task(tmp_path, edit_format="replace"), "--json"], capsys)
+    assert code == 0, out
+    envelope = json.loads(out)
+    assert envelope["status"] == "ok" and envelope["attempts"] == 2
+    assert envelope["edit_format"] == "replace"
+    assert "add adds" in envelope["summary"]
+    first, second = (json.loads(c.request.content) for c in chat.calls)
+    assert "format" not in first  # plain text, not Ollama's JSON mode
+    assert "SEARCH/REPLACE" in first["messages"][-1]["content"]
+    feedback = second["messages"][-1]["content"]
+    assert "SEARCH lines are not in calc.py" in feedback and "return a - b" in feedback
+    code, _, _ = _run(["apply", envelope["run_id"]], capsys)
+    assert code == 0 and _read(repo / "calc.py") == RIGHT
+
+
+@respx.mock
+def test_search_replace_keeps_every_line_it_does_not_touch(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    lines = [f"VALUE_{n} = {n}\n" for n in range(500)]  # larger than max_api_edit_lines
+    (repo / "big.py").write_bytes("".join(lines).encode())
+    answer = _blocks(("big.py", "VALUE_250 = 250\n", "VALUE_250 = 2500\n"))
+    respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama(answer))
+    task = _task(tmp_path, context={"files": ["big.py"]}, verify=[], edit_format="replace")
+    code, out, _ = _run(["run", task, "--json"], capsys)
+    assert code == 0, out
+    envelope = json.loads(out)
+    assert envelope["provider"] == "ollama"  # no code agent needed for a large file
+    assert (envelope["changes"]["insertions"], envelope["changes"]["deletions"]) == (1, 1)
+    _run(["apply", envelope["run_id"]], capsys)
+    expected = [*lines[:250], "VALUE_250 = 2500\n", *lines[251:]]
+    assert _read(repo / "big.py") == "".join(expected)
+
+
+def test_dry_run_shows_the_edit_format(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out, _ = _run(["run", _task(tmp_path), "--dry-run", "--json"], capsys)
+    assert code == 0
+    assert {c["edit_format"] for c in json.loads(out)["candidates"]} == {"whole"}  # config
+    task = _task(tmp_path, edit_format="replace")
+    code, out, _ = _run(["--lang", "en", "run", task, "--dry-run"], capsys)
+    assert code == 0 and "edit format replace" in out
+
+
+def test_auto_uses_whole_files_for_small_files_and_blocks_for_large_ones(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out, _ = _run(["run", _task(tmp_path, edit_format="auto"), "--dry-run", "--json"],
+                        capsys)  # fmt: skip
+    assert code == 0
+    assert {c["edit_format"] for c in json.loads(out)["candidates"]} == {"whole"}
+    (repo / "big.py").write_bytes(b"x = 1\n" * 401)  # security.max_api_edit_lines: 400
+    task = _task(tmp_path, context={"files": ["big.py"]}, edit_format="auto")
+    code, out, _ = _run(["run", task, "--dry-run", "--json"], capsys)
+    assert code == 0
+    route = json.loads(out)
+    assert {c["edit_format"] for c in route["candidates"]} == {"replace"}
+    assert "edit_too_large" not in {e["code"] for e in route["eliminated"]}
+
+
+@respx.mock
+def test_a_json_cannot_do_literal_inside_a_block_is_code_not_a_refusal(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Review of PR #11: the JSON {"cannot_do": ...} scan belongs to whole-file answers only.
+    answer = _blocks(("calc.py", "    return a - b\n", '    return a + b  # {"cannot_do": "no"}\n'))
+    respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama(answer))
+    task = _task(tmp_path, edit_format="replace", verify=[])
+    code, out, _ = _run(["run", task, "--json"], capsys)
+    assert code == 0, out
+    assert json.loads(out)["status"] == "ok"

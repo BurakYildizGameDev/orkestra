@@ -205,11 +205,32 @@ verify:
 allow_new_files: true        # default; false: only the context files may change
 ```
 
-API workers answer with **whole files** as JSON (`{"files": [{"path", "content"}], "note"}`);
-unified diffs from models break too often. Orkestra then:
+API workers answer in one of two formats; `edit_format` (in the task file, or per model in the
+config) picks it, and the default `auto` chooses by file size:
 
-1. takes the JSON even with code fences or text around it; broken or cut-off JSON goes back to
-   the worker as feedback (`edit_format` check);
+- **`whole`** (auto, up to `security.max_api_edit_lines`, 400 lines): whole files as JSON,
+  `{"files": [{"path", "content"}], "note"}`.
+- **`replace`** (auto, above 400 lines): only the places that change, as SEARCH/REPLACE blocks:
+
+```
+calc.py
+<<<<<<< SEARCH
+    return a - b
+=======
+    return a + b
+>>>>>>> REPLACE
+```
+
+With `replace` the rest of the file is never rewritten, so large files can go to cheap models
+too (whole-file answers of that size get cut off). A SEARCH must match whole lines in exactly
+one place (line endings and trailing spaces do not matter); an empty SEARCH creates a new file.
+Why `auto` and not always `replace`: in our manual runs a 14B local model did better with whole
+files on a small file, and copied large chunks into its blocks anyway (see `docs/DECISIONS.md`,
+D-051). Unified diffs from models break too often, so they are not used. Orkestra then:
+
+1. takes the blocks (or the JSON) even with code fences or text around them; a SEARCH that is
+   not found (the closest lines of the file are sent back), matches more than once, or a
+   broken or cut-off answer goes back to the worker as feedback (`edit_format` check);
 2. checks every path: relative, inside the project, no `..` or `.git`, not a `forbid_paths`
    match, and either a context file or a new file. A file the worker was not shown is never
    overwritten;
@@ -219,9 +240,11 @@ unified diffs from models break too often. Orkestra then:
 4. on a failed check: feedback, retry from your original files, escalation, as for any task.
 
 If an answer is cut off at the output limit, the file is too big for that model: the run goes
-straight to tier 3. Files longer than `security.max_api_edit_lines` (400) are not given to API
-workers at all; code agents edit them in place. The envelope has
-`changes: {files, insertions, deletions, patch_path}`; then:
+straight to tier 3. Only with an explicit `edit_format: whole`, files longer than
+`security.max_api_edit_lines` (400) are not given to API workers at all; code agents edit them
+in place. The envelope has
+`edit_format` and `changes: {files, insertions, deletions, patch_path}`, and
+`run --dry-run` shows the format of every candidate; then:
 
 ```bash
 orkestra show <run_id> --diff      # look at it
@@ -232,7 +255,8 @@ A run that did not pass its checks keeps its worktree so you can look at the cha
 `apply` then needs `--force`. A run that ends without a change removes its worktree. Context
 files that are not UTF-8, that git ignores, or that match `protect_paths`/`forbid_paths` are
 shown to the worker read-only. A worker that cannot do the task answers
-`{"cannot_do": "<reason>"}` and the run moves up a tier at once.
+`CANNOT_DO: <reason>` (`{"cannot_do": "<reason>"}` with `whole`) and the run moves up a tier
+at once.
 
 Ctrl+C during a run releases the budget reservation, writes an envelope with
 `error: interrupted` and keeps the worktree.
@@ -437,6 +461,7 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 8 | Chief tools: `status`, `review`, `map`, templates, `plan expand`, cache, savings counter | ⏳ |
 | 9a | Claude skill: `SKILL.md`, checked against the CLI | ✅ |
 | 9b | Claude skill: review and manual scenarios | ✅ |
+| 9c | SEARCH/REPLACE edits for cheap models (`edit_format: auto`) | ✅ |
 | 10 | Chief handoff (Claude ↔ Codex ↔ Antigravity) | ⏳ |
 | 11 | Terminal UI, setup wizard, 5 languages | ⏳ |
 | 12 | Night shift queue, notifications, adaptive routing | ⏳ |
