@@ -1,0 +1,113 @@
+"""Result envelope (Mimari §13): the short JSON the chief reads instead of the full output.
+
+This model is the single source of truth for the envelope schema. Changing it means bumping
+``ENVELOPE_VERSION``.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+from orkestra.i18n import t
+
+ENVELOPE_VERSION = 1
+SUMMARY_CHARS = 400
+
+Status = Literal["ok", "failed", "escalate", "error"]
+
+
+class Escalation(BaseModel):
+    provider: str
+    model: str
+    tier: int
+    reason: str
+
+
+class VerificationResult(BaseModel):
+    type: str
+    ok: bool
+    detail: str = ""
+
+
+class Changes(BaseModel):
+    files: int
+    insertions: int
+    deletions: int
+    patch_path: str | None = None
+
+
+class EnvelopeUsage(BaseModel):
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    cost_usd: float | None = None
+
+
+class ResultEnvelope(BaseModel):
+    envelope_version: Literal[1] = ENVELOPE_VERSION
+    run_id: str
+    task_id: str
+    status: Status
+    provider: str | None = None
+    model: str | None = None
+    tier: int | None = None
+    attempts: int = 0
+    escalations: list[Escalation] = Field(default_factory=list)
+    summary: str = ""
+    verification: list[VerificationResult] = Field(default_factory=list)
+    changes: Changes | None = None
+    output_path: str | None = None
+    usage: EnvelopeUsage = Field(default_factory=EnvelopeUsage)
+    duration_s: float = 0.0
+    cached: bool = False
+    review: dict[str, Any] | None = None
+    error: str | None = None
+
+
+def to_json(envelope: ResultEnvelope) -> str:
+    # ASCII escapes keep the document intact on non-UTF-8 Windows pipes.
+    return json.dumps(envelope.model_dump(mode="json"), indent=2)
+
+
+def summarize_text(text: str, output_path: str | None, limit: int = SUMMARY_CHARS) -> str:
+    """First ``limit`` characters cut at a word boundary, plus where the full text is."""
+    flat = " ".join(text.split())
+    if len(flat) <= limit:
+        return flat
+    cut = flat[:limit]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    suffix = t("envelope.full_text", path=output_path) if output_path else ""
+    return f"{cut}… {suffix}".rstrip()
+
+
+def human_summary(envelope: ResultEnvelope) -> str:
+    """Short status lines for humans (stderr)."""
+    usage = envelope.usage
+    cost = "-" if usage.cost_usd is None else f"${usage.cost_usd:.4f}"
+    lines = [
+        t(
+            "envelope.line",
+            status=envelope.status,
+            run_id=envelope.run_id,
+            provider=envelope.provider or "-",
+            model=envelope.model or "-",
+            tier=envelope.tier if envelope.tier is not None else "-",
+        ),
+        t(
+            "envelope.usage",
+            prompt=usage.prompt_tokens if usage.prompt_tokens is not None else "-",
+            completion=usage.completion_tokens if usage.completion_tokens is not None else "-",
+            cost=cost,
+            seconds=f"{envelope.duration_s:.1f}",
+        ),
+    ]
+    lines.extend(
+        t("envelope.verify", type=v.type, result="ok" if v.ok else "FAIL", detail=v.detail).rstrip()
+        for v in envelope.verification
+    )
+    if envelope.error:
+        lines.append(t("errors.prefix", message=envelope.error))
+    return "\n".join(lines)
