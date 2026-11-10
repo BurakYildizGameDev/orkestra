@@ -67,16 +67,16 @@ def _model(cfg: Config) -> ModelSpec:
 async def test_prices_fetched_cached_and_resolved(conn: sqlite3.Connection) -> None:
     route = respx.get(f"{BASE}/models").mock(return_value=_listing())
     cfg = _config()
-    cache = await pricing.refresh(cfg, NOW, environ={"ROUTER_KEY": FAKE_KEY})
+    cache = await pricing.refresh(cfg, NOW, only={"router"}, environ={"ROUTER_KEY": FAKE_KEY})
     assert route.call_count == 1
     assert route.calls.last.request.headers["authorization"] == f"Bearer {FAKE_KEY}"
     price = pricing.resolve("router", cfg.providers["router"], _model(cfg), conn=conn, cache=cache)
     assert price == pricing.Price(2.0, 8.0, "provider")
     assert "other/variable" not in cache["router"]["prices"]  # -1 = variable price, ignored
 
-    await pricing.refresh(cfg, NOW + timedelta(hours=23), environ={})
+    await pricing.refresh(cfg, NOW + timedelta(hours=23), only={"router"}, environ={})
     assert route.call_count == 1  # still fresh
-    await pricing.refresh(cfg, NOW + timedelta(hours=25), environ={})
+    await pricing.refresh(cfg, NOW + timedelta(hours=25), only={"router"}, environ={})
     assert route.call_count == 2  # stale after 24h
     assert FAKE_KEY not in (Path(pricing.paths.cache_dir()) / "prices.json").read_text(
         encoding="utf-8"
@@ -86,8 +86,10 @@ async def test_prices_fetched_cached_and_resolved(conn: sqlite3.Connection) -> N
 @respx.mock
 async def test_only_providers_that_need_prices_are_fetched() -> None:
     route = respx.get(f"{BASE}/models").mock(return_value=_listing())
-    await pricing.refresh(_config(daily_usd=None), NOW, environ={})
-    await pricing.refresh(_config(price_per_mtok={"input": 1.0, "output": 1.0}), NOW, environ={})
+    await pricing.refresh(_config(daily_usd=None), NOW, only={"router"}, environ={})
+    priced = _config(price_per_mtok={"input": 1.0, "output": 1.0})
+    await pricing.refresh(priced, NOW, only={"router"}, environ={})
+    await pricing.refresh(_config(), NOW, only={"ollama"}, environ={})  # router not allowed
     assert route.call_count == 0
 
 
@@ -95,18 +97,18 @@ async def test_only_providers_that_need_prices_are_fetched() -> None:
 async def test_failed_fetch_is_retried_after_an_hour() -> None:
     route = respx.get(f"{BASE}/models").mock(side_effect=httpx.ConnectError("offline"))
     cfg = _config()
-    cache = await pricing.refresh(cfg, NOW, environ={})
+    cache = await pricing.refresh(cfg, NOW, only={"router"}, environ={})
     assert cache["router"]["ok"] is False
-    await pricing.refresh(cfg, NOW + timedelta(minutes=30), environ={})
+    await pricing.refresh(cfg, NOW + timedelta(minutes=30), only={"router"}, environ={})
     assert route.call_count == 1  # offline: do not slow every run down
-    await pricing.refresh(cfg, NOW + timedelta(minutes=61), environ={})
+    await pricing.refresh(cfg, NOW + timedelta(minutes=61), only={"router"}, environ={})
     assert route.call_count == 2
 
 
 @respx.mock
 async def test_changed_base_url_invalidates_cached_prices(conn: sqlite3.Connection) -> None:
     respx.get(f"{BASE}/models").mock(return_value=_listing())
-    cache = await pricing.refresh(_config(), NOW, environ={})
+    cache = await pricing.refresh(_config(), NOW, only={"router"}, environ={})
     moved = Config.model_validate(
         {
             "version": 1,

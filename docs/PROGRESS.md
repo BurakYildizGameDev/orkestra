@@ -10,7 +10,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 1 – Config | ✅ | 2026-11-09 | init, config show/validate (D-006…D-012) |
 | 2 – Chat adapter, ask, doctor | ✅ | 2026-11-09 | Ollama + OpenAI uyumlu, ask, doctor (D-013…D-019) |
 | 3 – Durum, bütçe, onay | ✅ | 2026-11-09 | state.db, bütçe rezervasyonu, onay, devre kesici, gizli bilgi, fiyat kaynakları (D-020…D-028) |
-| 4 – Router | ⏳ | | |
+| 4 – Router | ✅ | 2026-11-09 | router, yeniden deneme, aynı komutta yedeğe geçiş, --dry-run; Mimari kararlarla eşitlendi (D-029…D-034) |
 | 5a – Görev + doğrulama | ⏳ | | |
 | 5b – Worktree | ⏳ | | |
 | 5c – API ile edit | ⏳ | | |
@@ -26,6 +26,104 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 1–4 (PR #2–#5), 2026-11-10
+Dört PR'a `/code-review`; her birinde 10 bulgu (+ listeye girmeyen küçükler). Düzeltmeler en güncel dalda (`faz-4`) yapıldı, çünkü PR'lar üst üste kurulu. Kararlar D-036 (Faz 1–2) ve D-037 (Faz 3–4); yereldeki Mimari belgesi de güncellendi.
+
+**Faz 1 (PR #2) – 10/10 düzeltildi**
+- ✅ `providers.x: null`, önceki dosyada `providers` yoksa doğrulama hatası veriyordu → siliyor.
+- ✅ `init --force` iki kez çalışınca asıl yedek eziliyordu → `.bak`, `.bak.1`…; değişmemiş örnekte yedek yok.
+- ✅ UTF-8 olmayan `.gitignore` → dahili hata (kod 10) → bayt bayt korunuyor.
+- ✅ `--json`'da beklenmeyen hata stdout'a JSON vermiyordu → veriyor.
+- ✅ Dil ön taraması hata yakalayıcıdan önceydi (silinmiş cwd'de `--help` çöküyordu) → içeride ve çökmez.
+- ✅ Genel `init`, çalışılan deponun `.gitignore`'unu değiştiriyordu → sadece `--project`.
+- ✅ `config show`, `extra_headers` token'larını basıyordu → maskeli.
+- ✅ `--config ~/x.yaml` genişletilmiyordu → genişletiliyor.
+- ✅ Şema boş `launch`/`command`/`models` ve yarım `price_per_mtok`'u kabul ediyordu → reddediyor.
+- ✅ Config iki kez ayrıştırılıyordu, eşlenmemiş pydantic hataları İngilizceydi → içerik önbelleği, çevrili çerçeve.
+
+**Faz 2 (PR #3) – 9 düzeltildi, 1 zaten çözülmüştü; küçüklerin 5'i de düzeltildi**
+- ✅ `_scrub` kısaltıp sonra maskeliyordu (anahtar parçası sızabilirdi) → önce maskeliyor.
+- ✅ Ollama `num_ctx`'i aşan istemi sessizce kesiyordu → tahmin sığmıyorsa göndermeden `ContextTooLong`.
+- ✅ `ask` Ollama için 300 sn bekliyordu → en az 600 sn.
+- ✅ Windows'ta yönlendirilmiş çıktıda emoji `UnicodeEncodeError` (kod 10) → `?` yazılıyor (canlı denendi).
+- ✅ `doctor --warm` boş ilk token'da FAIL → başarı.
+- ✅ Sağlık kontrolünde 404 "model '' bulunamadı" diyordu → `base_url` hatası; Ollama'da JSON olmayan cevap "bağlanılamıyor" değil.
+- ➖ İki adapter'ın bağlantı hatasını farklı sınıflaması → D-029 ile Faz 4'te zaten çözülmüştü.
+- ✅ `CANNOT_DO` başarı sayılıyordu → üst kademeye geçiş, kalmadıysa `escalate` / kod 1.
+- ✅ o-serisi modeller `max_tokens`'ı reddediyordu → `max_completion_tokens`'a geçiş, JSON modu suçlanmıyor.
+- ✅ "ok/FAIL" ve "not an object" çevrisizdi → `t()`.
+- ✅ Küçükler: bağlam boyutu okumadan denetleniyor; `retry_after` ortak; anahtar kontrolü tek yerde; doctor sağlayıcıları paralel kontrol ediyor; `<file>` yolu ve içerikteki `</file>` kaçışlı.
+
+**Faz 3 (PR #4) – 10/10 düzeltildi**
+- ✅ Fiyat listesinden gelen fiyatla gerçek maliyet 0 kaydediliyordu (`daily_usd` hiç dolmuyordu) → çözülen fiyatla hesaplanıyor.
+- ✅ `sk-` deseni `task-runner-…` gibi kelimeleri anahtar sayıyordu → kelime sınırı.
+- ✅ Modelin cevabı maskeleniyor, şema doğrulaması bozuluyordu → cevapta sadece gerçek sırlar maskeli, doğrulama ham cevaba.
+- ✅ 404 (model yok) devre kesiciyi açıyordu → `ProviderModelNotFound`, sayılmıyor.
+- ✅ Fiyat listesi onaysız/kapalı sağlayıcılara anahtarla gidiyordu → sadece kapsamdaki onaylılar.
+- ✅ Token bildirilmezse 0 yazılıyordu → tahmin.
+- ✅ Kesinti/beklenmeyen hatada koşu `running` kalıyordu → `error` + `envelope.json`.
+- ✅ Yanlış anahtar düzeltilse de devre 1 saat açık kalıyordu → `providers enable` kapatıyor.
+- ✅ İstem metni taranmıyordu → taranıyor.
+- ✅ Gereksiz fiyat çözümü → snapshot kapsamı daraltıldı, geçmiş sorgusu sadece `daily_usd` olanlarda.
+
+**Faz 4 (PR #5) – 10/10 düzeltildi**
+- ✅ Her yeniden deneme ayrı koşu sayılıyordu → sağlayıcı başına bir koşu.
+- ✅ Model yok → tüm sağlayıcı atlanıyordu → sadece o model (canlı denendi: eksik model sonrası aynı Ollama'nın diğer modeli cevap verdi).
+- ✅ Listelenmemiş açık model $0 sayılıyordu → fiyatı çözülüyor.
+- ✅ Profil açık `--model`'i eziyordu; `--tier` > profil üstü boş aralık veriyordu → açık model serbest; açık profille çakışma kod 2, varsayılan profilde aralık o kademe.
+- ✅ Zaman aşımında olası ücret kaydedilmiyordu → tahmin harcanmış sayılıyor.
+- ✅ Bütçe yarışında gönderilmeyen istek deneme sayılıyordu → sayılmıyor.
+- ✅ `--dry-run` fiyat listesini ağdan çekiyordu → ağa çıkmıyor.
+- ✅ Boş `models` nedensiz eleniyordu → şema reddediyor.
+- ✅ Snapshot her sağlayıcıyı okuyordu → sadece kapsamdakiler.
+- ✅ Ölü `budget.check` → kaldırıldı.
+
+Testler: 459 geçti (+59); ruff, ruff format, pyright temiz. Canlı (gerçek Ollama, `qwen2.5-coder:1.5b`): çevrimdışı API + çekilmemiş model → aynı komutta Ollama'nın diğer modeli cevap verdi (kod 0); emoji cp1254'e yönlendirilince `?` (kod 0, eskiden 10); `CANNOT_DO` → `escalate`, kod 1.
+
+### Kod denetimi – Faz 0 (PR #1), 2026-11-09
+Yeni kural (AGENTS.md faz bitiş listesi): her faz sonunda `/code-review`. Faz 0 için 10 bulgu; 9'u düzeltildi, 1'i önemsiz diye atlandı (D-035):
+- ✅ `--lang TR`/`tr_TR` reddediliyordu → normalize ediliyor.
+- ✅ Son çare hata yakalayıcısı bozuk katalogda kendisi çöküyordu → çeviriden bağımsız.
+- ✅ `LC_ALL=C LANG=tr_TR` Türkçe gösteriyordu → POSIX kuralı (İngilizce).
+- ✅ `--lang` ön taraması alt komut argümanlarına bakıyordu → ilk alt komutta duruyor.
+- ✅ Düz süslü parantezli çeviri `t()`'yi çökertebiliyordu → ham metin + katalog testi.
+- ✅ i18n'de düz `ValueError`/`KeyError` → `TranslationError`/`UsageError`.
+- ✅ Sürüm iki yerde → tek kaynak (`importlib.metadata`).
+- ✅ Mesajsız hata "Error: " basıyordu → hata sınıfı adı gösteriliyor.
+- ✅ AGENTS.md yerel plan belgelerine atıf → "yoksa kullanıcıdan iste" notu.
+- ➖ `--version --lang xx` hatasız geçiyor → önemsiz, düzeltilmedi.
+Testler: 400 geçti (+18).
+
+### Faz 4 – Router ve yeniden deneme (2026-11-09)
+**Yapılanlar:**
+- `routing/router.py`: Mimari §7 algoritması saf fonksiyon olarak (`route(needs, config, snapshot, profile)`); durum `take_snapshot()` ile ayrı okunuyor. Kademe aralığı = [max(görev kademesi, profil min), profil max]. Eleme kuralları: kod ajanı (Faz 6'ya kadar), kapalı, deneysel ama açıkça `enabled: true` değil, onay yok/değişti, anahtar yok, `local_only` ve uzak, gizli bilgi ve uzak, devre açık, model yok, kademe aralık dışı, bağlam %80'e sığmıyor, bütçe aşılır. Sıralama: kademe ↑ → `priority` ↓ → config'teki sıra (D-031); kalan bütçe sadece eler. Her elenen için kod (JSON) ve okunur neden (seçili dilde).
+- `routing/retry.py`: §7.1 – geçici hata ve 429'da aynı adayda üstel bekleme + jitter (1, 2, 4 sn; `retry-after` varsa o, 60 sn üstüyse beklemeden geç), en fazla 3; bağlantı hiç yok → 0.5 sn sonra bir kez daha, sonra sağlayıcıyı atla (`ProviderConnectionError`, D-029); auth/anahtar/model yok → sağlayıcıyı atla; `ContextTooLong` → daha büyük bağlamlı model; diğerleri → sıradaki aday. Bekleme ve rastgelelik enjekte edilebilir.
+- `ask` artık router'la: adaylar sırayla denenir, her deneme `attempts/<n>/` altında kayıtlı, her deneme için bütçe rezervasyonu/mutabakatı ve devre kesici kaydı. Koşu sırasında devre açılırsa o sağlayıcının diğer modelleri de atlanır.
+- Envelope v2: `failovers` (her bırakılan aday: sağlayıcı, model, kademe, hata sınıfı, neden, deneme sayısı); daha üst kademeye geçilince `escalations`.
+- `ask` seçenekleri: `--profile`, `--local-only`, `--dry-run` (`--json` ile de). Kuru çalıştırma hiçbir şey göndermez ve koşu dizini oluşturmaz.
+- "Bağlantı hiç kurulamadı" iki adapter'da da `ProviderConnectionError` (D-029).
+- Yereldeki Mimari belgesi (`docs/PROJE_DOKUMANTASYONU.md`) D-001 … D-034 ile eşitlendi; `AGENTS.md`'ye "sapma hem DECISIONS'a hem Mimari'ye" kuralı eklendi (D-034).
+- Faz 1'den kalan bilinen sorun kapatıldı: YAML hatasında yapının başladığı satır da gösteriliyor.
+- Router öncesi seçim (`registry.select_chat_target`) kaldırıldı; router devraldı.
+- README (en + tr): Faz 4 ✅, yönlendirme kuralları ve hata → davranış tablosu.
+
+**Kabul kriterleri:**
+- ✅ Router birim testleri tablo tabanlı, 23 senaryo (`tests/unit/test_router.py`): local_only, bağlam sığmıyor, bütçe bitti (istek ve fiyatla USD), devre açık/süresi dolmuş, onay yok/değişti, anahtar yok, zorla sağlayıcı (sadece onun modelleri) ve uygun değilse açık hata (başka sağlayıcıya düşmüyor), zorla model, profil sınırları (cheap/quality/varsayılan), priority sıralaması, kalan bütçe sıralaması, deterministik eşitlik bozma, kapalı ve deneysel sağlayıcı. Ayrıca `route()`'un saf olduğu ve genel + proje config birleşince sıranın korunduğu testleri.
+- ✅ `--dry-run` her elenen aday için okunur neden içeriyor (insan ve JSON; örn. `local/mid: tier 2 is outside 1-1 (profile cheap)`).
+- ✅ Sahte 429 → `retry-after` (7 sn) kadar beklendi; bekleme enjekte edildiği için test gerçekten beklemiyor.
+- ✅ Tüm adaylar biterse kod 3 ve envelope'ta tüm adaylar nedenleriyle (`test_whole_chain_down_lists_every_failover`).
+- ✅ Kullanıcının istediği iki test: (1) internet yok → aynı komutta Ollama cevap veriyor (uzak API'ye 0.5 sn arayla 2 deneme), uzak API `failovers`'ta; 2. komutta devre açılıyor, 3. komuttan itibaren uzak API hiç denenmiyor. (2) OpenRouter 500 → 2 bekleyişli 3 deneme → devre açılıyor → sıradaki sağlayıcı cevap veriyor, envelope atlananı nedeniyle listeliyor.
+- ✅ Canlı: erişilemeyen uzak adres + gerçek Ollama (`qwen2.5-coder:1.5b`) → "Merhaba", kod 0, toplam 4.1 sn; `--dry-run` sırayı Türkçe gösterdi.
+- ✅ ruff, ruff format, pyright, pytest (382 test) temiz.
+
+**Ertelenenler:**
+- Öğrenen yönlendirme (adaptive skor) → Faz 12.
+- `edit` görevleri için kurallar (`max_api_edit_lines`, sadece ajan) → Faz 5c/6.
+- Doğrulama geri bildirimiyle yeniden deneme (`max_retries`) ve `CANNOT_DO` → Faz 5a.
+
+**Bilinen sorunlar:**
+- Yok.
 
 ### Faz 3 – Durum, bütçe, onay, sağlık (2026-11-09)
 **Yapılanlar:**
@@ -115,7 +213,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 - `providers` boşken görev komutlarının "orkestra init çalıştır" mesajıyla kod 2 vermesi → görev komutları geldiğinde (Faz 2).
 
 **Bilinen sorunlar:**
-- Kapanmamış parantez gibi YAML hatalarında satır numarası dosya sonunu gösterebiliyor (ruamel'in `problem_mark`'ı).
+- ~~Kapanmamış parantez gibi YAML hatalarında satır numarası dosya sonunu gösterebiliyor.~~ Faz 4'te düzeltildi: mesaj yapının başladığı satırı da gösteriyor.
 
 ### Faz 0 – Proje iskeleti + çok dilli altyapı (2026-11-09)
 **Yapılanlar:**

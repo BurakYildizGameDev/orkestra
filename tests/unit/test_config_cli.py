@@ -254,8 +254,8 @@ def test_init_adds_cache_to_gitignore_once(
     sub = repo / "src"
     sub.mkdir()
     monkeypatch.chdir(sub)
-    _run(["init"], capsys)
-    _run(["init"], capsys)
+    _run(["init", "--project"], capsys)
+    _run(["init", "--project"], capsys)
     lines = (repo / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert lines == ["node_modules/", ".orkestra/cache/"]
 
@@ -266,14 +266,14 @@ def test_init_creates_gitignore_in_repo(
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
     monkeypatch.chdir(repo)
-    _run(["init"], capsys)
+    _run(["init", "--project"], capsys)
     assert (repo / ".gitignore").read_text(encoding="utf-8") == ".orkestra/cache/\n"
 
 
 def test_init_outside_git_leaves_no_gitignore(
     workdir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _run(["init"], capsys)
+    _run(["init", "--project"], capsys)
     assert not (workdir / ".gitignore").exists()
 
 
@@ -286,3 +286,81 @@ def test_init_keeps_existing_cache_entry(
     monkeypatch.chdir(repo)
     _run(["init"], capsys)
     assert (repo / ".gitignore").read_bytes() == b"/.orkestra/cache\r\n"
+
+
+# --- code review fixes (Faz 1, PR #2) ---------------------------------------------------
+
+
+def test_global_init_leaves_the_cwd_repo_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    monkeypatch.chdir(repo)
+    code, _, _ = _run(["init"], capsys)
+    assert code == 0
+    assert not (repo / ".gitignore").exists()
+
+
+def test_internal_error_in_json_mode_is_json(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from orkestra.config import loader
+
+    def boom(*_: Any, **__: Any) -> Any:
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(loader, "init_config", boom)
+    code, out, err = _run(["init", "--json"], capsys)
+    assert code == 10
+    error = json.loads(out)["error"]
+    assert error["code"] == 10
+    assert error["type"] == "InternalError"
+    assert "kaboom" in error["message"]
+    assert "kaboom" in err
+
+
+def test_language_prescan_errors_do_not_escape(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from orkestra.config import loader
+
+    def boom(*_: Any, **__: Any) -> Any:
+        raise RuntimeError("Could not determine home directory.")
+
+    monkeypatch.setattr(loader, "find_sources", boom)
+    code, out, _ = _run(["--version"], capsys)
+    assert code == 0
+    assert "orkestra" in out
+
+
+def test_config_show_masks_secret_headers(
+    home: Path, workdir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write(
+        home / "config.yaml",
+        "version: 1\nproviders:\n  r:\n    type: openai_compat\n    base_url: https://r.test/v1\n"
+        "    extra_headers:\n      Authorization: Bearer sk-secretvalue1234567890abcd\n"
+        "      x-api-key: plainsecret\n      X-Title: Orkestra\n"
+        "    models: [{id: m, tier: 1}]\n",
+    )
+    for argv in (["config", "show"], ["config", "show", "--json"]):
+        code, out, _ = _run(argv, capsys)
+        assert code == 0
+        assert "secretvalue" not in out and "plainsecret" not in out
+        assert "Orkestra" in out
+
+
+def test_streams_never_crash_on_unencodable_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    import io
+    import sys
+
+    from orkestra import cli
+
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding="cp1254")
+    monkeypatch.setattr(sys, "stdout", stream)
+    cli._safe_streams()
+    print("Merhaba \U0001f600 → ğüş")
+    sys.stdout.flush()
+    assert raw.getvalue().decode("cp1254").startswith("Merhaba ? ? ğüş")

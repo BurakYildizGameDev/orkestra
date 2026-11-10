@@ -5,11 +5,35 @@ Every adapter translates its failures into the ``ProviderError`` family from ``e
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 from orkestra.errors import ProviderError
+
+# Conservative characters per token for estimates before a request (real tokenizers average
+# about 4). Shared by budgets, the router's context check and the Ollama num_ctx check.
+CHARS_PER_TOKEN = 3.5
+
+
+def estimate_tokens(chars: int) -> int:
+    return math.ceil(chars / CHARS_PER_TOKEN)
+
+
+def retry_after(headers: Mapping[str, str]) -> float | None:
+    """Seconds from ``retry-after`` (or OpenAI's ``retry-after-ms``); ``None`` if unusable."""
+    value = headers.get("retry-after")
+    if value is None and headers.get("retry-after-ms") is not None:
+        try:
+            return float(headers["retry-after-ms"]) / 1000
+        except ValueError:
+            return None
+    try:
+        return float(value) if value is not None else None
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True)

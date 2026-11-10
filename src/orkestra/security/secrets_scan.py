@@ -15,7 +15,8 @@ Severity = Literal["block", "warn"]
 
 PATTERNS: tuple[tuple[str, Severity, re.Pattern[str]], ...] = (
     ("openrouter_key", "block", re.compile(r"sk-or-v1-[A-Za-z0-9]{20,}")),
-    ("openai_style_key", "block", re.compile(r"sk-[A-Za-z0-9_-]{20,}")),
+    # Not inside a word: "task-runner-…", "disk-usage-…" are not keys (D-037).
+    ("openai_style_key", "block", re.compile(r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}")),
     ("aws_access_key", "block", re.compile(r"AKIA[0-9A-Z]{16}")),
     (
         "private_key",

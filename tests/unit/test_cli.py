@@ -69,7 +69,21 @@ def test_unsupported_lang_is_usage_error(capsys: pytest.CaptureFixture[str]) -> 
         (["--lang"], None),
         (["--", "--lang", "tr"], None),
         (["--version"], None),
+        (["--config", "c.yaml", "--lang", "tr", "ask", "hi"], "tr"),
+        # a subcommand's own arguments never switch the language
+        (["ask", "--lang=de"], None),
+        (["ask", "hi", "--lang", "tr"], None),
+        (["config", "show", "--lang", "tr"], None),
     ],
 )
 def test_find_lang_arg(argv: list[str], expected: str | None) -> None:
     assert _find_lang_arg(argv) == expected
+
+
+@pytest.mark.parametrize("value", ["TR", "tr_TR", "tr-TR"])
+def test_lang_is_normalized_like_the_env_var(
+    value: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out, _ = _run(["--lang", value, "--help"], capsys)
+    assert code == 0
+    assert "Sürümü gösterir ve çıkar." in out

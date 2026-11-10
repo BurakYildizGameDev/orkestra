@@ -1,6 +1,6 @@
 """Exception hierarchy and exit code mapping.
 
-Exit codes (README "Sonuç zarfı ve çıkış kodları"):
+Exit codes (README "Result envelope and exit codes"):
 
     0  success
     1  task failed verification (failed / escalate)
@@ -88,6 +88,10 @@ class InternalError(OrkestraError):
     exit_code = ExitCode.INTERNAL
 
 
+class TranslationError(InternalError):
+    """A broken or incomplete translation catalog (a bug in Orkestra, not user input)."""
+
+
 class ProviderError(OrkestraError):
     """Base class for errors raised by provider adapters.
 
@@ -111,7 +115,17 @@ class ProviderRateLimit(ProviderError):
 
 
 class ProviderTransient(ProviderError):
-    """Temporary failure: 5xx, connection error, timeout."""
+    """Temporary failure: 5xx, network error, timeout."""
+
+
+class ProviderTimeout(ProviderTransient):
+    """No answer in time. The provider may still have processed (and billed) the request,
+    so the reserved budget estimate is kept as spent (D-037)."""
+
+
+class ProviderModelNotFound(ProviderError):
+    """The provider works but does not know this model (404). Only that model is skipped and
+    the circuit breaker does not count it: the request was wrong, not the provider (D-037)."""
 
 
 class ContextTooLong(ProviderError):
@@ -123,7 +137,14 @@ class ProviderBadOutput(ProviderError):
 
 
 class ProviderUnavailable(ProviderError):
-    """Provider is not reachable or not installed."""
+    """Provider is not reachable, not installed or its API key is missing."""
+
+
+class ProviderConnectionError(ProviderUnavailable):
+    """No connection at all (offline, DNS failure, connection refused).
+
+    Retried once after a short pause (a network blip), then the provider is skipped.
+    """
 
 
 def exit_code_for(exc: BaseException) -> int:

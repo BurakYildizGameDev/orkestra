@@ -11,10 +11,12 @@ Orkestra: birden fazla yapay zekâyı (Ollama, OpenAI uyumlu API'ler, Codex/Anti
 3. `docs/YAPILIS_PLANI.md` – sadece sana verilen faz
 4. `docs/DECISIONS.md` – önceki sapma kararları
 
+Not: 2 ve 3 numaralı plan belgeleri bilerek git'te değil, sadece yerelde tutulur. Klonda yoksa çalışmaya başlamadan kullanıcıdan iste; onlarsız faz yapma.
+
 ## Kesin kurallar
 - **Sadece istenen fazı yap.** Gelecek fazların kodunu "hazırlık" diye yazma.
 - **Önce test.** Yeni davranış için önce başarısız test, sonra kod.
-- **Teknik Mimari bölümünden sapma** gerekiyorsa uygula ama gerekçesini `docs/DECISIONS.md`'ye tarih ve faz numarasıyla yaz.
+- **Teknik Mimari bölümünden sapma** gerekiyorsa uygula ama gerekçesini `docs/DECISIONS.md`'ye tarih ve faz numarasıyla yaz ve Mimari bölümündeki ilgili yeri de karar numarasıyla güncelle (iki belge çelişmesin).
 - `cli.py` iş mantığı içermez; servis fonksiyonlarını çağırır.
 - `shell=True` kullanma (tek istisna: kullanıcının `command` doğrulayıcısında açıkça `shell: true` yazması).
 - API anahtarı, token veya kişisel yol **hiçbir dosyaya, teste, log'a, commit'e** girmez. Testlerde sahte değer kullan.
@@ -42,6 +44,7 @@ uv run orkestra --help
 - [ ] Sapmalar `docs/DECISIONS.md`'de
 - [ ] `git diff` içinde sır/kişisel veri yok
 - [ ] Commit: `feat(faz-N): kısa açıklama`
+- [ ] **Kod denetimi:** faz bitince fazın diff'i/PR'ı için kod denetleyici çalıştırılır (Claude Code'da `/code-review <PR numarası>`). Bulgular düzeltilir ya da gerekçesiyle `docs/PROGRESS.md`'ye "bilinen sorun" olarak yazılır; sonuç faz raporunda madde madde verilir.
 
 ## Kod stili
 - Python 3.11+, tam tip ipuçları, `from __future__ import annotations`.

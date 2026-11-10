@@ -10,23 +10,31 @@ import os
 from collections.abc import Mapping
 from typing import Any
 
-import httpx
 import openai
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
 
-from orkestra.config.schema import ModelSpec, OpenAICompatProvider
+from orkestra.config.schema import OpenAICompatProvider
 from orkestra.errors import (
     ContextTooLong,
     ProviderAuthError,
     ProviderBadOutput,
+    ProviderConnectionError,
     ProviderError,
+    ProviderModelNotFound,
     ProviderRateLimit,
+    ProviderTimeout,
     ProviderTransient,
     ProviderUnavailable,
 )
 from orkestra.i18n import t
-from orkestra.providers.base import CompletionRequest, CompletionResult, HealthReport, Usage
+from orkestra.providers.base import (
+    CompletionRequest,
+    CompletionResult,
+    HealthReport,
+    Usage,
+    retry_after,
+)
 
 HEALTH_TIMEOUT_S = 10.0
 NO_KEY = "unused"  # local servers without auth still need a non-empty key for the SDK
@@ -42,18 +50,19 @@ class OpenAICompatChat:
         self._environ = os.environ if environ is None else environ
         # Models that rejected response_format=json_object; asked for JSON in the prompt instead.
         self._no_json_object: set[str] = set()
+        # Models that rejected max_tokens and want max_completion_tokens (reasoning models).
+        self._completion_tokens: set[str] = set()
 
     # --- key -----------------------------------------------------------------------------
 
     def key_present(self) -> bool:
-        var = self.config.api_key_env
-        return var is None or bool(self._environ.get(var, "").strip())
+        return self.config.api_key_env is None or bool(read_api_key(self.config, self._environ))
 
     def _api_key(self) -> str:
         var = self.config.api_key_env
         if var is None:
             return NO_KEY
-        value = self._environ.get(var, "").strip()
+        value = read_api_key(self.config, self._environ)
         if not value:
             raise ProviderUnavailable(t("provider.error.key_missing", provider=self.name, var=var))
         return value
@@ -69,40 +78,52 @@ class OpenAICompatChat:
 
     # --- completion ----------------------------------------------------------------------
 
-    async def _create(
-        self, client: AsyncOpenAI, req: CompletionRequest, *, json_object: bool
-    ) -> ChatCompletion:
+    async def _create(self, client: AsyncOpenAI, req: CompletionRequest) -> ChatCompletion:
+        json_object = req.json_mode and req.model not in self._no_json_object
         system = req.system
         if req.json_mode and not json_object:
             system = f"{system}\n\n{JSON_ONLY}"
+        # OpenAI reasoning models (o-series, gpt-5) reject max_tokens; most other servers do
+        # not know max_completion_tokens yet. Start with max_tokens, switch when told to.
+        new_style = req.model in self._completion_tokens
         return await client.chat.completions.create(
             model=req.model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": req.user},
             ],
-            max_tokens=req.max_output_tokens,
+            max_tokens=openai.omit if new_style else req.max_output_tokens,
+            max_completion_tokens=req.max_output_tokens if new_style else openai.omit,
             response_format={"type": "json_object"} if json_object else openai.omit,
         )
 
+    async def _send(self, client: AsyncOpenAI, req: CompletionRequest) -> ChatCompletion:
+        """Send, adapting once per rejected optional parameter (remembered per model)."""
+        while True:
+            try:
+                return await self._create(client, req)
+            except openai.BadRequestError as exc:
+                if _is_context_error(exc):
+                    raise
+                message = str(exc.message).lower()
+                if "max_completion_tokens" in message and req.model not in self._completion_tokens:
+                    self._completion_tokens.add(req.model)
+                elif req.json_mode and req.model not in self._no_json_object:
+                    self._no_json_object.add(req.model)
+                else:
+                    raise
+
     async def complete(self, req: CompletionRequest) -> CompletionResult:
         api_key = self._api_key()
-        json_object = req.json_mode and req.model not in self._no_json_object
         try:
             async with self._client(api_key, req.timeout_s) as client:
-                try:
-                    response = await self._create(client, req, json_object=json_object)
-                except openai.BadRequestError as exc:
-                    if not json_object or _is_context_error(exc):
-                        raise
-                    self._no_json_object.add(req.model)
-                    response = await self._create(client, req, json_object=False)
+                response = await self._send(client, req)
         except openai.OpenAIError as exc:
             # "from None": SDK messages may echo the key (e.g. "Incorrect API key: sk-...").
             raise self._map_error(exc, req.model, api_key, req.timeout_s) from None
-        return self._result(response, req.model)
+        return self._result(response)
 
-    def _result(self, response: ChatCompletion, model: str) -> CompletionResult:
+    def _result(self, response: ChatCompletion) -> CompletionResult:
         if not response.choices:
             raise ProviderBadOutput(t("provider.error.empty", provider=self.name))
         choice = response.choices[0]
@@ -110,37 +131,15 @@ class OpenAICompatChat:
         if not text.strip():
             raise ProviderBadOutput(t("provider.error.empty", provider=self.name))
         usage = response.usage
-        prompt_tokens = usage.prompt_tokens if usage else None
-        completion_tokens = usage.completion_tokens if usage else None
         return CompletionResult(
             text=text,
             usage=Usage(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                cost_usd=self._cost(usage, model, prompt_tokens, completion_tokens),
+                prompt_tokens=usage.prompt_tokens if usage else None,
+                completion_tokens=usage.completion_tokens if usage else None,
+                cost_usd=_reported_cost(usage),
             ),
             raw_finish_reason=choice.finish_reason,
         )
-
-    def _cost(
-        self, usage: Any, model: str, prompt_tokens: int | None, completion_tokens: int | None
-    ) -> float | None:
-        # OpenRouter returns the charged cost (credits = USD) as an extra "usage.cost" field.
-        reported = getattr(usage, "cost", None) if usage is not None else None
-        if reported is None and usage is not None:
-            reported = (getattr(usage, "model_extra", None) or {}).get("cost")
-        if isinstance(reported, int | float):
-            return float(reported)
-        spec = self._spec(model)
-        prices = spec.price_per_mtok if spec else None
-        if not prices or prompt_tokens is None or completion_tokens is None:
-            return None
-        return (
-            prompt_tokens * prices.get("input", 0.0) + completion_tokens * prices.get("output", 0.0)
-        ) / 1_000_000
-
-    def _spec(self, model: str) -> ModelSpec | None:
-        return next((m for m in self.config.models if m.id == model), None)
 
     # --- errors --------------------------------------------------------------------------
 
@@ -155,7 +154,7 @@ class OpenAICompatChat:
         if isinstance(exc, openai.RateLimitError):
             return ProviderRateLimit(
                 t("provider.error.rate_limit", provider=name),
-                retry_after=_retry_after(exc.response.headers),
+                retry_after=retry_after(exc.response.headers),
             )
         if isinstance(exc, openai.BadRequestError):
             if _is_context_error(exc):
@@ -169,13 +168,18 @@ class OpenAICompatChat:
                 )
             )
         if isinstance(exc, openai.NotFoundError):
-            return ProviderUnavailable(
+            if not model:  # health check: GET /models itself is missing, i.e. a wrong base_url
+                return ProviderUnavailable(
+                    t("provider.error.endpoint_not_found", provider=name, url=self.config.base_url)
+                )
+            return ProviderModelNotFound(
                 t("provider.error.model_not_found", provider=name, model=model)
             )
         if isinstance(exc, openai.APITimeoutError):  # subclass of APIConnectionError
-            return ProviderTransient(t("provider.error.timeout", provider=name, seconds=timeout_s))
+            return ProviderTimeout(t("provider.error.timeout", provider=name, seconds=timeout_s))
         if isinstance(exc, openai.APIConnectionError):
-            return ProviderTransient(
+            # No connection at all (offline, DNS, refused): one quick retry, then skip (D-029).
+            return ProviderConnectionError(
                 t("provider.error.unreachable", provider=name, url=self.config.base_url)
             )
         if isinstance(exc, openai.APIStatusError):
@@ -212,18 +216,27 @@ def _is_context_error(exc: openai.APIStatusError) -> bool:
 
 
 def _scrub(text: str, secret: str) -> str:
-    text = text[:300]
-    return text.replace(secret, "***") if secret and secret != NO_KEY else text
+    """Mask the key first, then shorten: cutting first could leave half a key behind."""
+    if secret and secret != NO_KEY:
+        text = text.replace(secret, "***")
+    return text[:300]
 
 
-def _retry_after(headers: httpx.Headers) -> float | None:
-    value = headers.get("retry-after")
-    if value is None and headers.get("retry-after-ms") is not None:
-        try:
-            return float(headers["retry-after-ms"]) / 1000
-        except ValueError:
-            return None
-    try:
-        return float(value) if value is not None else None
-    except ValueError:
+def read_api_key(config: OpenAICompatProvider, environ: Mapping[str, str]) -> str | None:
+    """The key from the variable named in the config (stripped); ``None`` if unset or empty."""
+    if not config.api_key_env:
         return None
+    return environ.get(config.api_key_env, "").strip() or None
+
+
+def _reported_cost(usage: Any) -> float | None:
+    """The charged cost if the provider reports it (OpenRouter: ``usage.cost``, USD).
+
+    Otherwise ``None``; the runner prices the tokens with the model's resolved price.
+    """
+    if usage is None:
+        return None
+    reported = getattr(usage, "cost", None)
+    if reported is None:
+        reported = (getattr(usage, "model_extra", None) or {}).get("cost")
+    return float(reported) if isinstance(reported, int | float) else None

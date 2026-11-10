@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import sys
 from collections.abc import Sequence
@@ -19,6 +20,8 @@ from orkestra.config.schema import Provider
 from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
 from orkestra.i18n import t
 from orkestra.providers import registry
+from orkestra.routing.router import Route, describe_candidates
+from orkestra.security.redact import config_for_display
 from orkestra.state import consent, db
 from orkestra.tasks import runner
 
@@ -37,7 +40,8 @@ def _version_callback(value: bool) -> None:
 def _lang_callback(value: str | None) -> str | None:
     if value is None:
         return None
-    if value not in i18n.SUPPORTED_LANGUAGES:
+    code = i18n.normalize_language(value)  # "TR", "tr_TR" … like ORKESTRA_LANG
+    if code is None:
         raise typer.BadParameter(
             t(
                 "cli.error.unsupported_language",
@@ -45,8 +49,8 @@ def _lang_callback(value: str | None) -> str | None:
                 choices=", ".join(i18n.SUPPORTED_LANGUAGES),
             )
         )
-    i18n.set_language(value)
-    return value
+    i18n.set_language(code)
+    return code
 
 
 def _echo_json(data: Any) -> None:
@@ -146,6 +150,47 @@ def _budget_text(row: registry.ProviderRow) -> str:
     return f"{row.name}: {limits}"
 
 
+def _route_json(plan: Route) -> dict[str, Any]:
+    return {
+        "profile": plan.profile,
+        "tier_range": list(plan.tier_range),
+        "prompt_tokens": plan.prompt_tokens,
+        "candidates": describe_candidates(plan.candidates),
+        "eliminated": [
+            {"provider": e.provider, "model": e.model, "code": e.code, "reason": e.reason}
+            for e in plan.eliminated
+        ],
+    }
+
+
+def _route_text(plan: Route) -> str:
+    low, high = plan.tier_range
+    lines = [
+        t("route.dry.header", profile=plan.profile, low=low, high=high, tokens=plan.prompt_tokens)
+    ]
+    if plan.candidates:
+        lines.append(t("route.dry.candidates"))
+        for index, c in enumerate(plan.candidates, start=1):
+            lines.append(
+                t(
+                    "route.dry.candidate",
+                    index=index,
+                    label=c.label,
+                    tier=c.tier,
+                    window=c.model.context_window,
+                    priority=c.model.priority,
+                    budget=f"{c.budget_ratio:.0%}",
+                    where=t("route.dry.local") if c.config.local else t("route.dry.remote"),
+                )
+            )
+    else:
+        lines.append(t("route.dry.none"))
+    if plan.eliminated:
+        lines.append(t("route.dry.eliminated"))
+        lines.extend(f"  - {e.reason}" for e in plan.eliminated)
+    return "\n".join(lines)
+
+
 def build_app() -> typer.Typer:
     """Build the typer app. Help texts are translated here, so set the language first."""
     app = typer.Typer(name="orkestra", help=t("cli.help"), no_args_is_help=True)
@@ -192,7 +237,7 @@ def build_app() -> typer.Typer:
                 typer.echo(t("consent.declined", name=name))
                 raise typer.Exit(int(ExitCode.CONSENT_REQUIRED))
         with closing(db.connect()) as conn:
-            consent.grant(conn, name, cfg, db.local_now())
+            registry.enable_provider(conn, name, cfg, db.local_now())
         typer.echo(t("consent.granted", name=name))
 
     @providers_app.command("disable", help=t("cli.providers.disable.help"))
@@ -263,7 +308,7 @@ def build_app() -> typer.Typer:
     ) -> None:
         state = ctx.ensure_object(_State)
         target = loader.init_target(state.config_path, project=project)
-        result = loader.init_config(target, force=force)
+        result = loader.init_config(target, force=force, project=project)
         if as_json:
             _echo_json(
                 {
@@ -288,7 +333,7 @@ def build_app() -> typer.Typer:
     @config_app.command("show", help=t("cli.config.show.help"))
     def config_show(ctx: typer.Context, as_json: Annotated[bool, _json_option()] = False) -> None:
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
-        data = loaded.config.model_dump(mode="json")
+        data = config_for_display(loaded.config)
         if as_json:
             _echo_json({"sources": _sources_json(loaded.sources), "config": data})
             return
@@ -329,6 +374,16 @@ def build_app() -> typer.Typer:
         allow_secrets: Annotated[
             bool, typer.Option("--allow-secrets", help=t("cli.ask.option.allow_secrets"))
         ] = False,
+        profile: Annotated[
+            str | None,
+            typer.Option("--profile", metavar="NAME", help=t("cli.ask.option.profile")),
+        ] = None,
+        local_only: Annotated[
+            bool, typer.Option("--local-only", help=t("cli.ask.option.local_only"))
+        ] = False,
+        dry_run: Annotated[
+            bool, typer.Option("--dry-run", help=t("cli.ask.option.dry_run"))
+        ] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
@@ -338,9 +393,22 @@ def build_app() -> typer.Typer:
             provider=provider,
             model=model,
             tier=tier,
+            profile=profile,
+            local_only=local_only,
             context=tuple(context or ()),
             schema=schema,
         )
+        if dry_run:
+            plan = asyncio.run(runner.plan_ask(request, loaded.config))
+            for warning in plan.warnings:
+                typer.echo(warning, err=True)
+            if as_json:
+                _echo_json(_route_json(plan.route))
+            else:
+                typer.echo(_route_text(plan.route))
+            if plan.exit_code:
+                raise typer.Exit(plan.exit_code)
+            return
         outcome = asyncio.run(runner.run_ask(request, loaded.config))
         for warning in outcome.warnings:
             typer.echo(warning, err=True)
@@ -379,15 +447,25 @@ def build_app() -> typer.Typer:
     return app
 
 
+_GLOBAL_VALUE_OPTIONS = ("--lang", "--config")
+
+
 def _find_option(args: Sequence[str], name: str) -> str | None:
-    """Read a global option before typer parses (help texts depend on the language)."""
-    for i, arg in enumerate(args):
-        if arg == "--":
-            break
+    """Read a global option before typer parses (help texts depend on the language).
+
+    Only the global options before the subcommand are scanned, so a subcommand's own
+    arguments (e.g. a prompt text) can never switch the language or the config.
+    """
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--" or not arg.startswith("-"):
+            break  # end of options, or the subcommand
         if arg == name:
             return args[i + 1] if i + 1 < len(args) else None
         if arg.startswith(f"{name}="):
             return arg.split("=", 1)[1]
+        i += 2 if arg in _GLOBAL_VALUE_OPTIONS else 1
     return None
 
 
@@ -400,36 +478,72 @@ def _wants_json(args: Sequence[str]) -> bool:
 
 
 def _report_error(exc: OrkestraError, *, as_json: bool) -> None:
+    message = exc.message or t("errors.no_message", type=type(exc).__name__)
     if as_json:
         _echo_json(
             {
                 "error": {
                     "code": exit_code_for(exc),
                     "type": type(exc).__name__,
-                    "message": exc.message,
+                    "message": message,
                     "details": list(exc.details),
                 }
             }
         )
         return
-    typer.echo(t("errors.prefix", message=exc.message), err=True)
+    typer.echo(t("errors.prefix", message=message), err=True)
     for detail in exc.details:
         typer.echo(f"  - {detail}", err=True)
+
+
+def _safe_streams() -> None:
+    """Never crash on text the console code page cannot encode.
+
+    Redirected output on Windows uses the ANSI code page (e.g. cp1254) with strict errors,
+    so an emoji in a model answer would raise ``UnicodeEncodeError`` after a successful run.
+    Such characters become ``?``; the full text is always in the run's ``output.md``.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "")
+        reconfigure = getattr(stream, "reconfigure", None)
+        if encoding != "utf8" and reconfigure is not None:
+            with contextlib.suppress(ValueError, OSError):  # detached or closed: leave it
+                reconfigure(errors="replace")
 
 
 def app(argv: Sequence[str] | None = None) -> None:
     """Console entry point (``orkestra``)."""
     args = list(sys.argv[1:] if argv is None else argv)
-    config_flag = _find_option(args, "--config")
-    i18n.init_language(
-        cli=_find_lang_arg(args),
-        config=loader.read_language(Path(config_flag) if config_flag else None),
-    )
+    as_json = _wants_json(args)
     try:
+        _safe_streams()
+        config_flag = _find_option(args, "--config")
+        i18n.init_language(
+            cli=_find_lang_arg(args),
+            config=loader.read_language(Path(config_flag) if config_flag else None),
+        )
         build_app()(args=args, prog_name="orkestra")
     except OrkestraError as exc:
-        _report_error(exc, as_json=_wants_json(args))
+        _report_error(exc, as_json=as_json)
         raise SystemExit(exit_code_for(exc)) from None
     except Exception as exc:
-        typer.echo(t("errors.internal", detail=f"{type(exc).__name__}: {exc}"), err=True)
+        _report_internal(exc, as_json=as_json)
         raise SystemExit(int(ExitCode.INTERNAL)) from None
+
+
+def _report_internal(exc: Exception, *, as_json: bool) -> None:
+    """Never raises. ``--json`` still gets one JSON document on stdout (D-011)."""
+    text = _internal_error_text(exc)
+    typer.echo(text, err=True)
+    if as_json:
+        error = {"code": int(ExitCode.INTERNAL), "type": "InternalError", "message": text}
+        _echo_json({"error": {**error, "details": []}})
+
+
+def _internal_error_text(exc: Exception) -> str:
+    """Never raises: the translation catalog itself may be what is broken."""
+    detail = f"{type(exc).__name__}: {str(exc)[:300]}"
+    try:
+        return t("errors.internal", detail=detail)
+    except Exception:
+        return f"Unexpected internal error: {detail}"

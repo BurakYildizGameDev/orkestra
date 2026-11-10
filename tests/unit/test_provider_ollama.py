@@ -11,7 +11,9 @@ from orkestra.errors import (
     ContextTooLong,
     ProviderAuthError,
     ProviderBadOutput,
+    ProviderModelNotFound,
     ProviderRateLimit,
+    ProviderTimeout,
     ProviderTransient,
     ProviderUnavailable,
 )
@@ -107,7 +109,7 @@ async def test_missing_model_404() -> None:
     respx.post(f"{BASE}/api/chat").mock(
         return_value=httpx.Response(404, json={"error": "model 'coder' not found"})
     )
-    with pytest.raises(ProviderUnavailable) as exc_info:
+    with pytest.raises(ProviderModelNotFound) as exc_info:
         await _chat().complete(_req())
     assert "ollama pull coder" in exc_info.value.message
 
@@ -150,7 +152,7 @@ async def test_connection_refused_is_unavailable() -> None:
 @respx.mock
 async def test_timeout_is_transient() -> None:
     respx.post(f"{BASE}/api/chat").mock(side_effect=httpx.ReadTimeout("slow"))
-    with pytest.raises(ProviderTransient):
+    with pytest.raises(ProviderTimeout):
         await _chat().complete(_req())
 
 
@@ -178,3 +180,30 @@ def test_has_model_latest_alias() -> None:
     assert has_model(("coder:latest",), "coder")
     assert has_model(("coder:14b",), "coder:14b")
     assert not has_model(("coder:14b",), "coder")
+
+
+# --- code review fixes (Faz 2, PR #3) ---------------------------------------------------
+
+
+@respx.mock
+async def test_prompt_larger_than_num_ctx_is_rejected_before_sending() -> None:
+    route = respx.post(f"{BASE}/api/chat").mock(return_value=_ok())
+    with pytest.raises(ContextTooLong):
+        await _chat().complete(_req(user="x" * 200_000))  # ~57k tokens > 32768
+    assert not route.called
+
+
+@respx.mock
+async def test_health_404_points_at_the_url_not_a_model() -> None:
+    respx.get(f"{BASE}/api/tags").mock(return_value=httpx.Response(404, text="not found"))
+    report = await _chat().health()
+    assert not report.ok and report.error is not None
+    assert "ollama pull" not in report.error.message
+    assert BASE in report.error.message
+
+
+@respx.mock
+async def test_health_non_json_is_not_reported_as_unreachable() -> None:
+    respx.get(f"{BASE}/api/tags").mock(return_value=httpx.Response(200, text="<html>"))
+    report = await _chat().health()
+    assert isinstance(report.error, ProviderBadOutput)

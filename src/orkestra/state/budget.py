@@ -7,7 +7,6 @@ Reservations older than one hour (crashed processes) no longer count.
 
 from __future__ import annotations
 
-import math
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -16,13 +15,13 @@ from typing import TYPE_CHECKING
 from orkestra.config.schema import Budget
 from orkestra.errors import BudgetExhausted
 from orkestra.i18n import t
+from orkestra.providers.base import estimate_tokens
 from orkestra.state.db import transaction
 
 if TYPE_CHECKING:
     from orkestra.providers.pricing import Price
 
 STALE_RESERVATION = timedelta(hours=1)
-CHARS_PER_TOKEN = 3.5  # conservative: real tokenizers average ~4 chars per token
 
 LIMITS = ("daily_tokens", "daily_usd", "daily_requests", "daily_runs")
 
@@ -59,7 +58,7 @@ def estimate(
     Without a price the cost estimate is 0 (see ``providers.pricing`` for where prices come
     from); the actual cost is still recorded when the request is settled.
     """
-    prompt_tokens = math.ceil(prompt_chars / CHARS_PER_TOKEN)
+    prompt_tokens = estimate_tokens(prompt_chars)
     cost = price.cost(prompt_tokens, max_output_tokens) if price else 0.0
     return Amount(prompt_tokens + max_output_tokens, cost, requests=1, runs=runs)
 
@@ -97,15 +96,6 @@ def exceeded(budget: Budget, current: Amount, extra: Amount) -> str | None:
         if value is not None and current.get(limit) + extra.get(limit) > value:
             return limit
     return None
-
-
-def check(
-    conn: sqlite3.Connection, provider: str, budget: Budget, amount: Amount, now: datetime
-) -> str | None:
-    """Pre-check without reserving (router); the binding check happens in ``reserve``."""
-    if all(getattr(budget, limit) is None for limit in LIMITS):
-        return None
-    return exceeded(budget, used(conn, provider, now), amount)
 
 
 def reserve(
@@ -179,6 +169,20 @@ def settle(
                 int(estimated),
                 now.isoformat(),
             ),
+        )
+
+
+def settle_as_reserved(conn: sqlite3.Connection, reservation_id: int, *, now: datetime) -> None:
+    """Keep the reserved estimate as (estimated) actual usage.
+
+    For a timed-out request: the provider may have processed and billed it, but reported
+    nothing back. Counting the pessimistic estimate keeps daily limits on the safe side.
+    """
+    with transaction(conn):
+        conn.execute(
+            "UPDATE usage SET kind = 'actual', estimated = 1, created_at = ? "
+            "WHERE id = ? AND kind = 'reservation'",
+            (now.isoformat(), reservation_id),
         )
 
 

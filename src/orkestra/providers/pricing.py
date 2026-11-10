@@ -17,7 +17,7 @@ import contextlib
 import json
 import os
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -121,15 +121,22 @@ async def refresh(
     config: Config,
     now: datetime,
     *,
+    only: Collection[str],
     environ: Mapping[str, str] | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
-    """Fetch stale price lists for providers that need them; returns the cache."""
+    """Fetch stale price lists for the providers in ``only`` that need one; returns the cache.
+
+    The caller passes only providers the user enabled and consented to: the request carries
+    the provider's API key, so it must never go to one the user has not allowed (D-037).
+    """
     env = os.environ if environ is None else environ
     cache = load_cache()
     changed = False
     for name, provider in config.providers.items():
-        if not isinstance(provider, OpenAICompatProvider) or not needs_price(provider):
+        if name not in only or not isinstance(provider, OpenAICompatProvider):
+            continue
+        if not provider.enabled or not needs_price(provider):
             continue
         entry = cache.get(name, {})
         if not force and _is_fresh(entry, provider.base_url, now):
@@ -164,8 +171,9 @@ def resolve(
     *,
     conn: sqlite3.Connection,
     cache: Mapping[str, Any],
+    history: bool = True,
 ) -> Price | None:
-    """Price of one model: config > provider listing > past usage > unknown."""
+    """Price of one model: config > provider listing > past usage (``history``) > unknown."""
     if model.price_per_mtok:
         return Price(
             model.price_per_mtok.get("input", 0.0),
@@ -178,4 +186,4 @@ def resolve(
         listed = entry.get("prices", {}).get(model.id)
         if isinstance(listed, dict):
             return Price(float(listed["input"]), float(listed["output"]), "provider")
-    return _from_history(conn, provider, model.id)
+    return _from_history(conn, provider, model.id) if history else None

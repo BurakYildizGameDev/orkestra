@@ -56,10 +56,13 @@ def merge_dicts(
     result = copy.deepcopy(dict(base))
     for key, value in override.items():
         here = (*_path, key)
+        current = result.get(key)
         if value is None and len(here) == 2 and here[0] == "providers":
             result.pop(key, None)
-        elif isinstance(value, Mapping) and isinstance(result.get(key), Mapping):
-            result[key] = merge_dicts(result[key], value, here)
+        elif isinstance(value, Mapping) and (current is None or isinstance(current, Mapping)):
+            # Merge into an empty mapping too, so "providers.<name>: null" also works when no
+            # earlier file has a providers section (D-036).
+            result[key] = merge_dicts(current or {}, value, here)
         else:
             result[key] = copy.deepcopy(value)
     return result
@@ -68,12 +71,28 @@ def merge_dicts(
 # --- reading ---------------------------------------------------------------------------
 
 
+_YAML_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
+
+
 def read_yaml(path: Path) -> dict[str, Any]:
-    """Safe-load a YAML mapping. An empty file is an empty mapping."""
+    """Safe-load a YAML mapping. An empty file is an empty mapping.
+
+    Parsing is cached by path and content: the language pre-scan and the real load read the
+    same files in one invocation, and a changed file is always parsed again.
+    """
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise ConfigError(t("config.error.read", path=path, reason=exc)) from exc
+    key = (str(path), text)
+    if key in _YAML_CACHE:
+        return copy.deepcopy(_YAML_CACHE[key])
+    data = _parse_yaml(path, text)
+    _YAML_CACHE[key] = copy.deepcopy(data)
+    return data
+
+
+def _parse_yaml(path: Path, text: str) -> dict[str, Any]:
     try:
         data = YAML(typ="safe").load(text)
     except MarkedYAMLError as exc:
@@ -81,9 +100,12 @@ def read_yaml(path: Path) -> dict[str, Any]:
         problem = exc.problem or exc.context or str(exc)
         if mark is None:
             raise ConfigError(t("config.error.yaml", path=path, problem=problem)) from exc
-        raise ConfigError(
-            t("config.error.yaml_line", path=path, line=mark.line + 1, problem=problem)
-        ) from exc
+        message = t("config.error.yaml_line", path=path, line=mark.line + 1, problem=problem)
+        started = exc.context_mark
+        if started is not None and started.line != mark.line:
+            # e.g. an unclosed "[" is only noticed at the end of the file; show where it began
+            message += " " + t("config.error.yaml_started", line=started.line + 1)
+        raise ConfigError(message) from exc
     except YAMLError as exc:
         raise ConfigError(t("config.error.yaml", path=path, problem=exc)) from exc
     if data is None:
@@ -122,7 +144,7 @@ def base_config_target(
     """Where the base config is (or would be): flag, environment variable or global path."""
     env = os.environ if environ is None else environ
     if config_flag is not None:
-        return config_flag, "flag"
+        return config_flag.expanduser(), "flag"
     if env.get(CONFIG_ENV, "").strip():
         return Path(env[CONFIG_ENV]).expanduser(), "env"
     return paths.global_config_path(), "global"
@@ -187,10 +209,14 @@ def read_language(
     cwd: Path | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> str | None:
-    """The configured ``language`` without full validation; ``None`` if unreadable."""
+    """The configured ``language`` without full validation; ``None`` if unreadable.
+
+    Runs before the CLI's error handler exists, so it never raises: a deleted working
+    directory or an unresolvable home directory must not crash ``--help``.
+    """
     try:
         value = _merged(find_sources(config_flag, cwd, environ)).get("language")
-    except ConfigError:
+    except (ConfigError, OSError, RuntimeError):
         return None
     return value if isinstance(value, str) else None
 
@@ -261,9 +287,14 @@ def _message(error: ErrorDetails) -> str:
         )
     if kind == "union_tag_not_found":
         return t("config.validation.provider_type_missing", expected=", ".join(PROVIDER_TYPES))
+    if kind == "too_short":
+        return t("config.validation.too_short", min=ctx.get("min_length"))
+    if kind == "string_too_short":
+        return t("config.validation.empty")
     if kind == "value_error" and "error" in ctx:
         return str(ctx["error"])
-    return error["msg"]
+    # Not mapped above: a translated frame with pydantic's English text as the detail.
+    return t("config.validation.other", detail=error["msg"])
 
 
 def format_validation_error(exc: ValidationError) -> list[str]:
@@ -299,15 +330,19 @@ def _atomic_write(path: Path, data: bytes) -> None:
 
 
 def ensure_gitignore_entry(gitignore: Path, entry: str = GITIGNORE_ENTRY) -> bool:
-    """Append ``entry`` unless an equivalent line exists. Keeps the file's line endings."""
-    existing = gitignore.read_bytes().decode("utf-8") if gitignore.exists() else ""
+    """Append ``entry`` unless an equivalent line exists. Keeps the file's line endings.
+
+    Bytes that are not UTF-8 (e.g. a cp1254 comment) are written back unchanged.
+    """
+    raw = gitignore.read_bytes() if gitignore.exists() else b""
+    existing = raw.decode("utf-8", errors="surrogateescape")
     wanted = entry.strip("/")
     if any(line.strip().strip("/") == wanted for line in existing.splitlines()):
         return False
     newline = "\r\n" if "\r\n" in existing else "\n"
     if existing and not existing.endswith(("\n", "\r")):
         existing += newline
-    _atomic_write(gitignore, (existing + entry + newline).encode("utf-8"))
+    _atomic_write(gitignore, (existing + entry + newline).encode("utf-8", "surrogateescape"))
     return True
 
 
@@ -328,21 +363,39 @@ def dump_yaml(data: Any) -> str:
     return stream.getvalue()
 
 
-def init_config(target: Path, *, force: bool = False, cwd: Path | None = None) -> InitResult:
-    """Copy the example config to ``target`` (never over an existing file unless ``force``)."""
+def _free_backup_path(target: Path) -> Path:
+    """``<name>.bak``, else ``<name>.bak.1``, ``.bak.2`` …: an earlier backup is never replaced."""
+    candidate = target.with_name(target.name + ".bak")
+    number = 0
+    while candidate.exists():
+        number += 1
+        candidate = target.with_name(f"{target.name}.bak.{number}")
+    return candidate
+
+
+def init_config(
+    target: Path, *, force: bool = False, project: bool = False, cwd: Path | None = None
+) -> InitResult:
+    """Copy the example config to ``target`` (never over an existing file unless ``force``).
+
+    ``force`` keeps every earlier backup and makes none while the file is still the untouched
+    example. Only a project config adds the cache entry to the repository's ``.gitignore``;
+    the global config has nothing to do with the repository in the working directory.
+    """
     written = False
     backup: Path | None = None
+    gitignore: Path | None = None
+    example = example_config_text().encode("utf-8")
     try:
         if not target.exists() or force:
-            if target.exists():
-                backup = target.with_name(target.name + ".bak")
+            if target.exists() and target.read_bytes() != example:
+                backup = _free_backup_path(target)
                 _atomic_write(backup, target.read_bytes())
-            _atomic_write(target, example_config_text().encode("utf-8"))
+            _atomic_write(target, example)
             written = True
-        root = find_git_root((Path.cwd() if cwd is None else cwd).resolve())
-        gitignore = root / ".gitignore" if root is not None else None
-        if gitignore is not None and not ensure_gitignore_entry(gitignore):
-            gitignore = None
-    except OSError as exc:
+        root = find_git_root((Path.cwd() if cwd is None else cwd).resolve()) if project else None
+        if root is not None and ensure_gitignore_entry(root / ".gitignore"):
+            gitignore = root / ".gitignore"
+    except (OSError, UnicodeError) as exc:
         raise ConfigError(t("config.error.write", path=target, reason=exc)) from exc
     return InitResult(target, written, backup, gitignore)

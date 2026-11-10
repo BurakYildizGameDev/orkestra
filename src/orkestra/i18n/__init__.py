@@ -18,11 +18,13 @@ from importlib import resources
 
 from ruamel.yaml import YAML
 
+from orkestra.errors import TranslationError, UsageError
+
 DEFAULT_LANGUAGE = "en"
 SUPPORTED_LANGUAGES = ("en", "tr", "de", "es", "fr")
 LANG_ENV = "ORKESTRA_LANG"
 STRICT_ENV = "ORKESTRA_I18N_STRICT"
-"""When set to ``1`` a key missing from every catalog raises ``KeyError`` (used in tests)."""
+"""When set to ``1`` translation problems raise ``TranslationError`` (used in tests)."""
 
 _SYSTEM_LANG_VARS = ("LC_ALL", "LC_MESSAGES", "LANG")
 # Windows reports locales by English name, e.g. "Turkish_Türkiye".
@@ -69,12 +71,19 @@ def _platform_locale() -> str | None:
 
 
 def system_language(environ: Mapping[str, str] | None = None) -> str | None:
-    """Language from ``LC_ALL``/``LC_MESSAGES``/``LANG``, then the OS locale."""
+    """Language from ``LC_ALL``/``LC_MESSAGES``/``LANG``, then the OS locale.
+
+    As in POSIX, the first variable that is set decides, even if Orkestra does not support it:
+    ``LC_ALL=C`` means English (scripts use it to get stable output) and ``LC_ALL=ja_JP``
+    means "not supported", without looking at ``LANG``.
+    """
     env = os.environ if environ is None else environ
     for var in _SYSTEM_LANG_VARS:
-        lang = normalize_language(env.get(var))
-        if lang:
-            return lang
+        value = env.get(var, "").strip()
+        if value:
+            if value.split(".")[0].upper() in ("C", "POSIX"):
+                return DEFAULT_LANGUAGE
+            return normalize_language(value)
     return normalize_language(_platform_locale())
 
 
@@ -109,7 +118,7 @@ def set_language(lang: str) -> None:
     global _current
     code = normalize_language(lang)
     if code is None:
-        raise ValueError(f"unsupported language: {lang!r}")
+        raise UsageError(f"unsupported language: {lang!r}")
     _current = code
 
 
@@ -127,11 +136,11 @@ def load_catalog(lang: str) -> dict[str, str]:
     if data is None:
         return {}
     if not isinstance(data, dict):
-        raise ValueError(f"locale catalog {lang}.yaml must be a mapping")
+        raise TranslationError(f"locale catalog {lang}.yaml must be a mapping")
     catalog: dict[str, str] = {}
     for key, value in data.items():
         if not isinstance(value, str):
-            raise ValueError(f"locale catalog {lang}.yaml: value of {key!r} must be a string")
+            raise TranslationError(f"locale catalog {lang}.yaml: value of {key!r} must be a string")
         catalog[str(key)] = value
     return catalog
 
@@ -153,12 +162,21 @@ def t(key: str, /, **params: object) -> str:
     """Translate ``key`` into the active language and fill ``{placeholders}``.
 
     Falls back to English; if English lacks the key too, returns the key itself
-    (or raises ``KeyError`` when ``ORKESTRA_I18N_STRICT=1``).
+    (or raises ``TranslationError`` when ``ORKESTRA_I18N_STRICT=1``). A translation that
+    cannot be formatted is returned unformatted instead of crashing.
     """
+    strict = os.environ.get(STRICT_ENV) == "1"
     text = _lookup(key)
     if text is None:
-        if os.environ.get(STRICT_ENV) == "1":
-            raise KeyError(f"missing translation key: {key}")
+        if strict:
+            raise TranslationError(f"missing translation key: {key}")
         _logger.warning("missing translation key: %s", key)
         return key
-    return text.format_map(_KeepMissing(params))
+    try:
+        return text.format_map(_KeepMissing(params))
+    except (ValueError, IndexError, KeyError, AttributeError, TypeError) as exc:
+        # Stray braces or positional fields in a translation must not crash the CLI.
+        if strict:
+            raise TranslationError(f"translation {key!r} cannot be formatted: {exc}") from exc
+        _logger.warning("translation %s cannot be formatted: %s", key, exc)
+        return text

@@ -106,3 +106,54 @@ def test_cli_maps_unexpected_error_to_10(
         cli.app([])
     assert exc_info.value.code == 10
     assert "RuntimeError: kaboom" in capsys.readouterr().err
+
+
+def test_internal_error_handler_survives_a_broken_catalog(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from orkestra import cli
+
+    def failing_app() -> object:
+        def run(**_: object) -> None:
+            raise RuntimeError("kaboom")
+
+        return run
+
+    def broken_t(*_: object, **__: object) -> str:
+        raise errors.TranslationError("catalog is broken")
+
+    monkeypatch.setattr(cli, "build_app", failing_app)
+    monkeypatch.setattr(cli, "t", broken_t)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.app([])
+    assert exc_info.value.code == 10
+    assert "Unexpected internal error: RuntimeError: kaboom" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("as_json", [False, True])
+def test_error_without_message_names_the_error(
+    as_json: bool, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json
+
+    from orkestra import cli
+
+    def failing_app() -> object:
+        def run(**_: object) -> None:
+            raise errors.ConsentRequired()
+
+        return run
+
+    monkeypatch.setattr(cli, "build_app", failing_app)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.app(["--json"] if as_json else [])
+    assert exc_info.value.code == 4
+    captured = capsys.readouterr()
+    if as_json:
+        assert json.loads(captured.out)["error"]["message"] == "ConsentRequired (no details)"
+    else:
+        assert "Error: ConsentRequired (no details)" in captured.err
+
+
+def test_translation_error_is_internal() -> None:
+    assert exit_code_for(errors.TranslationError("x")) == 10

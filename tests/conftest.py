@@ -23,3 +23,17 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
     i18n.set_language("en")
     yield
     i18n.set_language("en")
+
+
+@pytest.fixture(autouse=True)
+def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Retry backoff never really waits in tests; the requested delays are recorded."""
+    from orkestra.tasks import runner
+
+    recorded: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        recorded.append(seconds)
+
+    monkeypatch.setattr(runner, "_sleep", fake_sleep)
+    return recorded

@@ -8,7 +8,7 @@
 
 **Güçlü bir "şef" modelin (ör. Claude) işi birçok ucuz veya yerel "işçi" modele dağıtmasını, sonuçları doğrulamasını ve bir sağlayıcı çökünce diğerine geçmesini sağlayan, bütçe farkındalıklı komut satırı aracı.**
 
-> **Durum: geliştirme aşamasında.** 14 fazın 0–3'ü bitti: proje iskeleti, yapılandırma, Ollama ve OpenAI uyumlu adapter'lar, `ask`, `doctor`, günlük bütçe, sağlayıcı onayı, devre kesici ve gizli bilgi taraması. Tam yedeğe geçişli yeniden deneme, yalıtılmış kod düzenleme ve diğerleri [yol haritasında](#yol-haritası). Bu README sadece bugün çalışan özellikleri anlatır.
+> **Durum: geliştirme aşamasında.** 14 fazın 0–4'ü bitti: proje iskeleti, yapılandırma, Ollama ve OpenAI uyumlu adapter'lar, `ask`, `doctor`, günlük bütçe, sağlayıcı onayı, devre kesici, gizli bilgi taraması ve yeniden deneme + yedeğe geçişli router. Görev dosyaları, yalıtılmış kod düzenleme ve diğerleri [yol haritasında](#yol-haritası). Bu README sadece bugün çalışan özellikleri anlatır.
 
 ```
 Sen ──► Claude (şef: planlar, böler, denetler)
@@ -39,6 +39,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Örnek config (genel veya projeye özel) | `orkestra init [--project] [--force]` |
 | Birleştirilmiş config ve kaynakları, okunur hatalarla doğrulama | `orkestra config show [--json]`, `orkestra config validate` |
 | İşçi modele tek soru; bağlam dosyaları ve isteğe bağlı JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
+| Profil, gizlilik ve yedeğe geçişli yönlendirme; her sağlayıcının neden seçildiğini/elendiğini görme | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Ortam kontrolü: config, sağlayıcı erişimi, API anahtarı değişkenleri, Ollama modelleri, onaylar, beklemedeki sağlayıcılar, git, codex/agy | `orkestra doctor [--json] [--warm]` |
 | Sağlayıcı başına açık onay (vermeden önce ne yapabileceği gösterilir) | `orkestra providers enable <ad>`, `providers disable <ad>` |
 | Sağlayıcılar: onay, sağlık ve kalan bütçe | `orkestra providers list [--json]` |
@@ -82,21 +83,45 @@ uv run orkestra providers enable openrouter   # URL'yi ve anahtar değişkenini 
 # 4. Sor
 uv run orkestra ask "Bu fonksiyon ne yapıyor?" --context src/util.py
 uv run orkestra ask "Tek satırda özetle" --provider openrouter --tier 2
+uv run orkestra ask "Tek satırda özetle" --dry-run      # kim cevap verirdi, neden
 uv run orkestra ask "İsimleri çıkar" --context kisiler.txt --schema isimler.schema.json --json
 ```
 
-`--provider`/`--model` verilmezse `ask`, config sırasıyla, istenen kademede (varsayılan 1) modeli
-olan ve tüm kontrollerden geçen ilk sağlayıcıyı seçer. Bir sağlayıcı şu durumlarda atlanır:
+`ask` **router** üzerinden çalışır. Görevi yapabilecek her (sağlayıcı, model) çiftini şu sırayla
+listeler: kademe artan → `priority` azalan → config'e yazdığın sıra (sağlayıcılar baştan sona, sonra
+her sağlayıcının modelleri listelendiği sırayla). Bu sırayı ezmek için `priority` kullan. Bütçe
+sadece eler: limiti aşacak sağlayıcı atlanır, ama kalan bütçe sırayı değiştirmez. Kademeler profilden gelir
+(`--profile cheap|balanced|quality`, varsayılan config'ten); `--tier` en alt kademeyi belirler, üst
+kademeler yedek olarak kalır.
+
+Bir sağlayıcı veya model şu durumlarda elenir:
 
 - kapalıysa, kod ajanıysa veya API anahtarı değişkeni tanımlı değilse
 - henüz onayı yoksa (`orkestra providers enable <ad>`) ya da onaydan sonra ayarları değiştiyse
-- **devre kesici tarafından beklemeye alındıysa**: arka arkaya 3 ağ/sunucu hatası (ör. internet yok) 5 dakika, kimlik doğrulama hatası 1 saat bekletir
+- **devre kesici tarafından beklemeye alındıysa**: arka arkaya 3 ağ/sunucu hatası 5 dakika, kimlik doğrulama hatası 1 saat bekletir
+- profilin kademe aralığı dışındaysa veya bağlam penceresi istem için küçükse
 - günlük bütçesi aşılacaksa
-- uzak bir sağlayıcıysa ve bağlamda gizli bilgi varsa (API anahtarı, özel anahtar…)
+- uzak bir sağlayıcıysa ve bağlamda gizli bilgi varsa (API anahtarı, özel anahtar…) ya da görev `--local-only` ise
 
-Yani internet kesildiğinde uzak API üç başarısız denemeden sonra beklemeye alınır ve sonraki
-`ask` doğrudan yerel Ollama'ya gider. Hiçbiri kalmazsa her sağlayıcı atlanma nedeniyle listelenir
-(onay eksikse kod 4, değilse 3). Aynı komut içinde otomatik yeniden deneme Faz 4'teki router ile gelir.
+`orkestra ask "…" --dry-run` hiçbir şey göndermeden sırayı ve elenen her adayın nedenini gösterir.
+
+**Aynı komut içinde yedeğe geçiş.** Adaylar biri cevap verene kadar sırayla denenir:
+
+| Hata | Ne olur |
+|---|---|
+| Bağlantı hiç kurulamıyor (internet yok, DNS, reddedildi) | 0.5 sn sonra bir kez daha (anlık dalgalanma için), sonra sıradaki sağlayıcı |
+| Zaman aşımı, 5xx, istek sınırı (429) | aynı model 1 sn, 2 sn, 4 sn (+ rastgele pay) sonra veya sunucunun `retry-after` süresi kadar beklenip yeniden denenir; üçüncü hata sağlayıcıyı beklemeye alır ve sıradakine geçilir |
+| Kimlik doğrulama başarısız | sağlayıcı atlanır (ve 1 saat beklemeye alınır; `providers enable` beklemeyi kaldırır) |
+| Model bulunamadı (404) | sıradaki model; sağlayıcının diğer modelleri yine denenir |
+| İstem modele göre uzun | daha büyük bağlam pencereli sıradaki model |
+| Boş veya bozuk cevap | sıradaki aday |
+| Model `CANNOT_DO: <neden>` cevabı verir | daha üst kademedeki sıradaki aday; kalmadıysa durum `escalate`, çıkış kodu 1 |
+
+Zaman aşımına uğrayan istek, günlük bütçeye tahminiyle sayılır (sağlayıcı ücretlendirmiş
+olabilir); yeniden denemeler ve yedeğe geçişler `daily_runs` için sağlayıcı başına tek koşu sayılır.
+
+Yani internet yokken `ask` aynı komut içinde yerel Ollama'dan cevap verir; uzak API envelope'ta
+`failovers` altında listelenir. Bütün adaylar başarısız olursa hepsi listelenir ve çıkış kodu 3 olur.
 
 ## Yapılandırma
 
@@ -149,14 +174,18 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 
 ```json
 {
-  "envelope_version": 1,
+  "envelope_version": 2,
   "run_id": "20261109-193405-3679",
   "task_id": "ask",
   "status": "ok",
   "provider": "ollama",
   "model": "qwen2.5-coder:1.5b",
   "tier": 1,
-  "attempts": 1,
+  "attempts": 2,
+  "failovers": [
+    {"provider": "openrouter", "model": "some/model", "tier": 1,
+     "error": "ProviderUnavailable", "reason": "openrouter: … adresine bağlanılamıyor", "attempts": 1}
+  ],
   "summary": "4",
   "verification": [],
   "output_path": "~/.orkestra/runs/20261109-193405-3679/output.md",
@@ -171,7 +200,7 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 0 | Başarılı |
 | 1 | Doğrulama geçmedi (ör. cevap `--schema`'ya uymuyor); `doctor` için: bir kontrol başarısız |
 | 2 | Yapılandırma veya kullanım hatası |
-| 3 | Uygun sağlayıcı yok (erişilemiyor, beklemede, bütçe doldu, bağlamda gizli bilgi, anahtar yok, o kademede model yok) |
+| 3 | Uygun sağlayıcı yok ya da bütün adaylar başarısız (erişilemiyor, beklemede, bütçe doldu, bağlamda gizli bilgi, anahtar yok, profil dışında) |
 | 4 | Kullanıcı onayı gerekli (`orkestra providers enable <ad>`) |
 | 5 | Worktree / uygulama çakışması (Faz 5) |
 | 10 | Beklenmeyen iç hata |
@@ -194,7 +223,7 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 1 | Yapılandırma: şema, birleştirme, `init`, `config` | ✅ |
 | 2 | Ollama + OpenAI uyumlu adapter'lar, `ask`, `doctor` | ✅ |
 | 3 | Durum veritabanı, günlük bütçe, sağlayıcı onayı, devre kesici, gizli bilgi taraması | ✅ |
-| 4 | Router, yeniden deneme ve **yedeğe geçiş**: internet yok → yerel Ollama, çöken API → sıradaki sağlayıcı | ⏳ |
+| 4 | Router, yeniden deneme ve **yedeğe geçiş**: internet yok → yerel Ollama, çöken API → sıradaki sağlayıcı | ✅ |
 | 5 | Görev dosyaları, doğrulayıcılar, git worktree, `edit`, `apply` | ⏳ |
 | 6 | Kod ajanları: Codex CLI, Antigravity CLI | ⏳ |
 | 7 | Toplu çalıştırma, paralellik, maliyet tahmini | ⏳ |

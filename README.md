@@ -8,7 +8,7 @@
 
 **A budget-aware CLI that lets one strong "chief" model (e.g. Claude) hand work to many cheaper or local "worker" models, verify the results, and fall back to another provider when one fails.**
 
-> **Status: in development.** Phases 0–3 of 14 are done: the project skeleton, configuration, the Ollama and OpenAI-compatible adapters, `ask`, `doctor`, daily budgets, provider consent, the circuit breaker and secret scanning. Retries with full failover, isolated code edits and the rest are on the [roadmap](#roadmap). This README only describes what already works.
+> **Status: in development.** Phases 0–4 of 14 are done: the project skeleton, configuration, the Ollama and OpenAI-compatible adapters, `ask`, `doctor`, daily budgets, provider consent, the circuit breaker, secret scanning, and the router with retries and failover. Task files, isolated code edits and the rest are on the [roadmap](#roadmap). This README only describes what already works.
 
 ```
 You ──► Claude (chief: plans, splits, reviews)
@@ -39,6 +39,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | Example config, global or per project | `orkestra init [--project] [--force]` |
 | Merged config with its sources, validation with readable errors | `orkestra config show [--json]`, `orkestra config validate` |
 | One question to a worker model, with context files and an optional JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
+| Routing with profiles, privacy and failover; see why each provider was chosen or skipped | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Environment check: config, provider access, API key variables, Ollama models, consent, paused providers, git, codex/agy | `orkestra doctor [--json] [--warm]` |
 | Explicit consent per provider, shown before it is granted | `orkestra providers enable <name>`, `providers disable <name>` |
 | Providers with consent, health and remaining budget | `orkestra providers list [--json]` |
@@ -82,22 +83,48 @@ uv run orkestra providers enable openrouter   # shows the URL and key variable, 
 # 4. Ask
 uv run orkestra ask "What does this function do?" --context src/util.py
 uv run orkestra ask "Summarize in one line" --provider openrouter --tier 2
+uv run orkestra ask "Summarize in one line" --dry-run      # who would answer, and why
 uv run orkestra ask "Extract the names" --context people.txt --schema names.schema.json --json
 ```
 
-Without `--provider`/`--model`, `ask` picks the first provider, in config order, that has a model
-on the requested tier (default 1) and passes every check. A provider is skipped when it:
+`ask` goes through the **router**. It lists every (provider, model) that may run the task, in
+this order: tier ascending → `priority` descending → the order you wrote them in the config
+(providers first to last, then each provider's models as listed). Use `priority` to override it.
+Budgets only filter: a provider that would exceed its limit is left out, but remaining budget
+does not reorder. Tiers come from the
+profile (`--profile cheap|balanced|quality`, default from the config) and `--tier` sets the lowest
+one, so higher tiers act as a fallback.
+
+A provider or model is left out when it:
 
 - is disabled, is a code agent, or its API key variable is not set
 - has no consent yet (`orkestra providers enable <name>`), or its settings changed since
-- is **paused by the circuit breaker**: 3 network/server errors in a row (e.g. no internet) pause it for 5 minutes, an authentication error for an hour
+- is **paused by the circuit breaker**: 3 network/server errors in a row pause it for 5 minutes, an authentication error for an hour
+- is outside the profile's tier range, or its context window is too small for the prompt
 - would exceed its daily budget
-- is remote while the context contains secrets (API keys, private keys…)
+- is remote while the context contains secrets (API keys, private keys…), or the task is `--local-only`
 
-So when the internet is down, the remote API is paused after three failed attempts and the
-next `ask` goes straight to local Ollama. If nothing is left, every provider is listed with the
-reason it was skipped (exit 4 when consent is missing, otherwise 3). Automatic retry within the
-same command comes with the router in Phase 4.
+`orkestra ask "…" --dry-run` prints the order and the reason for every left-out candidate,
+without sending anything.
+
+**Failover inside one command.** The candidates are tried in order until one answers:
+
+| Error | What happens |
+|---|---|
+| No connection at all (offline, DNS, refused) | one quick retry after 0.5 s (network blip), then the next provider |
+| Timeout, 5xx, rate limit (429) | retry the same model after 1 s, 2 s, 4 s (+ jitter) or the server's `retry-after`; the third failure pauses the provider and moves on |
+| Authentication failed | provider skipped (and paused for an hour; `providers enable` resumes it) |
+| Model not found (404) | next model; the provider's other models are still tried |
+| Prompt too long for the model | next model with a bigger context window |
+| Empty or broken answer | next candidate |
+| The model answers `CANNOT_DO: <reason>` | next candidate on a higher tier; none left → status `escalate`, exit code 1 |
+
+A timed-out request counts against the daily budget with its estimate (the provider may have
+billed it); retries and failovers count as one run per provider for `daily_runs`.
+
+So with no internet, `ask` answers from local Ollama in the same command, and the remote API is
+listed under `failovers` in the envelope. If every candidate fails, the envelope lists all of
+them and the exit code is 3.
 
 ## Configuration
 
@@ -150,14 +177,18 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 
 ```json
 {
-  "envelope_version": 1,
+  "envelope_version": 2,
   "run_id": "20261109-193405-3679",
   "task_id": "ask",
   "status": "ok",
   "provider": "ollama",
   "model": "qwen2.5-coder:1.5b",
   "tier": 1,
-  "attempts": 1,
+  "attempts": 2,
+  "failovers": [
+    {"provider": "openrouter", "model": "some/model", "tier": 1,
+     "error": "ProviderUnavailable", "reason": "openrouter: cannot connect to …", "attempts": 1}
+  ],
   "summary": "4",
   "verification": [],
   "output_path": "~/.orkestra/runs/20261109-193405-3679/output.md",
@@ -172,7 +203,7 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 0 | Success |
 | 1 | Verification failed (e.g. the answer does not match `--schema`); for `doctor`: a check failed |
 | 2 | Configuration or usage error |
-| 3 | No suitable provider (unreachable, paused, budget exhausted, secrets in context, no key, no model on that tier) |
+| 3 | No suitable provider, or every candidate failed (unreachable, paused, budget exhausted, secrets in context, no key, outside the profile) |
 | 4 | User consent required (`orkestra providers enable <name>`) |
 | 5 | Worktree / apply conflict (Phase 5) |
 | 10 | Unexpected internal error |
@@ -195,7 +226,7 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 1 | Configuration: schema, merge, `init`, `config` | ✅ |
 | 2 | Ollama + OpenAI-compatible adapters, `ask`, `doctor` | ✅ |
 | 3 | State DB, daily budgets, provider consent, circuit breaker, secret scanning | ✅ |
-| 4 | Router, retries and **failover**: offline → local Ollama, failing API → next provider | ⏳ |
+| 4 | Router, retries and **failover**: offline → local Ollama, failing API → next provider | ✅ |
 | 5 | Task files, verifiers, git worktrees, `edit`, `apply` | ⏳ |
 | 6 | Code agents: Codex CLI, Antigravity CLI | ⏳ |
 | 7 | Batch runs, parallelism, cost estimate | ⏳ |
