@@ -1,0 +1,60 @@
+[project]
+name = "orkestra-cli"
+version = "0.0.1"
+description = "Budget-aware CLI that dispatches tasks to multiple AIs under one chief."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12",
+    "pydantic>=2.7",
+    "ruamel.yaml>=0.18",
+    "httpx>=0.27",
+    "openai>=1.40",
+    "rich>=13.7",
+    "psutil>=5.9",
+    "jsonschema>=4.22",
+    "pathspec>=0.12",
+]
+
+[project.scripts]
+orkestra = "orkestra.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+    "ruff>=0.6",
+    "pyright[nodejs]>=1.1.380",
+]
+
+[build-system]
+requires = ["uv_build>=0.8,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "orkestra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+# Turkish text (tests, docstrings) legitimately uses the dotless i.
+allowed-confusables = ["ı"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["live: gerçek servis gerektirir"]
+addopts = "-m 'not live'"

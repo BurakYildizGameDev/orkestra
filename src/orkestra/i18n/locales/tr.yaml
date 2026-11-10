@@ -1,0 +1,10 @@
+# Türkçe katalog. Anahtarlar ve {yer_tutucular} en.yaml ile birebir aynı olmalı.
+
+cli.help: "Birden fazla yapay zekâyı tek bir şef altında çalıştıran, bütçe farkındalıklı görev dağıtıcı."
+cli.version: "orkestra {version}"
+cli.option.version: "Sürümü gösterir ve çıkar."
+cli.option.lang: "Arayüz dili: en, tr, de, es, fr."
+cli.error.unsupported_language: "Desteklenmeyen dil '{lang}'. Şunlardan birini seç: {choices}."
+
+errors.prefix: "Hata: {message}"
+errors.internal: "Beklenmeyen iç hata: {detail}"
