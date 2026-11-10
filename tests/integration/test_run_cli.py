@@ -284,10 +284,10 @@ def test_invalid_task_file(home: Path, capsys: pytest.CaptureFixture[str]) -> No
     assert "prompt: required field is missing" in error["details"]
 
 
-def test_edit_tasks_are_not_available_yet(home: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_edit_task_outside_a_git_repository(home: Path, capsys: pytest.CaptureFixture[str]) -> None:
     code, _, err = _run(["--lang", "en", "run", _task(kind="edit")], capsys)
     assert code == 2
-    assert "edit" in err
+    assert "not inside a git repository" in err
 
 
 # --- code review fixes (PR #6) ---------------------------------------------------------

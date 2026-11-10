@@ -301,3 +301,20 @@ Mimari §3, §9 güncellendi.
 - `show` eski sürüm veya bozuk bir envelope'u JSON olarak gösterir (önceden dahili hata).
 - git zaman aşımı mesajı çevrili (`workspace.error.git_timeout`).
 Mimari §9 güncellendi.
+
+## D-042 – API işçisiyle düzenleme ayrıntıları (2026-11-10, Faz 5c)
+**Bağlam:** Mimari §8.2 biçimi ve kuralları verdi; uygularken netleşmesi gereken noktalar çıktı.
+**Karar:**
+1. **Bozuk cevap = başarısız kontrol.** Biçim veya yol sorunu (`EditFormatError`, `ProviderBadOutput` alt sınıfı) envelope'ta `edit_format` adlı başarısız doğrulama olur ve aynı modele geri bildirimle döner; diğer başarısız kontroller gibi `max_retries`'tan sayılır, sonra üst kademe. (`ProviderBadOutput`'un yönlendirmedeki "sıradaki aday" kuralı burada uygulanmaz; Mimari zaten "geri bildirimle yeniden dene" diyordu.)
+2. **JSON ayrıştırma:** ilk `{`'den başlayarak her konumda `json.JSONDecoder.raw_decode`; `files` anahtarı olan ilk nesne alınır (metin içindeki süslü parantezler ve içerikteki `}` sorun olmaz). Hiç nesne yoksa "JSON yok", varsa ilk ayrıştırma hatası geri bildirilir. Aynı yol iki kez → hata.
+3. **Yol kuralları (her zaman, `verify_defaults: false` olsa da):** boş, NUL, mutlak, sürücülü (`C:x` dahil), UNC, `..` ve herhangi bir `.git` parçası reddedilir; `\` → `/`, `./` atılır; `resolve()` sonrası çalışma dizininin dışına çıkan (sembolik bağ) reddedilir; `forbid_paths` desenleri **yazmadan önce** denetlenir (ignore edilen `.env` gibi dosyalar git diff'inde görünmediği için sonradan yakalanamaz). Bağlamda verilmemiş **var olan** bir dosya asla değiştirilmez (işçi içeriğini görmedi). Yeni dosya `allow_new_files` (yeni alan, varsayılan `true`) ile.
+4. **Silme yok:** tam dosya biçiminde dosya silinemez (v1); gerekirse kod ajanı (Faz 6).
+5. **Her cevap baseline'dan başlar:** yazmadan önce `reset` (önceki denemenin izi kalmaz). Doğrulayıcılar çalıştıktan sonra yine `reset` + cevabın dosyaları yeniden yazılır: komutların bıraktığı `__pycache__`, derleme çıktısı gibi dosyalar değişikliğe ve `apply`'a girmez.
+6. **Kesilme:** `finish_reason == "length"` → cevap kullanılmaz, geri bildirim de denenmez (`retry.Action.TOP_TIER`); sadece kademe 3 adaylar kalır. Failover hatası `OutputTruncated`. Kademe 3 de yoksa/olmazsa `status=escalate`, kod 1.
+7. **Router:** `kind: edit` ve bağlam dosyalarının en uzunu `security.max_api_edit_lines`'tan uzunsa chat sağlayıcıları `edit_too_large` koduyla elenir (sağlayıcı düzeyinde, diğer nedenlerden sonra). Kod ajanları Faz 6'ya kadar zaten aday değil.
+8. **`workspace` edit için zorunlu değil:** yoksa çalışılan dizin; o dizin git deposu değilse koşu başlamadan kullanım hatası (kod 2). Worktree depo kökünden açılır, `workspace` alt dizinse doğrulayıcılar worktree'deki karşılığında çalışır ve değişiklik yolları ona göre verilir.
+9. **`changes.patch`** koşu sonunda yazılır (Mimari §8, envelope `changes.patch_path`) ve `apply` uygulanan hali yeniden yazar; açık koşuda `show --diff` canlı diff'i gösterir (D-041).
+10. **Özet:** "N dosya değişti (+a/-b): dosya1, …" (en fazla 5 ad) + " — " + işçinin `note`'unun ilk 200 karakteri. İnsan özetinde `show --diff` / `apply` ipucu satırı.
+11. İstek `json_mode` ile gider (edit cevabı her zaman JSON). İstem: `prompts/edit_format.md` (değiştirilebilir dosyalar, yeni dosya izni, korunan + yasak desenler).
+**Bilinen sınır:** ignore edilen dosyalar (`node_modules/`, `.venv/`) worktree'ye taşınmaz; onlara ihtiyaç duyan `command` doğrulayıcıları başarısız olur (Python'da etkin yorumlayıcı çalışır).
+Mimari §4.2, §7, §8, §8.2 güncellendi.

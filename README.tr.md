@@ -41,6 +41,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | İşçi modele tek soru; bağlam dosyaları ve isteğe bağlı JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Profil, gizlilik ve yedeğe geçişli yönlendirme; her sağlayıcının neden seçildiğini/elendiğini görme | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Görev dosyaları (YAML/JSON): cevabı doğrula, geri bildirimle tekrar dene, üst kademeye geç | `orkestra run gorev.yaml [--dry-run] [--json]` |
+| Düzenleme görevleri: işçi kodu yalıtılmış worktree'de değiştirir, karar senin testlerinin | `orkestra run duzenle.yaml`, sonra `show --diff`, `apply` |
 | Bir koşunun envelope'u, tam çıktısı, log'u veya değişikliği | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | Koşunun değişikliğini çalışma ağacına al ya da at | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
 | Sahipsiz worktree, eski koşu kaydı ve askıda rezervasyonları temizle | `orkestra gc [--older-than 30] [--dry-run]` |
@@ -137,7 +138,7 @@ seçeneklerinden aynı türde bir görev oluşturur. Örnekler: [`examples/tasks
 
 ```yaml
 id: summarize-readme
-kind: ask                    # edit görevleri (git worktree'de kod değiştirme) sonra gelecek
+kind: ask                    # ask | edit (aşağıda "Düzenleme görevleri")
 tier: 1                      # başlanacak en düşük kademe
 prompt: |
   Bu projenin ne yaptığını tek cümleyle özetle ve ana özelliklerini listele.
@@ -180,6 +181,51 @@ kendiliğinden geçer).
 Her denemenin isteği, cevabı ve kontrol kaydı (`verify.log`)
 `~/.orkestra/runs/<run_id>/attempts/<n>/` altında tutulur.
 
+## Düzenleme görevleri: işçiler kod değiştirir
+
+Düzenleme (edit) görevi işçiden dosya değiştirmesini ister. Bir worktree'de çalışır (aşağıya
+bak), yani sonucu uygulayana kadar çalışma kopyan olduğu gibi kalır.
+
+```yaml
+id: fix-add
+kind: edit
+prompt: calc.py içindeki add()'i testler geçecek şekilde düzelt. Testleri değiştirme.
+context:
+  files: [calc.py]           # işçinin değiştirebileceği dosyalar
+verify:
+  - type: command
+    run: "python -m pytest -q"
+  - type: protect_paths      # testi değiştirerek geçirmek başarısızlık sayılır
+    paths: ["tests/**"]
+allow_new_files: true        # varsayılan; false: sadece bağlamdaki dosyalar değişebilir
+```
+
+API işçileri **dosyanın tamamını** JSON olarak verir (`{"files": [{"path", "content"}], "note"}`);
+modellerin ürettiği unified diff'ler çok sık bozulur. Orkestra sonra:
+
+1. JSON'u kod çiti veya etrafında metin olsa da alır; bozuk ya da kesik JSON geri bildirim
+   olarak işçiye döner (`edit_format` kontrolü);
+2. her yolu denetler: göreli, proje içinde, `..` ve `.git` yok, `forbid_paths`'e uymuyor ve ya
+   bağlamdaki bir dosya ya da yeni bir dosya. İşçiye gösterilmemiş bir dosyanın üstüne asla
+   yazılmaz;
+3. dosyaları orijinal satır sonlarıyla (CRLF/LF) yazar ve kontrollerini worktree'de çalıştırır.
+   Kontrollerin geride bıraktığı dosyalar (`__pycache__`, derleme çıktısı) değişikliğe girmez;
+4. kontrol başarısızsa: her görevde olduğu gibi geri bildirim, senin dosyalarından yeniden
+   deneme, üst kademeye geçiş.
+
+Cevap çıktı sınırında kesilirse dosya o model için çok büyüktür: koşu doğrudan kademe 3'e geçer.
+`security.max_api_edit_lines`'tan (400) uzun dosyalar API işçilerine hiç verilmez (onları 6.
+fazdaki kod ajanları yapacak). Envelope'ta `changes: {files, insertions, deletions, patch_path}`
+var; sonra:
+
+```bash
+orkestra show <run_id> --diff      # incele
+orkestra apply <run_id>            # al
+```
+
+Koşu sırasında Ctrl+C bütçe rezervasyonunu serbest bırakır, `error: interrupted` içeren bir
+envelope yazar ve worktree'yi korur.
+
 ## Worktree'ler: yalıtılmış değişiklikler
 
 İşçiler senin çalışma kopyanı asla değiştirmez. Kod değiştiren bir koşu `~/.orkestra/worktrees/`
@@ -199,8 +245,9 @@ sonra aynı dosyaları değiştirdiysen üç yönlü birleştirir; değişiklik 
 **hiçbir şey yazmaz**, çakışan dosyaları listeler, kod 5 ile çıkar ve worktree incelemen için
 kalır. Worktree'lerde git hook'ları çalışmaz. Alt modüller ve Git LFS dosyaları henüz
 işlenmez (uyarı verilir). Worktree yolları derin olduğu için `doctor` Windows'ta
-`core.longpaths` önerir. Bu worktree'leri kullanan düzenleme görevleri 5. fazın sonraki
-kısmında geliyor.
+`core.longpaths` önerir. Ignore edilen dosyalar (`node_modules/`, `.venv/`) worktree'ye
+kopyalanmaz; bunlara ihtiyaç duyan bir kontrol kendi getirmeli (etkin yorumlayıcınla çalışan
+bir Python kontrolü çalışır).
 
 ## Yapılandırma
 
@@ -306,7 +353,7 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 4 | Router, yeniden deneme ve **yedeğe geçiş**: internet yok → yerel Ollama, çöken API → sıradaki sağlayıcı | ✅ |
 | 5a | Görev dosyaları, doğrulayıcılar, geri bildirimle tekrar deneme, üst kademeye geçiş (`orkestra run`) | ✅ |
 | 5b | Git worktree, `show`, `apply`, `discard`, `gc` | ✅ |
-| 5c | API işçileriyle düzenleme görevleri | ⏳ |
+| 5c | API işçileriyle düzenleme görevleri | ✅ |
 | 6 | Kod ajanları: Codex CLI, Antigravity CLI | ⏳ |
 | 7 | Toplu çalıştırma, paralellik, maliyet tahmini | ⏳ |
 | 8 | Şef araçları: `status`, `review`, `map`, şablonlar, `plan expand`, önbellek, tasarruf sayacı | ⏳ |

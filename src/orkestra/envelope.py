@@ -129,6 +129,12 @@ def human_summary(envelope: ResultEnvelope) -> str:
         t("envelope.failover", provider=f.provider, model=f.model, reason=f.reason)
         for f in envelope.failovers
     )
+    if envelope.changes is not None and envelope.changes.files:
+        lines.append(
+            t("envelope.changes", files=envelope.changes.files,
+              insertions=envelope.changes.insertions, deletions=envelope.changes.deletions,
+              run_id=envelope.run_id)
+        )  # fmt: skip
     if envelope.error:
         lines.append(t("errors.prefix", message=envelope.error))
     return "\n".join(lines)

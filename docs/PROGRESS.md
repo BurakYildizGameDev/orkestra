@@ -13,7 +13,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 4 – Router | ✅ | 2026-11-09 | router, yeniden deneme, aynı komutta yedeğe geçiş, --dry-run; Mimari kararlarla eşitlendi (D-029…D-034) |
 | 5a – Görev + doğrulama | ✅ | 2026-11-10 | `orkestra run`, 8 doğrulayıcı, geri bildirimle tekrar, üst kademeye geçiş (D-038) |
 | 5b – Worktree | ✅ | 2026-11-10 | worktree (kirli ağaç dahil), `show`, `apply`, `discard`, `gc` (D-040) |
-| 5c – API ile edit | ⏳ | | |
+| 5c – API ile edit | ✅ | 2026-11-10 | tam dosya JSON, yol güvenliği, worktree'de doğrulama, kesilmede kademe 3 (D-042) |
 | 6 – CLI ajanları | ⏳ | | |
 | 7 – Batch + tahmin | ⏳ | | |
 | 8a – status, şablon, önbellek, sayaç | ⏳ | | |
@@ -26,6 +26,36 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 5c – API işçisiyle düzenleme (2026-11-10)
+**Yapılanlar:**
+- `tasks/edit_format.py` (Mimari §8.2): tam dosya JSON ayrıştırma (çitli, etrafında metin, içerikte süslü parantez), biçim hataları (`EditFormatError` ⊂ `ProviderBadOutput`, çift dilli mesaj), yol normalleştirme ve güvenliği (`..`, mutlak, sürücü, UNC, `.git`, sembolik bağla kaçış, `forbid_paths`, bağlam dışı var olan dosya, `allow_new_files`), satır sonu (CRLF/LF) ve BOM koruyarak yazma.
+- `tasks/runner.py`: `kind: edit` tam yaşam döngüsü: koşu başında worktree (+ `worktree.json`, `runs.workspace/worktree`), her cevap baseline'dan, biçim/yol sorunu = başarısız `edit_format` kontrolü (geri bildirimle aynı model), doğrulayıcılar worktree'de ve değişiklik listesiyle, sonra doğrulayıcı artıkları temizlenir; `finish_reason=length` → doğrudan kademe 3 (`OutputTruncated`); envelope `changes` + `changes.patch`; kural tabanlı özet (dosyalar + işçinin notu). Ctrl+C'de rezervasyon serbest, `error=interrupted`, worktree korunur.
+- Router: büyük dosyada (`security.max_api_edit_lines`) chat sağlayıcıları `edit_too_large` ile eleniyor.
+- `prompts/edit_format.md`; `build_edit_messages`; edit isteği `json_mode` ile.
+- `TaskSpec.allow_new_files`; insan özetinde `show --diff` / `apply` ipucu.
+- Örnek: `examples/tasks/fix-function.yaml`. README (en + tr): "Düzenleme görevleri" bölümü, özellik tablosu, worktree'de ignore edilen dosyalar notu, yol haritası.
+
+**Kabul kriterleri:**
+- ✅ Uçtan uca (sahte sağlayıcı, gerçek geçici git deposu, gerçek pytest): ilk deneme testleri kırıyor → geri bildirimle ikinci deneme geçiyor → `status=ok, attempts=2`, ana depo değişmemiş, `apply` sonrası değişmiş; kullanıcının commit edilmemiş değişikliği ve izlenmeyen dosyası duruyor; diff'te `__pycache__` yok (`test_edit_cli.py::test_tests_fail_then_feedback_fixes_it_and_apply_brings_it_home`).
+- ✅ `protect_paths: ["tests/**"]` varken işçi testi değiştirirse doğrulama başarısız (`test_changing_a_protected_test_fails_verification`; komut geçti, `protect_paths` kaldı).
+- ✅ `../outside.txt` ve mutlak yol reddediliyor, worktree dışına hiçbir şey yazılmıyor, geri bildirimle ikinci deneme geçiyor (`test_a_path_outside_the_project_is_rejected_and_nothing_is_written`; birimde sembolik bağ, UNC, sürücü, `.git`).
+- ✅ Kirli çalışma ağacı ve `apply` sonrası kullanıcının değişiklikleri: uçtan uca testte (5b testleri de).
+- ✅ `apply` çakışmada kod 5, dosyalar listeli, worktree korunuyor (5b testleri, gerçek worktree ile).
+- ✅ Ctrl+C: rezervasyon serbest, envelope `error=interrupted`, worktree ve kaydı duruyor (`test_ctrl_c_releases_the_reservation_and_keeps_the_worktree`).
+- ✅ Yükseltme: kademe 1 iki kez başarısız → kademe 2, `escalations` dolu (`test_tier_1_fails_twice_then_tier_2_fixes_it`).
+- ✅ Bozuk, çitli, kesik JSON birim testleri (`tests/unit/test_edit_format.py`, 44 test) + uçtan uca bozuk JSON geri bildirimi.
+- ✅ Kesik cevap → kademe 2 atlanıp kademe 3 (`test_a_cut_off_answer_goes_straight_to_tier_3`); büyük dosya → aday yok, kod 3 (`test_a_file_too_large_for_an_api_edit_leaves_no_chat_candidate`).
+- ✅ ruff, ruff format, pyright, pytest (621 test) temiz.
+- ⏸ Canlı deneme (gerçek Ollama): bu oturumda Ollama çalışmıyordu; yapılmadı.
+
+**Ertelenenler:**
+- Dosya silme (tam dosya biçiminde yok) ve büyük dosyalar → kod ajanları, Faz 6.
+- SIGTERM'in Ctrl+C gibi ele alınması (şimdilik sadece Ctrl+C / `KeyboardInterrupt`).
+
+**Bilinen sorunlar:**
+- Ignore edilen dosyalar (`node_modules/`, `.venv/`) worktree'ye taşınmıyor; onlara ihtiyaç duyan `command` doğrulayıcıları (ör. `npm test`) başarısız olur. Python'da etkin yorumlayıcı çalışır. README'de yazılı.
+- Her cevap için iki `reset` (önce ve doğrulama sonrası) yapılıyor; büyük depolarda yavaş olabilir.
 
 ### Kod denetimi – Faz 5b (PR #7), 2026-11-10
 10 bulgu, 10'u düzeltildi (D-041):

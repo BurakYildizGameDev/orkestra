@@ -1,0 +1,25 @@
+# An edit task: the worker changes code in an isolated worktree; your tests decide.
+# Run it from the root of a git repository, look at the change, then apply it:
+#   orkestra run examples/tasks/fix-function.yaml
+#   orkestra show <run_id> --diff
+#   orkestra apply <run_id>
+id: fix-function
+kind: edit
+tier: 1
+prompt: |
+  The function add() in src/calc.py returns the wrong result. Fix it so that the tests pass.
+  Do not change the tests and do not change anything else.
+context:
+  files: [src/calc.py]
+verify:
+  - type: command
+    run: "python -m pytest -q"
+    timeout_s: 300
+  - type: protect_paths
+    paths: ["tests/**"]
+  - type: max_changed_files
+    value: 1
+allow_new_files: false
+limits:
+  max_retries: 2
+tags: [bugfix]
