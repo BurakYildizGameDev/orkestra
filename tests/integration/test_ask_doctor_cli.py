@@ -263,7 +263,8 @@ def tools(monkeypatch: pytest.MonkeyPatch) -> None:
     versions = {"/usr/bin/git": "git version 2.50.0", "/usr/bin/codex": "codex-cli 1.0.0"}
 
     async def fake_run_doctor(**kwargs: Any) -> doctor.DoctorReport:
-        return await original(**kwargs, which=_fake_which(found), probe=versions.get)
+        return await original(**kwargs, which=_fake_which(found), probe=versions.get,
+                              login=lambda _: True)  # fmt: skip
 
     original = doctor.run_doctor
     monkeypatch.setattr(doctor, "run_doctor", fake_run_doctor)

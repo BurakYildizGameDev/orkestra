@@ -347,3 +347,16 @@ Mimari §8.2 güncellendi.
 8. `doctor`: Codex için `codex login status`; agy için `~/.gemini/antigravity-cli/settings.json` `permissions.deny` içinde `rm`/`sudo` yoksa uyarı. `providers enable agy` aynı uyarıyı onay metnine ekler.
 9. Testler gerçek ajan başlatmaz: `conftest` `cli_agent._which`'i sadece sahte ajana izin verecek şekilde değiştirir (`-m live` hariç). Faz 6 sırasında bu koruma yokken eski testlerdeki `codex` sağlayıcısı gerçek Codex'i birkaç kez çalıştırdı (geçici dizinlerde, salt okunur `ask`); koruma bunu kalıcı olarak kapattı.
 Mimari §2, §5.3, §5.4, §5.5, §7 güncellendi.
+
+## D-045 – Faz 6 kod denetimi düzeltmeleri (2026-11-10, Faz 6)
+**Bağlam:** PR #9 için `/code-review`: 10 bulgu.
+**Karar:**
+- **Reddedilen cevap korunur:** edit görevinde bir cevap reddedildiğinde değişikliği (`rejected_patch`) saklanır; sonraki aday (ör. çöken bir ajan) worktree'yi değiştirmiş olsa bile koşu `failed`/`escalate` ile biterken worktree o cevaba geri getirilir, envelope ve `show --diff` raporlanan cevabı anlatır.
+- **Dışarı yazma denetimi her durumda:** ajan hata verse, zaman aşımına uğrasa veya `CANNOT_DO` dese de deponun önce/sonra karşılaştırması yapılır ve gerekirse uyarı verilir.
+- **Ajanın geri bildirim denemesi kendi değişikliğinden devam eder:** worktree sadece adayın ilk denemesinde baseline'a sarılır; sonraki denemelerde önceki değişiklik (doğrulayıcı artıkları atılmış hali) yerinde kalır ve isteme "önceki değişikliklerin çalışma ağacında, baştan başlama, düzelt" eklenir.
+- **`--output-schema` kullanılmaz:** codex şemayı katı modda uygular (her alan `required`, `additionalProperties: false`), sıradan bir görev şeması reddedilir. Şema istemde zaten var, `json_schema` doğrulayıcısı sonradan denetler. `AgentRequest.output_schema` kaldırıldı (D-044'teki `[--output-schema]` geçersiz).
+- **agy deny-list denetimi:** komut bir girdide ayrı kelime olarak geçmeli (`npm run format` `rm` sayılmaz); `permissions: null` gibi bozuk ayar çökertmez. Ayar dosyası `doctor` ve `consent.describe`'da enjekte edilebilir; `doctor`'ın `codex login status` sondası da (`login=`), testler gerçek Codex'i çağırmaz.
+- **`status_snapshot`** dosya içeriğini değil `stat`'ı (boyut + mtime_ns) karşılaştırır: büyük izlenmeyen dosyalarda bile ucuz.
+- Kullanılmayan `CliAgent.health()` ve tekrar eden `probe_version` kaldırıldı (sürüm `doctor.probe_version`'dan).
+- **Bilinen sınır:** `generic` türdeki ajanın (codex/agy dışındaki her program) sandbox'ı yoktur; `ask` görevinde kullanıcının proje dizininde çalışır. Onay metni bunu söyler (`consent.describe.generic_no_sandbox`), yazdıkları `workspace_scope` ile raporlanır. Bilerek bırakıldı: genel bir programa sandbox dayatmanın taşınabilir yolu yok.
+Mimari §5.3, §5.4 güncellendi.

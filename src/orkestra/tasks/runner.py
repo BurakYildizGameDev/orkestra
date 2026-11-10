@@ -128,6 +128,10 @@ CANNOT_DO = "CANNOT_DO:"  # worker protocol (prompts/worker_system.md, Mimari §
 VERIFICATION_FAILED = "VerificationFailed"  # failover "error" when answers kept failing checks
 SCOPE_CHECK = "workspace_scope"  # verification entry: an agent wrote outside its worktree
 SCOPE_FILES = 10  # changed files named in that check
+AGENT_CONTINUE = (
+    "Your changes from the previous attempt are still in the working tree. "
+    "Fix them; do not start over."
+)
 OUTPUT_TRUNCATED = "OutputTruncated"  # failover "error" when an edit answer was cut off
 TOP_TIER = 3
 IGNORED_WARNINGS = 5  # more skipped files than this are reported as one count
@@ -481,6 +485,7 @@ class _TaskRun:
         self.run_counted: set[str] = set()
         self.escalate_reason: str | None = None  # CANNOT_DO or a cut-off edit: for the chief
         self.rejected: _Answer | None = None  # last answer that failed its checks
+        self.rejected_patch: bytes | None = None  # edit tasks: that answer's change
         self.last_problem: str | None = None  # "escalate" | "checks": which came last
         self.wt: gw.Worktree | None = None  # edit tasks
         self.workdir = prep.base_dir  # where verifiers run (inside the worktree for edits)
@@ -567,6 +572,11 @@ class _TaskRun:
             elif action is retry.Action.TOP_TIER:
                 remaining = [c for c in remaining if c.tier >= TOP_TIER]
         if self.last_problem == "checks" and self.rejected is not None:
+            if self.wt is not None and self.rejected_patch is not None:
+                # A later candidate (e.g. an agent that crashed) may have changed the
+                # worktree: the envelope must describe the answer it reports.
+                gw.reset(self.wt)
+                gw.restore(self.wt, self.rejected_patch)
             return self._checks_failed(self.rejected)
         if self.last_problem == "escalate":
             return self._escalate()
@@ -710,6 +720,8 @@ class _TaskRun:
             return self._succeed(candidate, limit, result, checks)
         self.rejected = _Answer(candidate, result.text, checks, result)
         self.last_problem = "checks"
+        if self.wt is not None:
+            self.rejected_patch = gw.diff(self.wt).patch
         failures = [c.feedback for c in checks if not c.result.ok]
         self.log.info("attempt %d failed checks: %s", self.attempts, failures)
         if answers >= self.max_answers:
@@ -759,7 +771,6 @@ class _TaskRun:
                 sandbox="workspace-write" if self.wt is not None else "read-only",
                 timeout_s=timeout,
                 output_file=attempt_dir / "agent_output.md",
-                output_schema=self._schema_file(attempt_dir),
             )
             self._write(
                 attempt_dir / "request.json",
@@ -767,9 +778,10 @@ class _TaskRun:
                             **asdict(req)}, indent=2, default=str),
             )  # fmt: skip
             self.log.info("attempt %d: %s (agent, try %d)", self.attempts, candidate.label, tries)
-            if self.wt is not None:
-                gw.reset(self.wt)  # every run starts from the user's files
+            if self.wt is not None and tries == 1:
+                gw.reset(self.wt)  # a new candidate starts from the user's files
             before = gw.status_snapshot(repo) if repo is not None else None
+            scope = _Scope(repo, before)
             try:
                 result = await agent.run(req)
             except ProviderError as exc:
@@ -783,6 +795,7 @@ class _TaskRun:
                 health.record_failure(self.conn, candidate.provider, exc, self.now())
                 self.log.warning("attempt %d failed: %s %s", self.attempts,
                                  type(exc).__name__, exc.message)  # fmt: skip
+                self._scope_checks(scope)  # a crashed agent may still have written outside
                 action = retry.classify(exc)
                 if action is retry.Action.RETRY:
                     action = retry.give_up(exc)
@@ -803,32 +816,20 @@ class _TaskRun:
             self._write(attempt_dir / "response.txt", text, answer=True)
             reason = _cannot_do(text)
             if reason is not None:
+                self._scope_checks(scope)
                 self.escalate_reason = t("ask.cannot_do", reason=reason or "-")
                 self.last_problem = "escalate"
                 return self._fail(candidate, None, tries, retry.Action.ESCALATE, reason=reason)
             answers += 1
-            checks = await self._verify(text, attempt_dir, _Scope(repo, before))
+            checks = await self._verify(text, attempt_dir, scope)
             verdict = self._judge(
                 candidate, CompletionResult(text, usage, None), checks, tries, answers,
                 self._max_output(candidate), self.prep.agent_user,
             )  # fmt: skip
             if not isinstance(verdict, str):
                 return verdict
-            prompt = verdict
-
-    def _schema_file(self, attempt_dir: Path) -> Path | None:
-        """The ask task's JSON Schema as a file (``codex --output-schema``)."""
-        if self.task.kind != "ask":
-            return None
-        schema = next(
-            (c.schema for c in self.prep.checks if isinstance(c, JsonSchemaCheck) and c.schema),
-            None,
-        )
-        if schema is None:
-            return None
-        path = attempt_dir / "output.schema.json"
-        path.write_bytes(json.dumps(schema, indent=2).encode("utf-8"))
-        return path
+            # Feedback runs continue from the agent's change (restored after the checks).
+            prompt = f"{verdict}\n\n{AGENT_CONTINUE}" if self.wt is not None else verdict
 
     def _agent_usage(self, prompt_chars: int, result: AgentResult) -> Usage:
         reported = result.usage

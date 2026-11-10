@@ -272,6 +272,9 @@ providers:
   the `workspace_scope` check fails and you get a warning (Orkestra does not undo it).
 - Agent files in your repository (`AGENTS.md`, `.codex/` …) are in the worktree as well and
   steer the agent as usual.
+- A feedback run continues from the agent's previous change instead of starting over.
+- Any other program (`kind: generic`: prompt on stdin, answer on stdout) works too, but it
+  has **no sandbox**: it runs with your permissions (in your project directory for `ask`).
 - `doctor` shows the agent's version, warns when codex is not logged in and when agy's
   `permissions.deny` list does not block `rm`/`sudo` (agy approves tool calls by itself in
   print mode).

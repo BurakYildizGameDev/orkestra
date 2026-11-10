@@ -269,6 +269,9 @@ providers:
   `workspace_scope` kontrolü başarısız olur ve uyarı alırsın (Orkestra bunu geri almaz).
 - Deponun ajan dosyaları (`AGENTS.md`, `.codex/` …) worktree'de de vardır ve ajanı her zamanki
   gibi yönlendirir.
+- Geri bildirim denemesi baştan başlamaz, ajanın önceki değişikliğinden devam eder.
+- Başka bir program da olur (`kind: generic`: istem stdin'den, cevap stdout'a) ama **sandbox'ı
+  yoktur**: senin yetkilerinle çalışır (`ask`'te proje dizininde).
 - `doctor` ajanın sürümünü gösterir; codex oturumu açık değilse ve agy'nin `permissions.deny`
   listesi `rm`/`sudo` engellemiyorsa uyarır (agy print modunda araç çağrılarını kendisi onaylar).
 - Kurulu olmayan program, `experimental: true` olmadan agy ve düzenleme görevi için salt okunur

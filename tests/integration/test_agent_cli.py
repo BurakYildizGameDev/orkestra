@@ -213,3 +213,59 @@ def test_an_ask_task_for_an_agent(
     assert envelope["status"] == "ok" and envelope["changes"] is None
     output = Path(envelope["output_path"]).read_bytes().decode()
     assert re.match(r"received \d+ chars", output)
+
+
+# --- code review fixes (PR #9) -----------------------------------------------------------
+
+OLLAMA = "http://ollama.test:11434"
+WRONG = "def add(a, b):\n    return a * b\n"
+
+
+def test_a_failing_agent_keeps_the_rejected_answer_of_an_earlier_worker(
+    repo: Path, home: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import httpx
+    import respx
+
+    _setup(home, repo, {
+        "ollama": {"type": "ollama", "base_url": OLLAMA, "models": [{"id": "coder", "tier": 1}]},
+        "agent": _agent("fail"),
+    })  # fmt: skip
+    answer = json.dumps({"files": [{"path": "calc.py", "content": WRONG}], "note": "x"})
+    with respx.mock:
+        respx.post(f"{OLLAMA}/api/chat").mock(
+            return_value=httpx.Response(200, json={"message": {"content": answer},
+                                                   "done_reason": "stop"})
+        )  # fmt: skip
+        code, out, _ = _run(["run", _task(tmp_path, limits={"max_retries": 0}), "--json"],
+                            capsys)  # fmt: skip
+    assert code == 1
+    envelope = json.loads(out)
+    assert envelope["status"] == "failed" and envelope["changes"]["files"] == 1
+    code, diff, _ = _run(["show", envelope["run_id"], "--diff"], capsys)
+    assert "+    return a * b" in diff  # the rejected answer, not the agent's leftovers
+
+
+def test_writing_outside_is_reported_even_when_the_agent_fails(
+    repo: Path, home: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    monkeypatch.setenv("FAKE_AGENT_ESCAPE", str(repo / "README.md"))
+    _setup(home, repo, {"agent": _agent("escape_fail")})
+    code, _, err = _run(["--lang", "en", "run", _task(tmp_path)], capsys)
+    assert code == 3
+    assert "WARNING" in err and "README.md" in err
+
+
+def test_a_feedback_run_continues_from_the_agents_previous_change(
+    repo: Path, home: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _setup(home, repo, {"agent": _agent("continue")})
+    code, out, _ = _run(["run", _task(tmp_path), "--json"], capsys)
+    assert code == 0, out
+    envelope = json.loads(out)
+    assert envelope["attempts"] == 2
+    second = json.loads(
+        (paths.run_dir(envelope["run_id"]) / "attempts" / "2" / "request.json").read_bytes()
+    )
+    assert "still in the working tree" in second["prompt"]

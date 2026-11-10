@@ -126,7 +126,7 @@ def _codex(**fields: object) -> ca.CodexAgent:
 
 def test_codex_arguments(tmp_path: Path) -> None:
     agent = _codex(model="gpt-5-codex", extra_args=["-c", "x=1"])
-    req = _request(tmp_path, prompt="fix it", output_schema=tmp_path / "s.json")
+    req = _request(tmp_path, prompt="fix it")
     inv = agent.invocation(req)
     argv = inv.argv
     assert argv[:2] == ["/bin/codex", "exec"] and argv[-1] == "-"
@@ -134,7 +134,7 @@ def test_codex_arguments(tmp_path: Path) -> None:
     assert argv[argv.index("--sandbox") + 1] == "workspace-write"
     assert argv[argv.index("--output-last-message") + 1] == str(req.output_file)
     assert argv[argv.index("--model") + 1] == "gpt-5-codex"
-    assert argv[argv.index("--output-schema") + 1] == str(tmp_path / "s.json")
+    assert "--output-schema" not in argv  # codex makes it strict; the prompt has the schema
     assert "--json" in argv and "--skip-git-repo-check" in argv and "-c" in argv
     assert "fix it" not in argv and inv.stdin == b"fix it"
     assert not any("danger" in a for a in argv)
@@ -204,6 +204,11 @@ def test_agy_deny_gaps(tmp_path: Path) -> None:
     settings.write_text(json.dumps({"permissions": {"deny": ["Bash(rm -rf:*)"]}}),
                         encoding="utf-8")  # fmt: skip
     assert ca.agy_deny_gaps(settings) == ["sudo"]
+    settings.write_text(json.dumps({"permissions": {"deny": ["npm run format", "pseudo"]}}),
+                        encoding="utf-8")  # fmt: skip
+    assert ca.agy_deny_gaps(settings) == ["rm", "sudo"]  # no whole-word match
+    settings.write_text(json.dumps({"permissions": None}), encoding="utf-8")
+    assert ca.agy_deny_gaps(settings) == ["rm", "sudo"]
 
 
 def test_doctor_warns_about_codex_login_and_agy_deny_list(tmp_path: Path) -> None:
@@ -223,3 +228,15 @@ def test_doctor_warns_about_codex_login_and_agy_deny_list(tmp_path: Path) -> Non
         agy_settings=tmp_path / "missing.json",
     )  # fmt: skip
     assert checks[-1].status == "warn" and "sudo" in checks[-1].message
+
+
+def test_enabling_agy_warns_about_its_deny_list(tmp_path: Path) -> None:
+    from orkestra.state import consent
+
+    agy = CliAgentProvider.model_validate(
+        {"type": "cli_agent", "command": "agy", "experimental": True}
+    )
+    lines = consent.describe("agy", agy, agy_settings=tmp_path / "missing.json")
+    assert any("rm" in line and "sudo" in line for line in lines)
+    generic = _generic("echo")
+    assert any("sandbox" in line for line in consent.describe("fake", generic))

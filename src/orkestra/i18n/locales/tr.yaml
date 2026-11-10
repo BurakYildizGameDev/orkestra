@@ -157,6 +157,7 @@ workspace.warning.submodules: "Alt modüller (submodule) henüz desteklenmiyor; 
 workspace.warning.lfs: "Git LFS dosyaları işlenmez; işçiler LFS işaretçi dosyalarını görür."
 doctor.agent.not_logged_in: "{command} oturumu açık değil; '{command} login' çalıştır"
 doctor.agent.agy_deny: "agy print modunda araç çağrılarını kendisi onaylıyor ve {path} içindeki permissions.deny listesi şunları engellemiyor: {commands}. agy'yi açmadan önce ekle."
+consent.describe.generic_no_sandbox: "Bu program sandbox olmadan, senin yetkilerinle çalışır: düzenleme görevlerinde worktree'de, ask görevlerinde proje dizininde."
 consent.describe.agy_deny: "UYARI: agy'nin permissions.deny listesi {commands} komutlarını engellemiyor; agy print modunda araç çağrılarını kendisi onaylıyor."
 agent.error.outside: "ajan çalışırken worktree dışında dosyalar değişti: {files}"
 agent.warning.outside: "UYARI: bir kod ajanı çalışırken {repo} deponda dosyalar değişti: {files}. Kontrol et; Orkestra hiçbir şeyi geri almadı."

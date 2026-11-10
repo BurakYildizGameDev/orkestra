@@ -14,6 +14,9 @@ Modes:
 - ``cannot``: ``CANNOT_DO: <reason>``.
 - ``hang``: starts a child process, writes both pids to ``$FAKE_AGENT_PIDS``, then sleeps.
 - ``escape``: writes into ``$FAKE_AGENT_ESCAPE`` (a file outside the workdir), then fixes.
+- ``escape_fail``: writes into ``$FAKE_AGENT_ESCAPE``, then exits with code 3.
+- ``continue``: breaks ``calc.py`` first; with feedback it expects its broken version to
+  still be there (exit code 4 otherwise) and fixes it.
 """
 
 from __future__ import annotations
@@ -67,6 +70,20 @@ def main() -> int:
             f"{os.getpid()} {child.pid}", encoding="utf-8"
         )
         time.sleep(600)
+    elif mode == "escape_fail":
+        Path(os.environ["FAKE_AGENT_ESCAPE"]).write_bytes(b"written by the agent\n")
+        print("crashed", file=sys.stderr)
+        return 3
+    elif mode == "continue":
+        if "Failed checks" not in prompt:
+            _write("calc.py", WRONG)
+            print("changed add()")
+        elif Path("calc.py").read_bytes().decode("utf-8") != WRONG:
+            print("my previous change is gone", file=sys.stderr)
+            return 4
+        else:
+            _write("calc.py", RIGHT)
+            print("fixed add()")
     elif mode == "escape":
         Path(os.environ["FAKE_AGENT_ESCAPE"]).write_bytes(b"written by the agent\n")
         _write("calc.py", RIGHT)

@@ -241,6 +241,8 @@ async def _check_provider(
     environ: Mapping[str, str],
     which: Which,
     probe: VersionProbe,
+    login: LoginProbe = cli_agent.codex_logged_in,
+    agy_settings: Path = cli_agent.AGY_SETTINGS,
 ) -> list[Check]:
     if not cfg.enabled:
         return [
@@ -250,7 +252,7 @@ async def _check_provider(
         return await _check_ollama(name, cfg, warm=warm, defaults=defaults)
     if isinstance(cfg, OpenAICompatProvider):
         return await _check_openai(name, cfg, environ)
-    return _check_agent(name, cfg, which, probe)
+    return _check_agent(name, cfg, which, probe, login, agy_settings)
 
 
 def _state_checks(providers: Mapping[str, Provider]) -> list[Check]:
@@ -381,6 +383,8 @@ async def run_doctor(
     cwd: Path | None = None,
     which: Which = shutil.which,
     probe: VersionProbe = probe_version,
+    login: LoginProbe = cli_agent.codex_logged_in,
+    agy_settings: Path = cli_agent.AGY_SETTINGS,
     git_config: GitConfig | None = None,
     platform: str = sys.platform,
 ) -> DoctorReport:
@@ -407,7 +411,7 @@ async def run_doctor(
         per_provider = await asyncio.gather(
             *(
                 _check_provider(n, c, warm=warm, defaults=defaults, environ=env, which=which,
-                                probe=probe)
+                                probe=probe, login=login, agy_settings=agy_settings)
                 for n, c in loaded.config.providers.items()
             )
         )  # fmt: skip

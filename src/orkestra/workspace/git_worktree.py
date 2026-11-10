@@ -268,10 +268,11 @@ def restore(wt: Worktree, patch: bytes) -> None:
 
 
 def status_snapshot(repo: Path) -> dict[str, str]:
-    """HEAD plus every changed or untracked file of ``repo`` with a hash of its content.
+    """HEAD plus every changed or untracked file of ``repo`` with its size and mtime.
 
     Two snapshots that differ mean something wrote into the repository in between (a code
-    agent that left its worktree). Ignored files are not seen.
+    agent that left its worktree). ``stat`` instead of the content keeps it cheap for large
+    untracked files. Ignored files are not seen.
     """
     head = _git(["rev-parse", "--verify", "--quiet", "HEAD"], repo, check=False).stdout
     listing = _git(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"],
@@ -281,9 +282,10 @@ def status_snapshot(repo: Path) -> dict[str, str]:
         rel = entry[3:].decode("utf-8", errors="surrogateescape")
         path = repo / rel
         try:
-            digest = hashlib.sha1(path.read_bytes()).hexdigest() if path.is_file() else "-"
+            info = path.stat()
+            digest = f"{info.st_size}:{info.st_mtime_ns}"
         except OSError:
-            digest = "?"
+            digest = "-"
         snapshot[rel] = entry[:2].decode("utf-8", errors="replace") + digest
     return snapshot
 

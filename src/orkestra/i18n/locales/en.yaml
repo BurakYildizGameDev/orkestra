@@ -158,6 +158,7 @@ workspace.warning.submodules: "Submodules are not supported yet; their contents 
 workspace.warning.lfs: "Git LFS files are not handled; workers see the LFS pointer files."
 doctor.agent.not_logged_in: "{command} is not logged in; run '{command} login'"
 doctor.agent.agy_deny: "agy approves tool calls by itself in print mode, and its permissions.deny list in {path} does not block: {commands}. Add them before enabling agy."
+consent.describe.generic_no_sandbox: "This program runs without a sandbox, with your permissions: in the worktree for edit tasks, in your project directory for ask tasks."
 consent.describe.agy_deny: "WARNING: agy's permissions.deny list does not block {commands}; agy approves tool calls by itself in print mode."
 agent.error.outside: "files outside the worktree changed while the agent ran: {files}"
 agent.warning.outside: "WARNING: files in your repository {repo} changed while a code agent ran: {files}. Check them; Orkestra did not undo anything."

@@ -27,6 +27,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 6 (PR #9), 2026-11-10
+10 bulgu: 9'u düzeltildi, 1'i gerekçesiyle bilinen sorun (D-045):
+- ✅ API işçisinin reddedilen cevabından sonra ajan çökünce envelope ajanın yarım değişikliğini (veya hiçbir şeyi) raporluyordu → reddedilen cevabın değişikliği saklanıp geri getiriliyor.
+- ✅ Ajan hata/zaman aşımı/`CANNOT_DO` ile bitince depoya dışarıdan yazma denetlenmiyordu → her durumda denetleniyor.
+- ✅ Geri bildirim denemesinde ajanın önceki değişikliği siliniyordu → kaldığı yerden devam ediyor, isteme söyleniyor.
+- ➖ `generic` ajan `ask` görevinde sandbox'sız, kullanıcının dizininde çalışıyor → **bilinen sorun** (genel bir programa taşınabilir sandbox yok); onay metni ve README uyarıyor, yazdıkları `workspace_scope` ile raporlanıyor.
+- ✅ Görev şeması `codex --output-schema`'ya veriliyordu, codex katı modda sıradan şemaları reddediyor → kullanılmıyor (şema istemde, doğrulayıcı denetliyor).
+- ✅ agy deny-list alt dize eşleşmesiyle (`npm run format` → `rm`) uyarıyı susturuyordu, `permissions: null`'da çöküyordu → kelime eşleşmesi, sağlam okuma.
+- ✅ `probe_version` tekrarı ve kullanılmayan `health()` (çıkışta asılabilirdi) → kaldırıldı.
+- ✅ `status_snapshot` değişen her dosyanın tamamını okuyup hash'liyordu → `stat` (boyut + mtime).
+- ✅ Şema iki yerde aranıyordu ve her denemede dosyaya yazılıyordu → `--output-schema` ile birlikte kalktı.
+- ✅ `doctor`'ın `codex login status`'u ve agy ayar dosyası enjekte edilemiyordu (testler gerçek Codex'i çağırabilirdi) → `login=`, `agy_settings=` parametreleri.
+Testler: 667 geçti (+4).
+
 ### Faz 6 – CLI kod ajanları (2026-11-10)
 **Yapılanlar:**
 - Bayraklar kurulu sürümlerin `--help` çıktısıyla doğrulandı: codex-cli 0.160.0, agy 1.5.3 (D-044).
@@ -43,15 +57,17 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 - ✅ Ajan worktree dışına (kullanıcının deposuna) yazarsa `workspace_scope` doğrulaması yakalıyor, uyarı veriliyor, hiçbir şey uygulanmıyor (`test_writing_outside_the_worktree_is_caught`). Not: ajanın kendisinin yazdığını Orkestra engelleyemez; asıl koruma ajanın sandbox'ı (D-044).
 - ✅ 50 KB istem Windows'ta stdin ile geçiyor (`test_a_50_kb_prompt_goes_through_stdin`).
 - ✅ Uçtan uca (sahte ajan, gerçek git, gerçek pytest): testleri kıran deneme → geri bildirim → geçti, `apply` çalıştı; ajan commit'i baseline'a göre diff'leniyor.
-- ⏸ Canlı (gerçek Codex, `-m live`): test yazıldı (`test_live.py::test_live_codex_edit_and_apply`), Codex kotası harcayacağı için kullanıcı onayıyla çalıştırılacak.
+- ⏸ Canlı (gerçek Codex, `-m live`): test yazıldı (`test_live.py::test_live_codex_edit_and_apply`); kullanıcının kararıyla **sonraya ertelendi** (2026-11-10). Çalıştırmak için: `uv run pytest -m live -k codex` (Codex oturumu açık olmalı, kotadan bir görev harcar).
 - ✅ ruff, ruff format, pyright, pytest (663 test) temiz.
 
 **Ertelenenler:**
+- Canlı Codex testi (`uv run pytest -m live -k codex`): kullanıcı sonra yapacak.
 - agy JSON çıktısının gerçek şekli ve oturum dökümünden (transcript) son mesajı okuma → canlı denemede/Faz 14.
 - PTY ile çalıştırma (agy TTY sorunları) → gerekirse.
 
 **Bilinen sorunlar:**
 - Ajan kendi sandbox'ının izin verdiği yerlere yazabilir; Orkestra sadece kullanıcının deposundaki değişikliği tespit eder (ignore edilen dosyalar hariç), geri almaz.
+- `generic` ajanların sandbox'ı yok (D-045).
 - Bu fazda, test koruması eklenmeden önceki bir test koşusu gerçek Codex'i birkaç kez (geçici dizinlerde, salt okunur `ask`) çalıştırdı; koruma eklendi.
 
 ### Kod denetimi – Faz 5c (PR #8), 2026-11-10

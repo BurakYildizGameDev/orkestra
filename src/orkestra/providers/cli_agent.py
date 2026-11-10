@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import re
 import shutil
 import subprocess
 from collections.abc import Mapping
@@ -32,7 +33,7 @@ import psutil
 from orkestra.config.schema import CliAgentProvider
 from orkestra.errors import ProviderBadOutput, ProviderTimeout, ProviderUnavailable
 from orkestra.i18n import t
-from orkestra.providers.base import AgentRequest, AgentResult, HealthReport, Usage
+from orkestra.providers.base import AgentRequest, AgentResult, Usage
 
 KILL_GRACE_S = 5.0
 VERSION_TIMEOUT_S = 15.0
@@ -168,10 +169,6 @@ class CliAgent:
             raise ProviderBadOutput(t("agent.error.empty", name=self.name))
         return AgentResult(message, code, stdout_path, stderr_path, self.usage(stdout_path))
 
-    async def health(self) -> HealthReport:
-        version = await probe_version(self.executable)
-        return HealthReport(ok=version is not None, version=version)
-
 
 class CodexAgent(CliAgent):
     """``codex exec`` (Mimari §5.4); the last message comes from ``--output-last-message``."""
@@ -189,8 +186,6 @@ class CodexAgent(CliAgent):
         model = req.model or self.config.model
         if model:
             argv += ["--model", model]
-        if req.output_schema is not None:
-            argv += ["--output-schema", str(req.output_schema)]
         argv += [*self.config.extra_args, "-"]  # "-": the prompt comes from stdin
         return Invocation(argv, req.prompt.encode("utf-8"))
 
@@ -256,22 +251,6 @@ def create_agent(name: str, config: CliAgentProvider, environ: Mapping[str, str]
     return _KINDS[config.kind or "generic"](name, config, environ, executable=executable)
 
 
-async def probe_version(executable: str) -> str | None:
-    """First line of ``<program> --version``; ``None`` when it does not answer."""
-    try:
-        done = await asyncio.wait_for(
-            asyncio.to_thread(
-                subprocess.run, [executable, "--version"], capture_output=True,
-                stdin=subprocess.DEVNULL, check=False,
-            ),
-            VERSION_TIMEOUT_S,
-        )  # fmt: skip
-    except (OSError, TimeoutError):
-        return None
-    lines = done.stdout.decode("utf-8", errors="replace").strip().splitlines()
-    return lines[0].strip() if done.returncode == 0 and lines else None
-
-
 # --- agent setup checks (doctor, consent) ----------------------------------------------
 
 AGY_SETTINGS = Path.home() / ".gemini" / "antigravity-cli" / "settings.json"
@@ -279,14 +258,22 @@ AGY_MUST_DENY = ("rm", "sudo")  # print mode approves tool calls by itself (Mima
 
 
 def agy_deny_gaps(settings: Path = AGY_SETTINGS) -> list[str]:
-    """Commands from ``AGY_MUST_DENY`` that agy's ``permissions.deny`` list does not block."""
+    """Commands from ``AGY_MUST_DENY`` that agy's ``permissions.deny`` list does not block.
+
+    A command counts as blocked when an entry names it as a whole word (``Bash(rm:*)``,
+    ``rm -rf``), not as part of another word (``npm run format``).
+    """
     try:
         data = json.loads(settings.read_bytes())
     except (OSError, ValueError):
         return list(AGY_MUST_DENY)
-    deny = data.get("permissions", {}).get("deny", []) if isinstance(data, dict) else []
-    entries = [str(e).lower() for e in deny] if isinstance(deny, list) else []
-    return [cmd for cmd in AGY_MUST_DENY if not any(cmd in entry for entry in entries)]
+    permissions = data.get("permissions") if isinstance(data, dict) else None
+    deny = permissions.get("deny") if isinstance(permissions, dict) else None
+    entries = [str(e) for e in deny] if isinstance(deny, list) else []
+    return [
+        cmd for cmd in AGY_MUST_DENY
+        if not any(re.search(rf"(?<![\w-]){cmd}(?![\w-])", entry, re.I) for entry in entries)
+    ]  # fmt: skip
 
 
 def codex_logged_in(executable: str) -> bool | None:
