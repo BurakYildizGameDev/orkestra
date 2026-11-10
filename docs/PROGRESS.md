@@ -28,6 +28,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 9b değişiklikleri (PR #10), 2026-11-10
+10 bulgu: 9'u düzeltildi, 1'inin bir kısmı gerekçesiyle bırakıldı (D-050):
+- ✅ `gc`, deposu bulunamayan worktree'yi hemen siliyordu. Takılı olmayan bir sürücüde iş kaybolurdu. Artık 1 gün bekleniyor.
+- ✅ agy kuralı salt okunur koşuda "dosya düzenle" diyordu. Artık kipe göre ve istem dosyasından okunuyor (`prompts/agy_*.md`).
+- ✅ Skill, Codex'e de gidebilecek isteme komut yasağı yazdırıyordu. Cümle kaldırıldı, kuralı adaptör ekliyor.
+- ✅ Satır sonu karşılaştırması `.gitattributes`'ı (`-text`, `eol=crlf`) yok sayıyordu. Artık git'in normalleştirmesiyle yapılıyor (`hash-object --path`).
+- ✅ Karışık satır sonu "CRLF var mı" ile algılanıyordu: yersiz çakışma çıkıyor ya da bütün dosya CRLF oluyordu. Artık üç biçim ayırt ediliyor.
+- ✅/➖ Boş klasör: worktree elle silinmişse ve `create` başarısız olursa da temizleniyor. Yarış durumu zararsız (`git worktree add` üst klasörü kendisi oluşturuyor), bırakıldı.
+- ✅ UTF-8 akışta `errors` katıydı, `surrogateescape` yolu çökertebilirdi. `PYTHONIOENCODING` eziliyordu. İkisi de düzeltildi.
+- ✅ Satır sonu karşılaştırması her dosyayı defalarca kopyalıyordu. Artık sadece baytlar farklıysa tek git çağrısı yapılıyor.
+- ✅ agy kuralı adaptörde koda gömülüydü. Artık `prompts/` altında.
+- ✅ Skill testinde tırnak içindeki `|` çağrıyı bitiriyordu, kısa seçenekler ve çok değerli seçenekler denetlenmiyordu. Hepsi düzeltildi.
+Testler: 721 geçti (+13).
+
 ### Faz 9b – Skill doğrulama (2026-11-10)
 **Yapılanlar:**
 - PR #10'un kod denetimi: 10 bulgu, hepsi düzeltildi (D-047, aşağıda ayrı kayıt).

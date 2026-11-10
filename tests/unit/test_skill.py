@@ -27,7 +27,7 @@ _YAML = YAML(typ="safe", pure=True)
 
 _FENCE = re.compile(r"^```[^\n]*\n(.*?)^```", re.DOTALL | re.MULTILINE)
 _INLINE = re.compile(r"`([^`\n]+)`")
-_CALL = re.compile(r"(?<![\w./-])orkestra((?:\s+[^\s`|;&]+)*)")
+_SHELL_OPERATORS = "|;&"
 _HELP = "--help"  # click adds it to every command; it is not in ``params``
 
 
@@ -52,16 +52,39 @@ def _words(code: str) -> list[str]:
         return code.split()
 
 
+def _tokens(code: str) -> list[str]:
+    """Shell words; ``|``, ``;`` and ``&`` outside quotes are tokens of their own."""
+    lexer = shlex.shlex(code, posix=True, punctuation_chars=_SHELL_OPERATORS)
+    lexer.whitespace_split = True
+    try:
+        return list(lexer)
+    except ValueError:  # an unbalanced quote: fall back to plain words
+        return code.split()
+
+
+def _invocations(code: str) -> list[list[str]]:
+    """The words after each ``orkestra`` up to the next shell operator, comments dropped."""
+    found: list[list[str]] = []
+    current: list[str] | None = None
+    for token in _tokens(code):
+        if token and all(char in _SHELL_OPERATORS for char in token):
+            current = None
+        elif token == "orkestra":
+            current = []
+            found.append(current)
+        elif current is not None:
+            current.append(token)
+    return found
+
+
 def _calls(text: str, *, inline: bool = True) -> list[list[str]]:
-    """Each ``orkestra …`` invocation as its shell words, comments dropped.
+    """Each ``orkestra …`` invocation as its shell words.
 
     Lines of fenced blocks are commands to run; inline spans (``orkestra run``) may also
     just name a command in prose.
     """
-    found: list[list[str]] = []
-    for span in _fenced_lines(text) + (_inline_spans(text) if inline else []):
-        code = span.split(" #", 1)[0]
-        found.extend(_words(match.group(1)) for match in _CALL.finditer(code))
+    spans = _fenced_lines(text) + (_inline_spans(text) if inline else [])
+    found = [words for span in spans for words in _invocations(span)]
     return [words for words in found if words]  # a bare `orkestra` names the tool
 
 
@@ -76,6 +99,12 @@ def _options(command: Any) -> dict[str, Any]:
 
 def _takes_value(param: Any) -> bool:
     return isinstance(param, TyperOption) and not param.is_flag and not param.count
+
+
+def _skip_values(param: Any, word: str, rest: list[str]) -> None:
+    """Drop the values an option takes from ``rest`` (``--point 1 2``: two)."""
+    if _takes_value(param) and "=" not in word:
+        del rest[: max(param.nargs, 1)]
 
 
 def _is_option(word: str) -> bool:
@@ -99,8 +128,8 @@ def _split_options(command: Any, words: list[str], path: list[str]) -> tuple[lis
         param = options.get(name)
         if param is None:
             problems.append(f"'{' '.join(path)}' has no option {name}")
-        elif _takes_value(param) and "=" not in word and rest:
-            rest.pop(0)
+        else:
+            _skip_values(param, word, rest)
     return positionals, problems
 
 
@@ -129,8 +158,7 @@ def _resolve(
             return None, [], ["orkestra"], []  # `--help`, `--version`: no subcommand needed
         if param is None:
             return None, [], ["orkestra"], [f"unknown global option {name}"]
-        if _takes_value(param) and "=" not in word and rest:
-            rest.pop(0)
+        _skip_values(param, word, rest)
     command: Any = group
     path = ["orkestra"]
     while isinstance(command, TyperGroup):
@@ -176,19 +204,19 @@ def check_mention(group: TyperGroup, words: list[str]) -> list[str]:
 def check_reference(group: TyperGroup, span: str) -> list[str]:
     """Problems with a command or flag named in prose without ``orkestra`` (``apply --force``).
 
-    A span that starts with a command is checked with ``check_mention``; a span of flags
-    (``--dry-run``) must name options that some command has. Other inline code (field
-    names, values) is ignored.
+    A span that starts with a command is checked with ``check_mention``; a span of options
+    (``--dry-run``, ``-q``) must name options that some command has. Other inline code
+    (field names, values) is ignored.
     """
     words = _words(span)
     if not words:
         return []
     if words[0] in group.commands:
         return check_mention(group, words)
-    if not words[0].startswith("--"):
+    if not _is_option(words[0]):
         return []
     known = _all_options(group)
-    names = [word.split("=", 1)[0] for word in words if word.startswith("--")]
+    names = [word.split("=", 1)[0] for word in words if _is_option(word)]
     return [f"no command has option {name}" for name in names if name not in known]
 
 
@@ -220,11 +248,7 @@ def test_every_command_and_flag_in_the_skill_exists(skill_text: str) -> None:
         for words in _calls(skill_text, inline=False)
         for problem in check_call(group, words)
     ]
-    mentions = [
-        _words(match.group(1))
-        for span in _inline_spans(skill_text)
-        for match in _CALL.finditer(span)
-    ]
+    mentions = [words for span in _inline_spans(skill_text) for words in _invocations(span)]
     problems += [
         f"`orkestra {' '.join(words)}`: {problem}"
         for words in mentions
@@ -292,7 +316,7 @@ def test_the_checker_catches_prose_references_that_do_not_exist(span: str) -> No
 
 def test_every_command_and_flag_named_in_the_prose_exists(skill_text: str) -> None:
     group = _cli()
-    spans = [span for span in _inline_spans(skill_text) if not _CALL.search(span)]
+    spans = [span for span in _inline_spans(skill_text) if "orkestra" not in _tokens(span)]
     problems = [
         f"`{span}`: {problem}" for span in spans for problem in check_reference(group, span)
     ]
@@ -308,3 +332,32 @@ def test_the_example_task_files_in_the_skill_are_valid(skill_text: str) -> None:
     assert tasks, "the skill shows at least one task file"
     for data in tasks:
         parse_task(data, source="SKILL.md")
+
+
+def test_a_quoted_pipe_does_not_end_the_call() -> None:
+    calls = _calls('`orkestra ask "a | b" --nope --json`')
+    assert calls == [["ask", "a | b", "--nope", "--json"]]
+    assert check_call(_cli(), calls[0])
+
+
+def test_a_pipe_outside_quotes_ends_the_call() -> None:
+    assert _calls("`orkestra budget --json | head -5`") == [["budget", "--json"]]
+
+
+@pytest.mark.parametrize("span", ["-f", "-q --json"])
+def test_the_checker_catches_prose_short_options_that_do_not_exist(span: str) -> None:
+    assert check_reference(_cli(), span)
+
+
+def test_an_option_with_two_values_consumes_both() -> None:
+    import typer
+
+    app = typer.Typer()
+
+    @app.command()
+    def pair(point: tuple[int, int] = typer.Option((0, 0), "--point"), name: str = "") -> None:
+        """A command with a two-value option."""
+
+    command = typer.main.get_command(app)
+    positionals, problems = _split_options(command, ["--point", "1", "2"], ["pair"])
+    assert positionals == [] and problems == []

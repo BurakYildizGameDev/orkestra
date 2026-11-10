@@ -380,3 +380,79 @@ def test_removing_the_last_worktree_of_a_repository_removes_its_folder(
     gw.remove(second)
     assert not second.path.parent.exists()
     assert paths.worktrees_dir().is_dir()
+
+
+# --- code review fixes (PR #10, Faz 9b) ----------------------------------------------------
+
+
+def test_a_line_ending_change_is_real_for_a_file_git_does_not_convert(
+    make_repo: MakeRepo,
+) -> None:
+    # "-text": git keeps the bytes, so the user's CRLF -> LF conversion is a real change and
+    # must survive the worker's edit instead of being silently reverted.
+    repo = make_repo(
+        {".gitattributes": "*.bat -text\n", "a.bat": b"one\r\ntwo\r\nthree\r\n"},
+        autocrlf="true",
+    )
+    wt = gw.create(repo, "20261110-120000-abcd")
+    (repo / "a.bat").write_bytes(b"one\ntwo\nthree\n")
+    (wt.path / "a.bat").write_bytes(b"one\r\nTWO\r\nthree\r\n")
+    applied = gw.apply(wt)
+    assert applied.merged == ("a.bat",)
+    assert (repo / "a.bat").read_bytes() == b"one\nTWO\nthree\n"
+
+
+def test_a_mostly_lf_file_with_one_crlf_line_merges_without_a_conflict(
+    make_repo: MakeRepo,
+) -> None:
+    repo = make_repo({"a.txt": b"one\r\ntwo\r\nthree\r\n"})  # stored with CRLF
+    wt = gw.create(repo, "20261110-120000-abcd")
+    (repo / "a.txt").write_bytes(b"ONE\ntwo\r\nthree\n")  # the user: mostly LF now
+    (wt.path / "a.txt").write_bytes(b"one\r\ntwo\r\nTHREE\r\n")
+    gw.apply(wt)
+    assert (repo / "a.txt").read_bytes().replace(b"\r\n", b"\n") == b"ONE\ntwo\nTHREE\n"
+
+
+def test_one_crlf_line_does_not_turn_the_whole_file_into_crlf(make_repo: MakeRepo) -> None:
+    lines = [b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8"]
+    repo = make_repo({"a.txt": b"\n".join(lines) + b"\n"})
+    wt = gw.create(repo, "20261110-120000-abcd")
+    # The user's line 4 sits in the worker's patch context, so the three-way merge runs.
+    user = [*lines[:3], b"FOUR\r", *lines[4:]]
+    (repo / "a.txt").write_bytes(b"\n".join(user) + b"\n")
+    worker = [*lines[:6], b"SEVEN", lines[7]]
+    (wt.path / "a.txt").write_bytes(b"\n".join(worker) + b"\n")
+    applied = gw.apply(wt)
+    assert applied.merged == ("a.txt",)
+    merged = (repo / "a.txt").read_bytes()
+    assert merged.replace(b"\r\n", b"\n") == b"1\n2\n3\nFOUR\n5\n6\nSEVEN\n8\n"
+    assert merged.count(b"\r\n") <= 1
+
+
+def test_the_repository_folder_goes_when_the_worktree_was_deleted_by_hand(
+    make_repo: MakeRepo,
+) -> None:
+    repo = make_repo(FILES)
+    wt = gw.create(repo, "20261110-120000-abcd")
+    _rmtree(wt.path)
+    gw.remove_path(wt.path)
+    assert not wt.path.parent.exists()
+
+
+def test_a_failed_create_leaves_no_empty_folder(
+    make_repo: MakeRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from orkestra.errors import InternalError
+
+    repo = make_repo(FILES)
+    real = gw._git
+
+    def failing(args, cwd, **kwargs):  # type: ignore[no-untyped-def]
+        if list(args[:2]) == ["worktree", "add"]:
+            raise InternalError("worktree add failed")
+        return real(args, cwd, **kwargs)
+
+    monkeypatch.setattr(gw, "_git", failing)
+    with pytest.raises(InternalError):
+        gw.create(repo, "20261110-120000-abcd")
+    assert not gw.worktree_path(repo, "20261110-120000-abcd").parent.exists()

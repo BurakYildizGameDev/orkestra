@@ -384,3 +384,29 @@ def test_a_legacy_console_never_crashes_on_unencodable_text(
     print("Merhaba 😀 → ğüş")
     sys.stdout.flush()
     assert raw.getvalue().decode("cp1254").startswith("Merhaba ? ? ğüş")
+
+
+def test_a_utf8_stream_never_crashes_on_undecodable_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    # git output is decoded with surrogateescape; printing such a path must not raise.
+    from orkestra import cli
+
+    raw = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="utf-8"))
+    cli._safe_streams()
+    print("dosya-\udcff.txt")
+    sys.stdout.flush()
+    assert raw.getvalue().decode("utf-8").startswith("dosya-?.txt")
+
+
+def test_pythonioencoding_is_respected_for_redirected_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from orkestra import cli
+
+    monkeypatch.setenv("PYTHONIOENCODING", "cp1254")
+    raw = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1254"))
+    cli._safe_streams()
+    print("koşu \U0001f600")
+    sys.stdout.flush()
+    assert raw.getvalue().decode("cp1254").startswith("koşu ?")

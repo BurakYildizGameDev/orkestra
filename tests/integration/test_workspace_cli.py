@@ -303,23 +303,26 @@ def test_gc_goes_on_when_one_worktree_cannot_be_removed(
 # --- manual test fixes (Faz 9b) ----------------------------------------------------------
 
 
-def test_gc_removes_a_recent_worktree_whose_repository_is_gone(
+def test_gc_waits_before_removing_a_worktree_whose_repository_is_gone(
     repo: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # A missing repository may only be an unplugged drive: the unapplied change lives only
+    # in the worktree, so gc waits a day before it gives up on it.
     import os
     import shutil
     import stat
 
-    wt = _fake_run(RUN, repo)  # recent and active: kept while its repository exists
-    assert wt is not None
+    recent = _fake_run(RUN, repo)
+    old_id = (datetime.now() - timedelta(days=2)).strftime("%Y%m%d-%H%M%S") + "-beef"
+    old = _fake_run(old_id, repo)  # far younger than the 30 days gc keeps active runs
+    assert recent is not None and old is not None
     monkeypatch.chdir(repo.parent)
 
     def force(func: Callable[[str], object], target: str, _exc: object) -> None:
         os.chmod(target, stat.S_IWRITE)
         func(target)
 
-    shutil.rmtree(repo, onerror=force)  # nothing can ever apply this run now
+    shutil.rmtree(repo, onerror=force)
     code, out, _ = _run(["gc", "--json"], capsys)
-    assert code == 0 and json.loads(out)["worktrees"] == [str(wt.path)]
-    assert not wt.path.exists()
-    assert not wt.path.parent.exists()  # the repository's folder under worktrees/ too
+    assert code == 0 and json.loads(out)["worktrees"] == [str(old.path)]
+    assert not old.path.exists() and recent.path.exists()

@@ -402,3 +402,16 @@ Mimari §5.5 (agy), §9 (`uygula`, `gc`) güncellendi.
   - Ignore edilen klasörler (`node_modules/`) worktree'de yok. Şef `node_modules`'ü worktree'ye junction ile bağlayan bir doğrulama betiği yazdı. Bu yol işçiye kullanıcının `node_modules`'üne yazma imkânı verir, bu yüzden skill'de önerilmiyor. İleride config'te "worktree'ye salt okunur bağlanacak klasörler" düşünülebilir.
   - Dışarıdan öldürülen bir koşu (ör. MCP'de takılan agy) `runs` tablosunda `running` olarak kalıyor. Bütçe rezervasyonunu `gc` temizliyor, koşunun durumunu temizlemiyor.
 Mimari §Teknoloji (Kodlama satırı) güncellendi.
+
+## D-050 – Faz 9b değişikliklerinin kod denetimi (2026-11-10, Faz 9b)
+**Bağlam:** PR #10 için ikinci `/code-review`, bu sefer D-048 ve D-049 değişikliklerini kapsadı: 10 bulgu. 9'u düzeltildi, 1'inin bir kısmı gerekçesiyle bırakıldı.
+**Karar:**
+- **`gc` bir gün bekler:** deposu bulunamayan worktree D-048'de hemen siliniyordu. Ama "bulunamayan" sadece takılı olmayan bir sürücü de olabilir ve uygulanmamış değişiklik yalnızca worktree'de duruyor. Artık kayıtsız worktree'deki gibi 1 gün bekleniyor.
+- **Satır sonu karşılaştırması git'e bırakıldı:** iki sürüm, git o yol için aynı blob'u saklayacaksa aynı sayılıyor (`git hash-object --stdin --path=<yol>`: `core.autocrlf` ve `.gitattributes` uygulanır). Böylece `-text` ya da `eol=crlf` dosyada kullanıcının satır sonu değişikliği artık sessizce geri alınmıyor. Git yalnızca baytlar farklıysa çağrılıyor, dosya kopyaları da azaldı.
+- **Karışık satır sonları:** "içinde CRLF var mı" yerine üç biçim ayırt ediliyor: hep CRLF, hep LF, karışık. Üç taraf aynı ve karışık değilse ham birleştirme yapılıyor. Değilse LF ile birleştiriliyor, sonuç sadece kullanıcının dosyası baştan sona CRLF ise CRLF yazılıyor. Böylece yersiz çakışma ve bütün dosyanın CRLF'e dönmesi engelleniyor.
+- **Boş klasör:** `remove_path` worktree zaten yoksa da depo klasörünü temizliyor. `create` başarısız olunca boş klasör bırakmıyor. **Bırakılan kısım:** bir koşu boş klasörü silerken başka bir koşunun aynı klasöre worktree eklemesiyle oluşan yarış zararsız, çünkü `git worktree add` eksik üst klasörleri kendisi oluşturuyor (denendi).
+- **agy kuralı kipe göre ve istem dosyasından:** kural artık `prompts/agy_edit.md` ve `prompts/agy_read.md`'den okunuyor ve istemin sonuna ekleniyor. Salt okunur (`ask`, `--mode plan`) koşuda "dosya düzenle" denmiyor, önceki çelişki kalktı.
+- **Skill:** şefe "agy istemine komut yasağı yaz" demiyor. Sağlayıcıyı router seçiyor, görev Codex'e de gidebilir ve Codex komut çalıştırabilir. Kuralı adaptör kendisi ekliyor.
+- **Akışlar:** UTF-8 akışlar da `errors="replace"` alıyor, böylece `surrogateescape` ile okunmuş git yolları çökertmiyor. Açıkça verilmiş `PYTHONIOENCODING` yönlendirilmiş çıktıda korunuyor.
+- **Skill testi:** çağrılar artık kabuk sözcükleriyle ayrılıyor. Tırnak içindeki `|`, `;` ve `&` çağrıyı bitirmiyor. Düzyazıdaki kısa seçenekler (`-f`) denetleniyor. Birden çok değer alan seçeneklerin bütün değerleri atlanıyor.
+Mimari §5.5 (agy), §9 (`uygula`, `gc`), §Teknoloji (Kodlama) güncellendi.
