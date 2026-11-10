@@ -1,0 +1,108 @@
+# Orkestra configuration.
+# Global: ~/.orkestra/config.yaml (or $ORKESTRA_CONFIG). Project: ./orkestra.yaml (overrides global).
+# Mappings are merged, lists are replaced, "providers.<name>: null" removes a provider.
+# No provider is mandatory: delete the ones you do not use. Providers still need consent
+# ("orkestra providers enable <name>") before they are used.
+version: 1
+language: auto              # auto | en | tr | de | es | fr  (auto = system language)
+
+defaults:
+  profile: balanced         # cheap | balanced | quality
+  chief: claude             # default chief (see "chiefs")
+  timeout_s: 300
+  max_retries: 2            # retries on the same tier, with error feedback
+  max_output_tokens: 4096
+
+providers:
+  ollama:
+    type: ollama
+    base_url: http://localhost:11434
+    local: true             # privacy: local_only tasks only go to local providers
+    concurrency: 1          # parallel requests
+    timeout_s: 600          # first model load can be slow
+    models:
+      - id: qwen2.5-coder:14b      # EXAMPLE, replace with your model
+        tier: 1
+        context_window: 32768      # sent to Ollama as num_ctx
+        strengths: [code, summary]
+    budget: {}              # empty = unlimited
+
+  openrouter:
+    type: openai_compat
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY   # NAME of the environment variable, not the key itself
+    concurrency: 4
+    models:
+      - id: provider/model-name    # EXAMPLE
+        tier: 2
+        context_window: 128000
+        price_per_mtok: {input: 0.3, output: 1.2}   # OpenRouter reports cost itself; for others
+    budget:
+      daily_usd: 2.00
+      daily_tokens: 2000000
+
+  codex:
+    type: cli_agent
+    command: codex
+    tier: 3
+    sandbox: workspace-write      # read-only | workspace-write  (danger-full-access is not supported)
+    model: null                   # null = Codex default
+    timeout_s: 1200
+    budget:
+      daily_runs: 20
+
+  agy:
+    type: cli_agent
+    command: agy
+    tier: 3
+    enabled: false                # experimental: known headless issues, off by default
+    experimental: true
+    timeout_s: 1200
+    budget:
+      daily_runs: 10
+
+chiefs:                         # interactive agents that can be chief (handoff)
+  claude:
+    launch: ["claude"]
+    prompt_mode: arg              # arg | stdin | file  (how the first message is passed)
+  agy:
+    launch: ["agy"]
+    prompt_mode: file             # file + short instruction when unsure
+  codex:
+    launch: ["codex"]
+    prompt_mode: arg
+
+handoff:
+  file: .orkestra/HANDOFF.md
+  max_lines: 200                  # warn when the handoff file grows beyond this
+  brief_max_lines: 60             # upper limit of the brief given to the new chief
+  stale_after_commits: 5          # warn after this many commits without an update
+
+profiles:
+  cheap:     {min_tier: 1, max_tier: 1}
+  balanced:  {min_tier: 1, max_tier: 3}
+  quality:   {min_tier: 2, max_tier: 3}
+
+review:                           # orkestra review (pre-review)
+  tier: 2
+  auto: false                     # true: after every edit task
+map:                              # orkestra map (project map)
+  tier: 1
+  privacy: local_only             # reads the whole repo, so local by default
+cache:
+  enabled: true                   # do not pay twice for the same ask request
+  ttl_days: 14
+routing:
+  adaptive: false                 # true: pick models by past success rate
+  min_samples: 10
+estimate:
+  confirm_above_usd: 0.50         # batch estimate above this asks for confirmation
+notify:
+  desktop: true
+  ntfy_topic_env: null            # e.g. ORKESTRA_NTFY_TOPIC (phone notifications)
+queue:
+  default_profile: cheap
+
+security:
+  block_secrets_to_remote: true   # never send context with keys/passwords to remote models
+  ignore_file: .orkestraignore    # .gitignore syntax; these files never enter the context

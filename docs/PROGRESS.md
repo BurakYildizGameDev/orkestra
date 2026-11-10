@@ -7,7 +7,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | Faz | Durum | Tarih | Not |
 |---|---|---|---|
 | 0 – İskelet + i18n altyapısı | ✅ | 2026-11-09 | Paket adı `orkestra-cli` (D-001) |
-| 1 – Config | ⏳ | | |
+| 1 – Config | ✅ | 2026-11-09 | init, config show/validate (D-006…D-012) |
 | 2 – Chat adapter, ask, doctor | ⏳ | | |
 | 3 – Durum, bütçe, onay | ⏳ | | |
 | 4 – Router | ⏳ | | |
@@ -26,6 +26,31 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 1 – Yapılandırma (2026-11-09)
+**Yapılanlar:**
+- `config/schema.py`: Mimari §4.1 modelleri, `type` alanına göre discriminated union, doğrulayıcılar (sağlayıcı adı deseni, `defaults.profile` / `queue.default_profile` / `defaults.chief` tanımlı mı, `min_tier <= max_tier`, `danger-full-access` için özel mesaj, cli_agent `kind` komuttan çıkarımı).
+- `config/loader.py`: arama sırası (`--config` > `ORKESTRA_CONFIG` > `~/.orkestra/config.yaml`, üstüne git köküne kadar en yakın `orkestra.yaml`), birleştirme (sözlük derin, liste değiştirme, `providers.<ad>: null` siler), YAML hata satırı, pydantic hatalarının seçili dilde `alan.yolu: mesaj` özetleri, `init_config` (atomik yazma, `--force` ile `.bak`, `.gitignore`'a `.orkestra/cache/`).
+- `config/example.yaml` (package data) ve aynı içerikli `examples/orkestra.example.yaml`.
+- Komutlar: `orkestra init [--force] [--project] [--json]`, `orkestra config show [--json]`, `orkestra config validate [--json]`; global `--config` seçeneği.
+- Config'teki `language` artık dil seçim sırasına bağlı (`--lang` > `ORKESTRA_LANG` > config > sistem).
+- `--json` modunda hata olursa stdout'a tek JSON belgesi: `{"error": {"code", "type", "message", "details"}}`.
+- `OrkestraError` artık `details` (satır satır sorunlar) taşıyor.
+- Yeni metinler en + tr kataloglarında.
+
+**Kabul kriterleri:**
+- ✅ Geçersiz tier, bilinmeyen sağlayıcı tipi, `danger-full-access` → çıkış kodu 2 ve anlaşılır mesaj (`test_config_cli.py::test_validate_rejects_with_exit_2`, `test_config_schema.py`; elle de denendi, örn. `providers.openrouter.models[0].tier: 1, 2 veya 3 olmalı`).
+- ✅ Proje config'i genel config'i doğru eziyor: liste değiştirme, sözlük birleştirme, null ile silme (`test_config_loader.py::test_project_overrides_global` + `merge_dicts` birim testleri).
+- ✅ `init` iki kez çalışınca ikincisi dosyayı bozmuyor (bayt karşılaştırmalı test; `.gitignore` satırı tek kez ekleniyor).
+- ✅ `config show --json` geçerli JSON (`json.loads` testi).
+- ✅ ruff, ruff format, pyright, pytest (176 test) temiz.
+
+**Ertelenenler:**
+- Kurulum sihirbazı (`init` artık sadece örneği kopyalıyor) → Faz 11.
+- `providers` boşken görev komutlarının "orkestra init çalıştır" mesajıyla kod 2 vermesi → görev komutları geldiğinde (Faz 2).
+
+**Bilinen sorunlar:**
+- Kapanmamış parantez gibi YAML hatalarında satır numarası dosya sonunu gösterebiliyor (ruamel'in `problem_mark`'ı).
 
 ### Faz 0 – Proje iskeleti + çok dilli altyapı (2026-11-09)
 **Yapılanlar:**
