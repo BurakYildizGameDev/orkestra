@@ -68,7 +68,7 @@ class AgentRequest:
     model: str | None
     sandbox: str
     timeout_s: int
-    output_file: Path  # final message is written here
+    output_file: Path  # final message is written here; agent records go next to it
 
 
 @dataclass(frozen=True)

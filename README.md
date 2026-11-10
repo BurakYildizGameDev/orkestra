@@ -19,7 +19,7 @@ You ──► Claude (chief: plans, splits, reviews)
    ┌────────┼──────────────┬───────────────┐
    ▼        ▼              ▼               ▼
  Ollama  OpenRouter    Codex CLI     Antigravity CLI
- (local) (API)         (code agent)  (code agent)          ← Phase 6
+ (local) (API)         (code agent)  (code agent)
             │
             ▼
    verification ──► short result envelope (JSON) ──► the chief reads only this
@@ -42,6 +42,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | Routing with profiles, privacy and failover; see why each provider was chosen or skipped | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Task files (YAML/JSON): verify the answer, retry with feedback, move up a tier | `orkestra run task.yaml [--dry-run] [--json]` |
 | Edit tasks: a worker changes code in an isolated worktree, your tests decide | `orkestra run edit.yaml`, then `show --diff`, `apply` |
+| Code agents (Codex CLI, Antigravity) as workers, in the worktree, with process-tree cleanup | `cli_agent` providers |
 | A run's envelope, full output, log or change | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | Bring a run's change into your working tree, or throw it away | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
 | Clean up abandoned worktrees, old run records and stale reservations | `orkestra gc [--older-than 30] [--dry-run]` |
@@ -105,7 +106,7 @@ one, so higher tiers act as a fallback.
 
 A provider or model is left out when it:
 
-- is disabled, is a code agent, or its API key variable is not set
+- is disabled, or its API key variable is not set (a code agent: its program is not installed)
 - has no consent yet (`orkestra providers enable <name>`), or its settings changed since
 - is **paused by the circuit breaker**: 3 network/server errors in a row pause it for 5 minutes, an authentication error for an hour
 - is outside the profile's tier range, or its context window is too small for the prompt
@@ -218,7 +219,7 @@ unified diffs from models break too often. Orkestra then:
 
 If an answer is cut off at the output limit, the file is too big for that model: the run goes
 straight to tier 3. Files longer than `security.max_api_edit_lines` (400) are not given to API
-workers at all (code agents, phase 6, will handle them). The envelope has
+workers at all; code agents edit them in place. The envelope has
 `changes: {files, insertions, deletions, patch_path}`; then:
 
 ```bash
@@ -234,6 +235,53 @@ shown to the worker read-only. A worker that cannot do the task answers
 
 Ctrl+C during a run releases the budget reservation, writes an envelope with
 `error: interrupted` and keeps the worktree.
+
+## Code agents: Codex CLI and Antigravity
+
+A `cli_agent` provider runs a real code agent as a subprocess, normally on tier 3. For an edit
+task it works directly in the run's worktree; for an `ask` task it reads your project with a
+read-only sandbox. Everything else is the same as for API workers: your checks decide,
+feedback goes back on failure, `show --diff` and `apply` at the end.
+
+```yaml
+providers:
+  codex:
+    type: cli_agent
+    command: codex               # found on PATH (codex.cmd on Windows works too)
+    tier: 3
+    sandbox: workspace-write     # read-only agents cannot do edit tasks
+    model: null                  # null = the agent's default
+    timeout_s: 1200              # default: 30 minutes
+    budget: {daily_runs: 20}
+  agy:
+    type: cli_agent
+    command: agy
+    experimental: true           # agy is experimental: both lines are needed
+    enabled: true
+```
+
+- The prompt goes through stdin (codex) or a file next to the run records (agy), never the
+  command line, so long prompts work on Windows. The agent's output goes to files in
+  `~/.orkestra/runs/<run_id>/attempts/<n>/`.
+- On timeout or Ctrl+C the agent **and all its child processes** are stopped.
+- Codex runs as `codex exec --sandbox workspace-write|read-only --json --output-last-message …`;
+  `danger-full-access` is never used. agy runs in its `--sandbox` print mode. Your own login
+  sessions (`codex login`) are used; Orkestra never reads them.
+- The diff is always taken against the run's baseline, so commits the agent makes count too.
+- Your repository is checked before and after every agent run. If anything changed there,
+  the `workspace_scope` check fails and you get a warning (Orkestra does not undo it).
+- Agent files in your repository (`AGENTS.md`, `.codex/` …) are in the worktree as well and
+  steer the agent as usual.
+- A feedback run continues from the agent's previous change instead of starting over.
+- Any other program (`kind: generic`: prompt on stdin, answer on stdout) works too, but it
+  has **no sandbox**: it runs with your permissions (in your project directory for `ask`).
+- `doctor` shows the agent's version, warns when codex is not logged in and when agy's
+  `permissions.deny` list does not block `rm`/`sudo` (agy approves tool calls by itself in
+  print mode).
+- A missing program, agy without `experimental: true` and a read-only agent for an edit task
+  are listed with their reason in `--dry-run`. Agents have no price: use `daily_runs`.
+
+Tested with codex-cli 0.160.0 and agy 1.5.3.
 
 ## Worktrees: isolated changes
 
@@ -363,7 +411,7 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 5a | Task files, verifiers, retries with feedback, escalation (`orkestra run`) | ✅ |
 | 5b | Git worktrees, `show`, `apply`, `discard`, `gc` | ✅ |
 | 5c | Edit tasks with API workers | ✅ |
-| 6 | Code agents: Codex CLI, Antigravity CLI | ⏳ |
+| 6 | Code agents: Codex CLI, Antigravity CLI | ✅ |
 | 7 | Batch runs, parallelism, cost estimate | ⏳ |
 | 8 | Chief tools: `status`, `review`, `map`, templates, `plan expand`, cache, savings counter | ⏳ |
 | 9 | Claude skill | ⏳ |

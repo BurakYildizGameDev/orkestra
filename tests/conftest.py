@@ -39,6 +39,21 @@ def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     return recorded
 
 
+@pytest.fixture(autouse=True)
+def no_real_agents(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only the fake agent (run by this Python) may start; real codex/agy only in live tests."""
+    if request.node.get_closest_marker("live") is not None:
+        return
+    import sys
+
+    from orkestra.providers import cli_agent
+
+    def which(command: str, environ: object) -> str | None:
+        return sys.executable if command == sys.executable else None
+
+    monkeypatch.setattr(cli_agent, "_which", which)
+
+
 GIT_ENV = {
     "GIT_AUTHOR_NAME": "test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
     "GIT_COMMITTER_NAME": "test", "GIT_COMMITTER_EMAIL": "test@example.invalid",

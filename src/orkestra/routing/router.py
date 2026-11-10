@@ -14,9 +14,9 @@ from __future__ import annotations
 import os
 import sqlite3
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from orkestra.config.schema import (
     CliAgentProvider,
@@ -27,13 +27,14 @@ from orkestra.config.schema import (
 )
 from orkestra.errors import ConfigError, ConsentRequired, NoProviderAvailable, UsageError
 from orkestra.i18n import t
-from orkestra.providers import pricing
+from orkestra.providers import cli_agent, pricing
 from orkestra.providers.base import estimate_tokens
 from orkestra.providers.pricing import Price
 from orkestra.providers.registry import ChatConfig, key_present
 from orkestra.state import budget, consent, health
 
 CONTEXT_FILL = 0.8  # the estimated prompt may use at most 80% of the context window
+AGENT_CONTEXT = 1_000_000  # agents read files themselves: no context window check
 
 Privacy = Literal["normal", "local_only"]
 
@@ -59,6 +60,7 @@ class ProviderState:
     open_until: datetime | None = None
     last_error: str | None = None
     key_present: bool = True
+    installed: bool = True  # code agents: the program is on PATH
     used: budget.Amount = field(default_factory=budget.Amount)
 
 
@@ -72,8 +74,8 @@ class Snapshot:
 @dataclass(frozen=True)
 class Candidate:
     provider: str
-    config: ChatConfig
-    model: ModelSpec
+    config: ChatConfig | CliAgentProvider
+    model: ModelSpec  # for a code agent: its model (or kind) on the agent's tier
     budget_ratio: float  # 0..1, lowest remaining share over the provider's limits (shown only)
     price: Price | None
     order: tuple[int, int] = (0, 0)  # position in the config: (provider, model)
@@ -170,6 +172,61 @@ def _models_for(name: str, cfg: ChatConfig, needs: TaskNeeds, low: int) -> list[
     return [ModelSpec.model_validate({"id": needs.model, "tier": max(needs.tier, low)})]
 
 
+class _Drop(Protocol):
+    def __call__(
+        self, name: str, model_id: str | None, code: str, key: str, /,
+        needs_consent: bool = False, **params: Any,
+    ) -> None: ...  # fmt: skip
+
+
+def _agent_candidate(
+    name: str,
+    cfg: CliAgentProvider,
+    needs: TaskNeeds,
+    state: ProviderState,
+    tiers: tuple[int, int],
+    profile_name: str,
+    drop: _Drop,
+) -> Candidate | None:
+    """A code agent as a candidate (Mimari §5.3), or ``None`` after recording why not.
+
+    agy is experimental and must be acknowledged with ``experimental: true`` (Mimari §5.5);
+    an agent limited to a read-only sandbox cannot do edits. Agents read the files themselves,
+    so neither the context window nor ``max_api_edit_lines`` applies; their budget counts
+    runs and requests (no price).
+    """
+    if cfg.kind == "agy" and not cfg.experimental:
+        drop(name, None, "agent_experimental", "route.reason.agent_experimental")
+        return None
+    if needs.kind == "edit" and cfg.sandbox == "read-only":
+        drop(name, None, "agent_read_only", "route.reason.agent_read_only")
+        return None
+    if not state.installed:
+        drop(name, None, "agent_missing", "route.reason.agent_missing", command=cfg.command)
+        return None
+    model_id = cfg.model or cfg.kind or "agent"
+    if needs.model is not None:
+        if needs.provider != name and needs.model != cfg.model:
+            drop(name, needs.model, "no_such_model", "select.reason.no_such_model",
+                 model=needs.model)  # fmt: skip
+            return None
+        model_id = needs.model
+    low, high = tiers
+    if needs.model is None and not low <= cfg.tier <= high:
+        drop(
+            name, model_id, "tier_out_of_range", "route.reason.tier",
+            model=model_id, tier=cfg.tier, low=low, high=high, profile=profile_name,
+        )  # fmt: skip
+        return None
+    amount = budget.estimate(needs.prompt_chars, 0, None)
+    limit = budget.exceeded(cfg.budget, state.used, amount)
+    if limit is not None:
+        drop(name, model_id, "budget", "route.reason.budget", model=model_id, limit=limit)
+        return None
+    model = ModelSpec(id=model_id, tier=cfg.tier, context_window=AGENT_CONTEXT)
+    return Candidate(name, cfg, model, _budget_ratio(cfg.budget, state.used), None)
+
+
 def route(
     needs: TaskNeeds,
     config: Config,
@@ -213,9 +270,6 @@ def route(
         cfg = config.providers[name]
         state = snapshot.providers.get(name, ProviderState())
         # --- provider level -------------------------------------------------------------
-        if isinstance(cfg, CliAgentProvider):
-            drop(name, None, "agent_not_supported", "select.reason.agent")
-            continue
         if not cfg.enabled:
             drop(name, None, "disabled", "select.reason.disabled")
             continue
@@ -239,17 +293,22 @@ def route(
         if needs.has_secrets and not cfg.local and not needs.allow_secrets:
             drop(name, None, "secrets_remote", "route.reason.secrets")
             continue
-        limit = config.security.max_api_edit_lines
-        if needs.kind == "edit" and needs.edit_lines > limit:
-            # Whole-file answers of that size get cut off; a code agent edits in place.
-            drop(name, None, "edit_too_large", "route.reason.edit_too_large",
-                 lines=needs.edit_lines, limit=limit)  # fmt: skip
-            continue
         if state.open_until is not None and snapshot.now < state.open_until:
             drop(
                 name, None, "circuit_open", "select.reason.circuit_open",
                 until=state.open_until.strftime("%H:%M"), error=state.last_error or "-",
             )  # fmt: skip
+            continue
+        if isinstance(cfg, CliAgentProvider):
+            agent = _agent_candidate(name, cfg, needs, state, (low, high), profile_name, drop)
+            if agent is not None:
+                candidates.append(replace(agent, order=(provider_order[name], 0)))
+            continue
+        limit = config.security.max_api_edit_lines
+        if needs.kind == "edit" and needs.edit_lines > limit:
+            # Whole-file answers of that size get cut off; a code agent edits in place.
+            drop(name, None, "edit_too_large", "route.reason.edit_too_large",
+                 lines=needs.edit_lines, limit=limit)  # fmt: skip
             continue
         models = _models_for(name, cfg, needs, low)
         if not models and needs.model is not None:
@@ -303,10 +362,10 @@ def take_snapshot(
 ) -> Snapshot:
     """State for the providers in ``names`` (default: all) that ``route()`` will look at.
 
-    Code agents and disabled providers are left out before any state is needed. The price
-    lookup in past usage (an SQL query per model) only runs where a ``daily_usd`` limit needs
-    it. ``extra_model`` (provider, model id) prices an explicitly chosen model that the config
-    does not list.
+    Disabled providers are left out before any state is needed; code agents have no prices.
+    The price lookup in past usage (an SQL query per model) only runs where a ``daily_usd``
+    limit needs it. ``extra_model`` (provider, model id) prices an explicitly chosen model
+    that the config does not list.
     """
     env = os.environ if environ is None else environ
     cache = price_cache or {}
@@ -314,7 +373,7 @@ def take_snapshot(
     prices: dict[tuple[str, str], Price | None] = {}
     for name in config.providers if names is None else names:
         cfg = config.providers[name]
-        if isinstance(cfg, CliAgentProvider) or not cfg.enabled:
+        if not cfg.enabled:
             continue
         h = health.get(conn, name)
         states[name] = ProviderState(
@@ -323,7 +382,11 @@ def take_snapshot(
             last_error=h.last_error,
             key_present=key_present(cfg, env) is not False,
             used=budget.used(conn, name, now),
+            installed=not isinstance(cfg, CliAgentProvider)
+            or cli_agent.find_program(cfg.command, env) is not None,
         )
+        if isinstance(cfg, CliAgentProvider):
+            continue
         history = cfg.budget.daily_usd is not None
         models = list(cfg.models)
         if extra_model and extra_model[0] == name and all(m.id != extra_model[1] for m in models):

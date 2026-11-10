@@ -75,6 +75,48 @@ def build_edit_messages(
     return load_prompt("worker_system.md").strip(), "\n\n".join(parts)
 
 
+def build_agent_prompt(
+    prompt: str,
+    context: Context,
+    *,
+    edit: bool,
+    editable: Sequence[str] = (),
+    allow_new: bool = True,
+    protected: Sequence[str] = (),
+    schema: dict[str, Any] | None = None,
+    json_output: bool = False,
+) -> str:
+    """The prompt for a code agent (Mimari §5.3): agents read the files themselves."""
+    rules = [load_prompt("agent_task.md").strip()]
+    if edit:
+        rules += [
+            "- You are in a git worktree made for this task. Change files only inside this "
+            "directory, never outside it.",
+            "- Do not commit. Leave your changes in the working tree.",
+        ]
+        if editable:
+            rules.append(f"- Files to change: {', '.join(editable)}")
+        if not allow_new:
+            rules.append("- Do not create new files.")
+        if protected:
+            rules.append(f"- Never create or change files matching: {', '.join(protected)}")
+        rules.append("- When you are done, reply with one or two sentences: what you changed.")
+    else:
+        rules.append("- Do not change any files; only read them.")
+    parts = ["\n".join(rules), "Task:\n" + prompt.strip()]
+    others = [f.display for f in context.files if f.display not in editable]
+    if others:
+        parts.append("Files to read: " + ", ".join(others))
+    if not edit and schema is not None:
+        parts.append(
+            "Final answer format: a single JSON value that validates against this JSON Schema. "
+            "Output only the JSON.\n" + json.dumps(schema, indent=2)
+        )
+    elif not edit and json_output:
+        parts.append("Final answer format: a single JSON value. Output only the JSON.")
+    return "\n\n".join(parts)
+
+
 FEEDBACK_CHARS = 2000  # failed-check details sent back (Mimari §8)
 PREVIOUS_ANSWER_CHARS = 8000
 

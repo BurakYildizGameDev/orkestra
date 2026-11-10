@@ -117,7 +117,7 @@ def test_dry_run_lists_order_and_reasons(home: Path, capsys: pytest.CaptureFixtu
         "router/fast/model", "router/wide/model", "backup/backup/model", "ollama/coder",
         "router/smart/model",
     ]  # fmt: skip
-    assert "codex: code agents cannot answer 'ask' yet" in out
+    assert "codex: codex is not installed" in out  # tests never start a real agent
 
 
 def test_dry_run_json_sends_nothing(home: Path, capsys: pytest.CaptureFixture[str]) -> None:

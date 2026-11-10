@@ -261,6 +261,35 @@ def _pairs(name_status: bytes) -> dict[str, str]:
     return {parts[i + 1]: parts[i][:1] for i in range(0, len(parts) - 1, 2) if parts[i]}
 
 
+def restore(wt: Worktree, patch: bytes) -> None:
+    """Put a change (``diff(wt).patch``) back into a worktree that was reset to its baseline."""
+    if patch:
+        _git([*_APPLY, "-"], wt.path, stdin=patch)
+
+
+def status_snapshot(repo: Path) -> dict[str, str]:
+    """HEAD plus every changed or untracked file of ``repo`` with its size and mtime.
+
+    Two snapshots that differ mean something wrote into the repository in between (a code
+    agent that left its worktree). ``stat`` instead of the content keeps it cheap for large
+    untracked files. Ignored files are not seen.
+    """
+    head = _git(["rev-parse", "--verify", "--quiet", "HEAD"], repo, check=False).stdout
+    listing = _git(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"],
+                   repo).stdout  # fmt: skip
+    snapshot = {":HEAD": head.decode("utf-8", errors="replace").strip()}
+    for entry in filter(None, listing.split(b"\0")):
+        rel = entry[3:].decode("utf-8", errors="surrogateescape")
+        path = repo / rel
+        try:
+            info = path.stat()
+            digest = f"{info.st_size}:{info.st_mtime_ns}"
+        except OSError:
+            digest = "-"
+        snapshot[rel] = entry[:2].decode("utf-8", errors="replace") + digest
+    return snapshot
+
+
 def reset(wt: Worktree) -> None:
     """Back to the baseline between attempts (inside the worktree only)."""
     _destructive_git(["reset", "-q", "--hard", wt.baseline], wt.path)

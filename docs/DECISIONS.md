@@ -330,3 +330,33 @@ Mimari §4.2, §7, §8, §8.2 güncellendi.
 - Kesilme mesajı "kademe 3'e geçiliyor" demez (kademe 3 olmayabilir).
 - Commit'i olmayan depo, koşu başlamadan kullanım hatası (`gw.check_repo` `_prepare`'da).
 Mimari §8.2 güncellendi.
+
+## D-044 – Kod ajanları: bayraklar, sürümler ve çalışma biçimi (2026-11-10, Faz 6)
+**Bağlam:** Plan, Mimari §5.4/§5.5'teki bayrakların kurulu sürümün `--help` çıktısıyla doğrulanmasını istiyordu.
+**Test edilen sürümler:** codex-cli 0.160.0, agy 1.5.3 (Windows 11).
+**Codex (`codex exec --help`):** `--cd`, `-s/--sandbox read-only|workspace-write|danger-full-access`, `--json` (JSONL olaylar), `-o/--output-last-message`, `--output-schema`, `--skip-git-repo-check`, `-m/--model`, `--color never`; istem argümanı yoksa veya `-` ise stdin'den okunur. Kullanım: `codex exec --cd <workdir> --sandbox <...> --json --color never --output-last-message <attempt>/agent_output.md --skip-git-repo-check [--model m] [--output-schema s] [extra_args] -` + istem stdin'den. `--full-auto`, `--dangerously-*`, `--approve-for-me` kullanılmaz. Kimlik: `codex login status` doctor'da.
+**agy (`agy --help`):** `--print/-p`, `--output-format text|json|stream-json`, `--sandbox`, `--mode accept-edits|auto|plan`, `--print-timeout`, `--add-dir`, `--model`, `--disable-slash-commands`, `--dangerously-skip-permissions`. İstem stdin'den sadece `--input-format stream-json` ile (biçimi belgesiz) alınabiliyor; bu yüzden Mimari'nin dosya yolu kullanıldı, ama dosya **worktree'ye değil koşu kayıtlarının yanına** (`attempts/<n>/agent_prompt.md`) yazılır, `--add-dir` ile erişim verilir ve kısa bir `--print "<dosyayı oku>"` argümanı gider (ask görevlerinde kullanıcının dizinine dosya düşmez). Düzenleme: `--mode accept-edits`, ask: `--mode plan`; her zaman `--sandbox`; `--dangerously-skip-permissions` asla. JSON çıktının şekli canlı denenmedi: `result/response/text/output/message/content` anahtarları aranır, JSON değilse düz metin alınır.
+**Karar:**
+1. `providers/cli_agent.py`: tek modül (Mimari §2'deki `codex.py`/`agy.py` ayrı dosyalar yerine sınıflar: `CliAgent` (generic), `CodexAgent`, `AgyAgent`). `generic` türü: istem stdin, son mesaj stdout (sahte ajan bununla çalışır).
+2. Süreç: `asyncio.create_subprocess_exec`, tam yol `shutil.which` ile, çıktılar `attempts/<n>/agent.stdout|stderr` dosyalarına; zaman aşımı, Ctrl+C veya iptalde `psutil` ile süreç ağacına terminate → 5 sn → kill. Ortam: `ORKESTRA_*` silinir, `NO_COLOR=1`, `CI=1`.
+3. Çıkış kodu ≠ 0 → `ProviderBadOutput` (stderr'in son 500 karakteri, maskelenmiş), boş son mesaj → `ProviderBadOutput` → sıradaki aday. Ajanlarda taşıma yeniden denemesi yok.
+4. Router: ajanlar aday. Kurulu değilse `agent_missing`, agy `experimental: true` olmadan `agent_experimental` (deneysel kuralı gereği `enabled: true` de açıkça yazılmalı), edit + `sandbox: read-only` → `agent_read_only`. Bağlam penceresi ve `max_api_edit_lines` ajanlara uygulanmaz; gizlilik/gizli bilgi kuralları uygulanır (ajanlar `local: false`). Fiyat yok, bütçe `daily_runs`/`daily_requests` ile.
+5. Runner: ajan her denemede worktree'yi baseline'a geri sarar, worktree'de (edit, `workspace-write`) veya taban dizinde (ask, `read-only`) çalışır. Değişiklik = baseline'a göre diff (ajanın commit'leri dahil); doğrulayıcılardan sonra geri sar + değişikliği yeniden uygula (`gw.restore`), artıklar girmez. Zaman aşımı varsayılanı `max(defaults.timeout_s, 1800)`.
+6. **Dışarı yazma tespiti:** ajan koşusundan önce ve sonra kullanıcının deposunun `git status` + değişen dosya hash'leri (`gw.status_snapshot`); fark varsa `workspace_scope` kontrolü başarısız, kullanıcıya uyarı. Orkestra hiçbir şeyi geri almaz (kullanıcının dosyalarına dokunmamak için). Asıl koruma ajanın kendi sandbox'ı; bu bir ikinci savunma.
+7. İstem (`prompts/agent_task.md` + `build_agent_prompt`): görev, değiştirilecek/okunacak dosya adları (içerik değil, ajan kendisi okur), commit yapma, dizin dışına yazma, korunan desenler, `CANNOT_DO`.
+8. `doctor`: Codex için `codex login status`; agy için `~/.gemini/antigravity-cli/settings.json` `permissions.deny` içinde `rm`/`sudo` yoksa uyarı. `providers enable agy` aynı uyarıyı onay metnine ekler.
+9. Testler gerçek ajan başlatmaz: `conftest` `cli_agent._which`'i sadece sahte ajana izin verecek şekilde değiştirir (`-m live` hariç). Faz 6 sırasında bu koruma yokken eski testlerdeki `codex` sağlayıcısı gerçek Codex'i birkaç kez çalıştırdı (geçici dizinlerde, salt okunur `ask`); koruma bunu kalıcı olarak kapattı.
+Mimari §2, §5.3, §5.4, §5.5, §7 güncellendi.
+
+## D-045 – Faz 6 kod denetimi düzeltmeleri (2026-11-10, Faz 6)
+**Bağlam:** PR #9 için `/code-review`: 10 bulgu.
+**Karar:**
+- **Reddedilen cevap korunur:** edit görevinde bir cevap reddedildiğinde değişikliği (`rejected_patch`) saklanır; sonraki aday (ör. çöken bir ajan) worktree'yi değiştirmiş olsa bile koşu `failed`/`escalate` ile biterken worktree o cevaba geri getirilir, envelope ve `show --diff` raporlanan cevabı anlatır.
+- **Dışarı yazma denetimi her durumda:** ajan hata verse, zaman aşımına uğrasa veya `CANNOT_DO` dese de deponun önce/sonra karşılaştırması yapılır ve gerekirse uyarı verilir.
+- **Ajanın geri bildirim denemesi kendi değişikliğinden devam eder:** worktree sadece adayın ilk denemesinde baseline'a sarılır; sonraki denemelerde önceki değişiklik (doğrulayıcı artıkları atılmış hali) yerinde kalır ve isteme "önceki değişikliklerin çalışma ağacında, baştan başlama, düzelt" eklenir.
+- **`--output-schema` kullanılmaz:** codex şemayı katı modda uygular (her alan `required`, `additionalProperties: false`), sıradan bir görev şeması reddedilir. Şema istemde zaten var, `json_schema` doğrulayıcısı sonradan denetler. `AgentRequest.output_schema` kaldırıldı (D-044'teki `[--output-schema]` geçersiz).
+- **agy deny-list denetimi:** komut bir girdide ayrı kelime olarak geçmeli (`npm run format` `rm` sayılmaz); `permissions: null` gibi bozuk ayar çökertmez. Ayar dosyası `doctor` ve `consent.describe`'da enjekte edilebilir; `doctor`'ın `codex login status` sondası da (`login=`), testler gerçek Codex'i çağırmaz.
+- **`status_snapshot`** dosya içeriğini değil `stat`'ı (boyut + mtime_ns) karşılaştırır: büyük izlenmeyen dosyalarda bile ucuz.
+- Kullanılmayan `CliAgent.health()` ve tekrar eden `probe_version` kaldırıldı (sürüm `doctor.probe_version`'dan).
+- **Bilinen sınır:** `generic` türdeki ajanın (codex/agy dışındaki her program) sandbox'ı yoktur; `ask` görevinde kullanıcının proje dizininde çalışır. Onay metni bunu söyler (`consent.describe.generic_no_sandbox`), yazdıkları `workspace_scope` ile raporlanır. Bilerek bırakıldı: genel bir programa sandbox dayatmanın taşınabilir yolu yok.
+Mimari §5.3, §5.4 güncellendi.

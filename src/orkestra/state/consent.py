@@ -11,6 +11,7 @@ import hashlib
 import json
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 from orkestra.config.schema import CliAgentProvider, OllamaProvider, Provider
@@ -56,12 +57,23 @@ def grant(conn: sqlite3.Connection, name: str, config: Provider, now: datetime) 
         )
 
 
-def describe(name: str, config: Provider) -> list[str]:
-    """What the user allows by enabling this provider, shown before asking."""
+def describe(name: str, config: Provider, *, agy_settings: Path | None = None) -> list[str]:
+    """What the user allows by enabling this provider, shown before asking.
+
+    ``agy_settings``: agy's settings file (default: the real one in the home directory).
+    """
     lines = [t("consent.describe.title", name=name, type=config.type)]
     if isinstance(config, CliAgentProvider):
         lines.append(t("consent.describe.command", command=config.command, sandbox=config.sandbox))
         lines.append(t("consent.describe.agent_warning"))
+        if config.kind == "generic":
+            lines.append(t("consent.describe.generic_no_sandbox"))
+        if config.kind == "agy":
+            from orkestra.providers.cli_agent import AGY_SETTINGS, agy_deny_gaps
+
+            gaps = agy_deny_gaps(agy_settings or AGY_SETTINGS)
+            if gaps:
+                lines.append(t("consent.describe.agy_deny", commands=", ".join(gaps)))
     else:
         key = "consent.describe.local" if config.local else "consent.describe.remote"
         lines.append(t(key, url=config.base_url))
