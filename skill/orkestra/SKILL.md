@@ -35,7 +35,8 @@ orkestra providers list --json    # onay (consent), sağlık, kalan bütçe
 ```
 
 - Orkestra yalnızca `"enabled": true` ve `"consent": "granted"` olan sağlayıcıları kullanır. `"consent": "missing"` hiç onay verilmemiş demektir. `"consent": "changed"` ise onaydan sonra sağlayıcının ayarları (adres, model vb.) değişmiş demektir ve yeniden onay gerekir. `"enabled": false` olan sağlayıcıyı kullanıcı kapatmıştır, onu açmayı önerme.
-- Kullanmak istediğin sağlayıcının onayı eksikse **kullanıcıya sor** ve `orkestra providers enable <ad>` komutunu **kendi terminalinde** çalıştırmasını iste. Komut, sağlayıcının neler yapabileceğini gösterip etkileşimli olarak onay ister. Bu yüzden komutu sen çalıştırma: terminal etkileşimli olmadığında kod 2 ile `consent.not_interactive` hatası verir. Bu hata görev dosyasıyla ilgili değildir. `--yes` bayrağını kullanıcı açıkça izin vermeden **asla** kullanma.
+- Kullanmak istediğin sağlayıcının onayı eksikse **kullanıcıya sor**. En iyisi, kullanıcının `orkestra providers enable <ad>` komutunu **kendi terminalinde** çalıştırmasıdır. Komut, sağlayıcının neler yapabileceğini ve uyarıları gösterip etkileşimli olarak onay ister.
+- Komutu sen `--yes` olmadan çalıştırırsan terminal etkileşimli olmadığı için onay metnini yazdırır, sonra kod 2 ile `consent.not_interactive` hatası verir. Bu hata görev dosyasıyla ilgili değildir. Kullanıcı onayı senin vermeni isterse önce bu metni ona **olduğu gibi göster**. Ancak metni gördükten sonra açıkça kabul ederse `--yes` ile çalıştır. `--yes` bayrağını başka hiçbir durumda **asla** kullanma.
 - Hiç sağlayıcı yoksa (`orkestra init` ile config oluşturulmamış) kurulumu kullanıcıya bırak, işi kendin yap.
 - Bir görevin nereye gideceğini merak ediyorsan önce `--dry-run` ile bak; hiçbir şey göndermez, adayları ve elenen sağlayıcıları nedenleriyle listeler (`candidates`, `eliminated`).
 
@@ -64,7 +65,7 @@ orkestra providers list --json    # onay (consent), sağlık, kalan bütçe
 | 2 (orta API) | Test yazma, orta karmaşıklıkta fonksiyon, refactor |
 | 3 (kod ajanı: Codex vb.) | Çok dosyalı değişiklik, büyük dosyalar, komut çalıştırması gereken işler |
 
-Düşük kademeden başla; Orkestra başarısızlıkta önce aynı modelle geri bildirimle tekrar dener, sonra kendisi üst kademeye geçer. Bir sağlayıcı erişilemezse (internet yok, API hatası, bütçe bitti) sıradakine kendisi geçer. Kademe 3 ajanları kullanıcının kendi Codex/agy kotasından harcar; gerekmedikçe kademe 3 isteme.
+Düşük kademeden başla; Orkestra başarısızlıkta önce aynı modelle geri bildirimle tekrar dener, sonra kendisi üst kademeye geçer. Bir sağlayıcı erişilemezse (internet yok, API hatası, bütçe bitti) sıradakine kendisi geçer. Kademe 3 ajanları kullanıcının kendi Codex/agy kotasından harcar; gerekmedikçe kademe 3 isteme. agy (deneysel) dosya düzenleyebilir ama kabuk komutu çalıştıramaz: komut isterse istek reddedilir ve boş cevapla çıkar. agy'ye giden istemde "komut çalıştırma, sadece dosyaları düzenle" yaz. Testleri `verify` ile Orkestra çalıştırır.
 
 Gizli bilgi içeren dosyalarda işi yerel modelle sınırla: görev dosyasında `privacy: local_only`, `ask` için `--local-only`. Orkestra gizli bilgi bulduğu bağlamı uzak sağlayıcıya göndermez (çıkış kodu 3); `--allow-secrets` bayrağını kullanıcı açıkça izin vermeden **asla** kullanma, bunun yerine `local_only` öner.
 

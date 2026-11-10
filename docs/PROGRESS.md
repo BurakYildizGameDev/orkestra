@@ -19,7 +19,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 8a – status, şablon, önbellek, sayaç | ⏳ | | |
 | 8b – review, map, plan expand | ⏳ | | |
 | 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
-| 9b – Skill doğrulama | 🔄 | | kod denetimi ✅ (D-047); elle senaryolar ve düzeltmeler bekliyor |
+| 9b – Skill doğrulama | 🔄 | | kod denetimi ✅ (D-047); ilk elle deneme ✅ (D-048); skill'li senaryolar bekliyor |
 | 10 – Şef devri | ⏳ | | |
 | 11 – Arayüz, sihirbaz, 5 dil | ⏳ | | |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
@@ -27,6 +27,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 9b – İlk elle deneme: hesap makinesi (2026-11-10)
+Claude Code şef, Ollama (qwen2.5-coder:14b) ve agy işçi olarak React (Vite) hesap makinesi yaptı: 3 görev, üçü de ilk denemede geçti, 29 test, build temiz. Şef her `apply`'dan önce diff'i okudu, işçilerin 2 hatasını kendisi düzeltti.
+- ⚠️ **Skill testi sayılmaz:** oturum skill'in olmadığı bir klasörde açıldı, skill yüklenmedi. Şef görev biçimini `--help` ve eski koşu kayıtlarından öğrendi. Senaryolar skill genel kurulu olarak tekrarlanacak.
+- ❌ Onay (senaryo 3'ün karşılığı): şef onay metnini aldı ama kullanıcıya göstermedi, "kullanıcı agy istedi" diye `--yes` kullandı. Skill (yüklü olsaydı) artık bunu yasaklıyor: önce metni göster, açık kabul al.
+- İlk denemede (önceki oturum) agy, Unity MCP sunucusunu beklerken her koşuda ~90 sn takıldı. agy'nin MCP ayarları yedeklenip boşaltıldı (kullanıcının isteğiyle; geri kurma notu `~/.gemini/KALDIRILANLAR.md`).
+Bulunan hatalar ve düzeltmeler (D-048):
+- ✅ `gc` deposu silinmiş worktree'yi 30 gün tutuyordu → hemen temizliyor.
+- ✅ `apply`/`discard` sonrası boş depo klasörü kalıyordu → siliniyor.
+- ✅ autocrlf'te satır sonu farkı yanlış "birleştirildi" mesajı veriyordu; kullanıcı LF ile düzenlediyse yersiz çakışma çıkıyordu → satır sonu farkı yok sayılıyor, karışıksa LF ile birleştirilip kullanıcının satır sonuyla yazılıyor.
+- ✅ agy print modunda kabuk komutu isteyince boş cevapla çıkıyordu → istem dosyasının başında komut yasağı. Skill'e de not eklendi.
+- ➖ **Bilinen sorun:** agy bağlanamayan MCP sunucusunu beklerken takılıyor (Orkestra engelleyemez; ileride `doctor` uyarısı).
+- Skill: `--yes`'ten önce onay metnini kullanıcıya göster, açık kabul al. agy'ye "komut çalıştırma" yaz.
+Testler: 707 geçti (+4).
 
 ### Kod denetimi – Faz 9a (PR #10), 2026-11-10 (Faz 9b)
 10 bulgu, hepsi düzeltildi (D-047):

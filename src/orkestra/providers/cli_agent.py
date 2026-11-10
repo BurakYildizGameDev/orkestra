@@ -204,10 +204,17 @@ class AgyAgent(CliAgent):
     in agy's ``--sandbox``; edits use ``--mode accept-edits``, ask tasks ``--mode plan``.
     """
 
+    # Print mode rejects shell commands on its own; agy then stops with an empty answer.
+    NO_COMMANDS = (
+        "Important: do not run shell commands (tests, builds, installs or anything else). "
+        "In this mode they are rejected and your work is lost. Only read and edit files; "
+        "the checks are run for you afterwards.\n\n"
+    )
+
     def invocation(self, req: AgentRequest) -> Invocation:
         prompt_file = req.output_file.parent / PROMPT_FILE
         prompt_file.parent.mkdir(parents=True, exist_ok=True)
-        prompt_file.write_bytes(req.prompt.encode("utf-8"))
+        prompt_file.write_bytes((self.NO_COMMANDS + req.prompt).encode("utf-8"))
         mode = "accept-edits" if req.sandbox == "workspace-write" else "plan"
         argv = [
             self.executable,

@@ -340,3 +340,43 @@ def test_git_timeout_message_is_translated(
         gw.repo_root(Path.cwd())
     assert "timeout" not in str(exc_info.value)
     assert str(gw.GIT_TIMEOUT_S) in str(exc_info.value)
+
+
+# --- manual test fixes (Faz 9b) ----------------------------------------------------------
+
+
+def test_line_endings_alone_are_not_a_later_change(make_repo: MakeRepo) -> None:
+    # autocrlf: the checkout form is CRLF, but a tool wrote the user's file with LF.
+    repo = make_repo({"a.txt": b"one\r\ntwo\r\nthree\r\n"}, autocrlf="true")
+    (repo / "a.txt").write_bytes(b"one\ntwo\nthree\n")
+    wt = gw.create(repo, "20261110-120000-abcd")
+    content = (wt.path / "a.txt").read_bytes().replace(b"two", b"TWO")
+    (wt.path / "a.txt").write_bytes(content)
+    applied = gw.apply(wt)
+    assert applied.files == ("a.txt",)
+    assert applied.merged == ()
+    assert (repo / "a.txt").read_bytes().replace(b"\r\n", b"\n") == b"one\nTWO\nthree\n"
+
+
+def test_a_real_later_change_is_still_merged_despite_line_endings(make_repo: MakeRepo) -> None:
+    repo = make_repo({"a.txt": b"one\r\ntwo\r\nthree\r\n"}, autocrlf="true")
+    wt = gw.create(repo, "20261110-120000-abcd")
+    (repo / "a.txt").write_bytes(b"ONE\ntwo\nthree\n")  # the user edits, with LF
+    content = (wt.path / "a.txt").read_bytes().replace(b"three", b"THREE")
+    (wt.path / "a.txt").write_bytes(content)
+    applied = gw.apply(wt)
+    assert applied.merged == ("a.txt",)
+    assert (repo / "a.txt").read_bytes().replace(b"\r\n", b"\n") == b"ONE\ntwo\nTHREE\n"
+
+
+def test_removing_the_last_worktree_of_a_repository_removes_its_folder(
+    make_repo: MakeRepo,
+) -> None:
+    repo = make_repo(FILES)
+    first = gw.create(repo, "20261110-120000-abcd")
+    second = gw.create(repo, "20261110-120001-abcd")
+    gw.remove(first)
+    assert second.path.parent.is_dir()  # another worktree of the repository is still there
+    gw.remove(second)
+    assert not second.path.parent.exists()
+    assert paths.worktrees_dir().is_dir()

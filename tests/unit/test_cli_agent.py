@@ -170,7 +170,9 @@ def test_agy_gets_the_prompt_from_a_file_outside_the_workdir(tmp_path: Path) -> 
     req = _request(tmp_path, prompt="a long prompt " * 1000)
     inv = _agy(model="gemini-3").invocation(req)
     prompt_file = req.output_file.parent / ca.PROMPT_FILE
-    assert prompt_file.read_bytes().decode() == req.prompt
+    written = prompt_file.read_bytes().decode()
+    assert written.endswith(req.prompt)
+    assert "do not run shell commands" in written.lower()  # agy's print mode rejects them
     assert not (req.workdir / ca.PROMPT_FILE).exists()
     assert all(req.prompt not in a for a in inv.argv) and inv.stdin is None
     argv = inv.argv

@@ -21,6 +21,7 @@ Safety rules:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -312,9 +313,26 @@ def _read(path: Path) -> bytes | None:
 _CONFLICT = object()  # _merge result: the file cannot be merged
 
 
+def _lf(data: bytes) -> bytes:
+    return data.replace(b"\r\n", b"\n")
+
+
+def _same(a: bytes | None, b: bytes | None) -> bool:
+    """Equal, or text that differs only in line endings.
+
+    With ``core.autocrlf`` the checkout form is CRLF while tools often write LF, so a file
+    the user never touched can differ from the baseline in line endings alone.
+    """
+    if a == b:
+        return True
+    if a is None or b is None or b"\0" in a + b:
+        return False
+    return _lf(a) == _lf(b)
+
+
 def _needs_merge(base: bytes | None, ours: bytes | None, theirs: bytes | None) -> bool:
     """Both the user and the worker changed the file, and not in the same way."""
-    return ours != base and theirs not in (ours, base)
+    return not _same(ours, base) and not (_same(theirs, ours) or _same(theirs, base))
 
 
 def _merge(base: bytes | None, ours: bytes | None, theirs: bytes | None, cwd: Path) -> object:
@@ -322,14 +340,24 @@ def _merge(base: bytes | None, ours: bytes | None, theirs: bytes | None, cwd: Pa
 
     Returns the merged content, ``None`` for "delete the file", or ``_CONFLICT``.
     """
-    if ours == base:
+    if _same(ours, base):
         return theirs  # only the worker changed (or deleted) it
-    if theirs in (ours, base):
+    if _same(theirs, ours) or _same(theirs, base):
         return ours  # same change on both sides, or only the user changed it
     if base is None or ours is None or theirs is None:
         return _CONFLICT  # created on both sides, or deleted on one side and edited on the other
     if b"\0" in base + ours + theirs:
         return _CONFLICT  # binary: no line merge
+    if len({b"\r\n" in side for side in (base, ours, theirs)}) == 1:
+        return _merge_file(base, ours, theirs, cwd)
+    # Mixed line endings would make every line differ: merge with LF, keep the user's style.
+    merged = _merge_file(_lf(base), _lf(ours), _lf(theirs), cwd)
+    if isinstance(merged, bytes) and b"\r\n" in ours:
+        return merged.replace(b"\n", b"\r\n")
+    return merged
+
+
+def _merge_file(base: bytes, ours: bytes, theirs: bytes, cwd: Path) -> object:
     scratch = paths.worktrees_dir() / ".merge"
     scratch.mkdir(parents=True, exist_ok=True)
     files: list[Path] = []
@@ -420,6 +448,15 @@ def remove_path(path: Path) -> None:
         remove_directory(path)
     if common is not None and common.is_dir():
         _git(["--git-dir", str(common), "worktree", "prune"], paths.worktrees_dir(), check=False)
+    _remove_if_empty(path.parent)
+
+
+def _remove_if_empty(folder: Path) -> None:
+    """Drop a repository's folder under the worktrees directory once its last run is gone."""
+    if folder.resolve() == paths.worktrees_dir().resolve() or not folder.is_dir():
+        return
+    with contextlib.suppress(OSError):  # another worktree of the repository is still there
+        folder.rmdir()  # only succeeds when empty
 
 
 def _require_under_worktrees(path: Path) -> Path:
