@@ -66,6 +66,10 @@ class NoProviderAvailable(OrkestraError):
     exit_code = ExitCode.NO_PROVIDER
 
 
+class BudgetExhausted(NoProviderAvailable):
+    """A daily budget limit would be exceeded."""
+
+
 class ConsentRequired(OrkestraError):
     """Provider has not been enabled by the user (``orkestra providers enable``)."""
 

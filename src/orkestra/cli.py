@@ -6,6 +6,7 @@ import asyncio
 import json
 import sys
 from collections.abc import Sequence
+from contextlib import closing
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Annotated, Any
@@ -14,8 +15,11 @@ import typer
 
 from orkestra import __version__, doctor, envelope, i18n
 from orkestra.config import loader
-from orkestra.errors import ExitCode, OrkestraError, exit_code_for
+from orkestra.config.schema import Provider
+from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
 from orkestra.i18n import t
+from orkestra.providers import registry
+from orkestra.state import consent, db
 from orkestra.tasks import runner
 
 
@@ -68,11 +72,160 @@ def _json_option() -> Any:
     return typer.Option("--json", help=t("cli.option.json"))
 
 
+def _provider_config(ctx: typer.Context, name: str) -> Provider:
+    loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+    if name not in loaded.config.providers:
+        raise UsageError(
+            t(
+                "select.unknown_provider",
+                name=name,
+                available=", ".join(loaded.config.providers) or "-",
+            )
+        )
+    return loaded.config.providers[name]
+
+
+def _limits_json(row: registry.ProviderRow) -> list[dict[str, Any]]:
+    return [
+        {"limit": s.limit, "value": s.value, "used": s.used, "remaining": s.remaining}
+        for s in row.limits
+    ]
+
+
+def _row_json(row: registry.ProviderRow) -> dict[str, Any]:
+    h = row.health
+    return {
+        "name": row.name,
+        "type": row.type,
+        "enabled": row.enabled,
+        "local": row.local,
+        "consent": row.consent,
+        "health": {
+            "open_until": h.open_until.isoformat() if h.open_until else None,
+            "consecutive_failures": h.consecutive_failures,
+            "last_error": h.last_error,
+        },
+        "budget": _limits_json(row),
+        "api_key_env": row.key_env,
+        "api_key_present": row.key_present,
+    }
+
+
+def _row_text(row: registry.ProviderRow) -> str:
+    parts = [
+        row.type,
+        t("providers.enabled") if row.enabled else t("providers.disabled"),
+        t(f"providers.consent.{row.consent}"),
+    ]
+    h = row.health
+    if h.open_until is not None and h.is_open(db.local_now()):
+        parts.append(t("providers.circuit_open", until=h.open_until.strftime("%H:%M")))
+    elif h.consecutive_failures:
+        parts.append(t("providers.failures", count=h.consecutive_failures))
+    if row.key_env:
+        key = "providers.key_present" if row.key_present else "providers.key_missing"
+        parts.append(t(key, var=row.key_env))
+    parts.extend(
+        t("providers.budget_left", limit=s.limit, remaining=_num(s.remaining)) for s in row.limits
+    )
+    return f"{row.name}: " + " | ".join(parts)
+
+
+def _num(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else f"{value:.4f}"
+
+
+def _budget_text(row: registry.ProviderRow) -> str:
+    if not row.limits:
+        return t(
+            "budget.unlimited", name=row.name, tokens=row.used.tokens, requests=row.used.requests
+        )
+    limits = ", ".join(
+        t("budget.limit", limit=s.limit, used=_num(s.used), value=_num(s.value)) for s in row.limits
+    )
+    return f"{row.name}: {limits}"
+
+
 def build_app() -> typer.Typer:
     """Build the typer app. Help texts are translated here, so set the language first."""
     app = typer.Typer(name="orkestra", help=t("cli.help"), no_args_is_help=True)
     config_app = typer.Typer(name="config", help=t("cli.config.help"), no_args_is_help=True)
     app.add_typer(config_app)
+    providers_app = typer.Typer(
+        name="providers", help=t("cli.providers.help"), no_args_is_help=True
+    )
+    app.add_typer(providers_app)
+
+    @providers_app.command("list", help=t("cli.providers.list.help"))
+    def providers_list(
+        ctx: typer.Context, as_json: Annotated[bool, _json_option()] = False
+    ) -> None:
+        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+        with closing(db.connect()) as conn:
+            rows = registry.provider_overview(loaded.config, conn, db.local_now())
+        if as_json:
+            _echo_json({"providers": [_row_json(row) for row in rows]})
+            return
+        if not rows:
+            typer.echo(t("select.no_providers"))
+        for row in rows:
+            typer.echo(_row_text(row))
+
+    @providers_app.command("enable", help=t("cli.providers.enable.help"))
+    def providers_enable(
+        ctx: typer.Context,
+        name: Annotated[str, typer.Argument(metavar="NAME")],
+        yes: Annotated[bool, typer.Option("--yes", help=t("cli.providers.enable.yes"))] = False,
+    ) -> None:
+        cfg = _provider_config(ctx, name)
+        for line in consent.describe(name, cfg):
+            typer.echo(line)
+        if not yes:
+            if not sys.stdin.isatty():
+                raise UsageError(t("consent.not_interactive", name=name))
+            try:
+                agreed = typer.confirm(t("consent.confirm"), default=False)
+            except (typer.Abort, EOFError):
+                # Windows reports NUL as a TTY; reading it hits EOF at once.
+                raise UsageError(t("consent.not_interactive", name=name)) from None
+            if not agreed:
+                typer.echo(t("consent.declined", name=name))
+                raise typer.Exit(int(ExitCode.CONSENT_REQUIRED))
+        with closing(db.connect()) as conn:
+            consent.grant(conn, name, cfg, db.local_now())
+        typer.echo(t("consent.granted", name=name))
+
+    @providers_app.command("disable", help=t("cli.providers.disable.help"))
+    def providers_disable(
+        ctx: typer.Context, name: Annotated[str, typer.Argument(metavar="NAME")]
+    ) -> None:
+        _provider_config(ctx, name)
+        with closing(db.connect()) as conn:
+            removed = consent.revoke(conn, name)
+        typer.echo(t("consent.revoked" if removed else "consent.not_granted", name=name))
+
+    @app.command("budget", help=t("cli.budget.help"))
+    def budget_command(
+        ctx: typer.Context, as_json: Annotated[bool, _json_option()] = False
+    ) -> None:
+        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+        now = db.local_now()
+        with closing(db.connect()) as conn:
+            rows = registry.provider_overview(loaded.config, conn, now)
+        if as_json:
+            _echo_json(
+                {
+                    "day": now.date().isoformat(),
+                    "providers": [
+                        {"name": r.name, "used": asdict(r.used), "limits": _limits_json(r)}
+                        for r in rows
+                    ],
+                }
+            )
+            return
+        typer.echo(t("budget.title", day=now.date().isoformat()))
+        for row in rows:
+            typer.echo(_budget_text(row))
 
     @app.callback()
     def main(
@@ -173,10 +326,14 @@ def build_app() -> typer.Typer:
         schema: Annotated[
             Path | None, typer.Option("--schema", metavar="FILE", help=t("cli.ask.option.schema"))
         ] = None,
+        allow_secrets: Annotated[
+            bool, typer.Option("--allow-secrets", help=t("cli.ask.option.allow_secrets"))
+        ] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
         request = runner.AskRequest(
+            allow_secrets=allow_secrets,
             prompt=prompt,
             provider=provider,
             model=model,
