@@ -68,7 +68,8 @@ class AgentRequest:
     model: str | None
     sandbox: str
     timeout_s: int
-    output_file: Path  # final message is written here
+    output_file: Path  # final message is written here; agent records go next to it
+    output_schema: Path | None = None  # JSON Schema for the final message (codex)
 
 
 @dataclass(frozen=True)

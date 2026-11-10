@@ -28,7 +28,7 @@ from orkestra.config.schema import (
 )
 from orkestra.errors import ConfigError, ProviderBadOutput, ProviderError
 from orkestra.i18n import t
-from orkestra.providers import pricing
+from orkestra.providers import cli_agent, pricing
 from orkestra.providers.base import CompletionRequest
 from orkestra.providers.ollama import OllamaChat, has_model
 from orkestra.providers.openai_compat import OpenAICompatChat
@@ -188,8 +188,16 @@ async def _check_openai(
     return checks
 
 
+LoginProbe = Callable[[str], "bool | None"]
+
+
 def _check_agent(
-    name: str, cfg: CliAgentProvider, which: Which, probe: VersionProbe
+    name: str,
+    cfg: CliAgentProvider,
+    which: Which,
+    probe: VersionProbe,
+    login: LoginProbe = cli_agent.codex_logged_in,
+    agy_settings: Path = cli_agent.AGY_SETTINGS,
 ) -> list[Check]:
     path = which(cfg.command)
     if path is None:
@@ -202,7 +210,7 @@ def _check_agent(
             )
         ]
     version = probe(path)
-    return [
+    checks = [
         Check(
             f"provider:{name}",
             "info",
@@ -210,6 +218,18 @@ def _check_agent(
             {"type": "cli_agent", "path": path, "version": version},
         )
     ]
+    if cfg.kind == "codex" and login(path) is False:
+        checks.append(Check(f"provider:{name}:login", "warn",
+                            t("doctor.agent.not_logged_in", command=cfg.command), {}))  # fmt: skip
+    if cfg.kind == "agy":
+        gaps = cli_agent.agy_deny_gaps(agy_settings)
+        if gaps:
+            checks.append(Check(
+                f"provider:{name}:deny", "warn",
+                t("doctor.agent.agy_deny", commands=", ".join(gaps), path=agy_settings),
+                {"missing": gaps},
+            ))  # fmt: skip
+    return checks
 
 
 async def _check_provider(

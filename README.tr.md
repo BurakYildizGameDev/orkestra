@@ -19,7 +19,7 @@ Sen ──► Claude (şef: planlar, böler, denetler)
    ┌────────┼──────────────┬───────────────┐
    ▼        ▼              ▼               ▼
  Ollama  OpenRouter    Codex CLI     Antigravity CLI
- (yerel) (API)         (kod ajanı)   (kod ajanı)            ← Faz 6
+ (yerel) (API)         (kod ajanı)   (kod ajanı)
             │
             ▼
    doğrulama ──► kısa sonuç zarfı (JSON) ──► şef sadece bunu okur
@@ -42,6 +42,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Profil, gizlilik ve yedeğe geçişli yönlendirme; her sağlayıcının neden seçildiğini/elendiğini görme | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Görev dosyaları (YAML/JSON): cevabı doğrula, geri bildirimle tekrar dene, üst kademeye geç | `orkestra run gorev.yaml [--dry-run] [--json]` |
 | Düzenleme görevleri: işçi kodu yalıtılmış worktree'de değiştirir, karar senin testlerinin | `orkestra run duzenle.yaml`, sonra `show --diff`, `apply` |
+| İşçi olarak kod ajanları (Codex CLI, Antigravity): worktree'de, süreç ağacı temizliğiyle | `cli_agent` sağlayıcıları |
 | Bir koşunun envelope'u, tam çıktısı, log'u veya değişikliği | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | Koşunun değişikliğini çalışma ağacına al ya da at | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
 | Sahipsiz worktree, eski koşu kaydı ve askıda rezervasyonları temizle | `orkestra gc [--older-than 30] [--dry-run]` |
@@ -104,7 +105,7 @@ kademeler yedek olarak kalır.
 
 Bir sağlayıcı veya model şu durumlarda elenir:
 
-- kapalıysa, kod ajanıysa veya API anahtarı değişkeni tanımlı değilse
+- kapalıysa veya API anahtarı değişkeni tanımlı değilse (kod ajanı: programı kurulu değilse)
 - henüz onayı yoksa (`orkestra providers enable <ad>`) ya da onaydan sonra ayarları değiştiyse
 - **devre kesici tarafından beklemeye alındıysa**: arka arkaya 3 ağ/sunucu hatası 5 dakika, kimlik doğrulama hatası 1 saat bekletir
 - profilin kademe aralığı dışındaysa veya bağlam penceresi istem için küçükse
@@ -214,8 +215,8 @@ modellerin ürettiği unified diff'ler çok sık bozulur. Orkestra sonra:
    deneme, üst kademeye geçiş.
 
 Cevap çıktı sınırında kesilirse dosya o model için çok büyüktür: koşu doğrudan kademe 3'e geçer.
-`security.max_api_edit_lines`'tan (400) uzun dosyalar API işçilerine hiç verilmez (onları 6.
-fazdaki kod ajanları yapacak). Envelope'ta `changes: {files, insertions, deletions, patch_path}`
+`security.max_api_edit_lines`'tan (400) uzun dosyalar API işçilerine hiç verilmez; onları kod
+ajanları yerinde düzenler. Envelope'ta `changes: {files, insertions, deletions, patch_path}`
 var; sonra:
 
 ```bash
@@ -231,6 +232,49 @@ geçer.
 
 Koşu sırasında Ctrl+C bütçe rezervasyonunu serbest bırakır, `error: interrupted` içeren bir
 envelope yazar ve worktree'yi korur.
+
+## Kod ajanları: Codex CLI ve Antigravity
+
+`cli_agent` sağlayıcısı gerçek bir kod ajanını alt süreç olarak çalıştırır, genelde kademe
+3'te. Düzenleme görevinde doğrudan koşunun worktree'sinde çalışır; `ask` görevinde projeni
+salt okunur sandbox ile okur. Gerisi API işçileriyle aynı: karar senin kontrollerinin,
+başarısızlıkta geri bildirim, sonunda `show --diff` ve `apply`.
+
+```yaml
+providers:
+  codex:
+    type: cli_agent
+    command: codex               # PATH'te aranır (Windows'ta codex.cmd de olur)
+    tier: 3
+    sandbox: workspace-write     # salt okunur ajanlar düzenleme görevi yapamaz
+    model: null                  # null = ajanın varsayılanı
+    timeout_s: 1200              # varsayılan: 30 dakika
+    budget: {daily_runs: 20}
+  agy:
+    type: cli_agent
+    command: agy
+    experimental: true           # agy deneysel: iki satır da gerekli
+    enabled: true
+```
+
+- İstem stdin'den (codex) veya koşu kayıtlarının yanındaki bir dosyadan (agy) gider, komut
+  satırından asla; uzun istemler Windows'ta da çalışır. Ajanın çıktısı
+  `~/.orkestra/runs/<run_id>/attempts/<n>/` altındaki dosyalara yazılır.
+- Zaman aşımında veya Ctrl+C'de ajan **ve bütün alt süreçleri** durdurulur.
+- Codex `codex exec --sandbox workspace-write|read-only --json --output-last-message …` ile
+  çalışır; `danger-full-access` asla kullanılmaz. agy kendi `--sandbox` print modunda çalışır.
+  Kendi oturumların (`codex login`) kullanılır; Orkestra onları okumaz.
+- Diff her zaman koşunun baseline'ına göre alınır, ajanın kendi commit'leri de sayılır.
+- Deponun durumu her ajan koşusundan önce ve sonra denetlenir. Orada bir şey değiştiyse
+  `workspace_scope` kontrolü başarısız olur ve uyarı alırsın (Orkestra bunu geri almaz).
+- Deponun ajan dosyaları (`AGENTS.md`, `.codex/` …) worktree'de de vardır ve ajanı her zamanki
+  gibi yönlendirir.
+- `doctor` ajanın sürümünü gösterir; codex oturumu açık değilse ve agy'nin `permissions.deny`
+  listesi `rm`/`sudo` engellemiyorsa uyarır (agy print modunda araç çağrılarını kendisi onaylar).
+- Kurulu olmayan program, `experimental: true` olmadan agy ve düzenleme görevi için salt okunur
+  ajan, `--dry-run`'da nedeniyle listelenir. Ajanların fiyatı yok: `daily_runs` kullan.
+
+codex-cli 0.160.0 ve agy 1.5.3 ile denendi.
 
 ## Worktree'ler: yalıtılmış değişiklikler
 
@@ -360,7 +404,7 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 5a | Görev dosyaları, doğrulayıcılar, geri bildirimle tekrar deneme, üst kademeye geçiş (`orkestra run`) | ✅ |
 | 5b | Git worktree, `show`, `apply`, `discard`, `gc` | ✅ |
 | 5c | API işçileriyle düzenleme görevleri | ✅ |
-| 6 | Kod ajanları: Codex CLI, Antigravity CLI | ⏳ |
+| 6 | Kod ajanları: Codex CLI, Antigravity CLI | ✅ |
 | 7 | Toplu çalıştırma, paralellik, maliyet tahmini | ⏳ |
 | 8 | Şef araçları: `status`, `review`, `map`, şablonlar, `plan expand`, önbellek, tasarruf sayacı | ⏳ |
 | 9 | Claude skill | ⏳ |

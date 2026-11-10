@@ -62,6 +62,12 @@ def describe(name: str, config: Provider) -> list[str]:
     if isinstance(config, CliAgentProvider):
         lines.append(t("consent.describe.command", command=config.command, sandbox=config.sandbox))
         lines.append(t("consent.describe.agent_warning"))
+        if config.kind == "agy":
+            from orkestra.providers.cli_agent import agy_deny_gaps
+
+            gaps = agy_deny_gaps()
+            if gaps:
+                lines.append(t("consent.describe.agy_deny", commands=", ".join(gaps)))
     else:
         key = "consent.describe.local" if config.local else "consent.describe.remote"
         lines.append(t(key, url=config.base_url))

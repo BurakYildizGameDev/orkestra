@@ -14,7 +14,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 5a – Görev + doğrulama | ✅ | 2026-11-10 | `orkestra run`, 8 doğrulayıcı, geri bildirimle tekrar, üst kademeye geçiş (D-038) |
 | 5b – Worktree | ✅ | 2026-11-10 | worktree (kirli ağaç dahil), `show`, `apply`, `discard`, `gc` (D-040) |
 | 5c – API ile edit | ✅ | 2026-11-10 | tam dosya JSON, yol güvenliği, worktree'de doğrulama, kesilmede kademe 3 (D-042) |
-| 6 – CLI ajanları | ⏳ | | |
+| 6 – CLI ajanları | ✅ | 2026-11-10 | codex, agy (deneysel), generic; süreç ağacı temizliği, dışarı yazma tespiti (D-044) |
 | 7 – Batch + tahmin | ⏳ | | |
 | 8a – status, şablon, önbellek, sayaç | ⏳ | | |
 | 8b – review, map, plan expand | ⏳ | | |
@@ -26,6 +26,33 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 6 – CLI kod ajanları (2026-11-10)
+**Yapılanlar:**
+- Bayraklar kurulu sürümlerin `--help` çıktısıyla doğrulandı: codex-cli 0.160.0, agy 1.5.3 (D-044).
+- `providers/cli_agent.py`: alt süreç (tam yol, kabuksuz, stdin/dosya ile istem, çıktı dosyaya), zaman aşımı/Ctrl+C/iptalde süreç ağacı öldürme (psutil), temiz ortam; `CodexAgent` (`codex exec … -`), `AgyAgent` (deneysel: istem dosyası koşu kayıtlarında, `--sandbox`, `--mode`), `generic`; Codex JSONL'den tahmini token; agy JSON çıktısı savunmacı okunuyor.
+- Router: ajanlar aday (kurulu değil / agy deneysel / salt okunur + edit nedenleriyle eleniyor); büyük dosyalı edit artık ajana gidiyor.
+- Runner: ajan yolu — worktree'de çalıştır → baseline'a göre diff (ajan commit'leri dahil) → doğrula → artıkları at → başarısızsa geri sar + geri bildirimle tekrar; `ask` için salt okunur. Kullanıcının deposu her ajan koşusunun önünde/arkasında denetleniyor (`workspace_scope`).
+- `doctor`: sürüm, `codex login status`, agy deny-list uyarısı; `providers enable agy` onay metninde aynı uyarı.
+- `tests/fixtures/fake_agent.py` (echo, flaky, right, commit, litter, empty, fail, cannot, hang, escape); `conftest` testlerde gerçek ajan başlatılmasını engelliyor.
+- README (en + tr): "Kod ajanları" bölümü, özellik tablosu, yol haritası.
+
+**Kabul kriterleri:**
+- ✅ Zaman aşımında çocuk süreçler dahil hepsi ölüyor, psutil ile doğrulandı (`test_cli_agent.py::test_timeout_kills_the_whole_process_tree`; iptal/Ctrl+C için `test_cancelling_kills_the_whole_process_tree`).
+- ✅ Boş çıktı → `ProviderBadOutput` → sonraki aday (`test_agent_cli.py::test_empty_output_moves_on_to_the_next_agent`).
+- ✅ Ajan worktree dışına (kullanıcının deposuna) yazarsa `workspace_scope` doğrulaması yakalıyor, uyarı veriliyor, hiçbir şey uygulanmıyor (`test_writing_outside_the_worktree_is_caught`). Not: ajanın kendisinin yazdığını Orkestra engelleyemez; asıl koruma ajanın sandbox'ı (D-044).
+- ✅ 50 KB istem Windows'ta stdin ile geçiyor (`test_a_50_kb_prompt_goes_through_stdin`).
+- ✅ Uçtan uca (sahte ajan, gerçek git, gerçek pytest): testleri kıran deneme → geri bildirim → geçti, `apply` çalıştı; ajan commit'i baseline'a göre diff'leniyor.
+- ⏸ Canlı (gerçek Codex, `-m live`): test yazıldı (`test_live.py::test_live_codex_edit_and_apply`), Codex kotası harcayacağı için kullanıcı onayıyla çalıştırılacak.
+- ✅ ruff, ruff format, pyright, pytest (663 test) temiz.
+
+**Ertelenenler:**
+- agy JSON çıktısının gerçek şekli ve oturum dökümünden (transcript) son mesajı okuma → canlı denemede/Faz 14.
+- PTY ile çalıştırma (agy TTY sorunları) → gerekirse.
+
+**Bilinen sorunlar:**
+- Ajan kendi sandbox'ının izin verdiği yerlere yazabilir; Orkestra sadece kullanıcının deposundaki değişikliği tespit eder (ignore edilen dosyalar hariç), geri almaz.
+- Bu fazda, test koruması eklenmeden önceki bir test koşusu gerçek Codex'i birkaç kez (geçici dizinlerde, salt okunur `ask`) çalıştırdı; koruma eklendi.
 
 ### Kod denetimi – Faz 5c (PR #8), 2026-11-10
 10 bulgu, 10'u düzeltildi (D-043):

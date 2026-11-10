@@ -11,7 +11,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
-from orkestra.config.schema import Config, Defaults, OllamaProvider, OpenAICompatProvider, Provider
+from orkestra.config.schema import (
+    CliAgentProvider,
+    Config,
+    Defaults,
+    OllamaProvider,
+    OpenAICompatProvider,
+    Provider,
+)
 from orkestra.providers.base import ChatProvider
 from orkestra.providers.ollama import OLLAMA_TIMEOUT_S, OllamaChat
 from orkestra.providers.openai_compat import OpenAICompatChat, read_api_key
@@ -71,6 +78,14 @@ def enable_provider(conn: sqlite3.Connection, name: str, config: Provider, now: 
     """
     consent.grant(conn, name, config, now)
     health.reset(conn, name)
+
+
+AGENT_TIMEOUT_S = 1800  # code agents run tests and edit many files
+
+
+def agent_timeout(config: CliAgentProvider, defaults: Defaults) -> int:
+    """Seconds a code agent may run: its ``timeout_s``, else at least 30 minutes."""
+    return config.timeout_s or max(defaults.timeout_s, AGENT_TIMEOUT_S)
 
 
 def request_timeout(config: ChatConfig, defaults: Defaults) -> int:

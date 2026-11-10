@@ -3,6 +3,7 @@
 Environment:
 - ``ORKESTRA_LIVE_OLLAMA_MODEL``: installed Ollama model (default ``qwen2.5-coder:1.5b``)
 - ``OPENROUTER_API_KEY`` and ``ORKESTRA_LIVE_OPENROUTER_MODEL`` for the OpenRouter test
+- an installed, logged-in ``codex`` for the code agent test (uses one small task)
 """
 
 from __future__ import annotations
@@ -63,3 +64,58 @@ async def test_live_openrouter_ask() -> None:
         CompletionRequest(model=model, system="Answer briefly.", user="hi", max_output_tokens=16)
     )
     assert result.text.strip()
+
+
+def test_live_codex_edit_and_apply(make_repo: object, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A real ``codex exec`` fixes a bug in a worktree; ``apply`` brings it home (Faz 6).
+
+    Uses your ``codex login`` session (one small task). Skipped when codex is not installed.
+    """
+    import asyncio
+    import shutil
+    import sys
+    from contextlib import closing
+    from pathlib import Path
+
+    from orkestra.config.loader import load_config
+    from orkestra.state import consent, db
+    from orkestra.tasks import runner, spec
+    from orkestra.workspace import service
+
+    if shutil.which("codex") is None:
+        pytest.skip("codex is not installed")
+    repo: Path = make_repo(  # type: ignore[operator]
+        {
+            "calc.py": "def add(a, b):\n    return a - b\n",
+            "tests/test_calc.py": "from calc import add\n\n\ndef test_add():\n"
+            "    assert add(2, 3) == 5\n",
+            ".gitignore": "__pycache__/\n",
+        }
+    )
+    monkeypatch.chdir(repo)
+    home = Path(os.environ["ORKESTRA_HOME"])
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "config.yaml").write_text(
+        "version: 1\nproviders:\n  codex:\n    type: cli_agent\n    command: codex\n",
+        encoding="utf-8",
+    )
+    config = load_config(cwd=repo).config
+    with closing(db.connect()) as conn:
+        consent.grant(conn, "codex", config.providers["codex"], db.local_now())
+    task = spec.parse_task(
+        {
+            "id": "live-fix", "kind": "edit", "prompt": "Fix add() in calc.py so the tests pass.",
+            "context": {"files": ["calc.py"]},
+            "verify": [
+                {"type": "command", "run": f'"{sys.executable}" -m pytest -q tests'},
+                {"type": "protect_paths", "paths": ["tests/**"]},
+            ],
+        },
+        source="live",
+    )  # fmt: skip
+    outcome = asyncio.run(runner.run_task(task, config, cwd=repo))
+    assert outcome.envelope.status == "ok", outcome.envelope
+    assert (repo / "calc.py").read_bytes().decode() == "def add(a, b):\n    return a - b\n"
+    with closing(db.connect()) as conn:
+        service.apply_run(conn, outcome.envelope.run_id)
+    assert "a + b" in (repo / "calc.py").read_bytes().decode()

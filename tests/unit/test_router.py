@@ -33,6 +33,9 @@ BASE_PROVIDERS: dict[str, Any] = {
         ],
         "budget": {"daily_usd": 1.0, "daily_requests": 100},
     },
+}
+AGENTS = {
+    "local": BASE_PROVIDERS["local"],
     "codex": {"type": "cli_agent", "command": "codex"},
 }
 
@@ -61,9 +64,62 @@ class Case:
 
 CASES = [
     Case(
-        "default: tier ascending, then config order, agent left out",
+        "a code agent is a candidate on its tier",
+        providers=AGENTS,
+        states={
+            "local": ProviderState(consent="granted"),
+            "codex": ProviderState(consent="granted"),
+        },
+        expected=["local/small", "local/big", "local/mid", "codex/codex"],
+    ),
+    Case(
+        "a code agent that is not installed",
+        providers=AGENTS,
+        states={
+            "local": ProviderState(consent="granted"),
+            "codex": ProviderState(consent="granted", installed=False),
+        },
+        expected=["local/small", "local/big", "local/mid"],
+        eliminated={"codex": "agent_missing"},
+    ),
+    Case(
+        "a large file: only the code agent can edit it",
+        providers=AGENTS,
+        needs=TaskNeeds(kind="edit", edit_lines=5000),
+        states={
+            "local": ProviderState(consent="granted"),
+            "codex": ProviderState(consent="granted"),
+        },
+        expected=["codex/codex"],
+        eliminated={"local": "edit_too_large"},
+    ),
+    Case(
+        "a read-only agent cannot edit",
+        providers={"codex": {"type": "cli_agent", "command": "codex", "sandbox": "read-only"}},
+        needs=TaskNeeds(kind="edit"),
+        states={"codex": ProviderState(consent="granted")},
+        eliminated={"codex": "agent_read_only"},
+    ),
+    Case(
+        "agy needs experimental: true",
+        providers={"agy": {"type": "cli_agent", "command": "agy"}},
+        states={"agy": ProviderState(consent="granted")},
+        eliminated={"agy": "agent_experimental"},
+    ),
+    Case(
+        "a local_only task never goes to a code agent",
+        providers=AGENTS,
+        needs=TaskNeeds(privacy="local_only"),
+        states={
+            "local": ProviderState(consent="granted"),
+            "codex": ProviderState(consent="granted"),
+        },
+        expected=["local/small", "local/big", "local/mid"],
+        eliminated={"codex": "not_local"},
+    ),
+    Case(
+        "default: tier ascending, then config order",
         expected=["local/small", "local/big", "router/r1", "local/mid", "router/r2"],
-        eliminated={"codex": "agent_not_supported"},
     ),
     Case(
         "task tier raises the lower bound",
@@ -204,7 +260,7 @@ CASES = [
         "forced model: found on its provider",
         needs=TaskNeeds(model="mid"),
         expected=["local/mid"],
-        eliminated={"router/mid": "no_such_model", "codex": "agent_not_supported"},
+        eliminated={"router/mid": "no_such_model"},
     ),
     Case(
         "forced provider + unlisted model is trusted",

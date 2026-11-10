@@ -22,6 +22,13 @@ stay (no verifier leftovers). An answer cut off at the output limit means the fi
 large for that model: the run moves straight to tier 3. The user's checkout changes only on
 ``orkestra apply``; an interrupted run keeps its worktree.
 
+Code agents (Faz 6, ``providers/cli_agent.py``) are candidates too, normally on tier 3. An
+agent edits the worktree itself (``workspace-write`` sandbox) or reads the project for an
+``ask`` task (``read-only``). Its change is the worktree diff against the baseline (its own
+commits included); verifier leftovers are dropped the same way. The user's repository is
+snapshotted around every agent run: if anything changed there, the ``workspace_scope``
+check fails and the user is warned.
+
 Every run gets ``runs/<run_id>/`` with ``task.yaml``, ``attempts/<n>/request.json``,
 ``attempts/<n>/response.txt``, ``attempts/<n>/verify.log``, ``output.md``, ``envelope.json``
 and ``orkestra.log``, plus ``worktree.json`` and ``changes.patch`` for edit tasks (Mimari §3,
@@ -48,7 +55,7 @@ import pathspec
 
 from orkestra import paths
 from orkestra.config.loader import dump_yaml
-from orkestra.config.schema import Config
+from orkestra.config.schema import CliAgentProvider, Config
 from orkestra.envelope import (
     Changes,
     EnvelopeUsage,
@@ -66,12 +73,26 @@ from orkestra.errors import (
     OrkestraError,
     ProviderError,
     ProviderTimeout,
+    UsageError,
 )
 from orkestra.i18n import t
 from orkestra.logging_setup import run_log
 from orkestra.providers import pricing
-from orkestra.providers.base import CompletionRequest, CompletionResult, Usage, estimate_tokens
-from orkestra.providers.registry import create_chat_provider, request_timeout
+from orkestra.providers.base import (
+    AgentRequest,
+    AgentResult,
+    CompletionRequest,
+    CompletionResult,
+    Usage,
+    estimate_tokens,
+)
+from orkestra.providers.cli_agent import create_agent
+from orkestra.providers.registry import (
+    ChatConfig,
+    agent_timeout,
+    create_chat_provider,
+    request_timeout,
+)
 from orkestra.routing import retry
 from orkestra.routing.router import (
     Candidate,
@@ -87,10 +108,15 @@ from orkestra.security.secrets_scan import Finding, blocking, scan_text
 from orkestra.state import budget, consent, db, health
 from orkestra.tasks import edit_format as ef
 from orkestra.tasks.context import Context, collect_context
-from orkestra.tasks.prompts import build_ask_messages, build_edit_messages, build_retry_message
+from orkestra.tasks.prompts import (
+    build_agent_prompt,
+    build_ask_messages,
+    build_edit_messages,
+    build_retry_message,
+)
 from orkestra.tasks.spec import ForbidPaths, ProtectPaths, TaskSpec, effective_verifiers
 from orkestra.verify import CheckResult, Verifier, VerifyContext, build_verifiers, run_verifiers
-from orkestra.verify.base import FileChange, failed
+from orkestra.verify.base import FileChange, Message, failed, passed
 from orkestra.verify.schema import JsonSchemaCheck
 from orkestra.workspace import git_worktree as gw
 from orkestra.workspace import service as workspaces
@@ -100,6 +126,8 @@ Sleep = Callable[[float], Awaitable[None]]
 PROMPT_SOURCE = "<prompt>"  # where a finding in the prompt text itself is reported
 CANNOT_DO = "CANNOT_DO:"  # worker protocol (prompts/worker_system.md, Mimari §8.1)
 VERIFICATION_FAILED = "VerificationFailed"  # failover "error" when answers kept failing checks
+SCOPE_CHECK = "workspace_scope"  # verification entry: an agent wrote outside its worktree
+SCOPE_FILES = 10  # changed files named in that check
 OUTPUT_TRUNCATED = "OutputTruncated"  # failover "error" when an edit answer was cut off
 TOP_TIER = 3
 IGNORED_WARNINGS = 5  # more skipped files than this are reported as one count
@@ -232,6 +260,7 @@ class _Prepared:
     system: str
     user: str
     edit: _EditPlan | None = None
+    agent_user: str = ""  # the prompt for code agents
 
     def needs(self) -> TaskNeeds:
         return TaskNeeds(
@@ -279,24 +308,29 @@ def _prepare(
     findings = _scan(task.prompt, context, known)
     edit: _EditPlan | None = None
     warnings = _warnings(context, findings)
+    json_output = task.output.format == "json"
+    # The model is told the schema it is checked against (loaded once, by the verifier).
+    schema = next((c.schema for c in checks if isinstance(c, JsonSchemaCheck) and c.schema), None)
     if task.kind == "edit":
         edit, read_only = _edit_plan(task, context, base)
         warnings += read_only
+        guarded = [*edit.protected, *edit.forbidden]
         system, user = build_edit_messages(
             task.prompt, context, editable=sorted(edit.editable), allow_new=task.allow_new_files,
-            protected=[*edit.protected, *edit.forbidden],
+            protected=guarded,
+        )  # fmt: skip
+        agent_user = build_agent_prompt(
+            task.prompt, context, edit=True, editable=sorted(edit.editable),
+            allow_new=task.allow_new_files, protected=guarded,
         )  # fmt: skip
     else:
-        # The model is told the schema it is checked against (loaded once, by the verifier).
-        schema = next(
-            (c.schema for c in checks if isinstance(c, JsonSchemaCheck) and c.schema), None
-        )
-        system, user = build_ask_messages(
-            task.prompt, context, schema, json_output=task.output.format == "json"
+        system, user = build_ask_messages(task.prompt, context, schema, json_output=json_output)
+        agent_user = build_agent_prompt(
+            task.prompt, context, edit=False, schema=schema, json_output=json_output
         )
     return _Prepared(
         task, options, config, env, base, checks, context, Redactor(known),
-        Redactor(known, passwords=False), findings, warnings, system, user, edit,
+        Redactor(known, passwords=False), findings, warnings, system, user, edit, agent_user,
     )  # fmt: skip
 
 
@@ -391,6 +425,21 @@ async def run_task(
 
 
 @dataclass(frozen=True)
+class _Scope:
+    """The user's repository and its state before a code agent ran."""
+
+    repo: Path | None
+    before: dict[str, str] | None
+
+
+def _repo_of(path: Path) -> Path | None:
+    try:
+        return gw.repo_root(path)
+    except UsageError:
+        return None
+
+
+@dataclass(frozen=True)
 class _Answer:
     """An answer that came back but did not pass its checks."""
 
@@ -451,10 +500,8 @@ class _TaskRun:
     def _max_output(self, candidate: Candidate) -> int:
         return candidate.model.max_output_tokens or self.prep.config.defaults.max_output_tokens
 
-    def _completion(self, candidate: Candidate, user: str) -> CompletionRequest:
-        timeout = self.task.limits.timeout_s or request_timeout(
-            candidate.config, self.prep.config.defaults
-        )
+    def _completion(self, candidate: Candidate, config: ChatConfig, user: str) -> CompletionRequest:
+        timeout = self.task.limits.timeout_s or request_timeout(config, self.prep.config.defaults)
         return CompletionRequest(
             model=candidate.model.id,
             system=self.prep.system,
@@ -548,8 +595,11 @@ class _TaskRun:
 
         Returns the outcome when an answer passed, otherwise what to do next.
         """
-        provider = create_chat_provider(candidate.provider, candidate.config, self.prep.env)
-        if candidate.config.budget.daily_usd is not None and candidate.price is None:
+        config = candidate.config
+        if isinstance(config, CliAgentProvider):
+            return await self._try_agent(candidate, config)
+        provider = create_chat_provider(candidate.provider, config, self.prep.env)
+        if config.budget.daily_usd is not None and candidate.price is None:
             self.prep.warnings.append(
                 t("budget.warning.no_price", provider=candidate.provider, model=candidate.model.id)
             )
@@ -558,7 +608,7 @@ class _TaskRun:
         transport = 0  # failed requests in a row (backoff counter)
         answers = 0
         while True:
-            completion = self._completion(candidate, user)
+            completion = self._completion(candidate, config, user)
             prompt_chars = len(completion.system) + len(completion.user)
             amount = budget.estimate(
                 prompt_chars, completion.max_output_tokens, candidate.price,
@@ -637,32 +687,189 @@ class _TaskRun:
                                   error=OUTPUT_TRUNCATED)  # fmt: skip
             answers += 1
             checks = await self._verify(result.text, attempt_dir)
-            if all(c.result.ok for c in checks):
-                return self._succeed(candidate, completion, result, checks)
-            self.rejected = _Answer(candidate, result.text, checks, result)
-            self.last_problem = "checks"
-            failures = [c.feedback for c in checks if not c.result.ok]
-            self.log.info("attempt %d failed checks: %s", self.attempts, failures)
-            if answers >= self.max_answers:
-                names = ", ".join(c.result.type for c in checks if not c.result.ok)
-                message = t("verify.failed", checks=names)
-                return self._fail(candidate, None, tries, retry.Action.ESCALATE, reason=message,
-                                  error=VERIFICATION_FAILED)  # fmt: skip
-            # Feedback goes to a model: mask everything secret, as in the records.
-            user = build_retry_message(
+            verdict = self._judge(
+                candidate, result, checks, tries, answers, completion.max_output_tokens,
                 self.prep.user,
-                self.prep.redact_output(result.text),
-                [self.prep.redact(f) for f in failures],
-            )
+            )  # fmt: skip
+            if not isinstance(verdict, str):
+                return verdict
+            user = verdict
 
-    async def _verify(self, text: str, attempt_dir: Path) -> list[CheckResult]:
-        if self.wt is not None:
-            checks = await self._check_edit(self.wt, text)
-        elif self.prep.checks:
-            ctx = VerifyContext(workdir=self.prep.base_dir, output=text)
-            checks = await run_verifiers(self.prep.checks, ctx)
-        else:
+    def _judge(
+        self,
+        candidate: Candidate,
+        result: CompletionResult,
+        checks: list[CheckResult],
+        tries: int,
+        answers: int,
+        limit: int,
+        base_prompt: str,
+    ) -> TaskOutcome | retry.Action | str:
+        """Success, giving up on the candidate, or the next prompt (with feedback)."""
+        if all(c.result.ok for c in checks):
+            return self._succeed(candidate, limit, result, checks)
+        self.rejected = _Answer(candidate, result.text, checks, result)
+        self.last_problem = "checks"
+        failures = [c.feedback for c in checks if not c.result.ok]
+        self.log.info("attempt %d failed checks: %s", self.attempts, failures)
+        if answers >= self.max_answers:
+            names = ", ".join(c.result.type for c in checks if not c.result.ok)
+            message = t("verify.failed", checks=names)
+            return self._fail(candidate, None, tries, retry.Action.ESCALATE, reason=message,
+                              error=VERIFICATION_FAILED)  # fmt: skip
+        # Feedback goes to a model: mask everything secret, as in the records.
+        return build_retry_message(
+            base_prompt,
+            self.prep.redact_output(result.text),
+            [self.prep.redact(f) for f in failures],
+        )
+
+    async def _try_agent(
+        self, candidate: Candidate, cfg: CliAgentProvider
+    ) -> TaskOutcome | retry.Action:
+        """A code agent: runs, checks and feedback runs (no transport retries)."""
+        try:
+            agent = create_agent(candidate.provider, cfg, self.prep.env)
+        except ProviderError as exc:  # not installed
+            return self._fail(candidate, exc, 0, retry.classify(exc))
+        timeout = self.task.limits.timeout_s or agent_timeout(cfg, self.prep.config.defaults)
+        repo = self.wt.repo if self.wt is not None else _repo_of(self.prep.base_dir)
+        prompt = self.prep.agent_user
+        tries = answers = 0
+        while True:
+            amount = budget.estimate(
+                len(prompt), 0, None, runs=0 if candidate.provider in self.run_counted else 1
+            )
+            try:
+                reservation = budget.reserve(
+                    self.conn, provider=candidate.provider, model=candidate.model.id,
+                    run_id=self.run_id, budget=cfg.budget, amount=amount, now=self.now(),
+                )  # fmt: skip
+            except BudgetExhausted as exc:
+                return self._fail(candidate, exc, tries, retry.Action.NEXT)
+            self.run_counted.add(candidate.provider)
+            self.attempts += 1
+            tries += 1
+            attempt_dir = self.run_dir / "attempts" / str(self.attempts)
+            attempt_dir.mkdir(parents=True, exist_ok=True)
+            req = AgentRequest(
+                prompt=prompt,
+                workdir=self.workdir,
+                model=self.task.model or cfg.model,
+                sandbox="workspace-write" if self.wt is not None else "read-only",
+                timeout_s=timeout,
+                output_file=attempt_dir / "agent_output.md",
+                output_schema=self._schema_file(attempt_dir),
+            )
+            self._write(
+                attempt_dir / "request.json",
+                json.dumps({"provider": candidate.provider, "kind": cfg.kind,
+                            **asdict(req)}, indent=2, default=str),
+            )  # fmt: skip
+            self.log.info("attempt %d: %s (agent, try %d)", self.attempts, candidate.label, tries)
+            if self.wt is not None:
+                gw.reset(self.wt)  # every run starts from the user's files
+            before = gw.status_snapshot(repo) if repo is not None else None
+            try:
+                result = await agent.run(req)
+            except ProviderError as exc:
+                if isinstance(exc, ProviderTimeout):
+                    budget.settle_as_reserved(self.conn, reservation, now=self.now())
+                else:
+                    budget.settle(
+                        self.conn, reservation, prompt_tokens=0, completion_tokens=0,
+                        cost_usd=0.0, estimated=False, now=self.now(),
+                    )  # fmt: skip
+                health.record_failure(self.conn, candidate.provider, exc, self.now())
+                self.log.warning("attempt %d failed: %s %s", self.attempts,
+                                 type(exc).__name__, exc.message)  # fmt: skip
+                action = retry.classify(exc)
+                if action is retry.Action.RETRY:
+                    action = retry.give_up(exc)
+                return self._fail(candidate, exc, tries, action)
+            except BaseException:
+                budget.release(self.conn, reservation)  # interrupted: nothing to pay for
+                self.log.warning("interrupted; reservation released")
+                raise
+            usage = self._agent_usage(len(prompt), result)
+            budget.settle(
+                self.conn, reservation, prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens, cost_usd=None,
+                estimated=True, now=self.now(),
+            )  # fmt: skip
+            health.record_success(self.conn, candidate.provider)
+            self.used.append(usage)
+            text = result.final_message
+            self._write(attempt_dir / "response.txt", text, answer=True)
+            reason = _cannot_do(text)
+            if reason is not None:
+                self.escalate_reason = t("ask.cannot_do", reason=reason or "-")
+                self.last_problem = "escalate"
+                return self._fail(candidate, None, tries, retry.Action.ESCALATE, reason=reason)
+            answers += 1
+            checks = await self._verify(text, attempt_dir, _Scope(repo, before))
+            verdict = self._judge(
+                candidate, CompletionResult(text, usage, None), checks, tries, answers,
+                self._max_output(candidate), self.prep.agent_user,
+            )  # fmt: skip
+            if not isinstance(verdict, str):
+                return verdict
+            prompt = verdict
+
+    def _schema_file(self, attempt_dir: Path) -> Path | None:
+        """The ask task's JSON Schema as a file (``codex --output-schema``)."""
+        if self.task.kind != "ask":
+            return None
+        schema = next(
+            (c.schema for c in self.prep.checks if isinstance(c, JsonSchemaCheck) and c.schema),
+            None,
+        )
+        if schema is None:
+            return None
+        path = attempt_dir / "output.schema.json"
+        path.write_bytes(json.dumps(schema, indent=2).encode("utf-8"))
+        return path
+
+    def _agent_usage(self, prompt_chars: int, result: AgentResult) -> Usage:
+        reported = result.usage
+        prompt = reported.prompt_tokens
+        completion = reported.completion_tokens
+        return Usage(
+            prompt if prompt is not None else estimate_tokens(prompt_chars),
+            completion if completion is not None else estimate_tokens(len(result.final_message)),
+            None,
+            estimated=True,
+        )
+
+    def _scope_checks(self, scope: _Scope | None) -> list[CheckResult]:
+        """Did the agent write into the user's repository? (Snapshots around the run.)"""
+        if scope is None or scope.repo is None or scope.before is None:
             return []
+        after = gw.status_snapshot(scope.repo)
+        keys = scope.before.keys() | after.keys()
+        changed = sorted(k for k in keys if scope.before.get(k) != after.get(k))
+        if not changed:
+            return [passed(SCOPE_CHECK)]
+        shown = ", ".join(changed[:SCOPE_FILES]) + (", …" if len(changed) > SCOPE_FILES else "")
+        self.prep.warnings.append(t("agent.warning.outside", repo=scope.repo, files=shown))
+        self.log.warning("files outside the worktree changed: %s", shown)
+        return [failed(SCOPE_CHECK, Message("agent.error.outside", {"files": shown}))]
+
+    async def _verify(
+        self, text: str, attempt_dir: Path, scope: _Scope | None = None
+    ) -> list[CheckResult]:
+        """``scope`` is set for code agents (they write themselves; see ``_scope_checks``)."""
+        if self.wt is not None and scope is not None:
+            checks = await self._check_agent_edit(self.wt, text, scope)
+        elif self.wt is not None:
+            checks = await self._check_edit(self.wt, text)
+        else:
+            checks = self._scope_checks(scope)
+            if self.prep.checks:
+                ctx = VerifyContext(workdir=self.prep.base_dir, output=text)
+                checks += await run_verifiers(self.prep.checks, ctx)
+            if not checks:
+                return []
         log = "\n".join(
             f"== {c.result.type}: {'ok' if c.result.ok else 'FAIL'} ==\n{c.log or c.result.detail}"
             for c in checks
@@ -698,14 +905,30 @@ class _TaskRun:
         ef.write(answer, self.workdir)
         return checks
 
+    async def _check_agent_edit(
+        self, wt: gw.Worktree, text: str, scope: _Scope
+    ) -> list[CheckResult]:
+        """Verify what an agent changed in the worktree; keep only its change afterwards."""
+        outside = self._scope_checks(scope)
+        change = gw.diff(wt)  # against the baseline, so the agent's own commits count too
+        self.note = text
+        ctx = VerifyContext(workdir=self.workdir, output=text, changes=self._changes(wt, change))
+        checks = await run_verifiers(self.prep.checks, ctx) if self.prep.checks else []
+        gw.reset(wt)  # drop what the verifiers left behind
+        gw.restore(wt, change.patch)
+        return [*outside, *checks]
+
     def _relative(self, wt: gw.Worktree, path: str) -> str:
         """A repository path as the task sees it (relative to its base directory)."""
         if self.workdir == wt.path:
             return path
         return Path(os.path.relpath(wt.path / path, self.workdir)).as_posix()
 
-    def _changes(self, wt: gw.Worktree) -> tuple[FileChange, ...]:
-        return tuple(replace(c, path=self._relative(wt, c.path)) for c in gw.diff(wt).files)
+    def _changes(
+        self, wt: gw.Worktree, change: gw.ChangeSet | None = None
+    ) -> tuple[FileChange, ...]:
+        files = (change or gw.diff(wt)).files
+        return tuple(replace(c, path=self._relative(wt, c.path)) for c in files)
 
     def _edit_result(self, wt: gw.Worktree) -> tuple[Changes, str]:
         """The envelope's ``changes`` (``changes.patch`` written) and the rule-based summary."""
@@ -829,12 +1052,12 @@ class _TaskRun:
     def _succeed(
         self,
         candidate: Candidate,
-        completion: CompletionRequest,
+        limit: int,
         result: CompletionResult,
         checks: list[CheckResult],
     ) -> TaskOutcome:
         answer = _Answer(candidate, result.text, checks, result)
-        envelope, text = self._answer_envelope(answer, "ok", completion.max_output_tokens)
+        envelope, text = self._answer_envelope(answer, "ok", limit)
         return self._finish(envelope, text, 0)
 
     def _checks_failed(self, answer: _Answer) -> TaskOutcome:
