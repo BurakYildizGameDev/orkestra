@@ -41,6 +41,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | One question to a worker model, with context files and an optional JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Routing with profiles, privacy and failover; see why each provider was chosen or skipped | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Task files (YAML/JSON): verify the answer, retry with feedback, move up a tier | `orkestra run task.yaml [--dry-run] [--json]` |
+| Edit tasks: a worker changes code in an isolated worktree, your tests decide | `orkestra run edit.yaml`, then `show --diff`, `apply` |
 | A run's envelope, full output, log or change | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | Bring a run's change into your working tree, or throw it away | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
 | Clean up abandoned worktrees, old run records and stale reservations | `orkestra gc [--older-than 30] [--dry-run]` |
@@ -140,7 +141,7 @@ task from its options. See [`examples/tasks/`](examples/tasks/).
 
 ```yaml
 id: summarize-readme
-kind: ask                    # edit tasks (changing code in a git worktree) come later
+kind: ask                    # ask | edit (see "Edit tasks" below)
 tier: 1                      # lowest tier to start on
 prompt: |
   Summarize what this project does in one sentence and list its key features.
@@ -183,6 +184,57 @@ the task sets one.
 Every attempt's request, response and check log (`verify.log`) is kept in
 `~/.orkestra/runs/<run_id>/attempts/<n>/`.
 
+## Edit tasks: workers change code
+
+An edit task asks a worker to change files. It runs in a worktree (see below), so your checkout
+stays as it is until you apply the result.
+
+```yaml
+id: fix-add
+kind: edit
+prompt: Fix add() in calc.py so that the tests pass. Do not change the tests.
+context:
+  files: [calc.py]           # the files the worker may change
+verify:
+  - type: command
+    run: "python -m pytest -q"
+  - type: protect_paths      # changing a test to make it pass is a failure
+    paths: ["tests/**"]
+allow_new_files: true        # default; false: only the context files may change
+```
+
+API workers answer with **whole files** as JSON (`{"files": [{"path", "content"}], "note"}`);
+unified diffs from models break too often. Orkestra then:
+
+1. takes the JSON even with code fences or text around it; broken or cut-off JSON goes back to
+   the worker as feedback (`edit_format` check);
+2. checks every path: relative, inside the project, no `..` or `.git`, not a `forbid_paths`
+   match, and either a context file or a new file. A file the worker was not shown is never
+   overwritten;
+3. writes the files with the original line endings (CRLF/LF) and runs your checks in the
+   worktree. Files your checks leave behind (`__pycache__`, build output) are not part of the
+   change;
+4. on a failed check: feedback, retry from your original files, escalation, as for any task.
+
+If an answer is cut off at the output limit, the file is too big for that model: the run goes
+straight to tier 3. Files longer than `security.max_api_edit_lines` (400) are not given to API
+workers at all (code agents, phase 6, will handle them). The envelope has
+`changes: {files, insertions, deletions, patch_path}`; then:
+
+```bash
+orkestra show <run_id> --diff      # look at it
+orkestra apply <run_id>            # take it
+```
+
+A run that did not pass its checks keeps its worktree so you can look at the change, but
+`apply` then needs `--force`. A run that ends without a change removes its worktree. Context
+files that are not UTF-8, that git ignores, or that match `protect_paths`/`forbid_paths` are
+shown to the worker read-only. A worker that cannot do the task answers
+`{"cannot_do": "<reason>"}` and the run moves up a tier at once.
+
+Ctrl+C during a run releases the budget reservation, writes an envelope with
+`error: interrupted` and keeps the worktree.
+
 ## Worktrees: isolated changes
 
 Workers never change your checkout. A run that changes code gets its own git worktree under
@@ -202,8 +254,9 @@ same files after the run started, it merges them three ways; if a change overlap
 writes **nothing**, lists the conflicting files and exits with code 5, and the worktree stays
 for you to look at. Git hooks do not run in worktrees. Submodules and Git LFS files are not
 handled yet (you get a warning). On Windows, `doctor` suggests `core.longpaths` because the
-worktree paths are deep. Edit tasks that use these worktrees arrive in the next part of
-phase 5.
+worktree paths are deep. Ignored files (`node_modules/`, `.venv/`) are not copied into the
+worktree, so a check that needs them must bring its own (a Python check run with your active
+interpreter works).
 
 ## Configuration
 
@@ -309,7 +362,7 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 4 | Router, retries and **failover**: offline → local Ollama, failing API → next provider | ✅ |
 | 5a | Task files, verifiers, retries with feedback, escalation (`orkestra run`) | ✅ |
 | 5b | Git worktrees, `show`, `apply`, `discard`, `gc` | ✅ |
-| 5c | Edit tasks with API workers | ⏳ |
+| 5c | Edit tasks with API workers | ✅ |
 | 6 | Code agents: Codex CLI, Antigravity CLI | ⏳ |
 | 7 | Batch runs, parallelism, cost estimate | ⏳ |
 | 8 | Chief tools: `status`, `review`, `map`, templates, `plan expand`, cache, savings counter | ⏳ |

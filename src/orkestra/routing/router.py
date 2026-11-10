@@ -50,6 +50,7 @@ class TaskNeeds:
     prompt_chars: int = 0
     has_secrets: bool = False
     allow_secrets: bool = False
+    edit_lines: int = 0  # edit tasks: lines of the largest context file
 
 
 @dataclass(frozen=True)
@@ -237,6 +238,12 @@ def route(
             continue
         if needs.has_secrets and not cfg.local and not needs.allow_secrets:
             drop(name, None, "secrets_remote", "route.reason.secrets")
+            continue
+        limit = config.security.max_api_edit_lines
+        if needs.kind == "edit" and needs.edit_lines > limit:
+            # Whole-file answers of that size get cut off; a code agent edits in place.
+            drop(name, None, "edit_too_large", "route.reason.edit_too_large",
+                 lines=needs.edit_lines, limit=limit)  # fmt: skip
             continue
         if state.open_until is not None and snapshot.now < state.open_until:
             drop(

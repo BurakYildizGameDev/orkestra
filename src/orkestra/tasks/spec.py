@@ -161,6 +161,7 @@ class TaskSpec(_Model):
     output: OutputSpec = Field(default_factory=OutputSpec)
     verify: list[VerifierSpec] = Field(default_factory=list)
     verify_defaults: bool = True
+    allow_new_files: bool = True  # edit: the worker may create files that are not in context
     limits: Limits = Field(default_factory=Limits)
     privacy: Literal["normal", "local_only"] = "normal"
     provider: str | None = None

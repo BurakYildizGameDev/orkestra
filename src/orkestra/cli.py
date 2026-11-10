@@ -498,11 +498,12 @@ def build_app() -> typer.Typer:
     def apply_command(
         ctx: typer.Context,
         run_id: Annotated[str, typer.Argument(metavar="RUN_ID", help=t("cli.show.arg.run_id"))],
+        force: Annotated[bool, typer.Option("--force", help=t("cli.apply.option.force"))] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         redact = _patch_redactor(ctx.ensure_object(_State).config_path)
         with closing(db.connect()) as conn:
-            done = service.apply_run(conn, run_id, redact=redact)
+            done = service.apply_run(conn, run_id, redact=redact, force=force)
         if as_json:
             _echo_json(
                 {"run_id": run_id, "applied": True, "repo": str(done.repo),

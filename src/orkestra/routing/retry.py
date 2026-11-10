@@ -41,6 +41,7 @@ class Action(Enum):
     SKIP_PROVIDER = "skip_provider"  # next candidate of another provider
     BIGGER_CONTEXT = "bigger_context"  # next candidate with a larger context window
     ESCALATE = "escalate"  # worker said CANNOT_DO: next candidate on a higher tier
+    TOP_TIER = "top_tier"  # an edit answer was cut off (file too large): tier 3 only
 
 
 @dataclass(frozen=True)

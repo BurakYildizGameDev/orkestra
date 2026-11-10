@@ -6,6 +6,7 @@ Worker prompts are always English.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from functools import cache
 from importlib import resources
 from typing import Any
@@ -39,6 +40,38 @@ def build_ask_messages(
         )
     elif json_output:
         parts.append("Output format: a single JSON value. Output only the JSON.")
+    return load_prompt("worker_system.md").strip(), "\n\n".join(parts)
+
+
+def build_edit_messages(
+    prompt: str,
+    context: Context,
+    *,
+    editable: Sequence[str],
+    allow_new: bool,
+    protected: Sequence[str],
+) -> tuple[str, str]:
+    """Return ``(system, user)`` for an ``edit`` task answered with whole files (Mimari §8.2)."""
+    parts: list[str] = []
+    if context.files:
+        parts.append("Context files:\n\n" + render_context(context))
+    parts.append("Task:\n" + prompt.strip())
+    new_files = (
+        "You may also create new files."
+        if allow_new
+        else "Do not create new files; change only the files listed above."
+    )
+    guarded = (
+        f"- Never create or change files matching: {', '.join(protected)}" if protected else ""
+    )
+    # Plain replacement: the template is full of JSON braces.
+    rules = (
+        load_prompt("edit_format.md")
+        .replace("{editable}", ", ".join(editable) if editable else "(none)")
+        .replace("{new_files}", new_files)
+        .replace("{protected}", guarded)
+    )
+    parts.append(rules.strip())
     return load_prompt("worker_system.md").strip(), "\n\n".join(parts)
 
 

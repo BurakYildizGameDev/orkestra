@@ -113,10 +113,26 @@ def _active(run_id: str, run_dir: Path) -> gw.Worktree:
     return record.worktree
 
 
+def _status(run_dir: Path) -> str | None:
+    """The run's status from its envelope (``None`` when there is none)."""
+    try:
+        data = json.loads((run_dir / _PART_FILES["envelope"]).read_bytes())
+    except (OSError, ValueError):
+        return None
+    status = data.get("status") if isinstance(data, dict) else None
+    return status if isinstance(status, str) else None
+
+
 def apply_run(
-    conn: sqlite3.Connection, run_id: str, *, redact: Callable[[str], str] = str
+    conn: sqlite3.Connection,
+    run_id: str,
+    *,
+    redact: Callable[[str], str] = str,
+    force: bool = False,
 ) -> Applied:
     """Apply a run's change to the user's working tree, then remove its worktree.
+
+    A run that did not pass its checks is applied only with ``force``.
 
     A conflict raises ``WorkspaceConflict`` (exit code 5) and keeps the worktree; nothing is
     saved then. After a successful apply ``changes.patch`` (redacted, for ``show --diff``)
@@ -124,6 +140,9 @@ def apply_run(
     """
     run_dir = run_dir_for(run_id)
     wt = _active(run_id, run_dir)
+    status = _status(run_dir)
+    if status not in (None, "ok") and not force:
+        raise UsageError(t("apply.error.not_ok", run_id=run_id, status=status))
     change = gw.diff(wt)
     result = gw.apply(wt, change)
     (run_dir / PATCH_FILE).write_bytes(

@@ -1,5 +1,5 @@
-"""Task lifecycle (Mimari §8). Current version (Faz 5a): ``ask`` tasks, from ``orkestra ask``
-or a task file (``orkestra run``).
+"""Task lifecycle (Mimari §8): ``ask`` tasks (``orkestra ask`` or a task file) and ``edit``
+tasks answered by API workers with whole files (§8.2, Faz 5c).
 
 1. Prepare: verifiers, context, secret scan, prompt.
 2. Route (``routing/router.py``): ordered candidates; every left-out provider has a reason.
@@ -14,9 +14,18 @@ or a task file (``orkestra run``).
 4. Result: ``ok``; ``failed`` (checks never passed); ``escalate`` (checks failed on tier 3,
    or the worker said it cannot do the task: the chief must take over); ``error``.
 
+Edit tasks run in a worktree (``workspace/git_worktree.py``) that starts from the user's
+current files. Every answer starts from that baseline: it is parsed and its paths checked
+(``tasks/edit_format.py``; a bad answer is a failed ``edit_format`` check with feedback), its
+files are written, then the verifiers run in the worktree. Afterwards only the answer's files
+stay (no verifier leftovers). An answer cut off at the output limit means the file is too
+large for that model: the run moves straight to tier 3. The user's checkout changes only on
+``orkestra apply``; an interrupted run keeps its worktree.
+
 Every run gets ``runs/<run_id>/`` with ``task.yaml``, ``attempts/<n>/request.json``,
 ``attempts/<n>/response.txt``, ``attempts/<n>/verify.log``, ``output.md``, ``envelope.json``
-and ``orkestra.log`` (Mimari §3, §14). Everything written there is redacted.
+and ``orkestra.log``, plus ``worktree.json`` and ``changes.patch`` for edit tasks (Mimari §3,
+§14). Everything written there is redacted.
 """
 
 from __future__ import annotations
@@ -30,15 +39,18 @@ import secrets
 import sqlite3
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import pathspec
 
 from orkestra import paths
 from orkestra.config.loader import dump_yaml
 from orkestra.config.schema import Config
 from orkestra.envelope import (
+    Changes,
     EnvelopeUsage,
     Escalation,
     Failover,
@@ -51,9 +63,9 @@ from orkestra.errors import (
     BudgetExhausted,
     ExitCode,
     NoProviderAvailable,
+    OrkestraError,
     ProviderError,
     ProviderTimeout,
-    UsageError,
 )
 from orkestra.i18n import t
 from orkestra.logging_setup import run_log
@@ -73,19 +85,26 @@ from orkestra.routing.router import (
 from orkestra.security.redact import Redactor, configured_secrets
 from orkestra.security.secrets_scan import Finding, blocking, scan_text
 from orkestra.state import budget, consent, db, health
+from orkestra.tasks import edit_format as ef
 from orkestra.tasks.context import Context, collect_context
-from orkestra.tasks.prompts import build_ask_messages, build_retry_message
-from orkestra.tasks.spec import TaskSpec
+from orkestra.tasks.prompts import build_ask_messages, build_edit_messages, build_retry_message
+from orkestra.tasks.spec import ForbidPaths, ProtectPaths, TaskSpec, effective_verifiers
 from orkestra.verify import CheckResult, Verifier, VerifyContext, build_verifiers, run_verifiers
+from orkestra.verify.base import FileChange, failed
 from orkestra.verify.schema import JsonSchemaCheck
+from orkestra.workspace import git_worktree as gw
+from orkestra.workspace import service as workspaces
 
 Sleep = Callable[[float], Awaitable[None]]
 
 PROMPT_SOURCE = "<prompt>"  # where a finding in the prompt text itself is reported
 CANNOT_DO = "CANNOT_DO:"  # worker protocol (prompts/worker_system.md, Mimari §8.1)
 VERIFICATION_FAILED = "VerificationFailed"  # failover "error" when answers kept failing checks
+OUTPUT_TRUNCATED = "OutputTruncated"  # failover "error" when an edit answer was cut off
 TOP_TIER = 3
 IGNORED_WARNINGS = 5  # more skipped files than this are reported as one count
+SUMMARY_FILES = 5  # changed files named in an edit summary
+NOTE_CHARS = 200  # characters of the worker's note in an edit summary (Mimari §8)
 
 
 async def _sleep(seconds: float) -> None:
@@ -141,6 +160,62 @@ def _cannot_do(text: str) -> str | None:
     return stripped[len(CANNOT_DO) :].strip().splitlines()[0] if stripped != CANNOT_DO else ""
 
 
+@dataclass(frozen=True)
+class _EditPlan:
+    """What an edit answer may touch (Mimari §8.2)."""
+
+    editable: frozenset[str]  # context files, as the worker sees their paths
+    forbidden: tuple[str, ...]  # forbid_paths patterns: rejected before anything is written
+    protected: tuple[str, ...]  # protect_paths patterns: told to the worker, checked after
+    lines: int  # lines of the largest context file (router: max_api_edit_lines)
+
+
+def _line_count(text: str) -> int:
+    return text.count("\n") + (1 if text and not text.endswith("\n") else 0)
+
+
+def _is_utf8(path: Path) -> bool:
+    try:
+        path.read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return True
+
+
+def _edit_plan(task: TaskSpec, context: Context, base: Path) -> tuple[_EditPlan, list[str]]:
+    """Which context files the worker may rewrite, and warnings for the ones it may not.
+
+    Read-only: files matching protect/forbid patterns (reference only), files that are not
+    UTF-8 (the worker saw them with replacement characters; rewriting them would damage every
+    other line) and files git ignores (a change to them could never be applied). Only the
+    editable files count for ``max_api_edit_lines``.
+    """
+    checks = effective_verifiers(task)
+    forbidden = tuple(p for v in checks if isinstance(v, ForbidPaths) for p in v.paths)
+    protected = tuple(p for v in checks if isinstance(v, ProtectPaths) for p in v.paths)
+    guarded = pathspec.GitIgnoreSpec.from_lines([*protected, *forbidden])
+    files: dict[str, str] = {}  # editable path -> text
+    warnings: list[str] = []
+    for f in context.files:
+        rel = ef.normalize_path(f.display)
+        if rel is None or guarded.match_file(rel):
+            continue
+        if not _is_utf8(f.path):
+            warnings.append(t("edit.warning.not_utf8", path=rel))
+            continue
+        files[rel] = f.text
+    for rel in sorted(gw.ignored(base, sorted(files))):
+        warnings.append(t("edit.warning.ignored", path=rel))
+        del files[rel]
+    plan = _EditPlan(
+        editable=frozenset(files),
+        forbidden=forbidden,
+        protected=protected,
+        lines=max((_line_count(text) for text in files.values()), default=0),
+    )
+    return plan, warnings
+
+
 @dataclass
 class _Prepared:
     task: TaskSpec
@@ -156,6 +231,7 @@ class _Prepared:
     warnings: list[str]
     system: str
     user: str
+    edit: _EditPlan | None = None
 
     def needs(self) -> TaskNeeds:
         return TaskNeeds(
@@ -167,6 +243,7 @@ class _Prepared:
             prompt_chars=len(self.system) + len(self.user),
             has_secrets=bool(blocking(self.findings)),
             allow_secrets=self.options.allow_secrets,
+            edit_lines=self.edit.lines if self.edit else 0,
         )
 
 
@@ -190,24 +267,36 @@ def _warnings(context: Context, findings: Sequence[Finding]) -> list[str]:
 def _prepare(
     task: TaskSpec, options: RunOptions, config: Config, env: Mapping[str, str], cwd: Path | None
 ) -> _Prepared:
-    if task.kind != "ask":
-        raise UsageError(t("task.error.edit_not_available"))
     base = task.base_dir(Path.cwd() if cwd is None else cwd)
+    if task.kind == "edit":
+        gw.check_repo(base)  # no repository or no commit: a usage error before anything starts
     checks = build_verifiers(task, base_dir=base)
-    # The model is told the schema it is checked against (loaded once, by the verifier).
-    schema = next((c.schema for c in checks if isinstance(c, JsonSchemaCheck) and c.schema), None)
     context = collect_context(
         [Path(f) for f in task.context.files], globs=task.context.globs, cwd=base,
         max_bytes=config.security.max_context_bytes, ignore_file=config.security.ignore_file,
     )  # fmt: skip
     known = configured_secrets(config, env)
     findings = _scan(task.prompt, context, known)
-    system, user = build_ask_messages(
-        task.prompt, context, schema, json_output=task.output.format == "json"
-    )
+    edit: _EditPlan | None = None
+    warnings = _warnings(context, findings)
+    if task.kind == "edit":
+        edit, read_only = _edit_plan(task, context, base)
+        warnings += read_only
+        system, user = build_edit_messages(
+            task.prompt, context, editable=sorted(edit.editable), allow_new=task.allow_new_files,
+            protected=[*edit.protected, *edit.forbidden],
+        )  # fmt: skip
+    else:
+        # The model is told the schema it is checked against (loaded once, by the verifier).
+        schema = next(
+            (c.schema for c in checks if isinstance(c, JsonSchemaCheck) and c.schema), None
+        )
+        system, user = build_ask_messages(
+            task.prompt, context, schema, json_output=task.output.format == "json"
+        )
     return _Prepared(
         task, options, config, env, base, checks, context, Redactor(known),
-        Redactor(known, passwords=False), findings, _warnings(context, findings), system, user,
+        Redactor(known, passwords=False), findings, warnings, system, user, edit,
     )  # fmt: skip
 
 
@@ -341,9 +430,12 @@ class _TaskRun:
         self.max_answers = 1 + (prep.config.defaults.max_retries if retries is None else retries)
         # daily_runs is per provider: one run each, however many requests it takes there.
         self.run_counted: set[str] = set()
-        self.cannot_do: str | None = None  # last CANNOT_DO reason from a worker
+        self.escalate_reason: str | None = None  # CANNOT_DO or a cut-off edit: for the chief
         self.rejected: _Answer | None = None  # last answer that failed its checks
-        self.last_problem: str | None = None  # "cannot_do" | "checks": which came last
+        self.last_problem: str | None = None  # "escalate" | "checks": which came last
+        self.wt: gw.Worktree | None = None  # edit tasks
+        self.workdir = prep.base_dir  # where verifiers run (inside the worktree for edits)
+        self.note = ""  # the last edit answer's note
         self.failovers: list[Failover] = []
         self.escalations: list[Escalation] = []
         self.used: list[Usage] = []  # every answered request of the run (envelope usage)
@@ -368,7 +460,7 @@ class _TaskRun:
             system=self.prep.system,
             user=user,
             max_output_tokens=self._max_output(candidate),
-            json_mode=self.task.output.format == "json",
+            json_mode=self.task.output.format == "json" or self.task.kind == "edit",
             timeout_s=timeout,
         )
 
@@ -388,6 +480,8 @@ class _TaskRun:
 
     async def _run(self) -> TaskOutcome:
         self._write_task()
+        if self.prep.edit is not None:
+            self._open_worktree()
         self.log.info(
             "route: profile=%s tiers=%s-%s candidates=%s eliminated=%d",
             self.route.profile, *self.route.tier_range,
@@ -423,11 +517,25 @@ class _TaskRun:
                 remaining = [c for c in remaining if c.model.context_window > window]
             elif action is retry.Action.ESCALATE:
                 remaining = [c for c in remaining if c.tier > candidate.tier]
+            elif action is retry.Action.TOP_TIER:
+                remaining = [c for c in remaining if c.tier >= TOP_TIER]
         if self.last_problem == "checks" and self.rejected is not None:
             return self._checks_failed(self.rejected)
-        if self.last_problem == "cannot_do":
+        if self.last_problem == "escalate":
             return self._escalate()
         return self._all_failed()
+
+    def _open_worktree(self) -> None:
+        """The edit task's worktree, starting from the user's current files (Mimari §9)."""
+        wt = gw.create(self.prep.base_dir, self.run_id)
+        workspaces.attach_worktree(self.conn, self.run_id, wt)
+        self.wt = wt
+        try:
+            self.workdir = wt.path / self.prep.base_dir.relative_to(wt.repo)
+        except ValueError:
+            self.workdir = wt.path
+        self.prep.warnings.extend(wt.warnings)
+        self.log.info("worktree %s (baseline %s)", wt.path, wt.baseline[:12])
 
     def _write_task(self) -> None:
         data = self.task.model_dump(mode="json", by_alias=True)
@@ -515,9 +623,18 @@ class _TaskRun:
             self.used.append(usage)
             self._write(attempt_dir / "response.txt", result.text, answer=True)
             reason = _cannot_do(result.text)
+            if reason is None and self.prep.edit is not None:
+                reason = ef.cannot_do(result.text)  # JSON mode: {"cannot_do": "..."}
             if reason is not None:
-                self.cannot_do, self.last_problem = reason, "cannot_do"
+                self.escalate_reason = t("ask.cannot_do", reason=reason or "-")
+                self.last_problem = "escalate"
                 return self._fail(candidate, None, tries, retry.Action.ESCALATE, reason=reason)
+            if self.prep.edit is not None and result.raw_finish_reason == "length":
+                # Whole files did not fit into the output limit: feedback cannot fix that.
+                message = t("edit.truncated", tokens=completion.max_output_tokens)
+                self.escalate_reason, self.last_problem = message, "escalate"
+                return self._fail(candidate, None, tries, retry.Action.TOP_TIER, reason=message,
+                                  error=OUTPUT_TRUNCATED)  # fmt: skip
             answers += 1
             checks = await self._verify(result.text, attempt_dir)
             if all(c.result.ok for c in checks):
@@ -539,16 +656,75 @@ class _TaskRun:
             )
 
     async def _verify(self, text: str, attempt_dir: Path) -> list[CheckResult]:
-        if not self.prep.checks:
+        if self.wt is not None:
+            checks = await self._check_edit(self.wt, text)
+        elif self.prep.checks:
+            ctx = VerifyContext(workdir=self.prep.base_dir, output=text)
+            checks = await run_verifiers(self.prep.checks, ctx)
+        else:
             return []
-        ctx = VerifyContext(workdir=self.prep.base_dir, output=text)
-        checks = await run_verifiers(self.prep.checks, ctx)
         log = "\n".join(
             f"== {c.result.type}: {'ok' if c.result.ok else 'FAIL'} ==\n{c.log or c.result.detail}"
             for c in checks
         )
         self._write(attempt_dir / "verify.log", log + "\n")
         return checks
+
+    async def _check_edit(self, wt: gw.Worktree, text: str) -> list[CheckResult]:
+        """Write an edit answer into the worktree (from the baseline) and verify it."""
+        assert self.prep.edit is not None
+        gw.reset(wt)  # every answer starts from the user's files, not the last answer
+        try:
+            answer = ef.parse(text)
+        except ef.EditFormatError as exc:
+            return [failed(ef.FORMAT_CHECK, exc.problem)]
+        rels = [rel for e in answer.files if (rel := ef.normalize_path(e.path)) is not None]
+        problems = ef.check_paths(
+            answer, self.workdir, editable=self.prep.edit.editable,
+            allow_new=self.task.allow_new_files, forbidden=self.prep.edit.forbidden,
+            protected=self.prep.edit.protected, ignored=gw.ignored(self.workdir, rels),
+        )  # fmt: skip
+        if problems:
+            return [failed(ef.FORMAT_CHECK, problems)]
+        try:
+            ef.write(answer, self.workdir)
+        except ef.EditFormatError as exc:
+            return [failed(ef.FORMAT_CHECK, exc.problem)]
+        self.note = answer.note
+        ctx = VerifyContext(workdir=self.workdir, output=text, changes=self._changes(wt))
+        checks = await run_verifiers(self.prep.checks, ctx) if self.prep.checks else []
+        # Verifier commands leave files behind (__pycache__, build output): keep the answer only.
+        gw.reset(wt)
+        ef.write(answer, self.workdir)
+        return checks
+
+    def _relative(self, wt: gw.Worktree, path: str) -> str:
+        """A repository path as the task sees it (relative to its base directory)."""
+        if self.workdir == wt.path:
+            return path
+        return Path(os.path.relpath(wt.path / path, self.workdir)).as_posix()
+
+    def _changes(self, wt: gw.Worktree) -> tuple[FileChange, ...]:
+        return tuple(replace(c, path=self._relative(wt, c.path)) for c in gw.diff(wt).files)
+
+    def _edit_result(self, wt: gw.Worktree) -> tuple[Changes, str]:
+        """The envelope's ``changes`` (``changes.patch`` written) and the rule-based summary."""
+        change = gw.diff(wt)
+        patch_path: str | None = None
+        if change.patch:
+            path = self.run_dir / workspaces.PATCH_FILE
+            self._write(path, change.patch.decode("utf-8", errors="replace"), answer=True)
+            patch_path = str(path)
+        insertions = sum(c.insertions for c in change.files)
+        deletions = sum(c.deletions for c in change.files)
+        names = [self._relative(wt, c.path) for c in change.files]
+        shown = ", ".join(names[:SUMMARY_FILES]) + (", …" if len(names) > SUMMARY_FILES else "")
+        summary = t("edit.summary", count=len(names), insertions=insertions,
+                    deletions=deletions, files=shown or "-")  # fmt: skip
+        note = " ".join(self.prep.redact(self.note).split())[:NOTE_CHARS]
+        changes = Changes(files=len(names), insertions=insertions, deletions=deletions,
+                          patch_path=patch_path)  # fmt: skip
+        return changes, f"{summary} — {note}" if note else summary
 
     def _actual_usage(
         self, prompt_chars: int, candidate: Candidate, result: CompletionResult
@@ -627,10 +803,18 @@ class _TaskRun:
         if answer.result.raw_finish_reason == "length":
             self.prep.warnings.append(t("ask.warning.truncated", tokens=completion_limit))
             self.log.warning("output hit max_output_tokens=%d", completion_limit)
+        changes: Changes | None = None
+        if self.wt is not None:
+            changes, summary = self._edit_result(self.wt)
+            if not changes.files:
+                self._drop_worktree()
+        else:
+            summary = summarize_text(self.prep.redact(text), str(output_path))
         envelope = ResultEnvelope(
             **self._base(answer.candidate),
             status=status,
-            summary=summarize_text(self.prep.redact(text), str(output_path)),
+            summary=summary,
+            changes=changes,
             # Command output can echo secrets from the environment: mask like the records.
             verification=[
                 c.result.model_copy(update={"detail": self.prep.redact(c.result.detail)})
@@ -674,9 +858,20 @@ class _TaskRun:
     def _duration(self) -> float:
         return round(self.clock() - self.started, 3)
 
+    def _drop_worktree(self) -> None:
+        """An edit run that ends without a change keeps no worktree (best effort)."""
+        if self.wt is None:
+            return
+        try:
+            gw.remove(self.wt)
+            gw.save_record(self.run_dir, self.wt, state="discarded")
+        except (OrkestraError, OSError) as exc:
+            self.log.warning("could not remove the worktree %s: %s", self.wt.path, exc)
+
     def _escalate(self) -> TaskOutcome:
-        """Workers said CANNOT_DO and no higher tier was left (or answered): exit code 1."""
-        reason = t("ask.cannot_do", reason=self.cannot_do or "-")
+        """CANNOT_DO or a cut-off edit, and no higher tier was left (or answered): exit code 1."""
+        self._drop_worktree()  # a rejected answer may be in it; the envelope reports none
+        reason = self.escalate_reason or t("ask.cannot_do", reason="-")
         envelope = ResultEnvelope(
             **self._base(None),
             status="escalate",
@@ -686,6 +881,7 @@ class _TaskRun:
         return self._finish(envelope, None, int(ExitCode.TASK_FAILED))
 
     def _all_failed(self) -> TaskOutcome:
+        self._drop_worktree()
         error = NoProviderAvailable(t("route.all_failed", count=len(self.failovers)))
         envelope = ResultEnvelope(
             **self._base(None),
