@@ -12,7 +12,9 @@ Models break unified diffs, so an API worker answers with whole files::
   workdir (symlinks resolved), does not match a forbidden pattern, and is either a context
   file or a new file (when the task allows new files). An existing file the worker never saw
   is never overwritten.
-- ``write``: keeps the original file's line endings (CRLF/LF) and UTF-8 BOM.
+- ``write``: keeps the original file's line endings (CRLF/LF) and UTF-8 BOM; a path that
+  cannot be written is an ``EditFormatError`` too.
+- ``cannot_do``: ``{"cannot_do": "<reason>"}``, the JSON form of ``CANNOT_DO: <reason>``.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ __all__ = [
     "EditFormatError",
     "FileEdit",
     "Message",
+    "cannot_do",
     "check_paths",
     "normalize_path",
     "parse",
@@ -68,9 +71,10 @@ class EditFormatError(ProviderBadOutput):
 # --- parse -----------------------------------------------------------------------------
 
 
-def _first_object(text: str) -> dict[str, Any]:
-    """The first balanced JSON object with a ``files`` key; strings may contain braces."""
+def _objects(text: str) -> tuple[list[dict[str, Any]], str | None]:
+    """Every balanced JSON object in ``text`` (strings may contain braces), and the first error."""
     decoder = json.JSONDecoder()
+    found: list[dict[str, Any]] = []
     first_error: str | None = None
     start = text.find("{")
     while start != -1:
@@ -79,16 +83,29 @@ def _first_object(text: str) -> dict[str, Any]:
         except ValueError as exc:
             first_error = first_error or str(exc)
         else:
-            if isinstance(value, dict) and "files" in value:
-                return value
+            if isinstance(value, dict):
+                found.append(value)
         start = text.find("{", start + 1)
-    if first_error is None:
-        raise EditFormatError(Message("edit.error.no_json"))
-    raise EditFormatError(Message("edit.error.bad_json", {"error": first_error}))
+    return found, first_error
+
+
+def cannot_do(text: str) -> str | None:
+    """The reason of a JSON ``{"cannot_do": "<reason>"}`` answer (JSON mode has no plain text)."""
+    objects, _ = _objects(text)
+    for data in objects:
+        for key, value in data.items():
+            if key.lower() == "cannot_do":
+                return str(value).strip()
+    return None
 
 
 def parse(text: str) -> EditAnswer:
-    data = _first_object(text)
+    objects, first_error = _objects(text)
+    data = next((o for o in objects if "files" in o), None)
+    if data is None:
+        if first_error is None:
+            raise EditFormatError(Message("edit.error.no_json"))
+        raise EditFormatError(Message("edit.error.bad_json", {"error": first_error}))
     files = data["files"]
     if not isinstance(files, list):
         raise EditFormatError(Message("edit.error.files_not_list"))
@@ -132,10 +149,13 @@ def check_paths(
     editable: Collection[str],
     allow_new: bool,
     forbidden: Sequence[str],
+    protected: Sequence[str] = (),
+    ignored: Collection[str] = (),
 ) -> list[Message]:
     """Problems with the answer's paths (empty: it may be written)."""
     root = workdir.resolve()
     spec = pathspec.GitIgnoreSpec.from_lines(forbidden)
+    guarded = pathspec.GitIgnoreSpec.from_lines(protected)
     problems: list[Message] = []
     for edit in answer.files:
         rel = normalize_path(edit.path)
@@ -147,6 +167,10 @@ def check_paths(
             problems.append(Message("edit.error.unsafe_path", {"path": edit.path}))
         elif spec.match_file(rel):
             problems.append(Message("edit.error.forbidden", {"path": rel}))
+        elif guarded.match_file(rel):
+            problems.append(Message("edit.error.protected", {"path": rel}))
+        elif rel in ignored:  # never part of the change: git does not see it
+            problems.append(Message("edit.error.ignored", {"path": rel}))
         elif rel not in editable and (root / rel).exists():
             problems.append(Message("edit.error.not_in_context", {"path": rel}))
         elif rel not in editable and not allow_new:
@@ -177,8 +201,14 @@ def write(answer: EditAnswer, workdir: Path) -> list[str]:
         target = (root / rel).resolve() if rel is not None else None
         if rel is None or target is None or not target.is_relative_to(root):
             raise InternalError(t("workspace.error.guard", path=edit.path))
-        original = target.read_bytes() if target.is_file() else None
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(_encode(edit.content, original))
+        try:
+            original = target.read_bytes() if target.is_file() else None
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(_encode(edit.content, original))
+        except OSError as exc:  # e.g. "a.py/b.py", or a name Windows does not allow
+            detail = exc.strerror or type(exc).__name__
+            raise EditFormatError(
+                Message("edit.error.cannot_write", {"path": rel, "error": detail})
+            ) from exc
         written.append(rel)
     return written

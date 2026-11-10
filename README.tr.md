@@ -223,6 +223,12 @@ orkestra show <run_id> --diff      # incele
 orkestra apply <run_id>            # al
 ```
 
+Kontrolleri geçmeyen koşu, değişikliğe bakabilmen için worktree'sini korur ama `apply` o zaman
+`--force` ister. Değişikliksiz biten koşu worktree'sini siler. UTF-8 olmayan, git'in ignore
+ettiği veya `protect_paths`/`forbid_paths`'e uyan bağlam dosyaları işçiye sadece okunur
+gösterilir. Görevi yapamayan işçi `{"cannot_do": "<neden>"}` der ve koşu hemen üst kademeye
+geçer.
+
 Koşu sırasında Ctrl+C bütçe rezervasyonunu serbest bırakır, `error: interrupted` içeren bir
 envelope yazar ve worktree'yi korur.
 

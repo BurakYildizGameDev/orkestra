@@ -130,10 +130,11 @@ def human_summary(envelope: ResultEnvelope) -> str:
         for f in envelope.failovers
     )
     if envelope.changes is not None and envelope.changes.files:
+        # Only a change that passed its checks gets the apply hint.
+        key = "envelope.changes" if envelope.status == "ok" else "envelope.changes_unverified"
         lines.append(
-            t("envelope.changes", files=envelope.changes.files,
-              insertions=envelope.changes.insertions, deletions=envelope.changes.deletions,
-              run_id=envelope.run_id)
+            t(key, files=envelope.changes.files, insertions=envelope.changes.insertions,
+              deletions=envelope.changes.deletions, run_id=envelope.run_id)
         )  # fmt: skip
     if envelope.error:
         lines.append(t("errors.prefix", message=envelope.error))

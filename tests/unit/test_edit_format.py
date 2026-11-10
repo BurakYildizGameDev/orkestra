@@ -227,3 +227,31 @@ def test_write_refuses_an_unsafe_path(tmp_path: Path) -> None:
     with pytest.raises(InternalError):
         ef.write(ef.EditAnswer((ef.FileEdit("../outside.txt", "x"),)), work)
     assert not (tmp_path / "outside.txt").exists()
+
+
+# --- code review fixes (PR #8) -----------------------------------------------------------
+
+
+def test_cannot_do_in_json() -> None:
+    assert ef.cannot_do('{"cannot_do": "needs the schema"}') == "needs the schema"
+    assert ef.cannot_do('```json\n{"CANNOT_DO": "no"}\n```') == "no"
+    assert ef.cannot_do(json.dumps(ANSWER)) is None
+    assert ef.cannot_do("plain text") is None
+
+
+def test_protected_and_ignored_paths_are_rejected(tmp_path: Path) -> None:
+    work = _workdir(tmp_path)
+    answer = ef.EditAnswer((ef.FileEdit("tests/t.py", "x"), ef.FileEdit("build/x.py", "y")))
+    problems = ef.check_paths(
+        answer, work, editable=frozenset(), allow_new=True, forbidden=(),
+        protected=("tests/**",), ignored={"build/x.py"},
+    )  # fmt: skip
+    keys = [p.key for p in problems]
+    assert keys == ["edit.error.protected", "edit.error.ignored"]
+
+
+def test_write_reports_a_path_that_cannot_be_created(tmp_path: Path) -> None:
+    work = _workdir(tmp_path)
+    with pytest.raises(ef.EditFormatError) as exc_info:
+        ef.write(ef.EditAnswer((ef.FileEdit("src/app.py/x.py", "x"),)), work)
+    assert "src/app.py/x.py" in exc_info.value.problem.english()

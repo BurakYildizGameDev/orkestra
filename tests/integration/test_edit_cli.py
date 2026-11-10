@@ -186,12 +186,13 @@ def test_changing_a_protected_test_fails_verification(
         tmp_path, context={"files": ["calc.py", "tests/test_calc.py"]}, provider="ollama",
         limits={"max_retries": 0},
     )  # fmt: skip
-    code, out, _ = _run(["run", task, "--json"], capsys)
+    code, out, _ = _run(["--lang", "en", "run", task, "--json"], capsys)
     assert code == 1
     envelope = json.loads(out)
     assert envelope["status"] == "failed"
-    checks = {v["type"]: v["ok"] for v in envelope["verification"]}
-    assert checks["command"] is True and checks["protect_paths"] is False
+    (check,) = envelope["verification"]  # rejected before anything was written
+    assert check["type"] == "edit_format" and check["ok"] is False
+    assert "protected" in check["detail"]
     assert _read(repo / "tests" / "test_calc.py") == FILES["tests/test_calc.py"]
 
 
@@ -293,3 +294,135 @@ def test_ctrl_c_releases_the_reservation_and_keeps_the_worktree(repo: Path, tmp_
     with closing(db.connect()) as conn:
         left = conn.execute("SELECT COUNT(*) FROM usage WHERE kind = 'reservation'").fetchone()
     assert left[0] == 0
+
+
+# --- code review fixes (PR #8) -----------------------------------------------------------
+
+
+@respx.mock
+def test_a_non_utf8_context_file_is_read_only(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    legacy = "# yorum: \u015fe\u011fil\nx = 1\n".encode("cp1254")
+    (repo / "legacy.py").write_bytes(legacy)
+    chat = respx.post(f"{OLLAMA}/api/chat").mock(
+        side_effect=[
+            _ollama(_edit(("legacy.py", "# yorum: ?\nx = 2\n"))),
+            _ollama(_edit(("calc.py", RIGHT))),
+        ]
+    )
+    task = _task(tmp_path, context={"files": ["calc.py", "legacy.py"]})
+    code, out, err = _run(["--lang", "en", "run", task, "--json"], capsys)
+    assert code == 0, out
+    assert "legacy.py" in err and "UTF-8" in err
+    assert "You may change these files: calc.py\n" in _user(chat.calls[0].request)
+    assert "not given in the context" in _user(chat.calls[1].request)
+    assert (repo / "legacy.py").read_bytes() == legacy
+
+
+@respx.mock
+def test_gitignored_paths_are_rejected(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (repo / ".gitignore").write_bytes(b"local/\n")
+    chat = respx.post(f"{OLLAMA}/api/chat").mock(
+        side_effect=[
+            _ollama(_edit(("calc.py", RIGHT), ("local/sitecustomize.py", "x = 1\n"))),
+            _ollama(_edit(("calc.py", RIGHT))),
+        ]
+    )
+    code, out, _ = _run(["run", _task(tmp_path), "--json"], capsys)
+    assert code == 0, out
+    assert json.loads(out)["attempts"] == 2
+    assert "ignored by git" in _user(chat.calls[1].request)
+
+
+@respx.mock
+def test_a_path_that_cannot_be_written_is_feedback_not_a_crash(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    chat = respx.post(f"{OLLAMA}/api/chat").mock(
+        side_effect=[
+            _ollama(_edit(("calc.py/fix.py", "x = 1\n"))),
+            _ollama(_edit(("calc.py", RIGHT))),
+        ]
+    )
+    code, out, _ = _run(["run", _task(tmp_path), "--json"], capsys)
+    assert code == 0, out
+    assert "calc.py/fix.py" in _user(chat.calls[1].request)
+
+
+@respx.mock
+def test_cannot_do_in_json_escalates_at_once(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ollama = respx.post(f"{OLLAMA}/api/chat").mock(
+        return_value=_ollama('{"cannot_do": "needs the database schema"}')
+    )
+    respx.post(f"{ROUTER}/chat/completions").mock(return_value=_chat(_edit(("calc.py", RIGHT))))
+    code, out, _ = _run(["run", _task(tmp_path), "--json"], capsys)
+    assert code == 0, out
+    assert ollama.call_count == 1
+    assert "cannot_do" in _user(ollama.calls[0].request)  # the worker is told how
+    assert json.loads(out)["escalations"][0]["provider"] == "ollama"
+
+
+@respx.mock
+def test_a_failed_run_is_applied_only_with_force(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama(_edit(("calc.py", WRONG))))
+    task = _task(tmp_path, provider="ollama", limits={"max_retries": 0})
+    code, _, err = _run(["--lang", "en", "run", task], capsys)
+    assert code == 1
+    assert "orkestra apply" not in err and "--diff" in err
+    run_id = next(paths.runs_dir().iterdir()).name
+    code, _, err = _run(["--lang", "en", "apply", run_id], capsys)
+    assert code == 2 and "--force" in err
+    assert _read(repo / "calc.py") == FILES["calc.py"]
+    code, _, _ = _run(["apply", run_id, "--force"], capsys)
+    assert code == 0 and _read(repo / "calc.py") == WRONG
+
+
+@respx.mock
+def test_protected_context_files_are_not_offered_and_do_not_count_as_large(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    long_test = "def test_add():\n    assert True\n" + "# filler\n" * 600
+    (repo / "tests" / "test_big.py").write_bytes(long_test.encode())
+    chat = respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama(_edit(("calc.py", RIGHT))))
+    task = _task(tmp_path, context={"files": ["calc.py", "tests/test_big.py"]})
+    code, out, _ = _run(["run", task, "--json"], capsys)
+    assert code == 0, out
+    assert "You may change these files: calc.py\n" in _user(chat.calls[0].request)
+
+
+@respx.mock
+def test_a_run_without_a_change_removes_its_worktree(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama("CANNOT_DO: no idea"))
+    task = _task(tmp_path, provider="ollama")
+    code, out, _ = _run(["run", task, "--json"], capsys)
+    assert code == 1
+    envelope = json.loads(out)
+    assert envelope["status"] == "escalate" and "tier 3" not in envelope["summary"]
+    record = gw.load_record(paths.run_dir(envelope["run_id"]))
+    assert record is not None and record.state == "discarded"
+    assert not record.worktree.path.exists()
+
+
+def test_a_repository_without_commits_is_a_usage_error_before_the_run(
+    make_repo: MakeRepo, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=empty, check=True)
+    (empty / "calc.py").write_bytes(FILES["calc.py"].encode())
+    monkeypatch.chdir(empty)
+    code, _, err = _run(["--lang", "en", "run", _task(tmp_path)], capsys)
+    assert code == 2 and "no commits" in err
+    assert not paths.runs_dir().exists() or not any(paths.runs_dir().iterdir())

@@ -44,6 +44,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import pathspec
+
 from orkestra import paths
 from orkestra.config.loader import dump_yaml
 from orkestra.config.schema import Config
@@ -61,6 +63,7 @@ from orkestra.errors import (
     BudgetExhausted,
     ExitCode,
     NoProviderAvailable,
+    OrkestraError,
     ProviderError,
     ProviderTimeout,
 )
@@ -171,16 +174,46 @@ def _line_count(text: str) -> int:
     return text.count("\n") + (1 if text and not text.endswith("\n") else 0)
 
 
-def _edit_plan(task: TaskSpec, context: Context) -> _EditPlan:
+def _is_utf8(path: Path) -> bool:
+    try:
+        path.read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return True
+
+
+def _edit_plan(task: TaskSpec, context: Context, base: Path) -> tuple[_EditPlan, list[str]]:
+    """Which context files the worker may rewrite, and warnings for the ones it may not.
+
+    Read-only: files matching protect/forbid patterns (reference only), files that are not
+    UTF-8 (the worker saw them with replacement characters; rewriting them would damage every
+    other line) and files git ignores (a change to them could never be applied). Only the
+    editable files count for ``max_api_edit_lines``.
+    """
     checks = effective_verifiers(task)
-    return _EditPlan(
-        editable=frozenset(
-            rel for f in context.files if (rel := ef.normalize_path(f.display)) is not None
-        ),
-        forbidden=tuple(p for v in checks if isinstance(v, ForbidPaths) for p in v.paths),
-        protected=tuple(p for v in checks if isinstance(v, ProtectPaths) for p in v.paths),
-        lines=max((_line_count(f.text) for f in context.files), default=0),
+    forbidden = tuple(p for v in checks if isinstance(v, ForbidPaths) for p in v.paths)
+    protected = tuple(p for v in checks if isinstance(v, ProtectPaths) for p in v.paths)
+    guarded = pathspec.GitIgnoreSpec.from_lines([*protected, *forbidden])
+    files: dict[str, str] = {}  # editable path -> text
+    warnings: list[str] = []
+    for f in context.files:
+        rel = ef.normalize_path(f.display)
+        if rel is None or guarded.match_file(rel):
+            continue
+        if not _is_utf8(f.path):
+            warnings.append(t("edit.warning.not_utf8", path=rel))
+            continue
+        files[rel] = f.text
+    for rel in sorted(gw.ignored(base, sorted(files))):
+        warnings.append(t("edit.warning.ignored", path=rel))
+        del files[rel]
+    plan = _EditPlan(
+        editable=frozenset(files),
+        forbidden=forbidden,
+        protected=protected,
+        lines=max((_line_count(text) for text in files.values()), default=0),
     )
+    return plan, warnings
 
 
 @dataclass
@@ -236,7 +269,7 @@ def _prepare(
 ) -> _Prepared:
     base = task.base_dir(Path.cwd() if cwd is None else cwd)
     if task.kind == "edit":
-        gw.repo_root(base)  # not a git repository: a usage error before anything starts
+        gw.check_repo(base)  # no repository or no commit: a usage error before anything starts
     checks = build_verifiers(task, base_dir=base)
     context = collect_context(
         [Path(f) for f in task.context.files], globs=task.context.globs, cwd=base,
@@ -245,8 +278,10 @@ def _prepare(
     known = configured_secrets(config, env)
     findings = _scan(task.prompt, context, known)
     edit: _EditPlan | None = None
+    warnings = _warnings(context, findings)
     if task.kind == "edit":
-        edit = _edit_plan(task, context)
+        edit, read_only = _edit_plan(task, context, base)
+        warnings += read_only
         system, user = build_edit_messages(
             task.prompt, context, editable=sorted(edit.editable), allow_new=task.allow_new_files,
             protected=[*edit.protected, *edit.forbidden],
@@ -261,8 +296,7 @@ def _prepare(
         )
     return _Prepared(
         task, options, config, env, base, checks, context, Redactor(known),
-        Redactor(known, passwords=False), findings, _warnings(context, findings), system, user,
-        edit,
+        Redactor(known, passwords=False), findings, warnings, system, user, edit,
     )  # fmt: skip
 
 
@@ -589,6 +623,8 @@ class _TaskRun:
             self.used.append(usage)
             self._write(attempt_dir / "response.txt", result.text, answer=True)
             reason = _cannot_do(result.text)
+            if reason is None and self.prep.edit is not None:
+                reason = ef.cannot_do(result.text)  # JSON mode: {"cannot_do": "..."}
             if reason is not None:
                 self.escalate_reason = t("ask.cannot_do", reason=reason or "-")
                 self.last_problem = "escalate"
@@ -642,13 +678,18 @@ class _TaskRun:
             answer = ef.parse(text)
         except ef.EditFormatError as exc:
             return [failed(ef.FORMAT_CHECK, exc.problem)]
+        rels = [rel for e in answer.files if (rel := ef.normalize_path(e.path)) is not None]
         problems = ef.check_paths(
             answer, self.workdir, editable=self.prep.edit.editable,
             allow_new=self.task.allow_new_files, forbidden=self.prep.edit.forbidden,
+            protected=self.prep.edit.protected, ignored=gw.ignored(self.workdir, rels),
         )  # fmt: skip
         if problems:
             return [failed(ef.FORMAT_CHECK, problems)]
-        ef.write(answer, self.workdir)
+        try:
+            ef.write(answer, self.workdir)
+        except ef.EditFormatError as exc:
+            return [failed(ef.FORMAT_CHECK, exc.problem)]
         self.note = answer.note
         ctx = VerifyContext(workdir=self.workdir, output=text, changes=self._changes(wt))
         checks = await run_verifiers(self.prep.checks, ctx) if self.prep.checks else []
@@ -765,6 +806,8 @@ class _TaskRun:
         changes: Changes | None = None
         if self.wt is not None:
             changes, summary = self._edit_result(self.wt)
+            if not changes.files:
+                self._drop_worktree()
         else:
             summary = summarize_text(self.prep.redact(text), str(output_path))
         envelope = ResultEnvelope(
@@ -815,8 +858,19 @@ class _TaskRun:
     def _duration(self) -> float:
         return round(self.clock() - self.started, 3)
 
+    def _drop_worktree(self) -> None:
+        """An edit run that ends without a change keeps no worktree (best effort)."""
+        if self.wt is None:
+            return
+        try:
+            gw.remove(self.wt)
+            gw.save_record(self.run_dir, self.wt, state="discarded")
+        except (OrkestraError, OSError) as exc:
+            self.log.warning("could not remove the worktree %s: %s", self.wt.path, exc)
+
     def _escalate(self) -> TaskOutcome:
         """CANNOT_DO or a cut-off edit, and no higher tier was left (or answered): exit code 1."""
+        self._drop_worktree()  # a rejected answer may be in it; the envelope reports none
         reason = self.escalate_reason or t("ask.cannot_do", reason="-")
         envelope = ResultEnvelope(
             **self._base(None),
@@ -827,6 +881,7 @@ class _TaskRun:
         return self._finish(envelope, None, int(ExitCode.TASK_FAILED))
 
     def _all_failed(self) -> TaskOutcome:
+        self._drop_worktree()
         error = NoProviderAvailable(t("route.all_failed", count=len(self.failovers)))
         envelope = ResultEnvelope(
             **self._base(None),

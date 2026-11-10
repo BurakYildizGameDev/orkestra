@@ -7,3 +7,4 @@ Rules for this format:
 - You may change these files: {editable}
 - {new_files}
 {protected}
+- If the task is impossible or too ambiguous to do correctly, answer only {"cannot_do": "<short reason>"}.

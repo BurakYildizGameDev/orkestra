@@ -226,6 +226,12 @@ orkestra show <run_id> --diff      # look at it
 orkestra apply <run_id>            # take it
 ```
 
+A run that did not pass its checks keeps its worktree so you can look at the change, but
+`apply` then needs `--force`. A run that ends without a change removes its worktree. Context
+files that are not UTF-8, that git ignores, or that match `protect_paths`/`forbid_paths` are
+shown to the worker read-only. A worker that cannot do the task answers
+`{"cannot_do": "<reason>"}` and the run moves up a tier at once.
+
 Ctrl+C during a run releases the budget reservation, writes an envelope with
 `error: interrupted` and keeps the worktree.
 

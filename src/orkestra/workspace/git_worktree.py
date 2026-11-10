@@ -183,11 +183,29 @@ def _copy_untracked(repo: Path, target: Path) -> None:
         shutil.copy2(source, dest, follow_symlinks=False)
 
 
-def create(path: Path, run_id: str) -> Worktree:
-    """Worktree for ``run_id`` with the user's current state as the baseline commit."""
+def check_repo(path: Path) -> Path:
+    """The repository root of ``path``; a usage error unless it is a repository with a commit."""
     repo = repo_root(path)
     if _git(["rev-parse", "--verify", "--quiet", "HEAD"], repo, check=False).returncode != 0:
         raise UsageError(t("workspace.error.no_commits", path=repo))
+    return repo
+
+
+def ignored(cwd: Path, rels: Sequence[str]) -> set[str]:
+    """The paths (relative to ``cwd``) that git ignores; tracked files never count."""
+    if not rels:
+        return set()
+    data = "".join(f"{rel}\0" for rel in rels).encode("utf-8")
+    done = _git(["check-ignore", "-z", "--stdin"], cwd, stdin=data, check=False)
+    if done.returncode not in (0, 1):  # 1: nothing is ignored
+        detail = done.stderr.decode("utf-8", errors="replace").strip()[:500]
+        raise InternalError(t("workspace.error.git", command="check-ignore", detail=detail))
+    return {p.decode("utf-8", errors="surrogateescape") for p in done.stdout.split(b"\0") if p}
+
+
+def create(path: Path, run_id: str) -> Worktree:
+    """Worktree for ``run_id`` with the user's current state as the baseline commit."""
+    repo = check_repo(path)
     target = worktree_path(repo, run_id)
     target.parent.mkdir(parents=True, exist_ok=True)
     _git(["worktree", "add", "--detach", str(target), "HEAD"], repo)

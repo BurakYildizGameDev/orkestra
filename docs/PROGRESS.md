@@ -27,6 +27,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 5c (PR #8), 2026-11-10
+10 bulgu, 10'u düzeltildi (D-043):
+- ✅ UTF-8 olmayan bağlam dosyası tam dosya yazımıyla bozulabiliyordu → bu görevde sadece okunur, uyarı.
+- ✅ Git'in ignore ettiği dosyaya yazılan değişiklik diff'e girmiyor, sessizce kayboluyordu (ve testleri etkileyebiliyordu) → ignore edilen bağlam dosyası sadece okunur, ignore edilen yeni yol reddediliyor.
+- ✅ Yazılamayan yol (`calc.py/fix.py`) koşuyu çökertiyordu → `edit_format` geri bildirimi.
+- ✅ JSON modu yüzünden düz `CANNOT_DO` yazılamıyordu → `{"cannot_do": …}` biçimi istemde, hemen üst kademe.
+- ✅ Kontrolleri geçmeyen koşu `apply` ile uygulanabiliyordu ve özet `apply` öneriyordu → `--force` gerekiyor, ipucu sadece `ok`'ta.
+- ✅ Korunan bağlam dosyası işçiye "değiştirebilirsin" diye sunuluyordu → listeden çıkarıldı, yazılırsa `protected` hatası.
+- ✅ Büyük bir referans/test dosyası bütün adayları eliyordu → satır sınırı sadece düzenlenebilir dosyalara.
+- ✅ Değişikliksiz biten koşular tam worktree'yi 30 gün tutuyordu → siliniyor, kayıt `discarded`.
+- ✅ Kesilme mesajı kademe 3 yokken de "kademe 3'e geçiliyor" diyordu → düzeltildi.
+- ✅ Commit'i olmayan depoda koşu açılıp çöküyordu → koşu başlamadan kod 2.
+Testler: 632 geçti (+11).
+
 ### Faz 5c – API işçisiyle düzenleme (2026-11-10)
 **Yapılanlar:**
 - `tasks/edit_format.py` (Mimari §8.2): tam dosya JSON ayrıştırma (çitli, etrafında metin, içerikte süslü parantez), biçim hataları (`EditFormatError` ⊂ `ProviderBadOutput`, çift dilli mesaj), yol normalleştirme ve güvenliği (`..`, mutlak, sürücü, UNC, `.git`, sembolik bağla kaçış, `forbid_paths`, bağlam dışı var olan dosya, `allow_new_files`), satır sonu (CRLF/LF) ve BOM koruyarak yazma.
@@ -38,7 +52,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 **Kabul kriterleri:**
 - ✅ Uçtan uca (sahte sağlayıcı, gerçek geçici git deposu, gerçek pytest): ilk deneme testleri kırıyor → geri bildirimle ikinci deneme geçiyor → `status=ok, attempts=2`, ana depo değişmemiş, `apply` sonrası değişmiş; kullanıcının commit edilmemiş değişikliği ve izlenmeyen dosyası duruyor; diff'te `__pycache__` yok (`test_edit_cli.py::test_tests_fail_then_feedback_fixes_it_and_apply_brings_it_home`).
-- ✅ `protect_paths: ["tests/**"]` varken işçi testi değiştirirse doğrulama başarısız (`test_changing_a_protected_test_fails_verification`; komut geçti, `protect_paths` kaldı).
+- ✅ `protect_paths: ["tests/**"]` varken işçi testi değiştirirse doğrulama başarısız (`test_changing_a_protected_test_fails_verification`; denetimden sonra yazılmadan önce `edit_format` olarak reddediliyor, D-043).
 - ✅ `../outside.txt` ve mutlak yol reddediliyor, worktree dışına hiçbir şey yazılmıyor, geri bildirimle ikinci deneme geçiyor (`test_a_path_outside_the_project_is_rejected_and_nothing_is_written`; birimde sembolik bağ, UNC, sürücü, `.git`).
 - ✅ Kirli çalışma ağacı ve `apply` sonrası kullanıcının değişiklikleri: uçtan uca testte (5b testleri de).
 - ✅ `apply` çakışmada kod 5, dosyalar listeli, worktree korunuyor (5b testleri, gerçek worktree ile).

@@ -318,3 +318,15 @@ Mimari §9 güncellendi.
 11. İstek `json_mode` ile gider (edit cevabı her zaman JSON). İstem: `prompts/edit_format.md` (değiştirilebilir dosyalar, yeni dosya izni, korunan + yasak desenler).
 **Bilinen sınır:** ignore edilen dosyalar (`node_modules/`, `.venv/`) worktree'ye taşınmaz; onlara ihtiyaç duyan `command` doğrulayıcıları başarısız olur (Python'da etkin yorumlayıcı çalışır).
 Mimari §4.2, §7, §8, §8.2 güncellendi.
+
+## D-043 – Faz 5c kod denetimi düzeltmeleri (2026-11-10, Faz 5c)
+**Bağlam:** PR #8 için `/code-review`: 10 bulgu.
+**Karar:**
+- **Sadece okunur bağlam dosyaları:** UTF-8 olmayan dosyalar (işçi onları yerine geçme karakterleriyle gördü; tam dosyayı geri yazmak diğer satırları bozardı), git'in ignore ettiği dosyalar (değişiklik hiç uygulanamaz) ve `protect_paths`/`forbid_paths` desenlerine uyanlar düzenlenebilir listesine girmez; ilk ikisi için uyarı. `max_api_edit_lines` sadece düzenlenebilir dosyalara bakar (büyük bir referans/test dosyası adayları elemez).
+- **Yol denetimi genişledi:** korunan yollar (`edit.error.protected`) ve git'in ignore ettiği yeni yollar (`edit.error.ignored`, `git check-ignore`) yazmadan önce reddedilir. Yazılamayan yol (`a.py/b.py`, Windows'ta geçersiz ad) koşuyu çökertmez, `edit_format` geri bildirimi olur.
+- **JSON modunda CANNOT_DO:** edit istekleri JSON modunda gittiği için işçiye `{"cannot_do": "<neden>"}` biçimi söylenir; runner bunu düz `CANNOT_DO:` gibi değerlendirir (hemen üst kademe).
+- **Doğrulanmamış değişiklik:** `status` `ok` değilse `apply` `--force` ister (kod 2); insan özetinde `apply` ipucu sadece `ok`'ta.
+- **Değişikliksiz biten edit koşusu** (`escalate`, `error`, boş değişiklik) worktree'sini siler, kaydı `discarded` olur. Kesinti (Ctrl+C) ve kontrolleri geçmeyen değişiklikli koşu worktree'yi korur.
+- Kesilme mesajı "kademe 3'e geçiliyor" demez (kademe 3 olmayabilir).
+- Commit'i olmayan depo, koşu başlamadan kullanım hatası (`gw.check_repo` `_prepare`'da).
+Mimari §8.2 güncellendi.
