@@ -25,6 +25,7 @@ class FileChange:
     path: str
     insertions: int = 0
     deletions: int = 0
+    status: str = "M"  # A added, M modified, D deleted (git's letters)
 
 
 @dataclass(frozen=True)

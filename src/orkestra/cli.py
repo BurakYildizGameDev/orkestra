@@ -9,6 +9,7 @@ import sys
 from collections.abc import Sequence
 from contextlib import closing
 from dataclasses import asdict, dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -21,9 +22,10 @@ from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
 from orkestra.i18n import t
 from orkestra.providers import registry
 from orkestra.routing.router import Route, describe_candidates
-from orkestra.security.redact import config_for_display
+from orkestra.security.redact import Redactor, config_for_display, configured_secrets
 from orkestra.state import consent, db
 from orkestra.tasks import runner, spec
+from orkestra.workspace import service
 
 
 @dataclass
@@ -189,6 +191,19 @@ def _route_text(plan: Route) -> str:
         lines.append(t("route.dry.eliminated"))
         lines.extend(f"  - {e.reason}" for e in plan.eliminated)
     return "\n".join(lines)
+
+
+def _patch_redactor(config_path: Path | None) -> Redactor:
+    """Masks configured key values and key patterns in a worker's patch.
+
+    ``password = …`` lines are code, as in the runner's worker output (D-041); a broken
+    config must not block ``show`` or ``apply``.
+    """
+    try:
+        config = loader.load_config(config_path).config
+    except OrkestraError:
+        return Redactor(passwords=False)
+    return Redactor(configured_secrets(config), passwords=False)
 
 
 def _execute(
@@ -452,6 +467,94 @@ def build_app() -> typer.Typer:
         task = spec.load_task(task_file)
         options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets)
         _execute(task, loaded.config, options, dry_run=dry_run, as_json=as_json)
+
+    @app.command("show", help=t("cli.show.help"))
+    def show_command(
+        ctx: typer.Context,
+        run_id: Annotated[str, typer.Argument(metavar="RUN_ID", help=t("cli.show.arg.run_id"))],
+        diff: Annotated[bool, typer.Option("--diff", help=t("cli.show.option.diff"))] = False,
+        output: Annotated[bool, typer.Option("--output", help=t("cli.show.option.output"))] = False,
+        log: Annotated[bool, typer.Option("--log", help=t("cli.show.option.log"))] = False,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        chosen = [name for name, on in (("diff", diff), ("output", output), ("log", log)) if on]
+        if len(chosen) > 1:
+            raise UsageError(t("show.error.one_part"))
+        part: service.Part = chosen[0] if chosen else "envelope"  # type: ignore[assignment]
+        redact = _patch_redactor(ctx.ensure_object(_State).config_path) if part == "diff" else str
+        result = service.show(run_id, part, redact=redact)
+        if part == "envelope":
+            if as_json:
+                _echo_json(result)
+            else:
+                typer.echo(envelope.stored_summary(result))
+            return
+        if part == "diff" and not result:
+            typer.echo(t("show.no_changes", run_id=run_id), err=True)
+            return
+        typer.echo(result, nl=False)
+
+    @app.command("apply", help=t("cli.apply.help"))
+    def apply_command(
+        ctx: typer.Context,
+        run_id: Annotated[str, typer.Argument(metavar="RUN_ID", help=t("cli.show.arg.run_id"))],
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        redact = _patch_redactor(ctx.ensure_object(_State).config_path)
+        with closing(db.connect()) as conn:
+            done = service.apply_run(conn, run_id, redact=redact)
+        if as_json:
+            _echo_json(
+                {"run_id": run_id, "applied": True, "repo": str(done.repo),
+                 "files": list(done.files), "merged": list(done.merged)}
+            )  # fmt: skip
+            return
+        typer.echo(t("apply.done", count=len(done.files), run_id=run_id, repo=done.repo))
+        if done.merged:
+            typer.echo(t("apply.merged", files=", ".join(done.merged)))
+
+    @app.command("discard", help=t("cli.discard.help"))
+    def discard_command(
+        run_id: Annotated[str, typer.Argument(metavar="RUN_ID", help=t("cli.show.arg.run_id"))],
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        removed = service.discard_run(run_id)
+        if as_json:
+            _echo_json({"run_id": run_id, "discarded": removed})
+            return
+        typer.echo(t("discard.done" if removed else "discard.nothing", run_id=run_id))
+
+    @app.command("gc", help=t("cli.gc.help"))
+    def gc_command(
+        older_than: Annotated[
+            int,
+            typer.Option("--older-than", min=0, metavar="DAYS", help=t("cli.gc.option.older_than")),
+        ] = service.DEFAULT_KEEP.days,
+        dry_run: Annotated[
+            bool, typer.Option("--dry-run", help=t("cli.gc.option.dry_run"))
+        ] = False,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        with closing(db.connect()) as conn:
+            report = service.gc(
+                conn, db.local_now(), keep=timedelta(days=older_than), dry_run=dry_run
+            )
+        if as_json:
+            _echo_json(
+                {"dry_run": report.dry_run, "worktrees": [str(p) for p in report.worktrees],
+                 "runs": list(report.runs), "reservations": report.reservations,
+                 "failed": [str(p) for p, _ in report.failed]}
+            )  # fmt: skip
+            return
+        for path in report.worktrees:
+            typer.echo(t("gc.item.worktree", path=path))
+        for path, reason in report.failed:
+            typer.echo(t("gc.item.failed", path=path, reason=reason), err=True)
+        for run in report.runs:
+            typer.echo(t("gc.item.run", run_id=run))
+        key = "gc.dry" if report.dry_run else "gc.summary"
+        typer.echo(t(key, worktrees=len(report.worktrees), runs=len(report.runs),
+                     reservations=report.reservations))  # fmt: skip
 
     @app.command("doctor", help=t("cli.doctor.help"))
     def doctor_command(

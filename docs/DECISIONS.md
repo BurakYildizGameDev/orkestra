@@ -271,3 +271,33 @@ Mimari §4.2, §8, §10 ve §11 güncellendi.
 - Glob karakteri denetimi tek yerde: `glob.has_magic`.
 Mimari §10, §11 ve §13 güncellendi.
 
+## D-040 – Worktree ayrıntıları ve `apply` stratejisi (2026-11-10, Faz 5b)
+**Bağlam:** Mimari §9 `apply` için `git apply --3way --check` → `git apply --3way` diyordu. Denendi: `--3way`, `--index`'i de açar; kullanıcının o dosyada stage'lenmemiş değişikliği varsa (`git diff` ≠ dizin) `error: <dosya>: does not match index` ile reddeder. Yani tam da kabul kriterindeki "kirli çalışma ağacı" durumunda çalışmıyor, üstelik başarılı olursa kullanıcının dizinini (stage) değiştiriyor.
+**Karar:**
+1. Önce düz `git apply --check` / `git apply` (sadece çalışma ağacı, dizine dokunmaz). Baseline kullanıcının o anki diski olduğu için koşudan sonra kimse dokunmadıysa bu her zaman geçer.
+2. Geçmezse dosya bazında üç yönlü birleştirme: taban = baseline'daki içerik (`git cat-file --filters`, yani checkout'taki satır sonlarıyla), bizimki = kullanıcının şu anki dosyası, onlarınki = işçinin worktree'deki dosyası; `git merge-file -p`. Sadece bir taraf değiştiyse o taraf alınır; iki tarafta da oluşturma, bir tarafta silip diğerinde değiştirme ve ikili dosyalar çakışmadır.
+3. Herhangi bir dosya çakışırsa **hiçbir şey yazılmaz** (önce hepsi hesaplanır), `WorkspaceConflict` (kod 5) çakışan dosyaları `details`'te listeler, worktree durur.
+4. Uygulama sonrası worktree silinir, `runs.applied = 1`, değişiklik maskelenmiş olarak `runs/<run_id>/changes.patch`'e yazılır (`show --diff` için).
+**Diğer ayrıntılar:**
+- Kayıt: `runs/<run_id>/worktree.json` (depo, worktree yolu, baseline commit, durum `active|applied|discarded`) ve `runs.workspace`/`runs.worktree` sütunları. Migration gerekmedi.
+- Koruma: yıkıcı komutlar (`reset --hard`, `clean -fdx`, `worktree remove`, dizin silme) sadece worktrees dizinindeki, `.git`'i dosya olan ve `git-dir ≠ git-common-dir` olan bağlı bir worktree'de çalışır; değilse `WorkspaceGuardError`. Her git komutu açık `cwd=` ile; hook'lar hiç çalışmaz (`core.hooksPath` boş bir dizin), imzalama kapalı, baseline commit `--no-verify` ve sabit kimlik (`orkestra <orkestra@localhost>`).
+- Baseline: `git diff --binary HEAD` (stage'li + stage'siz + silinmiş) worktree'ye uygulanır, `git ls-files --others --exclude-standard` ile izlenmeyen dosyalar kopyalanır (ignore edilenler değil), hepsi tek commit (`--allow-empty`). Commit'i olmayan depo ve git dışı dizin kullanım hatası (kod 2). Alt dizinden çağrılırsa depo kökü kullanılır.
+- `diff`: `.orkestra_prompt.md` gibi iç dosyalar hariç, yeniden adlandırma tespiti kapalı; dosya başına eklenen/silinen satır ve durum (`A/M/D`).
+- `gc`: worktrees dizinindeki her worktree, koşu kaydı yoksa, kaydı `active` değilse veya koşu `--older-than` günden (varsayılan 30) eskiyse silinir; o yaştaki koşu dizinleri de silinir (`runs` satırları istatistik için kalır); 1 saatten eski rezervasyonlar temizlenir. `--dry-run` sadece listeler.
+- `show <run_id>`: `--diff`, `--output`, `--log`'dan en fazla biri; koşu kimliği `YYYYMMDD-HHMMSS-xxxx` biçiminde olmalı (yol enjeksiyonuna karşı).
+- `doctor`: Windows'ta `core.longpaths` açık değilse uyarı.
+- Modül: `workspace/service.py` (Mimari §2'de sadece `git_worktree.py` vardı); CLI iş mantığı içermesin diye `show`/`apply`/`discard`/`gc` orada.
+Mimari §3, §9 güncellendi.
+
+## D-041 – Faz 5b kod denetimi düzeltmeleri (2026-11-10, Faz 5b)
+**Bağlam:** PR #7 için `/code-review`: 10 bulgu.
+**Karar:**
+- Orkestra'nın ürettiği ve uyguladığı patch'ler kullanıcının git ayarlarından etkilenmez: `diff.noprefix`/`mnemonicPrefix`/`relative` ve renk `-c` ile kapalı; `diff` komutlarında `--no-ext-diff --no-textconv --no-color --src-prefix=a/ --dst-prefix=b/`; her `git apply`'da `--whitespace=nowarn` (`apply.whitespace=error` işçinin değişikliğini reddetmesin).
+- `changes.patch` sadece başarılı `apply`'dan sonra yazılır. `show --diff` koşu açıkken (kayıt `active`, worktree var) her zaman canlı diff'i gösterir, sonra kaydedilmiş patch'i.
+- Patch'ler (`show --diff` canlı diff ve `changes.patch`) aynı maskeyle: yapılandırılmış anahtarlar ve anahtar desenleri maskeli, `password = …` satırları kod olduğu için maskelenmez (işçi cevabındaki `passwords=False` ile aynı).
+- `gc`: koşu kaydı olmayan worktree, koşu kimliğindeki zaman 1 günden eskiyse silinir (hâlâ başlamakta olan koşuyla yarışmasın). Bir worktree silinemezse `gc` durmaz; diğerleri, eski koşu dizinleri ve rezervasyonlar işlenir, silinemeyenler `failed` olarak raporlanır (çıkış kodu 0).
+- Worktree silme (`remove_path`) depoyu bilmeden çalışır: ortak git dizini worktree'nin kendisinden okunur (`git --git-dir=<ortak> worktree remove --force`, sonra `prune`); depo taşınmış/silinmişse, dizin yarım kalmışsa (`.git` yok) veya alt modül/çıplak depo worktree'siyse de silinir. Koruma: worktrees dizininin dışındaki hiçbir şey silinmez (`WorkspaceGuardError`); `reset --hard`/`clean` için eski koruma (bağlı worktree şartı) aynen duruyor. `main_repo_of` (ortak dizinin üstünü depo sayan tahmin) kaldırıldı.
+- `apply`'ın `merged` listesi sadece kullanıcının koşudan sonra da değiştirdiği dosyalar (iki yolda da: düz `git apply` ve üç yönlü birleştirme).
+- `show` eski sürüm veya bozuk bir envelope'u JSON olarak gösterir (önceden dahili hata).
+- git zaman aşımı mesajı çevrili (`workspace.error.git_timeout`).
+Mimari §9 güncellendi.

@@ -37,3 +37,41 @@ def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
 
     monkeypatch.setattr(runner, "_sleep", fake_sleep)
     return recorded
+
+
+GIT_ENV = {
+    "GIT_AUTHOR_NAME": "test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
+    "GIT_COMMITTER_NAME": "test", "GIT_COMMITTER_EMAIL": "test@example.invalid",
+}  # fmt: skip
+
+
+def git(repo: Path, *args: str) -> str:
+    """Run git in ``repo`` for test setup; returns stdout."""
+    import subprocess
+
+    env = {**__import__("os").environ, **GIT_ENV}
+    done = subprocess.run(
+        ["git", "-c", "commit.gpgsign=false", *args],
+        cwd=repo, capture_output=True, check=True, env=env,
+    )  # fmt: skip
+    return done.stdout.decode("utf-8", errors="replace")
+
+
+@pytest.fixture
+def make_repo(tmp_path: Path) -> object:
+    """``make_repo(files, name="repo", autocrlf="false")``: a git repo with one commit."""
+
+    def factory(files: dict[str, str | bytes], name: str = "repo", autocrlf: str = "false") -> Path:
+        repo = tmp_path / name
+        repo.mkdir()
+        git(repo, "init", "-q", "-b", "main")
+        git(repo, "config", "core.autocrlf", autocrlf)
+        for rel, content in files.items():
+            path = repo / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content.encode("utf-8") if isinstance(content, str) else content)
+        git(repo, "add", "-A")
+        git(repo, "commit", "-q", "-m", "init")
+        return repo
+
+    return factory

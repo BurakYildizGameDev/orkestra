@@ -12,7 +12,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 3 – Durum, bütçe, onay | ✅ | 2026-11-09 | state.db, bütçe rezervasyonu, onay, devre kesici, gizli bilgi, fiyat kaynakları (D-020…D-028) |
 | 4 – Router | ✅ | 2026-11-09 | router, yeniden deneme, aynı komutta yedeğe geçiş, --dry-run; Mimari kararlarla eşitlendi (D-029…D-034) |
 | 5a – Görev + doğrulama | ✅ | 2026-11-10 | `orkestra run`, 8 doğrulayıcı, geri bildirimle tekrar, üst kademeye geçiş (D-038) |
-| 5b – Worktree | ⏳ | | |
+| 5b – Worktree | ✅ | 2026-11-10 | worktree (kirli ağaç dahil), `show`, `apply`, `discard`, `gc` (D-040) |
 | 5c – API ile edit | ⏳ | | |
 | 6 – CLI ajanları | ⏳ | | |
 | 7 – Batch + tahmin | ⏳ | | |
@@ -26,6 +26,49 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 5b (PR #7), 2026-11-10
+10 bulgu, 10'u düzeltildi (D-041):
+- ✅ Patch'ler kullanıcının git ayarlarıyla bozulabiliyordu (`diff.noprefix`, `color.ui=always`, `diff.external`, textconv, `apply.whitespace=error`) → bu ayarlar Orkestra'nın git komutlarında kapalı.
+- ✅ Çakışan `apply` eski bir `changes.patch` bırakıyordu ve `show --diff` canlı diff yerine onu gösteriyordu → patch sadece başarılı `apply`'dan sonra yazılıyor, açık koşuda canlı diff.
+- ✅ `gc`, kaydı henüz yazılmamış (başlamakta olan) koşunun worktree'sini silebiliyordu → kaydı olmayan worktree için 1 gün bekleme.
+- ✅ Tek bir silinemeyen worktree bütün `gc`'yi durduruyordu → devam ediyor, silinemeyenler `failed`'da.
+- ✅ Deposu silinmiş/taşınmış koşuda `discard` dahili hata veriyordu → siliyor.
+- ✅ `show` eski sürüm envelope'ta dahili hata veriyordu → JSON olarak gösteriyor.
+- ✅ Alt modül/çıplak depoda `gc` depoyu yanlış tahmin ediyordu → ortak git dizini worktree'den okunuyor, `--git-dir` ile siliniyor.
+- ✅ Canlı `show --diff` maskesizdi, kaydedilen patch `password` satırlarını bozuyordu → ikisi de aynı maske (anahtarlar evet, `password` satırları hayır).
+- ✅ `merged` listesi değişen her dosyayı sayıyordu → sadece kullanıcının da değiştirdikleri.
+- ✅ git zaman aşımı mesajında çevrilmemiş "timeout" → `workspace.error.git_timeout`.
+Testler: 569 geçti (+12).
+
+### Faz 5b – Worktree (2026-11-10)
+**Yapılanlar:**
+- `workspace/git_worktree.py` (Mimari §9): `create` (depo kökü, `HEAD`'den bağlı worktree, kullanıcının commit edilmemiş değişiklikleri `git diff --binary HEAD` ile ve izlenmeyen dosyalar kopyalanarak taşınır, hepsi "orkestra baseline" commit'i), `diff` (baseline'a göre patch + dosya başına satır sayıları ve `A/M/D`), `reset` (denemeler arasında baseline'a geri sarma), `apply`, `remove`, kayıt dosyası (`worktree.json`).
+- Koruma: yıkıcı git komutları sadece worktrees dizinindeki bağlı bir worktree'de çalışır (`WorkspaceGuardError`); her komut açık `cwd=`; hook'lar hiç çalışmaz.
+- `apply`: önce düz `git apply` (dizine dokunmaz), olmazsa dosya bazında `git merge-file` ile üç yönlü birleştirme; tek bir çakışmada hiçbir şey yazılmaz, kod 5 (D-040; Mimari'deki `--3way` kirli ağaçta çalışmadığı için).
+- `workspace/service.py` + komutlar: `orkestra show <run_id> [--diff|--output|--log] [--json]`, `orkestra apply <run_id>`, `orkestra discard <run_id>`, `orkestra gc [--older-than GÜN] [--dry-run]`.
+- `doctor`: Windows'ta `core.longpaths` kapalıysa uyarı. Alt modül ve Git LFS için uyarı.
+- `db.update_run`, `budget.stale_reservations`; `FileChange.status`.
+- README (en + tr): "Worktree'ler" bölümü, komut tablosu, çıkış kodu 5, yol haritası.
+
+**Kabul kriterleri (5b'ye düşenler):**
+- ✅ Kirli çalışma ağacı: stage'siz, stage'li, silinmiş ve izlenmeyen dosyalar worktree'de görünüyor, ignore edilenler taşınmıyor; ana deponun `git status`'u değişmiyor (`test_git_worktree.py::test_create_carries_the_dirty_tree_and_untracked_files`).
+- ✅ `apply` sonrası kullanıcının commit edilmemiş değişiklikleri kaybolmuyor ve hiçbir şey stage'lenmiyor (`test_apply_keeps_the_users_uncommitted_work`, CLI'da `test_apply_then_apply_again`).
+- ✅ Koşudan sonra aynı dosyanın başka yerini değiştirmek birleşiyor (`test_apply_merges_a_later_edit_to_another_part_of_the_file`).
+- ✅ Çakışmada kod 5, çakışan dosyalar listeli, hiçbir dosya yazılmıyor, worktree korunuyor (`test_overlapping_edit_is_a_conflict_and_nothing_is_written`, `test_apply_conflict_exits_5_and_keeps_the_worktree`).
+- ✅ Yıkıcı git komutu ana depoda çalışmıyor; worktree gibi görünen ama olmayan dizinde de (`test_destructive_git_never_runs_in_the_main_repository`, `test_guard_rejects_a_directory_that_only_looks_like_a_worktree`).
+- ✅ Satır sonları: CRLF dosya ve `autocrlf=true` depo korunuyor.
+- ✅ Bütün testler gerçek geçici git depolarında; CI'da üç işletim sisteminde.
+- ✅ ruff, ruff format, pyright, pytest (557 test) temiz.
+- Uçtan uca edit akışı (testleri kıran ilk deneme, `protect_paths`, yol güvenliği, Ctrl+C'de worktree korunması) → 5c.
+
+**Ertelenenler:**
+- Edit görevlerinin worktree'yi kullanması (`run` → worktree → `apply`) → 5c.
+- Alt modül ve Git LFS desteği (şimdilik uyarı) → v1 sonrası.
+- `show --only-flagged` → Faz 8b (`review`).
+
+**Bilinen sorunlar:**
+- Windows'ta git alt süreçleri yavaş: test süresi ~30 sn'den ~50 sn'ye çıktı.
 
 ### Kod denetimi – Faz 5a (PR #6), 2026-11-10
 10 bulgu, 10'u düzeltildi (D-039):

@@ -192,17 +192,18 @@ def release(conn: sqlite3.Connection, reservation_id: int) -> None:
         conn.execute("DELETE FROM usage WHERE id = ? AND kind = 'reservation'", (reservation_id,))
 
 
+def stale_reservations(conn: sqlite3.Connection, now: datetime) -> list[int]:
+    """Ids of reservations older than one hour (left behind by crashed processes)."""
+    rows = conn.execute("SELECT id, created_at FROM usage WHERE kind = 'reservation'").fetchall()
+    return [
+        r["id"] for r in rows if now - datetime.fromisoformat(r["created_at"]) > STALE_RESERVATION
+    ]
+
+
 def purge_stale_reservations(conn: sqlite3.Connection, now: datetime) -> int:
     """Delete reservations older than one hour (used by ``gc``)."""
     with transaction(conn):
-        rows = conn.execute(
-            "SELECT id, created_at FROM usage WHERE kind = 'reservation'"
-        ).fetchall()
-        stale = [
-            r["id"]
-            for r in rows
-            if now - datetime.fromisoformat(r["created_at"]) > STALE_RESERVATION
-        ]
+        stale = stale_reservations(conn, now)
         conn.executemany("DELETE FROM usage WHERE id = ?", [(i,) for i in stale])
     return len(stale)
 

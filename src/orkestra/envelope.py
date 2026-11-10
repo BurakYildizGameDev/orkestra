@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from orkestra.i18n import t
 
@@ -132,3 +132,11 @@ def human_summary(envelope: ResultEnvelope) -> str:
     if envelope.error:
         lines.append(t("errors.prefix", message=envelope.error))
     return "\n".join(lines)
+
+
+def stored_summary(data: Any) -> str:
+    """``human_summary`` of a stored envelope; an older or damaged one is shown as JSON."""
+    try:
+        return human_summary(ResultEnvelope.model_validate(data))
+    except ValidationError:
+        return json.dumps(data, indent=2, ensure_ascii=False)
