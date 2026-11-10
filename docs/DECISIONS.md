@@ -360,3 +360,13 @@ Mimari §2, §5.3, §5.4, §5.5, §7 güncellendi.
 - Kullanılmayan `CliAgent.health()` ve tekrar eden `probe_version` kaldırıldı (sürüm `doctor.probe_version`'dan).
 - **Bilinen sınır:** `generic` türdeki ajanın (codex/agy dışındaki her program) sandbox'ı yoktur; `ask` görevinde kullanıcının proje dizininde çalışır. Onay metni bunu söyler (`consent.describe.generic_no_sandbox`), yazdıkları `workspace_scope` ile raporlanır. Bilerek bırakıldı: genel bir programa sandbox dayatmanın taşınabilir yolu yok.
 Mimari §5.3, §5.4 güncellendi.
+
+## D-046 – Skill dosyası bugünkü CLI'ye göre (2026-11-10, Faz 9a)
+**Bağlam:** Mimari "Ek: Skill dosyası" tam ürünü (Faz 7, 8, 10 komutlarıyla) anlatıyor; Faz 9 MVP sırasıyla Faz 7/8/10'dan önce yapılıyor. Plan, olmayan komutların geçici olarak çıkarılmasını istiyor.
+**Karar:**
+1. **Çıkarılanlar (o fazlar bitince geri eklenecek):** `status`, `map` (oturum başı) ve `review` + `show --only-flagged` (denetim) → Faz 8; `templates list`, `run --template/--files`, `plan expand` → Faz 8; `batch` → Faz 7; "Devir dosyasını güncel tut" bölümü (`handoff …`) → Faz 10. Bölümler yeniden numaralandı (Raporlama §7).
+2. **Gerçek CLI'ye göre düzeltmeler:** `ask` için her dosyaya ayrı `--context` (Ek'teki `--context <dosyalar>` yanlıştı); oturum başı `doctor --json` + `providers list --json`; örnek görev dosyasında `workspace: .` yerine göreli yolların neye göre çözüldüğü yazıldı (D-038), `allow_new_files: false` eklendi; birden çok görev şimdilik sırayla `run` ile.
+3. **Önceki fazların kararlarından eklenenler:** çıkış kodları tablosu ve `--json` hata belgesi (`{"error": {...}}`), `--dry-run`, görev alanları ve 8 doğrulayıcı, edit görevlerine kendiliğinden eklenen doğrulayıcılar (§10), worktree notları (en az bir commit, ignore edilen klasörler yok, D-040/D-043), `apply` sadece `ok` ve `--force` kullanıcı istemeden yok (D-043), `--allow-secrets` kullanıcı istemeden yok, başarısız koşunun worktree'si için `discard`, `show --log`, `gc`.
+4. **Dil:** Ek'teki gibi Türkçe (Faz 14'te İngilizceye çevrilecek); ön bilgi (`description`) İngilizce.
+5. **Test** (`tests/unit/test_skill.py`): skill'deki her `orkestra …` çağrısı (kod blokları ve satır içi kod) gerçek typer uygulamasına karşı denetlenir: komut, alt komut ve bayraklar var olmalı. Örnek görev dosyaları `parse_task` ile geçerli olmalı; dosya ≤ 500 satır. Böylece bir komut yeniden adlandırılırsa veya skill'e henüz olmayan bir komut yazılırsa test kırılır.
+Mimari "Ek: Skill dosyası" hedef (tam) sürüm olarak kaldı; başına bu karara işaret eden not eklendi ve `--context` kullanımı düzeltildi.

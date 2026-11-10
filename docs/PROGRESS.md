@@ -18,7 +18,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 7 – Batch + tahmin | ⏳ | | |
 | 8a – status, şablon, önbellek, sayaç | ⏳ | | |
 | 8b – review, map, plan expand | ⏳ | | |
-| 9a – Skill dosyası | ⏳ | | SKILL.md, CLI ile tutarlılık, test |
+| 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
 | 9b – Skill doğrulama | ⏳ | | kod denetimi, elle senaryolar, düzeltmeler |
 | 10 – Şef devri | ⏳ | | |
 | 11 – Arayüz, sihirbaz, 5 dil | ⏳ | | |
@@ -27,6 +27,32 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 9a – Skill dosyası (2026-11-10)
+**Yapılanlar:**
+- `skill/orkestra/SKILL.md` (161 satır): Mimari "Ek: Skill dosyası"ndan, `orkestra --help` / alt komut yardımları ve gerçek `--json` çıktılarıyla (`doctor`, `providers list`, `budget`, `ask --dry-run`, onay hatası) karşılaştırılarak yazıldı. Delege kararı, oturum başı (`doctor`, `providers list`, onay), çıkış kodları ve hata JSON'u, kademe/gizlilik, `ask` ve görev dosyası (alanlar, 8 doğrulayıcı, örtük doğrulayıcılar, worktree notları), zarfı okuma, denetim (`show --diff` → `apply`/`discard`, kod 5), raporlama, "asla yapma" listesi (`--yes`, `--allow-secrets`, `--force`).
+- `tests/unit/test_skill.py` (16 test): skill'deki her `orkestra …` çağrısının komut/alt komut/bayrakları gerçek typer uygulamasında var; denetleyici olmayan komutları (`status`, `batch`, `show --only-flagged`, `run --template` …) yakalıyor; örnek görev dosyası `parse_task` ile geçerli; ön bilgi var; ≤ 500 satır.
+- README (en + tr): "Claude skill" bölümü (kurulum: `~/.claude/skills/` veya `.claude/skills/`), özellik tablosu, yol haritasında 9a/9b.
+
+**Skill'den geçici olarak çıkarılanlar – sonra skill'e geri eklenecek (D-046):**
+- Faz 8 sonrası: `orkestra status --json` ve `orkestra map --json` (oturum başı, tanınmayan proje), `orkestra review <run_id> --json` + `show --diff --only-flagged` (büyük diff ön incelemesi, `risk: high` → tam okuma), `orkestra templates list` + `run --template … --files …`, `orkestra plan expand`.
+- Faz 7 sonrası: `orkestra batch <dosya> --parallel N --json` (şimdilik görevler sırayla `run`).
+- Faz 10 sonrası: "Devir dosyasını güncel tut" bölümü (`handoff update/show --brief/to`).
+
+**Kabul kriterleri (9a kısmı):**
+- ✅ `SKILL.md` Ek'ten oluşturuldu, gerçek komut/çıktı biçimleriyle tutarlı (`--context` tekrarı düzeltildi, hata JSON'u ve çıkış kodları gerçek çıktıdan).
+- ✅ Olmayan komutlar çıkarıldı, yukarıda not edildi.
+- ✅ Skill'in sadece var olan komutları ve bayrakları andığını denetleyen test (`test_every_command_and_flag_in_the_skill_exists`).
+- ✅ 500 satırı geçmiyor (161).
+- ✅ ruff, ruff format, pyright, pytest (683 test) temiz.
+- ⏳ Elle senaryolar ve %80 kabul kriteri → Faz 9b (kullanıcı, temiz Claude Code oturumu + çalışan bir işçi ile; Faz 7/8 öncesi 7 senaryodan 4'ü uygulanabilir: 1, 3, 4, 5; 2 batch olmadan sıralı `run` ile kısmen).
+
+**Ertelenenler:**
+- Kod denetimi (`/code-review`), elle senaryolar ve sapmalara göre düzeltmeler → Faz 9b.
+- İngilizce çeviri → Faz 14.
+
+**Bilinen sorunlar:**
+- Test sadece `orkestra` ile başlayan çağrıları denetler; skill'de tek başına geçen bayraklar (`--yes`, `--force`) denetlenmez (bunlar zaten "kullanma" kuralları).
 
 ### Kod denetimi – Faz 6 (PR #9), 2026-11-10
 10 bulgu: 9'u düzeltildi, 1'i gerekçesiyle bilinen sorun (D-045):
