@@ -27,6 +27,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 5b (PR #7), 2026-11-10
+10 bulgu, 10'u düzeltildi (D-041):
+- ✅ Patch'ler kullanıcının git ayarlarıyla bozulabiliyordu (`diff.noprefix`, `color.ui=always`, `diff.external`, textconv, `apply.whitespace=error`) → bu ayarlar Orkestra'nın git komutlarında kapalı.
+- ✅ Çakışan `apply` eski bir `changes.patch` bırakıyordu ve `show --diff` canlı diff yerine onu gösteriyordu → patch sadece başarılı `apply`'dan sonra yazılıyor, açık koşuda canlı diff.
+- ✅ `gc`, kaydı henüz yazılmamış (başlamakta olan) koşunun worktree'sini silebiliyordu → kaydı olmayan worktree için 1 gün bekleme.
+- ✅ Tek bir silinemeyen worktree bütün `gc`'yi durduruyordu → devam ediyor, silinemeyenler `failed`'da.
+- ✅ Deposu silinmiş/taşınmış koşuda `discard` dahili hata veriyordu → siliyor.
+- ✅ `show` eski sürüm envelope'ta dahili hata veriyordu → JSON olarak gösteriyor.
+- ✅ Alt modül/çıplak depoda `gc` depoyu yanlış tahmin ediyordu → ortak git dizini worktree'den okunuyor, `--git-dir` ile siliniyor.
+- ✅ Canlı `show --diff` maskesizdi, kaydedilen patch `password` satırlarını bozuyordu → ikisi de aynı maske (anahtarlar evet, `password` satırları hayır).
+- ✅ `merged` listesi değişen her dosyayı sayıyordu → sadece kullanıcının da değiştirdikleri.
+- ✅ git zaman aşımı mesajında çevrilmemiş "timeout" → `workspace.error.git_timeout`.
+Testler: 569 geçti (+12).
+
 ### Faz 5b – Worktree (2026-11-10)
 **Yapılanlar:**
 - `workspace/git_worktree.py` (Mimari §9): `create` (depo kökü, `HEAD`'den bağlı worktree, kullanıcının commit edilmemiş değişiklikleri `git diff --binary HEAD` ile ve izlenmeyen dosyalar kopyalanarak taşınır, hepsi "orkestra baseline" commit'i), `diff` (baseline'a göre patch + dosya başına satır sayıları ve `A/M/D`), `reset` (denemeler arasında baseline'a geri sarma), `apply`, `remove`, kayıt dosyası (`worktree.json`).

@@ -193,13 +193,17 @@ def _route_text(plan: Route) -> str:
     return "\n".join(lines)
 
 
-def _record_redactor(config_path: Path | None) -> Redactor:
-    """Masks configured key values (and key patterns); a broken config must not block apply."""
+def _patch_redactor(config_path: Path | None) -> Redactor:
+    """Masks configured key values and key patterns in a worker's patch.
+
+    ``password = …`` lines are code, as in the runner's worker output (D-041); a broken
+    config must not block ``show`` or ``apply``.
+    """
     try:
         config = loader.load_config(config_path).config
     except OrkestraError:
-        return Redactor()
-    return Redactor(configured_secrets(config))
+        return Redactor(passwords=False)
+    return Redactor(configured_secrets(config), passwords=False)
 
 
 def _execute(
@@ -466,6 +470,7 @@ def build_app() -> typer.Typer:
 
     @app.command("show", help=t("cli.show.help"))
     def show_command(
+        ctx: typer.Context,
         run_id: Annotated[str, typer.Argument(metavar="RUN_ID", help=t("cli.show.arg.run_id"))],
         diff: Annotated[bool, typer.Option("--diff", help=t("cli.show.option.diff"))] = False,
         output: Annotated[bool, typer.Option("--output", help=t("cli.show.option.output"))] = False,
@@ -476,12 +481,13 @@ def build_app() -> typer.Typer:
         if len(chosen) > 1:
             raise UsageError(t("show.error.one_part"))
         part: service.Part = chosen[0] if chosen else "envelope"  # type: ignore[assignment]
-        result = service.show(run_id, part)
+        redact = _patch_redactor(ctx.ensure_object(_State).config_path) if part == "diff" else str
+        result = service.show(run_id, part, redact=redact)
         if part == "envelope":
             if as_json:
                 _echo_json(result)
             else:
-                typer.echo(envelope.human_summary(envelope.ResultEnvelope.model_validate(result)))
+                typer.echo(envelope.stored_summary(result))
             return
         if part == "diff" and not result:
             typer.echo(t("show.no_changes", run_id=run_id), err=True)
@@ -494,7 +500,7 @@ def build_app() -> typer.Typer:
         run_id: Annotated[str, typer.Argument(metavar="RUN_ID", help=t("cli.show.arg.run_id"))],
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
-        redact = _record_redactor(ctx.ensure_object(_State).config_path)
+        redact = _patch_redactor(ctx.ensure_object(_State).config_path)
         with closing(db.connect()) as conn:
             done = service.apply_run(conn, run_id, redact=redact)
         if as_json:
@@ -536,11 +542,14 @@ def build_app() -> typer.Typer:
         if as_json:
             _echo_json(
                 {"dry_run": report.dry_run, "worktrees": [str(p) for p in report.worktrees],
-                 "runs": list(report.runs), "reservations": report.reservations}
+                 "runs": list(report.runs), "reservations": report.reservations,
+                 "failed": [str(p) for p, _ in report.failed]}
             )  # fmt: skip
             return
         for path in report.worktrees:
             typer.echo(t("gc.item.worktree", path=path))
+        for path, reason in report.failed:
+            typer.echo(t("gc.item.failed", path=path, reason=reason), err=True)
         for run in report.runs:
             typer.echo(t("gc.item.run", run_id=run))
         key = "gc.dry" if report.dry_run else "gc.summary"

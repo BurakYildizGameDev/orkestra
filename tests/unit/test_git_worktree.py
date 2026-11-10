@@ -248,3 +248,95 @@ def test_record_round_trip(make_repo: MakeRepo, tmp_path: Path) -> None:
     loaded = gw.load_record(tmp_path / "run")
     assert loaded is not None and loaded.state == "applied"
     assert gw.load_record(tmp_path / "missing") is None
+
+
+# --- code review fixes (PR #7) -----------------------------------------------------------
+
+
+def _rmtree(path: Path) -> None:
+    import os
+    import shutil
+    import stat
+
+    def force(func: Callable[[str], object], target: str, _exc: object) -> None:
+        os.chmod(target, stat.S_IWRITE)
+        func(target)
+
+    shutil.rmtree(path, onerror=force)
+
+
+def test_user_diff_config_does_not_change_the_patches(make_repo: MakeRepo) -> None:
+    repo = make_repo(FILES)
+    for key, value in (
+        ("diff.noprefix", "true"),
+        ("diff.mnemonicPrefix", "true"),
+        ("color.ui", "always"),
+        ("diff.external", "no-such-diff-tool"),
+        ("apply.whitespace", "error"),
+    ):
+        git(repo, "config", key, value)
+    (repo / "README.md").write_bytes(b"# demo\nuser edit   \n")  # trailing whitespace
+    wt = gw.create(repo, "20261110-120000-abcd")
+    assert _read(wt.path / "README.md") == "# demo\nuser edit   \n"
+    (wt.path / "src" / "app.py").write_bytes(b"def f():   \n    return 10\n")
+    change = gw.diff(wt)
+    assert b"\x1b[" not in change.patch and b"a/src/app.py" in change.patch
+    gw.apply(wt, change)
+    assert _read(repo / "src" / "app.py") == "def f():   \n    return 10\n"
+
+
+def test_only_files_the_user_also_changed_are_reported_as_merged(make_repo: MakeRepo) -> None:
+    repo = make_repo(FILES)
+    wt = gw.create(repo, "20261110-120000-abcd")
+    _work(wt)  # changes src/app.py, adds src/new.py, deletes README.md
+    (repo / "src" / "app.py").write_bytes(b"def f():\n    return 1\n\n\ndef g():\n    return 20\n")
+    applied = gw.apply(wt)
+    assert sorted(applied.files) == ["README.md", "src/app.py", "src/new.py"]
+    assert applied.merged == ("src/app.py",)
+
+
+def test_remove_works_when_the_repository_is_gone(make_repo: MakeRepo) -> None:
+    repo = make_repo(FILES)
+    wt = gw.create(repo, "20261110-120000-abcd")
+    _rmtree(repo)
+    gw.remove(wt)
+    assert not wt.path.exists()
+
+
+def test_remove_path_unregisters_without_knowing_the_repository(make_repo: MakeRepo) -> None:
+    repo = make_repo(FILES)
+    wt = gw.create(repo, "20261110-120000-abcd")
+    gw.remove_path(wt.path)
+    assert not wt.path.exists()
+    assert wt.path.name not in git(repo, "worktree", "list", "--porcelain")
+
+
+def test_remove_path_deletes_a_half_created_directory(tmp_path: Path) -> None:
+    half = paths.worktrees_dir() / "0000" / "20261110-120000-abcd"
+    (half / "src").mkdir(parents=True)
+    gw.remove_path(half)
+    assert not half.exists()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    with pytest.raises(gw.WorkspaceGuardError):
+        gw.remove_path(outside)
+    assert outside.is_dir()
+
+
+def test_git_timeout_message_is_translated(
+    make_repo: MakeRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+
+    from orkestra import i18n
+    from orkestra.errors import InternalError
+
+    def slow(*_args: object, **_kwargs: object) -> object:
+        raise subprocess.TimeoutExpired("git", gw.GIT_TIMEOUT_S)
+
+    i18n.set_language("tr")
+    monkeypatch.setattr(gw.subprocess, "run", slow)
+    with pytest.raises(InternalError) as exc_info:
+        gw.repo_root(Path.cwd())
+    assert "timeout" not in str(exc_info.value)
+    assert str(gw.GIT_TIMEOUT_S) in str(exc_info.value)

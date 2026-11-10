@@ -7,9 +7,12 @@ worker's changes are the diff against that baseline.
 
 Safety rules:
 - every git command gets an explicit ``cwd``; there is no global ``chdir``;
-- destructive commands (``reset --hard``, ``clean``, ``worktree remove``) only run through
-  ``_destructive_git``, which refuses anything that is not a linked worktree under the
-  worktrees directory, so they can never hit the user's repository;
+- destructive commands (``reset --hard``, ``clean``) only run through ``_destructive_git``,
+  which refuses anything that is not a linked worktree under the worktrees directory, so
+  they can never hit the user's repository; removal (``remove_path``) refuses anything
+  outside the worktrees directory;
+- the user's git config cannot change the patches (no prefixes, colour, external diff or
+  textconv; ``--whitespace=nowarn`` on apply);
 - hooks never run (``core.hooksPath`` points to an empty directory);
 - ``apply`` never touches the user's index and writes nothing unless the whole change fits:
   plain ``git apply`` first, then a per-file three-way merge (``git merge-file``); any
@@ -40,6 +43,16 @@ IDENTITY = ("-c", "user.name=orkestra", "-c", "user.email=orkestra@localhost")
 INTERNAL_FILES = (".orkestra_prompt.md",)
 RECORD_FILE = "worktree.json"
 GIT_TIMEOUT_S = 120
+# The user's own git config must not change the patches Orkestra builds and applies:
+# prefixes, colour, external diff tools and textconv drivers all stay off (D-041).
+_SAFE_CONFIG = (
+    "-c", "core.quotepath=false", "-c", "commit.gpgsign=false",
+    "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false",
+    "-c", "diff.relative=false", "-c", "color.ui=never",
+)  # fmt: skip
+_DIFF_FLAGS = ("--no-ext-diff", "--no-textconv", "--no-color",
+               "--src-prefix=a/", "--dst-prefix=b/")  # fmt: skip
+_APPLY = ("apply", "--binary", "--whitespace=nowarn")
 
 RecordState = Literal["active", "applied", "discarded"]
 
@@ -88,10 +101,7 @@ def _git(
     args: Sequence[str], cwd: Path, *, stdin: bytes | None = None, check: bool = True
 ) -> subprocess.CompletedProcess[bytes]:
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"}
-    command = [
-        "git", "-c", f"core.hooksPath={_hooks_dir()}", "-c", "core.quotepath=false",
-        "-c", "commit.gpgsign=false", *args,
-    ]  # fmt: skip
+    command = ["git", "-c", f"core.hooksPath={_hooks_dir()}", *_SAFE_CONFIG, *args]
     try:
         done = subprocess.run(  # no shell; cwd is always explicit
             command, cwd=cwd, input=stdin, capture_output=True, env=env,
@@ -101,7 +111,7 @@ def _git(
         raise UsageError(t("workspace.error.no_git")) from exc
     except subprocess.TimeoutExpired as exc:
         raise InternalError(
-            t("workspace.error.git", command=" ".join(args), detail="timeout")
+            t("workspace.error.git_timeout", command=" ".join(args), seconds=GIT_TIMEOUT_S)
         ) from exc
     if check and done.returncode != 0:
         detail = done.stderr.decode("utf-8", errors="replace").strip()[:500]
@@ -183,9 +193,9 @@ def create(path: Path, run_id: str) -> Worktree:
     _git(["worktree", "add", "--detach", str(target), "HEAD"], repo)
     try:
         # Without this the worker would see the last commit, not the code on disk.
-        snapshot = _git(["diff", "--binary", "HEAD"], repo).stdout
+        snapshot = _git(["diff", *_DIFF_FLAGS, "--binary", "HEAD"], repo).stdout
         if snapshot:
-            _git(["apply", "--binary", "--whitespace=nowarn", "-"], target, stdin=snapshot)
+            _git([*_APPLY, "-"], target, stdin=snapshot)
         _copy_untracked(repo, target)
         _git(["add", "-A"], target)
         _git([*IDENTITY, "commit", "--allow-empty", "--no-verify", "-q", "-m", BASELINE_MESSAGE],
@@ -209,7 +219,7 @@ def _stage(wt: Worktree) -> None:
 def diff(wt: Worktree) -> ChangeSet:
     """The worker's change: everything in the worktree against the baseline."""
     _stage(wt)
-    base = ["diff", "--cached", "--no-renames", wt.baseline]
+    base = ["diff", *_DIFF_FLAGS, "--cached", "--no-renames", wt.baseline]
     patch = _git([*base, "--binary", "--", ".", *_EXCLUDES], wt.path).stdout
     numstat = _git([*base, "--numstat", "-z", "--", ".", *_EXCLUDES], wt.path).stdout
     names = _git([*base, "--name-status", "-z", "--", ".", *_EXCLUDES], wt.path).stdout
@@ -253,6 +263,11 @@ def _read(path: Path) -> bytes | None:
 
 
 _CONFLICT = object()  # _merge result: the file cannot be merged
+
+
+def _needs_merge(base: bytes | None, ours: bytes | None, theirs: bytes | None) -> bool:
+    """Both the user and the worker changed the file, and not in the same way."""
+    return ours != base and theirs not in (ours, base)
 
 
 def _merge(base: bytes | None, ours: bytes | None, theirs: bytes | None, cwd: Path) -> object:
@@ -304,18 +319,20 @@ def apply(wt: Worktree, change: ChangeSet | None = None) -> ApplyResult:
     files = tuple(c.path for c in change.files)
     if not change.patch:
         return ApplyResult(files)
-    check = _git(["apply", "--check", "--binary", "-"], wt.repo, stdin=change.patch, check=False)
+    # Per file: the baseline, the user's file now and the worker's file. "Merged" are only
+    # the files the user also changed after the run started.
+    sides = {rel: (_blob(wt, wt.baseline, rel), _read(wt.repo / rel), _read(wt.path / rel))
+             for rel in files}  # fmt: skip
+    both = tuple(rel for rel in files if _needs_merge(*sides[rel]))
+    check = _git([*_APPLY, "--check", "-"], wt.repo, stdin=change.patch, check=False)
     if check.returncode == 0:
-        _git(["apply", "--binary", "-"], wt.repo, stdin=change.patch)
-        return ApplyResult(files)
-    # The user changed some of these files after the run started: merge each file three
-    # ways (baseline, the user's file now, the worker's file), all or nothing.
+        _git([*_APPLY, "-"], wt.repo, stdin=change.patch)
+        return ApplyResult(files, merged=both)
+    # The patch does not fit any more: merge each file three ways, all or nothing.
     results: dict[str, bytes | None] = {}
     conflicts: list[str] = []
     for rel in files:
-        merged = _merge(
-            _blob(wt, wt.baseline, rel), _read(wt.repo / rel), _read(wt.path / rel), wt.repo
-        )
+        merged = _merge(*sides[rel], wt.repo)
         if merged is _CONFLICT:
             conflicts.append(rel)
         else:
@@ -325,7 +342,7 @@ def apply(wt: Worktree, change: ChangeSet | None = None) -> ApplyResult:
                                 details=conflicts)  # fmt: skip
     for rel, content in results.items():
         _write(wt.repo / rel, content)
-    return ApplyResult(files, merged=files)
+    return ApplyResult(files, merged=both)
 
 
 # --- remove ----------------------------------------------------------------------------
@@ -333,24 +350,50 @@ def apply(wt: Worktree, change: ChangeSet | None = None) -> ApplyResult:
 
 def remove(wt: Worktree) -> None:
     """Delete the worktree and unregister it from the repository."""
-    if not wt.path.exists():
+    remove_path(wt.path)
+    if wt.repo.is_dir():
         _git(["worktree", "prune"], wt.repo, check=False)
+
+
+def remove_path(path: Path) -> None:
+    """Delete a directory under the worktrees directory and unregister it if it is a worktree.
+
+    Works without knowing the repository (``gc``), when the repository was moved or deleted,
+    for half-created directories and for worktrees of submodules or bare repositories.
+    Anything outside the worktrees directory raises ``WorkspaceGuardError``.
+    """
+    _require_under_worktrees(path)
+    if not path.exists():
         return
-    if not _is_linked_worktree(wt.path):
-        raise WorkspaceGuardError(t("workspace.error.guard", path=wt.path))
-    done = _git(["worktree", "remove", "--force", str(wt.path)], wt.repo, check=False)
-    if done.returncode != 0 or wt.path.exists():
-        remove_directory(wt.path)
-    _git(["worktree", "prune"], wt.repo, check=False)
+    common = _common_dir(path) if _is_linked_worktree(path) else None
+    if common is not None:
+        _git(["--git-dir", str(common), "worktree", "remove", "--force", str(path)],
+             paths.worktrees_dir(), check=False)  # fmt: skip
+    if path.exists():
+        remove_directory(path)
+    if common is not None and common.is_dir():
+        _git(["--git-dir", str(common), "worktree", "prune"], paths.worktrees_dir(), check=False)
+
+
+def _require_under_worktrees(path: Path) -> Path:
+    resolved = path.resolve()
+    root = paths.worktrees_dir().resolve()
+    if resolved == root or not resolved.is_relative_to(root):
+        raise WorkspaceGuardError(t("workspace.error.guard", path=path))
+    return resolved
+
+
+def _common_dir(worktree: Path) -> Path | None:
+    """The repository's git directory shared by all its worktrees."""
+    done = _git(["rev-parse", "--git-common-dir"], worktree, check=False)
+    if done.returncode != 0:
+        return None
+    return Path(worktree, done.stdout.decode("utf-8").strip()).resolve()
 
 
 def remove_directory(path: Path) -> None:
     """``rmtree`` for a directory under the worktrees directory (read-only files included)."""
-    resolved = path.resolve()
-    try:
-        resolved.relative_to(paths.worktrees_dir().resolve())
-    except ValueError as exc:
-        raise WorkspaceGuardError(t("workspace.error.guard", path=path)) from exc
+    resolved = _require_under_worktrees(path)
 
     def force(func: Callable[[str], object], target: str, _exc: object) -> None:
         os.chmod(target, stat.S_IWRITE)  # git marks object files read-only (Windows)
@@ -382,13 +425,3 @@ def load_record(run_dir: Path) -> Record | None:
     except (OSError, ValueError, KeyError, TypeError):
         return None
     return Record(wt, state if state in ("active", "applied", "discarded") else "active")
-
-
-def main_repo_of(worktree: Path) -> Path | None:
-    """The repository a worktree belongs to (from its ``.git`` file), if it still exists."""
-    done = _git(["rev-parse", "--git-common-dir"], worktree, check=False)
-    if done.returncode != 0:
-        return None
-    common = Path(worktree, done.stdout.decode("utf-8").strip()).resolve()
-    repo = common.parent
-    return repo if repo.is_dir() else None

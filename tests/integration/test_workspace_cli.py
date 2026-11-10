@@ -171,7 +171,8 @@ def test_gc(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     keep = _fake_run(RUN, repo)
     old_id = (datetime.now() - timedelta(days=40)).strftime("%Y%m%d-%H%M%S") + "-0001"
     old = _fake_run(old_id, repo)
-    orphan = gw.create(repo, "20261110-130000-dead")  # no run record at all
+    orphan_id = (datetime.now() - timedelta(days=2)).strftime("%Y%m%d-%H%M%S") + "-dead"
+    orphan = gw.create(repo, orphan_id)  # no run record at all
     assert keep and old
     with closing(db.connect()) as conn:
         stale = (db.local_now() - timedelta(hours=3)).isoformat()
@@ -199,3 +200,101 @@ def test_gc(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert keep.path.exists() and paths.run_dir(RUN).exists()
     with closing(db.connect()) as conn:
         assert budget.used(conn, "p", db.local_now()).requests == 0
+
+
+# --- code review fixes (PR #7) -----------------------------------------------------------
+
+FAKE_KEY = "sk-" + "x1y2" * 8  # looks like a key; not a real one
+
+
+def test_conflict_leaves_no_stale_patch_and_show_diff_stays_live(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wt = _fake_run(RUN, repo)
+    assert wt is not None
+    (repo / "src" / "app.py").write_bytes(b"def f():\n    return 99\n")
+    code, _, _ = _run(["apply", RUN], capsys)
+    assert code == 5
+    assert not (paths.run_dir(RUN) / service.PATCH_FILE).exists()
+    (wt.path / "src" / "app.py").write_bytes(b"def f():\n    return 77\n")  # fixed afterwards
+    code, out, _ = _run(["show", RUN, "--diff"], capsys)
+    assert "+    return 77" in out and "return 10" not in out
+
+
+def test_show_diff_masks_keys_but_not_password_lines(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _fake_run(RUN, repo, edit=f"    key = '{FAKE_KEY}'\n    password = 'changeme'\n")
+    code, out, _ = _run(["show", RUN, "--diff"], capsys)
+    assert code == 0 and FAKE_KEY not in out and "password = 'changeme'" in out
+    code, _, _ = _run(["apply", RUN], capsys)
+    assert code == 0
+    saved = (paths.run_dir(RUN) / service.PATCH_FILE).read_bytes().decode("utf-8")
+    assert FAKE_KEY not in saved and "password = 'changeme'" in saved
+
+
+def test_show_of_an_older_envelope_does_not_crash(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _fake_run(RUN)
+    old = {"envelope_version": 1, "run_id": RUN, "status": "ok"}
+    (paths.run_dir(RUN) / "envelope.json").write_bytes(json.dumps(old).encode())
+    code, out, _ = _run(["show", RUN], capsys)
+    assert code == 0 and RUN in out
+
+
+def test_discard_after_the_repository_was_deleted(
+    repo: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+    import shutil
+    import stat
+
+    wt = _fake_run(RUN, repo)
+    assert wt is not None
+    monkeypatch.chdir(repo.parent)
+
+    def force(func: Callable[[str], object], target: str, _exc: object) -> None:
+        os.chmod(target, stat.S_IWRITE)
+        func(target)
+
+    shutil.rmtree(repo, onerror=force)
+    code, _, _ = _run(["discard", RUN], capsys)
+    assert code == 0 and not wt.path.exists()
+    record = gw.load_record(paths.run_dir(RUN))
+    assert record is not None and record.state == "discarded"
+
+
+def test_gc_keeps_a_recent_worktree_without_a_record(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    starting = gw.create(repo, RUN)  # created, not yet attached to its run
+    code, out, _ = _run(["gc", "--json"], capsys)
+    assert code == 0 and json.loads(out)["worktrees"] == []
+    assert starting.path.is_dir()
+
+
+def test_gc_goes_on_when_one_worktree_cannot_be_removed(
+    repo: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old_ids = [
+        (datetime.now() - timedelta(days=40, minutes=n)).strftime("%Y%m%d-%H%M%S") + "-000" + str(n)
+        for n in (1, 2)
+    ]
+    stuck, other = (_fake_run(run_id, repo) for run_id in old_ids)
+    assert stuck and other
+    real = gw.remove_path
+
+    def flaky(path: Path) -> None:
+        if path == stuck.path:
+            raise PermissionError("locked")
+        real(path)
+
+    monkeypatch.setattr(gw, "remove_path", flaky)
+    code, out, _ = _run(["gc", "--json"], capsys)
+    assert code == 0
+    report = json.loads(out)
+    assert report["failed"] == [str(stuck.path)]
+    assert str(stuck.path) not in report["worktrees"]
+    assert not other.path.exists() and stuck.path.exists()
+    assert report["runs"] == sorted(old_ids)
