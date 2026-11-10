@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 import os
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from importlib import resources
 from io import StringIO
@@ -224,10 +224,14 @@ def read_language(
 # --- readable validation errors --------------------------------------------------------
 
 
-def _format_loc(loc: tuple[int | str, ...]) -> str:
+UnionTags = Mapping[str, Collection[str]]
+CONFIG_UNION_TAGS: UnionTags = {"providers": PROVIDER_TYPES}
+
+
+def _format_loc(loc: tuple[int | str, ...], tags: UnionTags) -> str:
     parts = list(loc)
     # Discriminated unions add the tag ("openai_compat") to the location; users never wrote it.
-    if len(parts) >= 3 and parts[0] == "providers" and parts[2] in PROVIDER_TYPES:
+    if len(parts) >= 3 and parts[2] in tags.get(str(parts[0]), ()):
         del parts[2]
     text = ""
     for part in parts:
@@ -268,7 +272,7 @@ def _number(value: Any) -> Any:
     return int(value) if isinstance(value, float) and value.is_integer() else value
 
 
-def _message(error: ErrorDetails) -> str:
+def _message(error: ErrorDetails, tags: UnionTags) -> str:
     kind = error["type"]
     ctx: dict[str, Any] = dict(error.get("ctx") or {})
     if kind in _SIMPLE:
@@ -279,14 +283,13 @@ def _message(error: ErrorDetails) -> str:
         return t("config.validation.ge", limit=_number(ctx.get("ge")))
     if kind == "less_than_equal":
         return t("config.validation.le", limit=_number(ctx.get("le")))
-    if kind == "union_tag_invalid":
-        return t(
-            "config.validation.provider_type_unknown",
-            tag=ctx.get("tag"),
-            expected=", ".join(PROVIDER_TYPES),
-        )
-    if kind == "union_tag_not_found":
-        return t("config.validation.provider_type_missing", expected=", ".join(PROVIDER_TYPES))
+    if kind in ("union_tag_invalid", "union_tag_not_found"):
+        field = str(error["loc"][0]) if error["loc"] else ""
+        expected = ", ".join(tags.get(field, ())) or _tag_list(ctx.get("expected_tags", ""))
+        noun = "provider_type" if field == "providers" else "type"
+        if kind == "union_tag_invalid":
+            return t(f"config.validation.{noun}_unknown", tag=ctx.get("tag"), expected=expected)
+        return t(f"config.validation.{noun}_missing", expected=expected)
     if kind == "too_short":
         return t("config.validation.too_short", min=ctx.get("min_length"))
     if kind == "string_too_short":
@@ -297,12 +300,21 @@ def _message(error: ErrorDetails) -> str:
     return t("config.validation.other", detail=error["msg"])
 
 
-def format_validation_error(exc: ValidationError) -> list[str]:
-    """One ``location: message`` line per problem, in the active language."""
+def _tag_list(expected: object) -> str:
+    """Pydantic's ``'command', 'regex'`` → ``command, regex``."""
+    return ", ".join(part.strip(" '") for part in str(expected).split(","))
+
+
+def format_validation_error(exc: ValidationError, tags: UnionTags = CONFIG_UNION_TAGS) -> list[str]:
+    """One ``location: message`` line per problem, in the active language.
+
+    ``tags``: per top-level field, the tags of a discriminated union below it (dropped from
+    the location; ``verify[0]`` instead of ``verify[0].command``).
+    """
     lines: list[str] = []
     for error in exc.errors():
-        loc = _format_loc(error["loc"])
-        message = _message(error)
+        loc = _format_loc(error["loc"], tags)
+        message = _message(error, tags)
         lines.append(f"{loc}: {message}" if loc else message)
     return lines
 

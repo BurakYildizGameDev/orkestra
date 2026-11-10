@@ -11,7 +11,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 2 – Chat adapter, ask, doctor | ✅ | 2026-11-09 | Ollama + OpenAI uyumlu, ask, doctor (D-013…D-019) |
 | 3 – Durum, bütçe, onay | ✅ | 2026-11-09 | state.db, bütçe rezervasyonu, onay, devre kesici, gizli bilgi, fiyat kaynakları (D-020…D-028) |
 | 4 – Router | ✅ | 2026-11-09 | router, yeniden deneme, aynı komutta yedeğe geçiş, --dry-run; Mimari kararlarla eşitlendi (D-029…D-034) |
-| 5a – Görev + doğrulama | ⏳ | | |
+| 5a – Görev + doğrulama | ✅ | 2026-11-10 | `orkestra run`, 8 doğrulayıcı, geri bildirimle tekrar, üst kademeye geçiş (D-038) |
 | 5b – Worktree | ⏳ | | |
 | 5c – API ile edit | ⏳ | | |
 | 6 – CLI ajanları | ⏳ | | |
@@ -26,6 +26,50 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 5a (PR #6), 2026-11-10
+10 bulgu, 10'u düzeltildi (D-039):
+- ✅ `--json` envelope'ı stdout'a maskelenmeden gidiyordu (komut çıktısında sır olabilir) → `detail` maskeli.
+- ✅ Windows'ta `npm test` gibi `.cmd` araçları kabuksuz bulunamıyordu → `PATH` + `PATHEXT` ile çözülüyor.
+- ✅ Zaman aşımı sonrası boruyu tutan başıboş süreç Orkestra'yı kilitleyebiliyordu → en fazla 5 sn bekleniyor.
+- ✅ Görevde şemasız `json_schema` varken `output.schema` denetlenmiyordu → kullanılıyor.
+- ✅ Doğrulayıcıdaki şema işçiye söylenmiyordu; şemasız JSON çıktıda JSON istenmiyordu → söyleniyor; şema bir kez yükleniyor.
+- ✅ Envelope `usage` sadece son cevabı sayıyordu → bütün cevapların toplamı.
+- ✅ `regex` ilk hatada duruyordu → bütün desenler bildiriliyor.
+- ✅ Mutlak `files_exist` deseni çöküyordu → destekleniyor.
+- ✅ Glob bütün ağacı (`.venv`, `node_modules`) geziyor ve her dosya için uyarı basıyordu → dışlanan dizinlere girmiyor, uyarı tek satıra iniyor; eşleşme glob anlamıyla.
+- ✅ Şema iki kez yükleniyordu, glob karakter sabiti iki yerdeydi → tek yer.
+Testler: 530 geçti (+21).
+
+### Faz 5a – Görev şeması ve doğrulayıcılar (2026-11-10)
+**Yapılanlar:**
+- `tasks/spec.py`: `TaskSpec` (Mimari §4.2) ve 8 doğrulayıcının şeması (ayırt edici `type` ile), `.yaml`/`.json` görev dosyası yükleme, okunur ve çevrili hata satırları (`verify[0].run: …`), görev kimliği kuralı, `effective_verifiers` (JSON çıktıda kendiliğinden `json_schema`; edit için varsayılan `forbid_paths` + `max_diff_lines: 2000`, `verify_defaults: false` ile kapanır), `ask_task` (`orkestra ask`'in görevi).
+- `verify/`: `base.py` (bağlam, sonuç, çift dilli mesaj), `command.py` (kabuksuz çalıştırma, zaman aşımı ve Ctrl+C'de süreç ağacını öldürme, çıktının son 2000 karakteri), `schema.py` (`json_schema`, çitli JSON kabul), `regex.py` (`must_match`/`must_not_match`), `files.py` (`max_changed_files`, `max_diff_lines`, `protect_paths`, `forbid_paths`, `files_exist`).
+- `tasks/runner.py`: görev yaşam döngüsü (§8). Aday başına `max_retries + 1` cevap; başarısız kontroller önceki cevapla birlikte İngilizce geri bildirim olarak aynı modele gider (`prompts/retry_feedback.md`); hâlâ geçmezse veya `CANNOT_DO` derse üst kademeye geçilir (aynı kademe atlanır), `escalations` dolar. Sonuç `ok` / `failed` / `escalate` / `error`. Her denemede `attempts/<n>/verify.log`.
+- `orkestra run <görev> [--profile] [--allow-secrets] [--dry-run] [--json]`; `orkestra ask` de aynı çalıştırıcıyı kullanıyor (ortak `_execute`).
+- Bağlam: `context.globs`; `.gitignore` + `.orkestraignore` süzmesi, `.git/` hiç alınmaz, atlananlar uyarı olur.
+- i18n: `t_in(dil, anahtar)` (işçiye İngilizce, kullanıcıya seçili dil). Görev hataları için birleşik tür hatası mesajları (`bilinmeyen tür 'x'; şunlardan biri olmalı: …`).
+- Örnek görev: `examples/tasks/summarize-readme.yaml` + şeması; testte geçerliliği denetleniyor.
+- README (en + tr): "Görev dosyaları ve doğrulama" bölümü, özellik tablosu, çıkış kodu 1, güvenlik notu (`command`), yol haritası.
+
+**Kabul kriterleri (5a'ya düşenler):**
+- ✅ İlk cevap kontrolü geçemiyor → geri bildirimle ikinci cevap geçiyor → `status=ok, attempts=2` (`test_run_cli.py::test_failed_check_is_retried_with_feedback`; ikinci istekte önceki cevap ve "regex: pattern not found: ^OK" var, ilkinde yok).
+- ✅ Yükseltme: kademe 1 iki kez başarısız → kademe 2'ye geçiyor, `escalations` dolu (`test_tier_1_fails_twice_then_tier_2_answers`).
+- ✅ `CANNOT_DO` → aynı adayda tekrar yok, sonraki kademe (`test_cannot_do_is_not_retried_on_the_same_candidate`).
+- ✅ Hiçbir cevap geçmezse kademe 3'ün altında `failed`, kademe 3 de geçemezse `escalate`; kod 1 (`test_failing_everywhere_below_tier_3_is_failed`, `test_failing_up_to_tier_3_is_escalate`).
+- ✅ Tüm doğrulayıcı türlerinin birim testleri (`tests/unit/test_verify.py`): komut başarılı/başarısız/zaman aşımı/bulunamadı/kabuk, JSON şema (çitli, bozuk), regex, değişiklik sınırları, korunan/yasak yollar, `files_exist`, kullanıcı dili ↔ İngilizce geri bildirim.
+- ✅ Görev şeması birim testleri (`tests/unit/test_task_spec.py`): her hata türü için okunur satır, Türkçe çeviri, YAML satır numarası, JSON dosyası, varsayılan doğrulayıcılar.
+- ✅ Canlı (gerçek Ollama, `qwen2.5-coder:1.5b`): örnek görev ilk denemede `json_schema` + `regex` geçti; geri bildirim denemesinde ikinci istek İngilizce geri bildirimle gitti (model `CANNOT_DO` dedi → `escalate`, kod 1).
+- ✅ ruff, ruff format, pyright, pytest (509 test; denetim düzeltmeleriyle 530) temiz.
+- Worktree, `edit`, `apply`, Ctrl+C'de worktree korunması, bozuk/çitli/kesik edit JSON'u → 5b/5c'nin kriterleri.
+
+**Ertelenenler:**
+- `kind: edit` (kod 2 ile reddediliyor) → 5c. Değişiklik doğrulayıcıları için değişiklik listesi → 5b/5c.
+- Alt dizinlerdeki `.gitignore` dosyaları (şimdilik sadece taban dizindeki okunuyor).
+- `depends_on` sadece alan olarak var → batch, Faz 7.
+
+**Bilinen sorunlar:**
+- Küçük modeller geri bildirim alınca sık sık `CANNOT_DO` diyor; bu tasarlanan davranış (şefe döner) ama kademe 1'i zayıf modelle kurarken akılda tutulmalı.
 
 ### Kod denetimi – Faz 1–4 (PR #2–#5), 2026-11-10
 Dört PR'a `/code-review`; her birinde 10 bulgu (+ listeye girmeyen küçükler). Düzeltmeler en güncel dalda (`faz-4`) yapıldı, çünkü PR'lar üst üste kurulu. Kararlar D-036 (Faz 1–2) ve D-037 (Faz 3–4); yereldeki Mimari belgesi de güncellendi.

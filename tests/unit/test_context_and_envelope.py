@@ -155,3 +155,77 @@ def test_verification_words_are_translated() -> None:
     text = human_summary(envelope)
     assert "FAIL" not in text
     assert "BAŞARISIZ" in text
+
+
+# --- ignore files and globs (Faz 5a) ---------------------------------------------------
+
+
+def test_orkestraignore_excludes_even_explicit_files(tmp_path: Path) -> None:
+    (tmp_path / ".orkestraignore").write_text("secrets/\n", encoding="utf-8")
+    (tmp_path / "secrets").mkdir()
+    (tmp_path / "secrets" / "k.txt").write_text("k", encoding="utf-8")
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    ctx = collect_context(
+        [Path("secrets/k.txt"), Path("a.txt")], max_bytes=1000, cwd=tmp_path,
+        ignore_file=".orkestraignore",
+    )  # fmt: skip
+    assert [f.display for f in ctx.files] == ["a.txt"]
+    assert ctx.skipped_ignored == (("secrets/k.txt", ".orkestraignore"),)
+
+
+def test_globs_skip_gitignored_files_and_git_dir(tmp_path: Path) -> None:
+    (tmp_path / ".gitignore").write_text("build/\n", encoding="utf-8")
+    for name in ("src/a.py", "src/b.py", "build/c.py", ".git/hooks/d.py"):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text("x", encoding="utf-8")
+    ctx = collect_context([], globs=["**/*.py"], max_bytes=1000, cwd=tmp_path)
+    assert [f.display for f in ctx.files] == ["src/a.py", "src/b.py"]
+    assert ctx.skipped_ignored == ()  # ignored directories are pruned, not listed file by file
+
+
+def test_absolute_glob_is_a_usage_error(tmp_path: Path) -> None:
+    with pytest.raises(UsageError):
+        collect_context([], globs=[str(tmp_path / "*.py")], max_bytes=1000, cwd=tmp_path)
+
+
+def test_glob_walk_prunes_ignored_directories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".gitignore").write_text(".venv/\nsrc/gen.py\n", encoding="utf-8")
+    for name in ("src/a.py", "src/gen.py", ".venv/lib/x.py"):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text("x", encoding="utf-8")
+    visited: list[str] = []
+    real_walk = __import__("os").walk
+
+    def spy(top: object, *args: object, **kwargs: object) -> object:
+        for entry in real_walk(top, *args, **kwargs):  # type: ignore[arg-type]
+            visited.append(Path(entry[0]).name)
+            yield entry
+
+    monkeypatch.setattr("orkestra.tasks.context.os.walk", spy)
+    ctx = collect_context([], globs=["**/*.py"], max_bytes=1000, cwd=tmp_path)
+    assert [f.display for f in ctx.files] == ["src/a.py"]
+    assert ctx.skipped_ignored == (("src/gen.py", ".gitignore"),)
+    assert ".venv" not in visited and "lib" not in visited
+
+
+@pytest.mark.parametrize(
+    ("pattern", "path", "matches"),
+    [
+        ("notes/*.txt", "notes/a.txt", True),
+        ("notes/*.txt", "notes/sub/a.txt", False),  # like glob, unlike .gitignore
+        ("**/*.py", "a.py", True),
+        ("**/*.py", "x/y/a.py", True),
+        ("src/**", "src/a/b.c", True),
+        ("file?.md", "file1.md", True),
+        ("file?.md", "file10.md", False),
+        ("[!a]*.txt", "b.txt", True),
+        ("[!a]*.txt", "a.txt", False),
+        ("*.py", "sub/a.py", False),
+    ],
+)
+def test_glob_semantics(pattern: str, path: str, matches: bool) -> None:
+    from orkestra.tasks.context import glob_regex
+
+    assert bool(glob_regex(pattern).match(path)) is matches

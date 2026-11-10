@@ -21,9 +21,13 @@ def load_prompt(name: str) -> str:
 
 
 def build_ask_messages(
-    prompt: str, context: Context, schema: dict[str, Any] | None = None
+    prompt: str,
+    context: Context,
+    schema: dict[str, Any] | None = None,
+    *,
+    json_output: bool = False,
 ) -> tuple[str, str]:
-    """Return ``(system, user)`` for an ``ask`` task."""
+    """Return ``(system, user)`` for an ``ask`` task (``json_output``: JSON without a schema)."""
     parts: list[str] = []
     if context.files:
         parts.append("Context files:\n\n" + render_context(context))
@@ -33,4 +37,25 @@ def build_ask_messages(
             "Output format: a single JSON value that validates against this JSON Schema. "
             "Output only the JSON.\n" + json.dumps(schema, indent=2)
         )
+    elif json_output:
+        parts.append("Output format: a single JSON value. Output only the JSON.")
     return load_prompt("worker_system.md").strip(), "\n\n".join(parts)
+
+
+FEEDBACK_CHARS = 2000  # failed-check details sent back (Mimari §8)
+PREVIOUS_ANSWER_CHARS = 8000
+
+
+def _cut(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit] + "\n[... truncated]"
+
+
+def build_retry_message(user: str, answer: str, failures: list[str]) -> str:
+    """The original task plus what went wrong last time (``prompts/retry_feedback.md``)."""
+    details = _cut("\n".join(f"- {f}" for f in failures), FEEDBACK_CHARS)
+    feedback = (
+        load_prompt("retry_feedback.md")
+        .strip()
+        .format(answer=_cut(answer.strip(), PREVIOUS_ANSWER_CHARS), failures=details)
+    )
+    return f"{user}\n\n{feedback}"

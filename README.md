@@ -8,7 +8,7 @@
 
 **A budget-aware CLI that lets one strong "chief" model (e.g. Claude) hand work to many cheaper or local "worker" models, verify the results, and fall back to another provider when one fails.**
 
-> **Status: in development.** Phases 0–4 of 14 are done: the project skeleton, configuration, the Ollama and OpenAI-compatible adapters, `ask`, `doctor`, daily budgets, provider consent, the circuit breaker, secret scanning, and the router with retries and failover. Task files, isolated code edits and the rest are on the [roadmap](#roadmap). This README only describes what already works.
+> **Status: in development.** Phases 0–4 of 14 and the first part of phase 5 are done: the project skeleton, configuration, the Ollama and OpenAI-compatible adapters, `ask`, `doctor`, daily budgets, provider consent, the circuit breaker, secret scanning, the router with retries and failover, and task files with verification, feedback retries and escalation. Isolated code edits and the rest are on the [roadmap](#roadmap). This README only describes what already works.
 
 ```
 You ──► Claude (chief: plans, splits, reviews)
@@ -40,6 +40,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | Merged config with its sources, validation with readable errors | `orkestra config show [--json]`, `orkestra config validate` |
 | One question to a worker model, with context files and an optional JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Routing with profiles, privacy and failover; see why each provider was chosen or skipped | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
+| Task files (YAML/JSON): verify the answer, retry with feedback, move up a tier | `orkestra run task.yaml [--dry-run] [--json]` |
 | Environment check: config, provider access, API key variables, Ollama models, consent, paused providers, git, codex/agy | `orkestra doctor [--json] [--warm]` |
 | Explicit consent per provider, shown before it is granted | `orkestra providers enable <name>`, `providers disable <name>` |
 | Providers with consent, health and remaining budget | `orkestra providers list [--json]` |
@@ -85,6 +86,9 @@ uv run orkestra ask "What does this function do?" --context src/util.py
 uv run orkestra ask "Summarize in one line" --provider openrouter --tier 2
 uv run orkestra ask "Summarize in one line" --dry-run      # who would answer, and why
 uv run orkestra ask "Extract the names" --context people.txt --schema names.schema.json --json
+
+# 5. Or write the task down, with checks, and run it
+uv run orkestra run examples/tasks/summarize-readme.yaml --json
 ```
 
 `ask` goes through the **router**. It lists every (provider, model) that may run the task, in
@@ -125,6 +129,56 @@ billed it); retries and failovers count as one run per provider for `daily_runs`
 So with no internet, `ask` answers from local Ollama in the same command, and the remote API is
 listed under `failovers` in the envelope. If every candidate fails, the envelope lists all of
 them and the exit code is 3.
+
+## Task files and verification
+
+A task file describes one job and how to check the result. `orkestra ask` builds the same kind of
+task from its options. See [`examples/tasks/`](examples/tasks/).
+
+```yaml
+id: summarize-readme
+kind: ask                    # edit tasks (changing code in a git worktree) come later
+tier: 1                      # lowest tier to start on
+prompt: |
+  Summarize what this project does in one sentence and list its key features.
+context:
+  files: [README.md]
+  globs: []                  # e.g. ["src/**/*.py"]; .gitignore and .orkestraignore apply
+output:
+  format: json               # text | json
+  schema: summary.schema.json
+verify:
+  - type: regex
+    must_not_match: ["(?i)lorem ipsum"]
+  - type: command            # your own check; exit code 0 passes
+    run: "python check_summary.py"
+    timeout_s: 60
+limits:
+  max_retries: 1             # retries with feedback per model (default: defaults.max_retries)
+  timeout_s: 120             # per request (default: the provider's timeout)
+privacy: normal              # local_only keeps the task on local models
+tags: [docs]
+```
+
+Relative paths are resolved from the directory you run `orkestra` in, or from `workspace` if
+the task sets one.
+
+**Verifiers:** `command` (exit code 0; no shell unless `shell: true`, which pipes and `&&` need),
+`json_schema` (added automatically for `format: json`), `regex` (`must_match`, `must_not_match`),
+`files_exist`, and for code changes `max_changed_files`, `max_diff_lines`, `protect_paths`,
+`forbid_paths` (they pass trivially for `ask` tasks, which change nothing).
+
+**What happens when a check fails:**
+
+1. The same model gets its previous answer and the failed checks back (in English) and tries
+   again, up to `max_retries` times.
+2. If it keeps failing, or answers `CANNOT_DO: <reason>`, the run moves up to the next tier and
+   skips the other candidates on the same tier. The move is listed under `escalations`.
+3. If no answer passes: `status: failed`, or `escalate` when tier 3 failed too (the chief has to
+   take over). Exit code 1. The last answer is still kept in `output.md`.
+
+Every attempt's request, response and check log (`verify.log`) is kept in
+`~/.orkestra/runs/<run_id>/attempts/<n>/`.
 
 ## Configuration
 
@@ -201,7 +255,7 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | Exit code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Verification failed (e.g. the answer does not match `--schema`); for `doctor`: a check failed |
+| 1 | Verification failed (`failed`) or the chief has to take over (`escalate`); for `doctor`: a check failed |
 | 2 | Configuration or usage error |
 | 3 | No suitable provider, or every candidate failed (unreachable, paused, budget exhausted, secrets in context, no key, outside the profile) |
 | 4 | User consent required (`orkestra providers enable <name>`) |
@@ -215,7 +269,8 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 - `danger-full-access` sandboxing for code agents is rejected by the config.
 - No provider is used without explicit consent. Consent is tied to the settings that decide where data goes and what may run (URL, key variable, headers, command, sandbox, model ids), so changing one of them asks again. Turning a provider off and on, or changing its budget or timeouts, does not.
 - Context files are scanned for secrets (OpenAI/OpenRouter/AWS/GitHub/Slack/Google keys, private keys, and the values of your configured key variables). Such context never goes to a remote provider unless you pass `--allow-secrets`.
-- Everything Orkestra writes to `~/.orkestra/runs/` (request, response, output, envelope, log) is redacted.
+- Everything Orkestra writes to `~/.orkestra/runs/` (request, response, output, envelope, log) is redacted. The prompt itself is scanned too, and files matched by `.orkestraignore` are never sent.
+- A `command` verifier runs a command you wrote, in your working directory. That is the same risk as running it yourself; Orkestra adds nothing to it and uses a shell only with `shell: true`.
 - No telemetry. Everything stays on your machine and with the providers you choose.
 
 ## Roadmap
@@ -227,7 +282,8 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 2 | Ollama + OpenAI-compatible adapters, `ask`, `doctor` | ✅ |
 | 3 | State DB, daily budgets, provider consent, circuit breaker, secret scanning | ✅ |
 | 4 | Router, retries and **failover**: offline → local Ollama, failing API → next provider | ✅ |
-| 5 | Task files, verifiers, git worktrees, `edit`, `apply` | ⏳ |
+| 5a | Task files, verifiers, retries with feedback, escalation (`orkestra run`) | ✅ |
+| 5b–5c | Git worktrees, `edit`, `show`, `apply`, `discard` | ⏳ |
 | 6 | Code agents: Codex CLI, Antigravity CLI | ⏳ |
 | 7 | Batch runs, parallelism, cost estimate | ⏳ |
 | 8 | Chief tools: `status`, `review`, `map`, templates, `plan expand`, cache, savings counter | ⏳ |
