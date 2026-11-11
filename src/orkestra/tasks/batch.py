@@ -13,6 +13,10 @@ A batch file is ``{tasks: [TaskSpec, ...], parallel: N}`` (YAML, or JSON for ``.
   not end ``ok`` is ``skipped``; ``fail_fast`` starts nothing after the first failure. A task
   that raises becomes an ``error`` item: one task never brings the batch down.
 
+- ``estimate_batch`` (Faz 7b, Mimari §19): every task's first request on its first candidate,
+  priced like a budget reservation; nothing is sent. Before a real run it is compared with
+  ``estimate.confirm_above_usd`` (the CLI asks, or needs ``--yes-cost``).
+
 A dependency orders tasks; it does not hand its unapplied change to the next task. A task
 that needs another one's change belongs in a later batch, after ``apply``.
 """
@@ -22,14 +26,23 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from orkestra.config.schema import Config
-from orkestra.envelope import BatchEnvelope, BatchItem, BatchTotals
-from orkestra.errors import ExitCode, OrkestraError, UsageError
+from orkestra.config.schema import CliAgentProvider, Config, Provider
+from orkestra.envelope import (
+    BatchEnvelope,
+    BatchEstimate,
+    BatchItem,
+    BatchTotals,
+    EstimateItem,
+    EstimateTotals,
+)
+from orkestra.errors import ExitCode, InternalError, OrkestraError, UsageError
 from orkestra.i18n import t
+from orkestra.state import db
 from orkestra.tasks import runner
 from orkestra.tasks.context import glob_files
 from orkestra.tasks.spec import TaskSpec, parse_task, read_document
@@ -213,15 +226,19 @@ async def _run_one(
             on_start=started.append,
         )  # fmt: skip
     except OrkestraError as exc:  # no provider, consent, a bad context file ...
-        detail = "; ".join([exc.message, *exc.details])[:ERROR_CHARS]
         return BatchItem(task_id=task.id, status="error", exit_code=int(exc.exit_code),
-                         run_id=started[0] if started else None, error=detail)  # fmt: skip
+                         run_id=started[0] if started else None, error=_detail(exc))  # fmt: skip
     except Exception as exc:  # a bug in one task must not bring the batch down
         detail = f"{type(exc).__name__}: {exc}"[:ERROR_CHARS]
         return BatchItem(task_id=task.id, status="error", exit_code=int(ExitCode.INTERNAL),
                          run_id=started[0] if started else None, error=detail)  # fmt: skip
     warnings.extend(f"{task.id}: {w}" for w in outcome.warnings)
     return _item_from_outcome(task, outcome)
+
+
+def _detail(exc: OrkestraError) -> str:
+    """An error and its details on one line, cut to ``ERROR_CHARS``."""
+    return "; ".join([exc.message, *exc.details])[:ERROR_CHARS]
 
 
 def _skipped(task_id: str, key: str, **params: object) -> BatchItem:
@@ -249,6 +266,103 @@ def run_warnings(document: BatchEnvelope, plan: BatchPlan) -> list[str]:
 
 def new_batch_id() -> str:
     return f"b-{runner.new_run_id()}"
+
+
+# --- cost estimate (Faz 7b, Mimari §19) ------------------------------------------------
+
+
+def _estimate_item(task: TaskSpec, est: runner.Estimate) -> EstimateItem:
+    if est.candidate is None:
+        if est.error is None:  # an estimate without a candidate always says why
+            raise InternalError("estimate without a candidate and without an error")
+        return EstimateItem(
+            task_id=task.id, exit_code=int(est.error.exit_code), error=_detail(est.error)
+        )
+    return EstimateItem(
+        task_id=task.id, provider=est.candidate.provider, model=est.candidate.model.id,
+        tier=est.candidate.tier, prompt_tokens=est.prompt_tokens,
+        max_output_tokens=est.max_output_tokens,
+        cost_usd=None if est.cost_usd is None else round(est.cost_usd, 6),
+        agent=isinstance(est.candidate.config, CliAgentProvider),
+    )  # fmt: skip
+
+
+def _estimate_totals(items: Sequence[EstimateItem]) -> EstimateTotals:
+    runnable = [i for i in items if i.error is None]
+    unpriced = [i for i in runnable if i.cost_usd is None]
+    return EstimateTotals(
+        tasks=len(items),
+        tokens=sum(i.prompt_tokens + (i.max_output_tokens or 0) for i in runnable),
+        cost_usd=round(sum(i.cost_usd for i in runnable if i.cost_usd is not None), 6),
+        unpriced=len(unpriced),
+        unpriced_remote=sum(1 for i in unpriced if not i.agent),
+        cannot_run=len(items) - len(runnable),
+    )
+
+
+async def estimate_batch(
+    spec: BatchSpec,
+    config: Config,
+    options: runner.RunOptions | None = None,
+    *,
+    cwd: Path | None = None,
+    fetch_prices: bool = False,
+) -> BatchEstimate:
+    """Every task's first request on its first candidate; nothing is sent to a worker.
+
+    ``fetch_prices``: refresh price lists first, as the run itself would (before a real
+    run); ``--estimate`` alone uses the cached ones. A task that cannot run is an item with
+    its error and exit code, the others are still estimated.
+
+    Confirmation is needed above ``estimate.confirm_above_usd``, and also when a task goes
+    to a paid (remote) model whose price is not known: its cost cannot be checked, so it
+    must not slip under the threshold as $0. Code agents use the user's own quota, not USD.
+    """
+    options = options or runner.RunOptions()
+    lock = asyncio.Lock()  # one price list fetch for the whole batch
+    items: list[EstimateItem] = []
+    warnings: list[str] = []
+    with closing(db.connect()) as conn:
+        for task in spec.tasks:
+            try:
+                est = await runner.estimate_task(
+                    task, config, options, cwd=cwd, conn=conn, fetch_prices=fetch_prices,
+                    price_lock=lock,
+                )  # fmt: skip
+            except OrkestraError as exc:
+                items.append(
+                    EstimateItem(task_id=task.id, exit_code=int(exc.exit_code), error=_detail(exc))
+                )
+                continue
+            warnings.extend(f"{task.id}: {w}" for w in est.warnings)
+            items.append(_estimate_item(task, est))
+    totals = _estimate_totals(items)
+    limit = config.estimate.confirm_above_usd
+    above = limit is not None and (totals.cost_usd > limit or totals.unpriced_remote > 0)
+    return BatchEstimate(
+        results=items, totals=totals, confirm_above_usd=limit, needs_confirmation=above,
+        warnings=warnings,
+    )  # fmt: skip
+
+
+def estimate_exit_code(document: BatchEstimate) -> int:
+    """``--estimate``: 0, or the exit code of the first task that cannot run."""
+    return next((i.exit_code for i in document.results if i.error is not None), 0)
+
+
+def _may_cost(provider: Provider) -> bool:
+    if isinstance(provider, CliAgentProvider) or not provider.enabled:
+        return False  # agents: the user's own quota
+    return not provider.local or any(m.price_per_mtok for m in provider.models)
+
+
+def checks_cost(config: Config) -> bool:
+    """Estimate a batch before it runs only if there is a threshold and a provider that can
+    cost money: a setup with only local models without a price (and agents) skips the
+    extra preparation of every task."""
+    if config.estimate.confirm_above_usd is None:
+        return False
+    return any(_may_cost(p) for p in config.providers.values())
 
 
 async def run_batch(

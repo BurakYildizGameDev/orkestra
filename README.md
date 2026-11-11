@@ -43,6 +43,9 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | Task files (YAML/JSON): verify the answer, retry with feedback, move up a tier | `orkestra run task.yaml [--dry-run] [--json]` |
 | Edit tasks: a worker changes code in an isolated worktree, your tests decide | `orkestra run edit.yaml`, then `show --diff`, `apply` |
 | Batches: many tasks with dependencies, in parallel, each provider within its concurrency | `orkestra batch tasks.yaml [--parallel N] [--fail-fast] [--json]` |
+| Cost estimate before a batch (nothing is sent); a costly batch asks first | `orkestra batch tasks.yaml --estimate [--json]`, `--yes-cost` |
+| Apply a batch's passing runs in the order they ran, stop at a conflict | `orkestra apply --batch <batch_id> --only-ok [--json]` |
+| How the workers did: success rate, attempts, tokens, cost and time per provider and tag | `orkestra stats [--since 7d] [--json]` |
 | Code agents (Codex CLI, Antigravity) as workers, in the worktree, with process-tree cleanup | `cli_agent` providers |
 | A run's envelope, full output, log or change | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | Bring a run's change into your working tree, or throw it away | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
@@ -360,8 +363,35 @@ orkestra batch tasks.yaml --parallel 2 --fail-fast
   the first failure. A task that crashes is an `error` item; the rest goes on.
 - A dependency only orders tasks: it does not hand its unapplied change to the next task.
   A task that needs another one's change goes into a later batch, after `apply`.
-- Exit code: 0 when every task is `ok`, else 1. Each result has the task's envelope; apply the
-  good ones with `orkestra apply <run_id>` (batch apply comes in phase 7b).
+- Exit code: 0 when every task is `ok`, else 1. Each result has the task's envelope.
+
+**Cost.** `orkestra batch tasks.yaml --estimate` prices every task's first request on the
+provider the router would pick (prompt + `max_output_tokens`, the same estimate a budget
+reservation uses) and sends nothing; it uses cached price lists, like `--dry-run`. Retries,
+feedback and moving up a tier can cost more. Code agents and models without a price are
+listed as unpriced and left out of the total; a local model without a price costs 0.
+A paid (remote) model whose price is not known cannot be checked, so a batch that uses
+one asks first as well.
+
+Before a real run the batch is estimated the same way. Above `estimate.confirm_above_usd`
+(default `0.50`; `null` turns the check off) a terminal is asked; `--json`, or a run without
+a terminal, prints the estimate (`needs_confirmation: true`), runs nothing and exits with 2
+until you add `--yes-cost`. A setup with only local models without a price (and code
+agents) costs nothing and skips this check.
+
+**Applying.** Look at each run (`show <run_id> --diff`), discard the ones you do not want,
+then `orkestra apply --batch <batch_id> --only-ok`: the batch's passing edit runs are applied
+in the order they ran, runs that did not pass or were applied already are skipped. At the
+first conflict it stops with exit code 5 and reports what was applied, the conflicting run
+and the runs it did not try; any other error stops the same way, with its own exit code,
+and the report keeps what was applied. Without `--only-ok`, a batch with a failed run that
+still has a change is refused and nothing is applied (a failed run you discarded does not
+count).
+
+**Statistics.** `orkestra stats --since 7d` (or `24h`, `30m`) shows per provider and per task
+tag: finished runs, success rate, average attempts and time, tokens and cost. A run counts for
+the provider that answered; an escalated run counts for the last provider it used. Runs still
+marked `running` are counted apart.
 
 ## Worktrees: isolated changes
 
@@ -403,8 +433,8 @@ mkdir -p .claude/skills && cp -r skill/orkestra .claude/skills/
 
 Then ask Claude, for example: *"Add docstrings to these 20 files with orkestra, and review the
 result."* The skill is in Turkish for now (it will be translated with the release) and covers
-the commands that exist today; `status`, `map`, `review`, templates, batch runs and handoff
-come back into it once those phases land.
+the commands that exist today; `status`, `map`, `review`, templates and handoff come back into
+it once those phases land.
 
 ## Configuration
 
@@ -513,7 +543,7 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 5c | Edit tasks with API workers | ✅ |
 | 6 | Code agents: Codex CLI, Antigravity CLI | ✅ |
 | 7a | Batch runs: dependencies, parallelism, per-provider limits | ✅ |
-| 7b | Cost estimate, batch apply, `stats` | ⏳ |
+| 7b | Cost estimate, batch apply, `stats` | ✅ |
 | 8 | Chief tools: `status`, `review`, `map`, templates, `plan expand`, cache, savings counter | ⏳ |
 | 9a | Claude skill: `SKILL.md`, checked against the CLI | ✅ |
 | 9b | Claude skill: review and manual scenarios | ✅ |

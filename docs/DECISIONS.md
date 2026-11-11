@@ -499,3 +499,28 @@ Mimari §5.5 güncellendi.
 - **Sürüm:** README test edilen agy sürümünü 1.5.5 yapıyor (bütün bayraklar, `--log-file` dahil, canlı koşuyla doğrulandı).
 - **Kısmen:** `doctor` hâlâ sadece `disabled` kayıtlar için uyarıyor. Etkin ama bağlanamayacak bir sunucuyu başlatmadan bilmenin yolu yok; uyarı metni, sarmalayıcı seçeneğini de söyleyecek şekilde düzeltildi.
 Mimari §4 (`CliAgentProvider`), §5.5 güncellendi.
+
+## D-057 – Maliyet tahmini, toplu apply, stats (2026-11-11, Faz 7b)
+**Bağlam:** Faz 7'nin ikinci yarısı. Mimari §12, §19 ve komut tablosu bazı ayrıntıları açık bırakıyordu.
+**Karar:**
+- **`batch --estimate`:** her görev için router'ın ilk adayı ve bütçe rezervasyonunun tahmini (istem karakteri/3,5 + `max_output_tokens`, modelin çözülen fiyatı). Sadece önbellekteki fiyatlar, hiçbir istek ve fiyat listesi çekimi yok (`--dry-run` gibi). İlk deneme olduğu açıkça yazılıyor. Kod ajanı ve fiyatı bilinmeyen uzak model `cost_usd: null` ve `unpriced`; fiyatsız yerel model 0 (gerçekten ücretsiz). Çalışamayan görev (bilinmeyen `provider`, bozuk bağlam, depo yok) hata ve çıkış koduyla listeleniyor, diğerleri yine tahmin ediliyor; `--estimate`'in çıkış kodu ilk böyle görevinki.
+- **Eşik:** `estimate.confirm_above_usd` (varsayılan 0,50, `null` = kapalı) varsa batch çalışmadan önce aynı tahmin yapılıyor, bu kez fiyat listeleri tazeleniyor (koşu da tazeleyecekti). Aşılırsa: `--json` tahmin belgesini stdout'a yazıp kod 2 (şef kullanıcıya gösterir, kabul ederse `--yes-cost`); terminal varsa sorulur, hayır kod 2; terminal yoksa kod 2. Kod 2 seçildi, çünkü durum bir kullanım kararı ve hiçbir şey çalışmadı. Fiyatsız görevler toplama girmediği için eşiği tetiklemiyor; çıktı bunu söylüyor.
+- **`apply --batch <id> [--only-ok]`:** batch'in `edit` koşuları `runs.started_at` sırasıyla (bağımlılık ve kesişen dosya sırası kendiliğinden korunur; batch dosyası kaydedilmediği için sıra koşulardan okunuyor). `--only-ok` geçmeyenleri, zaten uygulananları ve değişikliği olmayanları atlar. `--only-ok`/`--force` olmadan geçmeyen koşusu olan batch hiç uygulanmıyor: kısmi uygulama bilinçli seçim olsun. İlk çakışmada duruyor (kod 5), `applied`/`conflict`/`not_tried` raporlanıyor; çakışma çözülünce aynı komut kaldığı yerden devam ediyor (uygulananlar atlanır). `RUN_ID` artık isteğe bağlı; `RUN_ID` ile `--batch`'ten tam biri, `--only-ok` sadece `--batch` ile (kod 2).
+- **`stats [--since 7d]`:** `state/stats.py`, sadece okur. Sağlayıcı ve etiket başına biten koşu, `ok/failed/escalate/error`, başarı oranı, ortalama deneme ve süre, token, maliyet, `estimated`. Token ve maliyet `usage`'ın `actual` satırlarından, isteğin gittiği sağlayıcıya (yedeğe geçişin tokenı harcandığı yerde). Koşu, cevabı veren sağlayıcıya sayılıyor. Zarfında sağlayıcı olmayan koşu (üst kademeye geçen, cevapsız biten) son isteğinin gittiği sağlayıcıya sayılıyor: gerçek veride `escalate` koşuları sağlayıcısızdı ve ollama'nın başarı oranını %80 gösteriyordu, doğrusu %55. Hiç istek göndermeyen koşu "sağlayıcı yok". `running` koşular ayrı sayılıyor, oranlara girmiyor. Çok etiketli koşu her etiketine sayılıyor, etiketsiz koşular "etiket yok". `--since`: `Nd`/`Nh`/`Nm` (N ≥ 1). Şef tasarrufu (Mimari §19 "Tasarruf sayacı") Faz 8a'da.
+- **Skill:** `batch` geri eklendi (D-046): batch dosyası örneği (testte `load_batch` ile denetleniyor), bağımlılığın anlamı, `--estimate`, `--yes-cost` sadece kullanıcı kabul ederse, `apply --batch --only-ok`, `stats`.
+- **Var olan test:** Faz 7a'nın bütçe rezervasyonu testi fiyatlı config kullanıyor; tahmini eşiği aştığı için `--yes-cost` aldı.
+Mimari §3 (komut tablosu), §12, §19 güncellendi.
+
+## D-058 – Faz 7b kod denetimi düzeltmeleri (2026-11-11, Faz 7b)
+**Bağlam:** PR #15 için `/code-review`: 10 bulgu. 9'u düzeltildi, 1'i kısmen.
+**Karar:**
+- **Atılmış başarısız koşu engellemiyor:** `apply --batch` ön denetimi sadece değişikliği duran (etkin worktree kaydı olan) başarısız koşuları sayıyor. `discard` edilmiş, worktree'si hiç olmamış ya da `gc` ile silinmiş koşu batch'i boşuna kilitlemiyor.
+- **Hata raporu kaybolmuyor:** çakışma dışındaki her `OrkestraError` (ör. `git worktree remove` hatası) da batch'i durduruyor: `error` alanı (`conflict` ile aynı biçim), kendi çıkış kodu, o ana kadar `applied` ve kalanlar `not_tried`. Önceden hata yayılıyor, uygulananların listesi kayboluyordu.
+- **`not_tried` doğru:** sadece gerçekten uygulanacak koşular (zaten uygulanmamış, `--only-ok` ise `ok`, değişikliği duran).
+- **Fiyatsız ücretli model onay istiyor:** fiyatı bilinmeyen uzak model `totals.unpriced_remote` sayılıyor ve eşik altında da onay gerekiyor (fiyat listesi çekilemediğinde 200 görevlik ücretli batch $0 görünüp sormadan çalışabilirdi). Mesaj ayrı: "fiyatı bilinen kısım … ama N görev fiyatı bilinmeyen modellere gidiyor". Kod ajanları sayılmıyor (kullanıcının kendi kotası). Öğelerde `agent` alanı.
+- **Yerel kurulum tahmin yapmıyor:** sadece fiyatsız yerel modeller ve ajanlar varsa ön tahmin hiç yapılmıyor (görevler iki kez hazırlanmıyor). Ücretli sağlayıcı varken tahmin her görevi bir kez daha hazırlıyor: bilinen sorun (kısmen).
+- **`--since` taşmıyor:** en fazla 36500 gün; daha büyüğü ve taşan değer kod 2.
+- **Zamanlar an olarak:** `stats` ve `apply --batch` sırası saklanan ISO zamanları `datetime` olarak karşılaştırıyor (SQL sadece iki günlük payla daraltıyor). Yaz saati ya da saat dilimi değişince filtre ve sıra kaymıyor.
+- **Token ve maliyet penceredeki koşuların:** `usage` satırları `created_at`'e göre değil, penceredeki koşulara göre seçiliyor; toplam, sağlayıcı ve etiket satırları birbirini tutuyor.
+- **Temizlik:** hata metni tek yardımcıda (`_detail`), adaysız tahminin ölü dalı `InternalError`, `_total` `sum`, istem tokenı tek hesap.
+Mimari §3 (komut tablosu), §12, §19 güncellendi.

@@ -262,7 +262,8 @@ def test_every_command_and_flag_in_the_skill_exists(skill_text: str) -> None:
     "words",
     [
         ["status", "--json"],  # Faz 8
-        ["batch", "tasks.yaml", "--estimate"],  # Faz 7b
+        ["batch", "tasks.yaml", "--estimates"],  # typo of --estimate
+        ["apply", "--only-okay"],
         ["show", "x", "--diff", "--only-flagged"],  # Faz 8
         ["run", "--template", "docstring"],  # Faz 8
         ["providers"],
@@ -290,6 +291,10 @@ def test_the_checker_catches_what_does_not_exist(words: list[str]) -> None:
         ["--version"],
         ["run", "--help"],
         ["batch", "tasks.yaml", "--parallel", "4", "--fail-fast", "--json"],
+        ["batch", "tasks.yaml", "--estimate", "--json"],  # Faz 7b
+        ["batch", "tasks.yaml", "--json", "--yes-cost"],
+        ["apply", "--batch", "<batch_id>", "--only-ok", "--json"],
+        ["stats", "--since", "7d", "--json"],
         ["ask", "--schema=s.json", "x"],
     ],
 )
@@ -333,6 +338,17 @@ def test_the_example_task_files_in_the_skill_are_valid(skill_text: str) -> None:
     assert tasks, "the skill shows at least one task file"
     for data in tasks:
         parse_task(data, source="SKILL.md")
+
+
+def test_the_example_batch_files_in_the_skill_are_valid(skill_text: str, tmp_path: Path) -> None:
+    from orkestra.tasks.batch import load_batch
+
+    blocks = [b for b in _FENCE.findall(skill_text) if re.search(r"^tasks:", b, re.MULTILINE)]
+    assert blocks, "the skill shows a batch file (Faz 7b)"
+    for index, block in enumerate(blocks):
+        path = tmp_path / f"batch{index}.yaml"
+        path.write_text(block, encoding="utf-8")
+        load_batch(path)
 
 
 def test_a_quoted_pipe_does_not_end_the_call() -> None:

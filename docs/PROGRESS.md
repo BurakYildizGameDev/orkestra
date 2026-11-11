@@ -15,8 +15,9 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 5b – Worktree | ✅ | 2026-11-10 | worktree (kirli ağaç dahil), `show`, `apply`, `discard`, `gc` (D-040) |
 | 5c – API ile edit | ✅ | 2026-11-10 | tam dosya JSON, yol güvenliği, worktree'de doğrulama, kesilmede kademe 3 (D-042) |
 | 6 – CLI ajanları | ✅ | 2026-11-10 | codex, agy (deneysel), generic; süreç ağacı temizliği, dışarı yazma tespiti (D-044) |
+| 6b – MCP sınırları, Unity açık testleri (ek) | ⏳ | | agy MCP beklemesi düzeltildi (D-055, D-056); kalan: Unity açık elle testler, sonradan açılan Unity, `doctor --mcp` sondası |
 | 7a – Batch motoru | ✅ | 2026-11-10 | `orkestra batch`, DAG, sağlayıcı semaforu, kesişen edit'ler sırayla (D-053) |
-| 7b – Tahmin, toplu apply, stats | ⏳ | | |
+| 7b – Tahmin, toplu apply, stats | ✅ | 2026-11-11 | `batch --estimate`/`--yes-cost`, `apply --batch --only-ok`, `stats`, skill'e batch (D-057) |
 | 8a – status, şablon, önbellek, sayaç | ⏳ | | |
 | 8b – review, map, plan expand | ⏳ | | |
 | 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
@@ -29,6 +30,41 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 7b (PR #15), 2026-11-11
+10 bulgu: 9'u düzeltildi, 1'i kısmen (D-058):
+- ✅ `discard` edilmiş ya da worktree'siz başarısız koşu `apply --batch`'i engelliyordu → sadece değişikliği duran başarısız koşu sayılıyor.
+- ✅ Çakışma dışı bir hata uygulananların raporunu kaybediyordu → `error` alanı, kendi çıkış kodu, `applied`/`not_tried` korunuyor.
+- ✅ `not_tried`, `--only-ok`'un atlayacağı koşuları da listeliyordu → düzeldi.
+- ✅ Fiyatı bilinmeyen ücretli model eşiği hiç tetiklemiyordu → `unpriced_remote`, onay istiyor, ayrı mesaj.
+- ✅ Çok büyük `--since` taşıyordu → en fazla 36500 gün, kod 2.
+- ✅ `usage` `created_at`'le, koşular `started_at`'le süzülüyordu → token/maliyet penceredeki koşuların.
+- ✅ Zamanlar metin olarak karşılaştırılıyordu → `datetime` (stats ve batch sırası).
+- ✅ Tekrarlanan hata metni, ölü dal, `_total`, çift token hesabı → temizlendi.
+- ➖ Ön tahmin görevleri bir kez daha hazırlıyor → yerel kurulumda hiç yapılmıyor; ücretli sağlayıcı varken **bilinen sorun**.
+Testler: 891 geçti (+10).
+
+### Faz 7b – Maliyet tahmini, toplu apply, stats (2026-11-11)
+**Yapılanlar (D-057):**
+- `runner.estimate_task` (ilk aday, rezervasyonla aynı tahmin), `batch.estimate_batch`, `estimate_exit_code`, `checks_cost`; `envelope.BatchEstimate` (`estimate_version: 1`) ve `estimate_summary`.
+- `orkestra batch … --estimate [--json]`, `--yes-cost`; eşik aşılınca `--json`/terminalsiz kod 2, terminalde soru.
+- `service.apply_batch`; `orkestra apply --batch <id> [--only-ok] [--force] [--json]` (`RUN_ID` isteğe bağlı).
+- `state/stats.py` ve `orkestra stats [--since 7d] [--json]`.
+- i18n (en, tr), README (en + tr): özellik tablosu, batch bölümünde maliyet/uygulama/istatistik, yol haritası. Skill: batch bölümü geri geldi, `--yes-cost` "asla yapma"da. Global skill kopyası güncellendi.
+
+**Kabul kriterleri:**
+- ✅ `--estimate` gerçek çağrı yapmıyor: sahte sağlayıcının çağrı listesi boş, `runs` tablosunda kayıt yok (`test_estimate_prices_every_task_and_sends_nothing`).
+- ✅ Eşik üstünde `--json` modu `--yes-cost` olmadan kod 2, hiçbir istek yok; `--yes-cost` ile çalışıyor (`test_a_costly_batch_in_json_mode_needs_yes_cost`). Eşik altı sormadan çalışıyor; `null` eşik hiç sormuyor; terminalde hayır → kod 2, evet → çalışıyor; terminalsiz insan modu kod 2.
+- ✅ `apply --batch --only-ok`: geçenler uygulanıyor, `escalate` atlanıyor, ikinci kez hepsi "zaten uygulanmış". `--only-ok` olmadan başarısız koşulu batch hiç uygulanmıyor. Aynı dosyada üç görev: ilki uygulanıyor, ikincisinde çakışma (kod 5, `details`), üçüncüsü `not_tried`.
+- ✅ `stats`: sağlayıcı ve etiket satırları, rezervasyon ve eski koşular dışarıda, `running` ayrı, sağlayıcısız koşu son kullandığına. Gerçek veriyle duman testi: ollama 12/22, agy 2/5.
+- ✅ Skill testi: `batch --estimate`, `--yes-cost`, `apply --batch --only-ok`, `stats` var olan komutlar; örnek batch dosyası geçerli.
+- ✅ ruff, ruff format, pyright, pytest (881 test) temiz.
+
+**Bilinen sorunlar:**
+- Tahmin ilk denemedir; geri bildirimli tekrar ve üst kademe maliyeti dahil değil (çıktıda yazıyor).
+- Fiyatsız uzak modeller eşiği tetiklemiyor (toplamda yok, `unpriced` sayısı gösteriliyor).
+- `runs` tablosunda dışarıdan öldürülüp `running` kalan koşular (D-049) `stats`'ta "hâlâ çalışıyor" görünüyor.
+
 
 ### Kod denetimi – agy MCP düzeltmesi (PR #14), 2026-11-11
 10 bulgu: 9'u düzeltildi, 1'i kısmen (D-056):

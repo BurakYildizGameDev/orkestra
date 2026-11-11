@@ -115,7 +115,45 @@ class BatchEnvelope(BaseModel):
     duration_s: float = 0.0
 
 
-def to_json(envelope: ResultEnvelope | BatchEnvelope) -> str:
+ESTIMATE_VERSION = 1
+
+
+class EstimateItem(BaseModel):
+    """One task of ``batch --estimate``: its first request, or why it cannot run."""
+
+    task_id: str
+    provider: str | None = None
+    model: str | None = None
+    tier: int | None = None
+    prompt_tokens: int = 0
+    max_output_tokens: int | None = None  # None: a code agent
+    cost_usd: float | None = None  # None: no price (code agent, model without a price)
+    agent: bool = False  # a code agent: no USD price (the user's own quota)
+    exit_code: int = 0  # the task's exit code if it cannot run
+    error: str | None = None
+
+
+class EstimateTotals(BaseModel):
+    tasks: int = 0
+    tokens: int = 0  # prompt + output limit of every task that can run
+    cost_usd: float = 0.0  # tasks with a price only
+    unpriced: int = 0
+    unpriced_remote: int = 0  # paid models without a known price: need confirmation
+    cannot_run: int = 0
+
+
+class BatchEstimate(BaseModel):
+    """``orkestra batch --estimate --json`` (and a batch stopped for its cost) (Faz 7b)."""
+
+    estimate_version: Literal[1] = ESTIMATE_VERSION
+    results: list[EstimateItem] = Field(default_factory=list)
+    totals: EstimateTotals = Field(default_factory=EstimateTotals)
+    confirm_above_usd: float | None = None
+    needs_confirmation: bool = False  # the total is above confirm_above_usd
+    warnings: list[str] = Field(default_factory=list)
+
+
+def to_json(envelope: ResultEnvelope | BatchEnvelope | BatchEstimate) -> str:
     # ASCII escapes keep the document intact on non-UTF-8 Windows pipes.
     return json.dumps(envelope.model_dump(mode="json"), indent=2)
 
@@ -141,6 +179,31 @@ def batch_line(item: BatchItem) -> str:
         "batch.line", status=item.status, id=item.task_id, where=where,
         run_id=item.run_id or "-", detail=" ".join(detail.split())[:120],
     ).rstrip()  # fmt: skip
+
+
+def _usd(cost: float | None) -> str:
+    return "-" if cost is None else f"${cost:.4f}"
+
+
+def estimate_summary(document: BatchEstimate) -> str:
+    """``batch --estimate`` for humans: one line per task, then the total."""
+    lines = [t("batch.estimate.header", count=document.totals.tasks)]
+    for item in document.results:
+        if item.error is not None:
+            lines.append(t("batch.estimate.line_error", id=item.task_id, error=item.error))
+            continue
+        tokens = item.prompt_tokens + (item.max_output_tokens or 0)
+        lines.append(t(
+            "batch.estimate.line", id=item.task_id, where=f"{item.provider}/{item.model}",
+            tokens=tokens, cost=_usd(item.cost_usd),
+        ))  # fmt: skip
+    totals = document.totals
+    lines.append(t("batch.estimate.totals", tokens=totals.tokens, cost=_usd(totals.cost_usd)))
+    if totals.unpriced:
+        lines.append(t("batch.estimate.unpriced", count=totals.unpriced))
+    if totals.unpriced_remote:
+        lines.append(t("batch.estimate.unpriced_remote", count=totals.unpriced_remote))
+    return "\n".join(lines)
 
 
 def batch_summary(document: BatchEnvelope) -> str:
