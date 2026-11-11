@@ -14,10 +14,15 @@ from pydantic import BaseModel, Field, ValidationError
 from orkestra.config.schema import EditFormat
 from orkestra.i18n import t
 
-ENVELOPE_VERSION = 3  # 2: failovers (Faz 4); 3: edit_format (Faz 9c)
+ENVELOPE_VERSION = 4  # 2: failovers (Faz 4); 3: edit_format (Faz 9c); 4: review (Faz 8b)
 SUMMARY_CHARS = 400
 
 Status = Literal["ok", "failed", "escalate", "error"]
+
+
+class EnvelopeReview(BaseModel):
+    risk: str
+    flags_count: int
 
 
 class Escalation(BaseModel):
@@ -58,7 +63,7 @@ class EnvelopeUsage(BaseModel):
 
 
 class ResultEnvelope(BaseModel):
-    envelope_version: Literal[2, 3] = ENVELOPE_VERSION  # stored version-2 envelopes still load
+    envelope_version: Literal[2, 3, 4] = ENVELOPE_VERSION  # stored version-2/3 envelopes still load
     run_id: str
     task_id: str
     status: Status
@@ -76,7 +81,7 @@ class ResultEnvelope(BaseModel):
     usage: EnvelopeUsage = Field(default_factory=EnvelopeUsage)
     duration_s: float = 0.0
     cached: bool = False
-    review: dict[str, Any] | None = None
+    review: EnvelopeReview | None = None
     error: str | None = None
 
 
@@ -263,6 +268,10 @@ def human_summary(envelope: ResultEnvelope) -> str:
             t(key, files=envelope.changes.files, insertions=envelope.changes.insertions,
               deletions=envelope.changes.deletions, run_id=envelope.run_id)
         )  # fmt: skip
+    if envelope.review is not None:
+        lines.append(
+            t("envelope.review", risk=envelope.review.risk, count=envelope.review.flags_count)
+        )
     if envelope.error:
         lines.append(t("errors.prefix", message=envelope.error))
     return "\n".join(lines)

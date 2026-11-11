@@ -62,15 +62,39 @@ def attach_worktree(conn: sqlite3.Connection, run_id: str, wt: gw.Worktree) -> N
 # --- show ------------------------------------------------------------------------------
 
 
-def show(run_id: str, part: Part, *, redact: Callable[[str], str] = str) -> Any:
+def show(
+    run_id: str,
+    part: Part,
+    *,
+    only_flagged: bool = False,
+    redact: Callable[[str], str] = str,
+) -> Any:
     """The envelope (as data), the diff, the full output or the log of a run.
 
     ``diff`` is ``""`` when the run has no changes; it goes through ``redact``.
+    ``only_flagged`` filters the diff to flagged hunks with ±5 lines of context.
     """
     run_dir = run_dir_for(run_id)
     if part == "diff":
-        return _diff_text(run_dir, redact)
+        patch = _diff_text(run_dir, redact)
+        if not only_flagged:
+            return patch
+        review_path = run_dir / "review.json"
+        if not review_path.is_file():
+            raise UsageError(t("show.no_review", run_id=run_id))
+        try:
+            review_data = json.loads(review_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise UsageError(f"Could not read review for {run_id}: {exc}") from exc
+        flags_data = review_data.get("flags", [])
+        if not flags_data:
+            return ""
+        from orkestra.chief import review
+
+        flags = [review.ReviewFlag.model_validate(f) for f in flags_data]
+        return review.extract_flagged_lines(patch, flags, context_lines=5)
     path = run_dir / _PART_FILES[part]
+
     if not path.is_file():
         raise UsageError(t("show.missing", run_id=run_id, file=path.name))
     text = path.read_bytes().decode("utf-8", errors="replace")

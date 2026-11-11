@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from orkestra.envelope import ResultEnvelope, human_summary, summarize_text, to_json
+from orkestra.envelope import (
+    ENVELOPE_VERSION,
+    ResultEnvelope,
+    human_summary,
+    summarize_text,
+    to_json,
+)
 from orkestra.errors import UsageError
 from orkestra.tasks.context import collect_context, render_context
 from orkestra.tasks.prompts import build_ask_messages
@@ -96,7 +102,7 @@ def test_summary_cut_at_word_boundary() -> None:
 def test_envelope_json_shape() -> None:
     env = ResultEnvelope(run_id="r", task_id="ask", status="ok", provider="p", model="m", tier=1)
     doc = json.loads(to_json(env))
-    assert doc["envelope_version"] == 3
+    assert doc["envelope_version"] == ENVELOPE_VERSION
     assert set(doc) == {
         "envelope_version", "run_id", "task_id", "status", "provider", "model", "tier",
         "edit_format", "attempts", "escalations", "failovers", "summary", "verification",
@@ -108,6 +114,21 @@ def test_envelope_json_shape() -> None:
 def test_a_stored_version_2_envelope_still_loads() -> None:
     old = {"envelope_version": 2, "run_id": "r", "task_id": "t", "status": "ok"}
     assert ResultEnvelope.model_validate(old).edit_format is None
+
+
+def test_a_stored_version_3_envelope_still_loads() -> None:
+    old = {
+        "envelope_version": 3,
+        "run_id": "r",
+        "task_id": "t",
+        "status": "ok",
+        "provider": "p",
+        "model": "m",
+        "tier": 1,
+    }
+    loaded = ResultEnvelope.model_validate(old)
+    assert loaded.envelope_version == 3
+    assert loaded.review is None
 
 
 def test_human_summary_mentions_error() -> None:

@@ -550,3 +550,16 @@ Mimari §19 güncellendi.
 - **CLI:** `run --template --dry-run --json` JSON veriyor; `--yes-cost` görev dosyasıyla kod 2.
 - **`status` (kısmen):** sağlayıcı özeti bir kez okunuyor (iki bölüm paylaşıyor), uygulanmamış koşu sorgusu worktree'si olmayanları SQL'de eliyor. `discard` edilen koşular hâlâ kayıt dosyası okunarak eleniyor; bunun için `runs`'a yeni bir durum sütunu (yeni migration) gerekir, şimdilik bilinen sorun.
 Mimari §19 güncellendi.
+
+## D-061 – Şef araçları: review, map, plan expand (2026-11-11, Faz 8b)
+**Bağlam:** Faz 8b (Mimari §19, YAPILIS_PLANI.md 8b). Şef araçlarının ikinci yarısı: otomatik ön inceleme (`review`), repo haritası (`map`), taslak planı genişletme (`plan expand`).
+**Karar:**
+- **`review <run_id>`:** Pydantic `ReviewReport` (`risk`: low/medium/high/unknown, `flags`: file, start_line, end_line, reason, severity, `summary`, `model`). Şema dışı çıktıda model geri bildirimle 1 kez tekrar denenir; yine geçersizse `risk: unknown` ve boş flags döner (Mimari §19). 400 satırdan büyük diff'ler dosya dosya parçalanıp incelenir ve birleştirilir (`unknown` > `high` > `medium` > `low`). Sonuç `runs/<run_id>/review.json`'a yazılır, envelope'a `review: {risk, flags_count}` eklenir (`envelope_version` 3'ten 4'e çıkarıldı). `show --diff --only-flagged`: sadece işaretli satır aralıkları ±5 satır bağlamla filtrelenir; işaretli yer yoksa uygun bilgi mesajı verilir. `review.auto: true` ise başarılı `edit` koşusunda otomatik inceleme çalışır.
+- **`map [yollar]`:** `chief/repomap.py`. (a) Modelsiz yapı bilgisi: Python'da `ast` ile fonksiyonlar, asenkron fonksiyonlar, sınıflar ve metot imzaları; diğer dillerde regex sezgiselleri. (b) 1-2 cümlelik amaç özeti: yerel modelle çıkarılır ve SHA256 içerik hash'iyle `.orkestra/cache/map/<hash>.json`'da saklanır. Değişmeyen dosyalar önbellekten okunur; değişen tek dosya yeniden özetlenir; silinen dosyalar haritadan düşer.
+- **`map` gizlilik kuralı:** `map.privacy` varsayılan `local_only`. Yerel sağlayıcı yoksa uzak sağlayıcıya hiçbir dosya içeriği gönderilmez; model özetleri atlanır, sadece yapı bilgisi üretilir ve kullanıcıya uyarı bildirilir.
+- **`map` dosya toplama performansı:** `collect_repo_files` içinde `Path.rglob("*")` yerine `os.walk` kullanılarak `.git`, `.venv`, `node_modules`, `__pycache__`, `.pytest_cache`, `.ruff_cache`, `.orkestra` dizinleri tarama ağacında budanır; böylece büyük depolarda gereksiz dosya taraması ve asılmalar önlenir.
+- **Önbellek temizliği:** `cache clear` komutu hem yanıt önbelleğini hem de repo haritası önbelleğini (`.orkestra/cache/map/`) temizler.
+- **`plan expand <taslak> -o batch.yaml`:** `chief/plan.py`. Şef taslağı (+ varsa `.orkestra/MAP.md`) kademe-2 modele gönderilir; çıktı TaskSpec şemasına uygun batch YAML olarak pydantic ile doğrulanır. Geçersiz YAML'da en fazla 2 tekrar (toplam 3 deneme), yine olmazsa `PlanFormatError` (kod 2). Doğrulayıcısız `edit` görevlerine uyarı verilir. Çıktı dosyaya yazılır ancak **kesinlikle çalıştırılmaz**.
+- **Skill:** `skill/orkestra/SKILL.md` güncellendi (`map --json`, `review <run_id> --json`, `show --diff --only-flagged`, `plan expand`).
+Mimari §19 güncellendi.
+

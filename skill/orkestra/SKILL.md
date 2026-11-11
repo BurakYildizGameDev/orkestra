@@ -33,6 +33,12 @@ Her oturumun başında tek komut (en fazla 15 satır: profil, uygulanmamış ko�
 orkestra status --json
 ```
 
+Projeyi tanımıyorsan tüm dosyaları açma; önce haritaya bak:
+
+```bash
+orkestra map --json           # veya .orkestra/MAP.md dosyasını oku
+```
+
 `unapplied` altında koşu varsa önce onları denetle (§6): uygula ya da `discard` et.
 
 İlk delegeden önce bir kez durumu kontrol et:
@@ -139,6 +145,12 @@ orkestra run --template docstring --files "src/**/*.py" --json
 
 Yerleşik şablonlar: `docstring`, `type-hints`, `tests`, `summarize` (JSON cevap, dosya değiştirmez), `rename-refactor` (`--param old=… --param new=…`), `translate` (`--param language=…`). Her eşleşen dosya için bir görev üretilir ve batch olarak çalışır (maliyet eşiği ve `--yes-cost` kuralları aynı). Parametreleri `orkestra templates show <ad>` gösterir. Mantığı korumak için `--param check="python -m pytest -q"` gibi bir doğrulama komutu ver; vermezsen sadece değişen dosya sayısı denetlenir. Proje kendi şablonlarını `.orkestra/templates/<ad>.yaml` olarak koyabilir (aynı adı ezer). Yerleşik bir şablonun yerine proje şablonu çalışırsa Orkestra stderr'e uyarır: güvenmediğin bir depoda önce `orkestra templates show <ad>` ile istemine ve komutlarına bak, emin değilsen kullanıcıya sor.
 
+Birçok farklı iş varsa kısa bir taslak yaz ve ayrıntılı batch dosyasını Orkestra'ya ürettir; çalıştırmadan önce mutlaka incele:
+
+```bash
+orkestra plan expand .orkestra/plan.md -o .orkestra/tasks/batch.yaml
+```
+
 Birden çok görev varsa bir batch dosyası yaz (`.orkestra/tasks/batch.yaml`); her görev, görev dosyasıyla aynı alanları alır:
 
 ```yaml
@@ -192,7 +204,10 @@ orkestra show <run_id> --json     # zarfı tekrar al
 ## 6. Denetim (atlanamaz)
 
 `status: ok` olsa bile:
-1. `orkestra show <run_id> --diff` ile değişikliği oku. Değişiklik güvenlik, kimlik doğrulama veya veri silme ile ilgiliyse diff'in **tamamını** satır satır oku. Doğrulayıcıların yakalayamayacağı şeylere bak: mantık hatası, gereksiz değişiklik, stil uyumsuzluğu, güvenlik, istenmeyen dosyalar.
+1. Diff büyükse önce ön inceleme al, sonra sadece işaretli kısımları oku:
+   `orkestra review <run_id> --json` → `orkestra show <run_id> --diff --only-flagged`.
+   `risk: high` veya `unknown` ise, ya da değişiklik güvenlik, kimlik doğrulama veya veri silme ile ilgiliyse diff'in **tamamını** satır satır oku.
+   Diff'i incele. Doğrulayıcıların yakalayamayacağı şeylere bak: mantık hatası, gereksiz değişiklik, stil uyumsuzluğu, güvenlik, istenmeyen dosyalar.
 2. Uygunsa: `orkestra apply <run_id>`. Değilse: `orkestra discard <run_id>` ve ya istemi iyileştirip tekrar çalıştır ya da kendin yap.
 3. `apply` çakışma verirse (kod 5) **hiçbir dosya** yazılmamıştır, çakışmayanlar da yazılmamıştır. Worktree durur. Hata `details` içinde sadece çakışan dosyaları listeler. Değişikliğin tamamı `orkestra show <run_id> --diff` içindedir. Diff'teki **her dosyayı** kendin uygula: çakışmayanları olduğu gibi, çakışanları kullanıcının son haliyle birleştirerek. Bütün dosyaları uyguladıktan sonra `orkestra discard <run_id>` çalıştır. Emin değilsen önce kullanıcıya sor.
 

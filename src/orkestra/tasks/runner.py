@@ -916,7 +916,7 @@ class _TaskRun:
             return self._fail(candidate, None, tries, retry.Action.TOP_TIER, reason=message,
                               error=OUTPUT_TRUNCATED)  # fmt: skip
         checks = await self._verify(result.text, attempt_dir)
-        return self._judge(
+        return await self._judge(
             candidate, result, checks, tries, answers, completion.max_output_tokens, base_user
         )
 
@@ -970,7 +970,7 @@ class _TaskRun:
             provider=candidate.provider, model=candidate.model.id,
         )  # fmt: skip
 
-    def _judge(
+    async def _judge(
         self,
         candidate: Candidate,
         result: CompletionResult,
@@ -982,7 +982,8 @@ class _TaskRun:
     ) -> TaskOutcome | retry.Action | str:
         """Success, giving up on the candidate, or the next prompt (with feedback)."""
         if all(c.result.ok for c in checks):
-            return self._succeed(candidate, limit, result, checks)
+            return await self._succeed(candidate, limit, result, checks)
+
         self.rejected = _Answer(candidate, result.text, checks, result)
         self.last_problem = "checks"
         if self.wt is not None:
@@ -1098,10 +1099,11 @@ class _TaskRun:
                 return self._fail(candidate, None, tries, retry.Action.ESCALATE, reason=reason)
             answers += 1
             checks = await self._verify(text, attempt_dir, scope)
-            verdict = self._judge(
+            verdict = await self._judge(
                 candidate, CompletionResult(text, usage, None), checks, tries, answers,
                 self._max_output(candidate), self.prep.agent_user,
             )  # fmt: skip
+
             if not isinstance(verdict, str):
                 return verdict
             # Feedback runs continue from the agent's change (restored after the checks).
@@ -1346,7 +1348,7 @@ class _TaskRun:
         )
         return envelope, text
 
-    def _succeed(
+    async def _succeed(
         self,
         candidate: Candidate,
         limit: int,
@@ -1358,6 +1360,24 @@ class _TaskRun:
         if self.cache_hit:
             envelope = envelope.model_copy(update={"cached": True})
         self._remember(candidate, result.text)
+        if (
+            self.prep.config.review.auto
+            and self.wt is not None
+            and envelope.changes is not None
+            and envelope.changes.files > 0
+        ):
+            try:
+                from orkestra.chief import review
+                from orkestra.envelope import EnvelopeReview
+
+                report = await review.review_run(self.run_id, self.prep.config)
+                envelope = envelope.model_copy(
+                    update={
+                        "review": EnvelopeReview(risk=report.risk, flags_count=len(report.flags))
+                    }
+                )
+            except Exception as exc:
+                self.log.warning("automatic review failed: %s", exc)
         return self._finish(envelope, text, 0)
 
     def _checks_failed(self, answer: _Answer) -> TaskOutcome:

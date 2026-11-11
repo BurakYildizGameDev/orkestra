@@ -261,11 +261,12 @@ def test_every_command_and_flag_in_the_skill_exists(skill_text: str) -> None:
 @pytest.mark.parametrize(
     "words",
     [
-        ["map", "--json"],  # Faz 8b
+        ["handoff", "show"],  # Faz 10
         ["batch", "tasks.yaml", "--estimates"],  # typo of --estimate
         ["apply", "--only-okay"],
-        ["show", "x", "--diff", "--only-flagged"],  # Faz 8
-        ["review", "x"],  # Faz 8b
+        ["show", "--diff", "--only-flagged"],  # RUN_ID missing
+        ["review"],  # RUN_ID missing
+        ["map", "--nope"],  # no such option
         ["templates", "edit", "x"],  # no such subcommand
         ["providers"],
         ["config", "dump"],
@@ -286,6 +287,7 @@ def test_the_checker_catches_what_does_not_exist(words: list[str]) -> None:
         ["--lang", "en", "doctor", "--json"],
         ["providers", "enable", "<name>"],
         ["show", "<run_id>", "--diff"],
+        ["show", "<run_id>", "--diff", "--only-flagged"],  # Faz 8b
         ["ask", "<prompt with spaces>", "--context", "a.py", "--tier", "1", "--json"],
         ["--lang=en", "doctor", "--json"],
         ["--config", "x.yaml", "doctor"],
@@ -297,6 +299,9 @@ def test_the_checker_catches_what_does_not_exist(words: list[str]) -> None:
         ["apply", "--batch", "<batch_id>", "--only-ok", "--json"],
         ["stats", "--since", "7d", "--json"],
         ["status", "--json"],  # Faz 8a
+        ["map", "--json"],  # Faz 8b
+        ["review", "<run_id>", "--json"],  # Faz 8b
+        ["plan", "expand", "plan.md", "-o", "batch.yaml"],  # Faz 8b
         ["templates", "list", "--json"],
         ["templates", "show", "docstring"],
         ["run", "--template", "docstring", "--files", "src/*.py", "--param", "style=numpy"],
