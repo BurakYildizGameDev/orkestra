@@ -30,6 +30,18 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – agy MCP düzeltmesi (PR #14), 2026-11-11
+10 bulgu: 9'u düzeltildi, 1'i kısmen (D-056):
+- ✅ Bir test geliştiricinin gerçek `~/.gemini` ayarını okuyordu → conftest yalıtıyor, `doctor` yolları çağrı anında okuyor.
+- ✅ 30 sn'de durmak yavaş başlayan sunucuları öldürüyordu → `mcp_wait_s` (varsayılan 60, `0` = hiç).
+- ✅ Günlük her saniye baştan okunuyordu, yarım satır kesik sunucu adı verebiliyordu → `LogTail` (yeni tam satırlar).
+- ✅ Hata mesajında mutlak (ev klasörlü) günlük yolu → koşu klasörüne göre.
+- ✅ Durdurulan süreç beklenmiyordu → `proc.wait()`. ✅ Gözcü yokken ek task → kaldırıldı.
+- ✅ `providers enable agy` onay metninde MCP uyarısı yoktu → eklendi.
+- ✅ README'de test edilen agy sürümü 1.5.3 kalmıştı → 1.5.5.
+- ➖ `doctor` sadece `disabled` kayıtları görebiliyor (etkin ama bağlanamayacak sunucu başlatmadan bilinemez); uyarı metni düzeltildi.
+Testler: 839 geçti (+11). Canlı: takılan test sunucusuyla `orkestra ask --provider agy` 60,8 sn'de durdu, mesajda `attempts/1/agent.log`, süreç kalmadı.
+
 ### Düzeltme – agy'nin MCP sunucusu beklemesi (2026-11-11)
 **Yapılanlar (D-055):**
 - `providers/cli_agent.py`: `run_process(watch=…, watch_interval_s=…)` gözcüsü; `CliAgent.watcher`; agy `--log-file attempts/<n>/agent.log`; `agy_mcp_stall` günlükten bekleyen sunucuları okur → agy durdurulur, `ProviderUnavailable` (sunucu adları ve günlük yolu). `agy_disabled_mcp_servers`.

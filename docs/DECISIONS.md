@@ -482,7 +482,20 @@ Mimari §12 güncellendi.
 - `MCP_TOOL_TIMEOUT` (720000) araç çağrısı süresi; bağlantı beklemesiyle ilgisi yok, değiştirilmedi.
 **Karar:**
 - **Asıl çözüm kullanıcının makinesinde:** bağlanamayan sunucu, uygulaması kapalıyken hemen çıkan bir sarmalayıcıyla başlatılır. Kişisel yol içerdiği için repoya girmez; README'de genel bir örnek var.
-- **Orkestra güvenlik ağı:** `AgyAgent` agy'nin günlüğünü `attempts/<n>/agent.log`'a yazdırır (`--log-file`). `run_process` isteğe bağlı bir gözcü alır (`CliAgent.watcher`, saniyede bir). agy'nin gözcüsü günlükte "MCP: … still connecting after 30s: …" satırını görünce süreç ağacı durdurulur ve sunucu adlarıyla `ProviderUnavailable` verilir: router sağlayıcıyı atlar, bütçe 0 ile kapanır, sağlık kaydına düşer (art arda olursa devre açılır). İlk raporda (30 sn) durmak bilerek seçildi: agy sunucular bağlanmadan hiçbir şey göndermiyor, ilk açılışta yavaş başlayan bir sunucu yüzünden bir koşu kaybedilebilir, sonraki koşu normal.
+- **Orkestra güvenlik ağı:** `AgyAgent` agy'nin günlüğünü `attempts/<n>/agent.log`'a yazdırır (`--log-file`). `run_process` isteğe bağlı bir gözcü alır (`CliAgent.watcher`, saniyede bir). agy'nin gözcüsü günlükte "MCP: … still connecting after 30s: …" satırını görünce süreç ağacı durdurulur ve sunucu adlarıyla `ProviderUnavailable` verilir: router sağlayıcıyı atlar, bütçe 0 ile kapanır, sağlık kaydına düşer (art arda olursa devre açılır). İlk raporda (30 sn) durmak seçilmişti; kod denetiminde yavaş başlayan sunucular yüzünden `mcp_wait_s` (varsayılan 60) ile değişti (D-056).
 - **`doctor`:** `~/.gemini/config/mcp_config.json`'da `disabled: true` olan sunucular için uyarı (`provider:agy:mcp`). Dosya yok/bozuksa sessiz.
 - **Yapılmayanlar:** uygulama klasörü izolasyonu (giriş ve izinler bozuluyor), MCP için config alanı (agy'de kapatma yolu yok).
 Mimari §5.5 güncellendi.
+
+## D-056 – agy MCP düzeltmesinin kod denetimi (2026-11-11, Faz 6 düzeltmesi)
+**Bağlam:** PR #14 için `/code-review`: 10 bulgu. 9'u düzeltildi, 1'i kısmen (aşağıda).
+**Karar:**
+- **Bekleme süresi ayarlanabilir:** `cli_agent` için `mcp_wait_s` (varsayılan 60, `0` = hiç durdurma, ≥ 0). Koşu, agy'nin raporladığı bekleme süresi bu değere ulaşınca duruyor; agy 30 sn'de bir raporladığı için pratikte 60, 90… sn. 30 sn'de durmak `npx`/`uvx` ile ilk açılışta yavaş bağlanan sunucuları da öldürüyor, art arda olunca devreyi açıyordu. Onay özetine (`settings_hash`) girmiyor, çünkü verinin nereye gittiğini değiştirmiyor.
+- **Günlük kaldığı yerden okunuyor** (`LogTail`): her saniye bütün dosya değil sadece yeni baytlar okunuyor; yarım yazılmış son satır, satır sonu gelene kadar değerlendirilmiyor (kesik sunucu adı çıkmıyor). Süre Go biçiminden (`30s`, `1m30s`) okunuyor.
+- **Hata mesajında ev klasörü yok:** günlük yolu koşu klasörüne göre (`attempts/1/agent.log`); mesaj sağlık tablosuna ve log'a da giriyor.
+- **Durdurulan süreç bekleniyor:** zaman aşımı ve gözcü durdurmasında `kill_tree`'den sonra `proc.wait()` (Windows'ta kapanmamış taşıma kalmıyor). Gözcü yoksa ek task oluşturulmuyor.
+- **Onay metni:** `providers enable agy` artık `disabled` MCP kayıtları için de uyarıyor (`consent.describe.agy_mcp`), `doctor` ile aynı.
+- **Testler ev klasörüne bakmıyor:** conftest `AGY_SETTINGS` ve `AGY_MCP_CONFIG`'i geçici yola çeviriyor; `doctor` bu yolları varsayılan argüman olarak değil çağrı anında okuyor. Önceden geliştiricinin gerçek agy ayarı bir testi kırabiliyordu.
+- **Sürüm:** README test edilen agy sürümünü 1.5.5 yapıyor (bütün bayraklar, `--log-file` dahil, canlı koşuyla doğrulandı).
+- **Kısmen:** `doctor` hâlâ sadece `disabled` kayıtlar için uyarıyor. Etkin ama bağlanamayacak bir sunucuyu başlatmadan bilmenin yolu yok; uyarı metni, sarmalayıcı seçeneğini de söyleyecek şekilde düzeltildi.
+Mimari §4 (`CliAgentProvider`), §5.5 güncellendi.

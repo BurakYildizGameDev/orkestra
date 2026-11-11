@@ -305,9 +305,10 @@ providers:
 - **agy ve MCP sunucuları:** agy, bir şey göndermeden önce `~/.gemini/config/mcp_config.json`
   içindeki bütün MCP sunucularını (`disabled` işaretli olanlar dahil) başlatır ve hepsi
   bağlanana kadar bekler. Bağlanamayan bir sunucu (ör. Unity editörü kapalıyken Unity'nin
-  relay'i) her koşuyu zaman aşımına kadar bekletirdi. Orkestra böyle bir koşuyu yaklaşık 30
-  saniye sonra sunucunun adını veren bir hatayla durdurur ve sıradaki sağlayıcıya geçer;
-  `doctor` `disabled` kayıtlar için uyarır. Böyle bir sunucuyu etkileşimli kullanım için
+  relay'i) her koşuyu zaman aşımına kadar bekletirdi. Orkestra, agy `mcp_wait_s` kadar
+  beklediğinde (varsayılan 60 saniye; agy 30 sn'de bir raporlar; `0` hiç durdurmaz) koşuyu
+  sunucunun adını veren bir hatayla durdurur ve sıradaki sağlayıcıya geçer; `doctor` ve
+  `providers enable` `disabled` kayıtlar için uyarır. Böyle bir sunucuyu etkileşimli kullanım için
   tutmak istersen, uygulaması çalışmıyorsa hemen kapanan küçük bir betikle başlat, ör.
   Windows'ta (`command: "cmd.exe"`, `args: ["/d", "/c", "<betik>.cmd", "--mcp"]`):
   ```bat
@@ -316,7 +317,7 @@ providers:
   "%USERPROFILE%\.unity\relay\relay_win.exe" %*
   ```
 
-codex-cli 0.160.0 ve agy 1.5.3 ile denendi; MCP davranışı agy 1.5.5 ile.
+codex-cli 0.160.0 ve agy 1.5.5 ile denendi (`--log-file` kullanılmadan önce agy 1.5.3).
 
 ## Batch: birçok görev birden
 

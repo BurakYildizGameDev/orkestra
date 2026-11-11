@@ -309,9 +309,10 @@ providers:
 - **agy and MCP servers:** agy starts every MCP server in `~/.gemini/config/mcp_config.json`
   before it sends anything, even ones marked `disabled`, and waits until all of them connect.
   A server that cannot connect (for example Unity's relay while the Unity editor is closed)
-  would hold every run until the timeout. Orkestra stops such a run after about 30 seconds
-  with an error naming the server and moves on to the next provider; `doctor` warns about
-  `disabled` entries. To keep such a server for interactive use, start it through a small
+  would hold every run until the timeout. Orkestra stops such a run once agy has waited
+  `mcp_wait_s` (default 60 seconds; agy reports every 30 s; `0` never stops it) with an error
+  naming the server and moves on to the next provider; `doctor` and `providers enable` warn
+  about `disabled` entries. To keep such a server for interactive use, start it through a small
   script that exits at once when its app is not running, e.g. on Windows
   (`command: "cmd.exe"`, `args: ["/d", "/c", "<script>.cmd", "--mcp"]`):
   ```bat
@@ -320,7 +321,7 @@ providers:
   "%USERPROFILE%\.unity\relay\relay_win.exe" %*
   ```
 
-Tested with codex-cli 0.160.0 and agy 1.5.3; the MCP behaviour with agy 1.5.5.
+Tested with codex-cli 0.160.0 and agy 1.5.5 (agy 1.5.3 before `--log-file` was used).
 
 ## Batches: many tasks at once
 

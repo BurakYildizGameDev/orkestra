@@ -241,6 +241,12 @@ def test_enabling_agy_warns_about_its_deny_list(tmp_path: Path) -> None:
     )
     lines = consent.describe("agy", agy, agy_settings=tmp_path / "missing.json")
     assert any("rm" in line and "sudo" in line for line in lines)
+    assert not any("MCP" in line for line in lines)
+    mcp = tmp_path / "mcp_config.json"
+    mcp.write_text('{"mcpServers": {"unity": {"disabled": true}}}', encoding="utf-8")
+    lines = consent.describe("agy", agy, agy_settings=tmp_path / "missing.json",
+                             agy_mcp_config=mcp)  # fmt: skip
+    assert any("MCP" in line and "unity" in line for line in lines)
     generic = _generic("echo")
     assert any("sandbox" in line for line in consent.describe("fake", generic))
 
@@ -288,18 +294,66 @@ def test_agy_writes_its_log_next_to_the_run_records(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("log", "servers"),
+    ("log", "stall"),
     [
-        ("", []),
+        ("", None),
         ("I1111 mcp_manager.go:988] MCP: 1 server(s) still connecting after 30s: unity\n",
-         ["unity"]),
-        ("x\nI1 mcp_manager.go:988] MCP: 2 server(s) still connecting after 1m0s: a, b-c\ny\n",
-         ["a", "b-c"]),
-        ("I1111 server.go:313] Creating CLI server backend\n", []),
+         (30.0, ["unity"])),
+        ("I1 mcp_manager.go:988] MCP: 1 server(s) still connecting after 30s: a\n"
+         "I1 mcp_manager.go:988] MCP: 2 server(s) still connecting after 1m30s: a, b-c\ny\n",
+         (90.0, ["a", "b-c"])),
+        ("I1111 server.go:313] Creating CLI server backend\n", None),
     ],
 )  # fmt: skip
-def test_agy_mcp_stall_is_read_from_the_log(log: str, servers: list[str]) -> None:
-    assert ca.agy_mcp_stall(log) == servers
+def test_agy_mcp_stall_is_read_from_the_log(
+    log: str, stall: tuple[float, list[str]] | None
+) -> None:
+    assert ca.agy_mcp_stall(log) == stall
+
+
+@pytest.mark.parametrize(
+    ("text", "seconds"),
+    [("30s", 30.0), ("1m0s", 60.0), ("1m30s", 90.0), ("1h0m0s", 3600.0), ("1.5s", 1.5),
+     ("500ms", 0.5), ("soon", None), ("30", None), ("30sx", None)],
+)  # fmt: skip
+def test_go_durations(text: str, seconds: float | None) -> None:
+    assert ca.go_seconds(text) == seconds
+
+
+def test_the_log_tail_reads_only_new_complete_lines(tmp_path: Path) -> None:
+    log = tmp_path / "agent.log"
+    tail = ca.LogTail(log)
+    assert tail.new_lines() == ""  # no file yet
+    log.write_bytes(b"one\nMCP: 2 server(s) still connecting after 30s: unity, oth")
+    assert tail.new_lines() == "one\n"  # the half-written line waits
+    with log.open("ab") as f:
+        f.write(b"er\n")
+    assert tail.new_lines() == "MCP: 2 server(s) still connecting after 30s: unity, other\n"
+    assert tail.new_lines() == ""
+
+
+def _stall_log(tmp_path: Path, after: str) -> AgentRequest:
+    req = _request(tmp_path)
+    (req.output_file.parent / ca.AGENT_LOG).write_text(
+        f"I1 mcp_manager.go:988] MCP: 1 server(s) still connecting after {after}: unity\n",
+        encoding="utf-8",
+    )
+    return req
+
+
+def test_agy_waits_for_mcp_servers_until_mcp_wait_s(tmp_path: Path) -> None:
+    check = _agy().watcher(_stall_log(tmp_path, "30s"))  # default mcp_wait_s: 60
+    assert check is not None and check() is None
+    check = _agy(mcp_wait_s=30).watcher(_stall_log(tmp_path, "30s"))
+    assert check is not None
+    error = check()
+    assert isinstance(error, ProviderUnavailable)
+    assert "30" in error.message and "unity" in error.message
+    assert str(tmp_path) not in error.message  # the log path is relative to the run
+    assert f"attempt/{ca.AGENT_LOG}" in error.message
+    assert _agy(mcp_wait_s=0).watcher(_request(tmp_path)) is None  # never stopped
+    with pytest.raises(ValueError):
+        _agy(mcp_wait_s=-1)
 
 
 def test_a_watcher_stops_a_stalled_agent_early(tmp_path: Path) -> None:
@@ -348,7 +402,7 @@ def test_agy_waiting_for_an_mcp_server_is_unavailable_not_a_timeout(tmp_path: Pa
     env = {**os.environ, "FAKE_AGENT_PIDS": str(pids_file),
            "FAKE_AGENT_LOG": str(req.output_file.parent / ca.AGENT_LOG)}  # fmt: skip
     cfg = CliAgentProvider.model_validate(
-        {"type": "cli_agent", "command": "agy", "experimental": True}
+        {"type": "cli_agent", "command": "agy", "experimental": True, "mcp_wait_s": 30}
     )
     agent = _StallingAgy("agy", cfg, env, executable=sys.executable)
     with pytest.raises(ProviderUnavailable) as exc_info:

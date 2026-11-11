@@ -197,8 +197,8 @@ def _check_agent(
     which: Which,
     probe: VersionProbe,
     login: LoginProbe = cli_agent.codex_logged_in,
-    agy_settings: Path = cli_agent.AGY_SETTINGS,
-    agy_mcp_config: Path = cli_agent.AGY_MCP_CONFIG,
+    agy_settings: Path | None = None,
+    agy_mcp_config: Path | None = None,
 ) -> list[Check]:
     path = which(cfg.command)
     if path is None:
@@ -223,6 +223,9 @@ def _check_agent(
         checks.append(Check(f"provider:{name}:login", "warn",
                             t("doctor.agent.not_logged_in", command=cfg.command), {}))  # fmt: skip
     if cfg.kind == "agy":
+        # Resolved here, not as defaults, so tests can point them away from the real home.
+        agy_settings = agy_settings or cli_agent.AGY_SETTINGS
+        agy_mcp_config = agy_mcp_config or cli_agent.AGY_MCP_CONFIG
         gaps = cli_agent.agy_deny_gaps(agy_settings)
         if gaps:
             checks.append(Check(
@@ -251,8 +254,8 @@ async def _check_provider(
     which: Which,
     probe: VersionProbe,
     login: LoginProbe = cli_agent.codex_logged_in,
-    agy_settings: Path = cli_agent.AGY_SETTINGS,
-    agy_mcp_config: Path = cli_agent.AGY_MCP_CONFIG,
+    agy_settings: Path | None = None,
+    agy_mcp_config: Path | None = None,
 ) -> list[Check]:
     if not cfg.enabled:
         return [
@@ -394,8 +397,8 @@ async def run_doctor(
     which: Which = shutil.which,
     probe: VersionProbe = probe_version,
     login: LoginProbe = cli_agent.codex_logged_in,
-    agy_settings: Path = cli_agent.AGY_SETTINGS,
-    agy_mcp_config: Path = cli_agent.AGY_MCP_CONFIG,
+    agy_settings: Path | None = None,
+    agy_mcp_config: Path | None = None,
     git_config: GitConfig | None = None,
     platform: str = sys.platform,
 ) -> DoctorReport:

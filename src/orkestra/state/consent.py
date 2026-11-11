@@ -57,10 +57,17 @@ def grant(conn: sqlite3.Connection, name: str, config: Provider, now: datetime) 
         )
 
 
-def describe(name: str, config: Provider, *, agy_settings: Path | None = None) -> list[str]:
+def describe(
+    name: str,
+    config: Provider,
+    *,
+    agy_settings: Path | None = None,
+    agy_mcp_config: Path | None = None,
+) -> list[str]:
     """What the user allows by enabling this provider, shown before asking.
 
-    ``agy_settings``: agy's settings file (default: the real one in the home directory).
+    ``agy_settings``, ``agy_mcp_config``: agy's settings and MCP config files (default: the
+    real ones in the home directory).
     """
     lines = [t("consent.describe.title", name=name, type=config.type)]
     if isinstance(config, CliAgentProvider):
@@ -69,11 +76,14 @@ def describe(name: str, config: Provider, *, agy_settings: Path | None = None) -
         if config.kind == "generic":
             lines.append(t("consent.describe.generic_no_sandbox"))
         if config.kind == "agy":
-            from orkestra.providers.cli_agent import AGY_SETTINGS, agy_deny_gaps
+            from orkestra.providers import cli_agent
 
-            gaps = agy_deny_gaps(agy_settings or AGY_SETTINGS)
+            gaps = cli_agent.agy_deny_gaps(agy_settings or cli_agent.AGY_SETTINGS)
             if gaps:
                 lines.append(t("consent.describe.agy_deny", commands=", ".join(gaps)))
+            mcp = agy_mcp_config or cli_agent.AGY_MCP_CONFIG
+            if disabled := cli_agent.agy_disabled_mcp_servers(mcp):
+                lines.append(t("consent.describe.agy_mcp", servers=", ".join(disabled)))
     else:
         key = "consent.describe.local" if config.local else "consent.describe.remote"
         lines.append(t(key, url=config.base_url))

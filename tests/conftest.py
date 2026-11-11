@@ -15,6 +15,10 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(i18n, "_platform_locale", lambda: None)
     monkeypatch.setenv("ORKESTRA_HOME", str(tmp_path / "orkestra-home"))
+    from orkestra.providers import cli_agent  # agy's files in the developer's home
+
+    monkeypatch.setattr(cli_agent, "AGY_SETTINGS", tmp_path / "agy-home" / "settings.json")
+    monkeypatch.setattr(cli_agent, "AGY_MCP_CONFIG", tmp_path / "agy-home" / "mcp_config.json")
     monkeypatch.setenv(i18n.STRICT_ENV, "1")
     # Wide terminal so rich does not wrap help text in assertions.
     monkeypatch.setenv("COLUMNS", "200")

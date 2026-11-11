@@ -49,7 +49,9 @@ AGENT_LOG = "agent.log"  # agy: its own log (--log-file), next to the run's reco
 WATCH_INTERVAL_S = 1.0
 _AGY_TEXT_KEYS = ("result", "response", "text", "output", "message", "content")
 # agy reports every 30 s while MCP servers have not connected; nothing is sent until they do.
-_AGY_MCP_STALL = re.compile(r"MCP: \d+ server\(s\) still connecting after \S+: (.+?)\s*$", re.M)
+_AGY_MCP_STALL = re.compile(r"MCP: \d+ server\(s\) still connecting after (\S+): (.+?)\s*$")
+_GO_DURATION_PART = re.compile(r"(\d+(?:\.\d+)?)(h|ms|m|s)")
+_GO_UNITS = {"h": 3600.0, "m": 60.0, "s": 1.0, "ms": 0.001}
 
 Watcher = Callable[[], "ProviderError | None"]
 
@@ -102,9 +104,9 @@ async def _wait_watched(
     proc: asyncio.subprocess.Process, data: bytes | None, watch: Watcher | None, interval: float
 ) -> int:
     """The exit code; raises the watcher's error as soon as it reports one."""
-    done = asyncio.ensure_future(_feed_and_wait(proc, data))
     if watch is None:
-        return await done
+        return await _feed_and_wait(proc, data)
+    done = asyncio.ensure_future(_feed_and_wait(proc, data))
     try:
         while True:
             finished, _ = await asyncio.wait({done}, timeout=interval)
@@ -114,6 +116,13 @@ async def _wait_watched(
                 raise error
     finally:
         done.cancel()  # no-op when it finished
+
+
+async def _stop(proc: asyncio.subprocess.Process) -> None:
+    """Kill the process tree, then reap the process so its transport is closed."""
+    await asyncio.to_thread(kill_tree, proc.pid)
+    with contextlib.suppress(ProcessLookupError):
+        await proc.wait()
 
 
 async def run_process(
@@ -148,10 +157,10 @@ async def run_process(
                 _wait_watched(proc, inv.stdin, watch, watch_interval_s), timeout_s
             )
         except TimeoutError:
-            await asyncio.to_thread(kill_tree, proc.pid)
+            await _stop(proc)
             raise ProviderTimeout(t("agent.error.timeout", seconds=timeout_s)) from None
         except ProviderError:  # the watcher stopped it
-            await asyncio.to_thread(kill_tree, proc.pid)
+            await _stop(proc)
             raise
         except BaseException:
             kill_tree(proc.pid)  # Ctrl+C or cancelled: leave nothing running
@@ -251,8 +260,9 @@ class AgyAgent(CliAgent):
 
     agy starts every MCP server in its settings before it sends anything, ignoring their
     ``disabled`` flag in print mode, and waits for all of them to connect. Its log goes next
-    to the run's records; when it reports a server still connecting (after 30 s) the run is
-    stopped as ``ProviderUnavailable`` naming the servers, so the router moves on (D-055).
+    to the run's records; when it reports servers still connecting after ``mcp_wait_s`` (agy
+    reports every 30 s) the run is stopped as ``ProviderUnavailable`` naming the servers,
+    so the router moves on (D-055).
     """
 
     def invocation(self, req: AgentRequest) -> Invocation:
@@ -285,18 +295,48 @@ class AgyAgent(CliAgent):
     def final_message(self, req: AgentRequest, stdout_path: Path) -> str:
         return parse_agy_output(_read(stdout_path))
 
-    def watcher(self, req: AgentRequest) -> Watcher:
-        log = req.output_file.parent / AGENT_LOG
+    def watcher(self, req: AgentRequest) -> Watcher | None:
+        wait_s = self.config.mcp_wait_s
+        if wait_s == 0:
+            return None
+        records = req.output_file.parent
+        tail = LogTail(records / AGENT_LOG)
+        # Relative to the run's folder: no home directory in messages and the health table.
+        shown = f"{records.parent.name}/{records.name}/{AGENT_LOG}"
 
         def check() -> ProviderError | None:
-            servers = agy_mcp_stall(_read(log))
-            if not servers:
+            stall = agy_mcp_stall(tail.new_lines())
+            if stall is None or stall[0] < wait_s:
                 return None
-            return ProviderUnavailable(
-                t("agent.error.agy_mcp_stall", servers=", ".join(servers), log=log)
-            )
+            seconds, servers = stall
+            return ProviderUnavailable(t(
+                "agent.error.agy_mcp_stall",
+                servers=", ".join(servers), seconds=int(seconds), log=shown,
+            ))  # fmt: skip
 
         return check
+
+
+class LogTail:
+    """The complete lines a growing log file got since the last call (no re-reading)."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.offset = 0
+        self.partial = b""
+
+    def new_lines(self) -> str:
+        try:
+            with self.path.open("rb") as f:
+                f.seek(self.offset)
+                data = f.read()
+        except OSError:
+            return ""
+        self.offset += len(data)
+        data = self.partial + data
+        cut = data.rfind(b"\n") + 1  # a line still being written waits for its end
+        self.partial = data[cut:]
+        return data[:cut].decode("utf-8", errors="replace")
 
 
 _KINDS: dict[str, type[CliAgent]] = {"codex": CodexAgent, "agy": AgyAgent, "generic": CliAgent}
@@ -426,12 +466,22 @@ def _text_of(value: Any) -> str | None:
     return None
 
 
-def agy_mcp_stall(log: str) -> list[str]:
-    """MCP servers agy's log reports as still connecting (latest report); empty: none."""
-    reports = _AGY_MCP_STALL.findall(log)
-    if not reports:
-        return []
-    return [name.strip() for name in reports[-1].split(",") if name.strip()]
+def go_seconds(duration: str) -> float | None:
+    """Seconds in a Go duration such as ``30s``, ``1m30s`` or ``1h0m0s``; None if it is not one."""
+    parts = _GO_DURATION_PART.findall(duration)
+    if not parts or "".join(n + u for n, u in parts) != duration:
+        return None
+    return sum(float(n) * _GO_UNITS[u] for n, u in parts)
+
+
+def agy_mcp_stall(lines: str) -> tuple[float, list[str]] | None:
+    """The latest "still connecting" report in agy's log lines: (seconds, servers)."""
+    for line in reversed(lines.splitlines()):
+        match = _AGY_MCP_STALL.search(line)
+        if match and (seconds := go_seconds(match[1])) is not None:
+            servers = [name.strip() for name in match[2].split(",") if name.strip()]
+            return seconds, servers
+    return None
 
 
 def parse_agy_output(stdout: str) -> str:
