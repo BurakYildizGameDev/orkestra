@@ -67,6 +67,8 @@ orkestra providers list --json    # onay (consent), sağlık, kalan bütçe
 
 Düşük kademeden başla; Orkestra başarısızlıkta önce aynı modelle geri bildirimle tekrar dener, sonra kendisi üst kademeye geçer. Bir sağlayıcı erişilemezse (internet yok, API hatası, bütçe bitti) sıradakine kendisi geçer. Kademe 3 ajanları kullanıcının kendi Codex/agy kotasından harcar; gerekmedikçe kademe 3 isteme. agy (deneysel) dosya düzenleyebilir ama kabuk komutu çalıştıramaz; Orkestra bunu agy'ye kendisi söyler, istemine ekleme (görev Codex'e de gidebilir, o komut çalıştırabilir). Testleri `verify` ile Orkestra çalıştırır.
 
+İşçiler MCP araçlarını kullanamaz. Unity projesinde (`Assets/` ve `ProjectSettings/` var) sahne, prefab ve editör işleri Unity MCP ile şefte kalır; işçilere sadece dosya tabanlı işler (C# betikleri, testler, belgeler) ver. agy bağlanmayan bir MCP sunucusunu beklerse Orkestra onu `mcp_wait_s` (varsayılan 60 sn) sonra durdurup sıradaki sağlayıcıya geçer; hata mesajında sunucunun adı yazar, kullanıcıya ilet (çözüm makinedeki MCP ayarında, Orkestra'da değil).
+
 Gizli bilgi içeren dosyalarda işi yerel modelle sınırla: görev dosyasında `privacy: local_only`, `ask` için `--local-only`. Orkestra gizli bilgi bulduğu bağlamı uzak sağlayıcıya göndermez (çıkış kodu 3); `--allow-secrets` bayrağını kullanıcı açıkça izin vermeden **asla** kullanma, bunun yerine `local_only` öner.
 
 ## 4. Görev yazma

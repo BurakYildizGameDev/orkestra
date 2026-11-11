@@ -197,7 +197,8 @@ def _check_agent(
     which: Which,
     probe: VersionProbe,
     login: LoginProbe = cli_agent.codex_logged_in,
-    agy_settings: Path = cli_agent.AGY_SETTINGS,
+    agy_settings: Path | None = None,
+    agy_mcp_config: Path | None = None,
 ) -> list[Check]:
     path = which(cfg.command)
     if path is None:
@@ -222,12 +223,23 @@ def _check_agent(
         checks.append(Check(f"provider:{name}:login", "warn",
                             t("doctor.agent.not_logged_in", command=cfg.command), {}))  # fmt: skip
     if cfg.kind == "agy":
+        # Resolved here, not as defaults, so tests can point them away from the real home.
+        agy_settings = agy_settings or cli_agent.AGY_SETTINGS
+        agy_mcp_config = agy_mcp_config or cli_agent.AGY_MCP_CONFIG
         gaps = cli_agent.agy_deny_gaps(agy_settings)
         if gaps:
             checks.append(Check(
                 f"provider:{name}:deny", "warn",
                 t("doctor.agent.agy_deny", commands=", ".join(gaps), path=agy_settings),
                 {"missing": gaps},
+            ))  # fmt: skip
+        disabled = cli_agent.agy_disabled_mcp_servers(agy_mcp_config)
+        if disabled:
+            checks.append(Check(
+                f"provider:{name}:mcp", "warn",
+                t("doctor.agent.agy_mcp_disabled", servers=", ".join(disabled),
+                  path=agy_mcp_config),
+                {"disabled": disabled},
             ))  # fmt: skip
     return checks
 
@@ -242,7 +254,8 @@ async def _check_provider(
     which: Which,
     probe: VersionProbe,
     login: LoginProbe = cli_agent.codex_logged_in,
-    agy_settings: Path = cli_agent.AGY_SETTINGS,
+    agy_settings: Path | None = None,
+    agy_mcp_config: Path | None = None,
 ) -> list[Check]:
     if not cfg.enabled:
         return [
@@ -252,7 +265,7 @@ async def _check_provider(
         return await _check_ollama(name, cfg, warm=warm, defaults=defaults)
     if isinstance(cfg, OpenAICompatProvider):
         return await _check_openai(name, cfg, environ)
-    return _check_agent(name, cfg, which, probe, login, agy_settings)
+    return _check_agent(name, cfg, which, probe, login, agy_settings, agy_mcp_config)
 
 
 def _state_checks(providers: Mapping[str, Provider]) -> list[Check]:
@@ -384,7 +397,8 @@ async def run_doctor(
     which: Which = shutil.which,
     probe: VersionProbe = probe_version,
     login: LoginProbe = cli_agent.codex_logged_in,
-    agy_settings: Path = cli_agent.AGY_SETTINGS,
+    agy_settings: Path | None = None,
+    agy_mcp_config: Path | None = None,
     git_config: GitConfig | None = None,
     platform: str = sys.platform,
 ) -> DoctorReport:
@@ -411,7 +425,8 @@ async def run_doctor(
         per_provider = await asyncio.gather(
             *(
                 _check_provider(n, c, warm=warm, defaults=defaults, environ=env, which=which,
-                                probe=probe, login=login, agy_settings=agy_settings)
+                                probe=probe, login=login, agy_settings=agy_settings,
+                                agy_mcp_config=agy_mcp_config)
                 for n, c in loaded.config.providers.items()
             )
         )  # fmt: skip

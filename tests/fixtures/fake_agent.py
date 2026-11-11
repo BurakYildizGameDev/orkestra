@@ -17,6 +17,8 @@ Modes:
 - ``escape_fail``: writes into ``$FAKE_AGENT_ESCAPE``, then exits with code 3.
 - ``continue``: breaks ``calc.py`` first; with feedback it expects its broken version to
   still be there (exit code 4 otherwise) and fixes it.
+- ``mcp_stall``: like agy waiting for an MCP server that cannot connect: writes agy's
+  "still connecting" log line to ``$FAKE_AGENT_LOG``, then behaves like ``hang``.
 """
 
 from __future__ import annotations
@@ -64,11 +66,17 @@ def main() -> int:
         return 3
     elif mode == "cannot":
         print("CANNOT_DO: the task needs a database")
-    elif mode == "hang":
+    elif mode in ("hang", "mcp_stall"):
         child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
         Path(os.environ["FAKE_AGENT_PIDS"]).write_text(
             f"{os.getpid()} {child.pid}", encoding="utf-8"
         )
+        if mode == "mcp_stall":  # after the pids, so a test can always find them
+            Path(os.environ["FAKE_AGENT_LOG"]).write_text(
+                "I1111 09:24:50.142224     149 mcp_manager.go:988] "
+                "MCP: 2 server(s) still connecting after 30s: unity, other\n",
+                encoding="utf-8",
+            )
         time.sleep(600)
     elif mode == "escape_fail":
         Path(os.environ["FAKE_AGENT_ESCAPE"]).write_bytes(b"written by the agent\n")

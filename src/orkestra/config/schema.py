@@ -106,6 +106,8 @@ class CliAgentProvider(ProviderBase):
     model: str | None = None
     sandbox: Literal["read-only", "workspace-write"] = "workspace-write"
     extra_args: list[str] = Field(default_factory=list)
+    # agy: stop a run whose MCP servers have not connected after this long; 0 = never (D-055)
+    mcp_wait_s: Annotated[int, Field(ge=0)] = 60
 
     @field_validator("sandbox", mode="before")
     @classmethod
