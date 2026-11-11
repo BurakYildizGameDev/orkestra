@@ -15,6 +15,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 5b – Worktree | ✅ | 2026-11-10 | worktree (kirli ağaç dahil), `show`, `apply`, `discard`, `gc` (D-040) |
 | 5c – API ile edit | ✅ | 2026-11-10 | tam dosya JSON, yol güvenliği, worktree'de doğrulama, kesilmede kademe 3 (D-042) |
 | 6 – CLI ajanları | ✅ | 2026-11-10 | codex, agy (deneysel), generic; süreç ağacı temizliği, dışarı yazma tespiti (D-044) |
+| 6b – MCP sınırları, Unity açık testleri (ek) | ⏳ | | agy MCP beklemesi düzeltildi (D-055, D-056); kalan: Unity açık elle testler, sonradan açılan Unity, `doctor --mcp` sondası |
 | 7a – Batch motoru | ✅ | 2026-11-10 | `orkestra batch`, DAG, sağlayıcı semaforu, kesişen edit'ler sırayla (D-053) |
 | 7b – Tahmin, toplu apply, stats | ⏳ | | |
 | 8a – status, şablon, önbellek, sayaç | ⏳ | | |
