@@ -250,17 +250,22 @@ def _confirm_cost(costs: envelope.BatchEstimate, *, as_json: bool) -> None:
     """A batch whose estimate is above ``estimate.confirm_above_usd`` (Mimari §19): ``--json``
     returns the estimate and needs ``--yes-cost``; a terminal is asked; anything else stops.
     Stopping is exit code 2 and nothing has run."""
-    cost, limit = f"${costs.totals.cost_usd:.4f}", f"${costs.confirm_above_usd or 0:.4f}"
+    limit_usd = costs.confirm_above_usd or 0.0
+    cost, limit = f"${costs.totals.cost_usd:.4f}", f"${limit_usd:.4f}"
+    # Above the limit, or under it only because some paid models have no known price.
+    suffix = "" if costs.totals.cost_usd > limit_usd else "_unknown"
+    params = {"cost": cost, "limit": limit, "count": costs.totals.unpriced_remote}
+    stop = t(f"batch.estimate.needs_yes_cost{suffix}", **params)
     if as_json:
         typer.echo(envelope.to_json(costs))
-        typer.echo(t("batch.estimate.needs_yes_cost", cost=cost, limit=limit), err=True)
+        typer.echo(stop, err=True)
         raise typer.Exit(int(ExitCode.USAGE))
     typer.echo(envelope.estimate_summary(costs))
     if not _interactive():
-        typer.echo(t("batch.estimate.needs_yes_cost", cost=cost, limit=limit), err=True)
+        typer.echo(stop, err=True)
         raise typer.Exit(int(ExitCode.USAGE))
     try:
-        agreed = typer.confirm(t("batch.estimate.confirm", cost=cost, limit=limit), default=False)
+        agreed = typer.confirm(t(f"batch.estimate.confirm{suffix}", **params), default=False)
     except (typer.Abort, EOFError):  # Windows reports NUL as a TTY; reading it hits EOF
         agreed = False
     if not agreed:
@@ -268,9 +273,15 @@ def _confirm_cost(costs: envelope.BatchEstimate, *, as_json: bool) -> None:
         raise typer.Exit(int(ExitCode.USAGE))
 
 
+def _stop_json(stop: service.Conflict | None) -> dict[str, Any] | None:
+    if stop is None:
+        return None
+    return {"run_id": stop.run.run_id, "task_id": stop.run.task_id, "message": stop.message,
+            "details": list(stop.details)}  # fmt: skip
+
+
 def _echo_batch_applied(report: service.BatchApplied, *, as_json: bool) -> None:
     if as_json:
-        conflict = report.conflict
         _echo_json({
             "batch_id": report.batch_id,
             "applied": [
@@ -280,10 +291,8 @@ def _echo_batch_applied(report: service.BatchApplied, *, as_json: bool) -> None:
             ],
             "skipped": [{"run_id": s.run.run_id, "task_id": s.run.task_id, "reason": s.reason}
                         for s in report.skipped],
-            "conflict": None if conflict is None else {
-                "run_id": conflict.run.run_id, "task_id": conflict.run.task_id,
-                "message": conflict.message, "details": list(conflict.details),
-            },
+            "conflict": _stop_json(report.conflict),
+            "error": _stop_json(report.error),
             "not_tried": [{"run_id": r.run_id, "task_id": r.task_id} for r in report.not_tried],
         })  # fmt: skip
         return
@@ -295,10 +304,12 @@ def _echo_batch_applied(report: service.BatchApplied, *, as_json: bool) -> None:
     for item in report.skipped:
         typer.echo(t("apply.batch.skipped", run_id=item.run.run_id, task_id=item.run.task_id,
                      reason=item.reason))  # fmt: skip
-    if report.conflict is not None:
-        c = report.conflict
-        typer.echo(t("apply.batch.conflict", run_id=c.run.run_id, task_id=c.run.task_id,
-                     message=c.message), err=True)  # fmt: skip
+    stop = report.conflict or report.error
+    if stop is not None:
+        key = "apply.batch.conflict" if report.conflict is not None else "apply.batch.error"
+        typer.echo(t(key, run_id=stop.run.run_id, task_id=stop.run.task_id,
+                     message=stop.message), err=True)  # fmt: skip
+        c = stop
         for line in c.details:
             typer.echo(f"  {line}", err=True)
         if report.not_tried:
@@ -658,6 +669,8 @@ def build_app() -> typer.Typer:
             _echo_batch_applied(report, as_json=as_json)
             if report.conflict is not None:
                 raise typer.Exit(int(ExitCode.CONFLICT))
+            if report.error is not None:
+                raise typer.Exit(report.error_code)
             return
         assert run_id is not None
         with closing(db.connect()) as conn:

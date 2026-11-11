@@ -142,7 +142,7 @@ tasks:
 - Aynı dosyayı değiştiren işleri ayrı görevlere bölme, tek görevde topla. Orkestra dosyaları kesişen düzenleme görevlerini sırayla çalıştırır ve uyarır, ama ikisi de kullanıcının dosyalarından başlar ve ikisini birden uygulamak çakışabilir.
 - `depends_on` sadece sıradır: bağımlı görev, önceki görevin **uygulanmamış** değişikliğini görmez. Değişikliğe ihtiyaç varsa önce o batch'i denetleyip `apply` et, sonra ayrı bir batch çalıştır.
 - Uzak (ücretli) sağlayıcı kullanacak bir batch'ten önce maliyete bak: `orkestra batch .orkestra/tasks/batch.yaml --estimate --json`. Hiçbir şey gönderilmez. Tahmin, ilk adaydaki ilk denemedir; tekrarlar ve üst kademeye geçiş daha pahalıya çıkabilir.
-- Tahmin `estimate.confirm_above_usd`'yi aşarsa `batch --json` çalışmaz, kod 2 ile tahmin belgesini döner (`needs_confirmation: true`). Tahmini kullanıcıya göster; **kullanıcı kabul ederse** `--yes-cost` ekleyip tekrar çalıştır.
+- Tahmin `estimate.confirm_above_usd`'yi aşarsa `batch --json` çalışmaz, kod 2 ile tahmin belgesini döner (`needs_confirmation: true`). Fiyatı bilinmeyen ücretli bir model varsa da (`totals.unpriced_remote`) aynısı olur. Tahmini kullanıcıya göster; **kullanıcı kabul ederse** `--yes-cost` ekleyip tekrar çalıştır.
 
 ## 5. Çalıştırma ve okuma
 
@@ -178,7 +178,7 @@ orkestra show <run_id> --json     # zarfı tekrar al
 
 `apply` sadece `status: ok` koşuları uygular. `--force` (doğrulamayı geçmemiş değişikliği uygulamak) bayrağını kullanıcı açıkça istemeden **asla** kullanma.
 
-Batch'te her `ok` koşunun diff'ini yukarıdaki gibi denetle. Hepsi uygunsa `orkestra apply --batch <batch_id> --only-ok --json`: geçen koşular çalıştıkları sırayla uygulanır, geçmeyenler ve zaten uygulananlar atlanır (`skipped`). Uygun bulmadığın bir koşu varsa önce onu `orkestra discard <run_id>` ile at. Çakışmada (kod 5) durur: `applied` uygulananlar, `conflict` çakışan koşu (yukarıdaki gibi kendin uygula), `not_tried` denenmeyenler; çakışmayı çözdükten sonra aynı komutu tekrar çalıştır. `--only-ok` olmadan, geçmeyen koşusu olan batch hiç uygulanmaz.
+Batch'te her `ok` koşunun diff'ini yukarıdaki gibi denetle. Hepsi uygunsa `orkestra apply --batch <batch_id> --only-ok --json`: geçen koşular çalıştıkları sırayla uygulanır, geçmeyenler ve zaten uygulananlar atlanır (`skipped`). Uygun bulmadığın bir koşu varsa önce onu `orkestra discard <run_id>` ile at. Çakışmada (kod 5) durur: `applied` uygulananlar, `conflict` çakışan koşu (yukarıdaki gibi kendin uygula), `not_tried` denenmeyenler; çakışmayı çözdükten sonra aynı komutu tekrar çalıştır. Başka bir hatada da durur (`error`, kendi çıkış kodu); `applied` yine doğrudur. `--only-ok` olmadan, geçmeyen koşusu olan batch hiç uygulanmaz.
 
 `status: escalate` veya `failed` ise: `verification` ve gerekirse `orkestra show <run_id> --log` ile nedenini anla, işi kendin yap ya da durumu kullanıcıya açıkla. Değişiklik bırakan başarısız koşunun worktree'si durur; işin bitince `orkestra discard <run_id>`. Aynı görevi değişiklik yapmadan tekrar çalıştırma.
 

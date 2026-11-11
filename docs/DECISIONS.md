@@ -511,3 +511,16 @@ Mimari §4 (`CliAgentProvider`), §5.5 güncellendi.
 - **Var olan test:** Faz 7a'nın bütçe rezervasyonu testi fiyatlı config kullanıyor; tahmini eşiği aştığı için `--yes-cost` aldı.
 Mimari §3 (komut tablosu), §12, §19 güncellendi.
 
+## D-058 – Faz 7b kod denetimi düzeltmeleri (2026-11-11, Faz 7b)
+**Bağlam:** PR #15 için `/code-review`: 10 bulgu. 9'u düzeltildi, 1'i kısmen.
+**Karar:**
+- **Atılmış başarısız koşu engellemiyor:** `apply --batch` ön denetimi sadece değişikliği duran (etkin worktree kaydı olan) başarısız koşuları sayıyor. `discard` edilmiş, worktree'si hiç olmamış ya da `gc` ile silinmiş koşu batch'i boşuna kilitlemiyor.
+- **Hata raporu kaybolmuyor:** çakışma dışındaki her `OrkestraError` (ör. `git worktree remove` hatası) da batch'i durduruyor: `error` alanı (`conflict` ile aynı biçim), kendi çıkış kodu, o ana kadar `applied` ve kalanlar `not_tried`. Önceden hata yayılıyor, uygulananların listesi kayboluyordu.
+- **`not_tried` doğru:** sadece gerçekten uygulanacak koşular (zaten uygulanmamış, `--only-ok` ise `ok`, değişikliği duran).
+- **Fiyatsız ücretli model onay istiyor:** fiyatı bilinmeyen uzak model `totals.unpriced_remote` sayılıyor ve eşik altında da onay gerekiyor (fiyat listesi çekilemediğinde 200 görevlik ücretli batch $0 görünüp sormadan çalışabilirdi). Mesaj ayrı: "fiyatı bilinen kısım … ama N görev fiyatı bilinmeyen modellere gidiyor". Kod ajanları sayılmıyor (kullanıcının kendi kotası). Öğelerde `agent` alanı.
+- **Yerel kurulum tahmin yapmıyor:** sadece fiyatsız yerel modeller ve ajanlar varsa ön tahmin hiç yapılmıyor (görevler iki kez hazırlanmıyor). Ücretli sağlayıcı varken tahmin her görevi bir kez daha hazırlıyor: bilinen sorun (kısmen).
+- **`--since` taşmıyor:** en fazla 36500 gün; daha büyüğü ve taşan değer kod 2.
+- **Zamanlar an olarak:** `stats` ve `apply --batch` sırası saklanan ISO zamanları `datetime` olarak karşılaştırıyor (SQL sadece iki günlük payla daraltıyor). Yaz saati ya da saat dilimi değişince filtre ve sıra kaymıyor.
+- **Token ve maliyet penceredeki koşuların:** `usage` satırları `created_at`'e göre değil, penceredeki koşulara göre seçiliyor; toplam, sağlayıcı ve etiket satırları birbirini tutuyor.
+- **Temizlik:** hata metni tek yardımcıda (`_detail`), adaysız tahminin ölü dalı `InternalError`, `_total` `sum`, istem tokenı tek hesap.
+Mimari §3 (komut tablosu), §12, §19 güncellendi.

@@ -534,6 +534,60 @@ def test_interactive_mode_asks_before_a_costly_batch(
     assert "$0.8" in out  # the estimate was shown before the question
 
 
+def test_a_remote_model_without_a_price_needs_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    # No price for a paid model (price list not fetched, none in the config): its cost is
+    # unknown, so it cannot slip under the threshold as $0.
+    work = _setup(tmp_path, monkeypatch)
+    monkeypatch.setenv("CLOUD_TEST_KEY", "sk-or-v1-FAKEKEYFORESTIMATETESTS00000000")
+    home = tmp_path / "orkestra-home"
+    (home / "config.yaml").write_text(
+        "version: 1\nproviders:\n  cloud:\n    type: openai_compat\n"
+        "    base_url: https://cloud.test/v1\n    api_key_env: CLOUD_TEST_KEY\n"
+        "    models:\n      - id: paid\n        tier: 1\n",
+        encoding="utf-8",
+    )
+    config = load_config(cwd=work, environ={"CLOUD_TEST_KEY": "x"}).config
+    with closing(db.connect()) as conn:
+        consent.grant(conn, "cloud", config.providers["cloud"], db.local_now())
+    code, out, _ = _run(["batch", _batch(work, [_ask("a")]), "--estimate", "--json"], capsys)
+    assert code == 0, out
+    doc = json.loads(out)
+    assert doc["results"][0]["provider"] == "cloud" and doc["results"][0]["cost_usd"] is None
+    assert doc["totals"]["unpriced_remote"] == 1 and doc["needs_confirmation"] is True
+    # A real run stops too, and says why: the price, not the total, is the problem.
+    from orkestra.providers import pricing
+
+    async def no_fetch(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return pricing.load_cache()  # the price list is not reachable
+
+    monkeypatch.setattr(pricing, "refresh", no_fetch)
+    code, out, err = _run(["--lang", "en", "batch", _batch(work, [_ask("a")]), "--json"], capsys)
+    assert code == 2 and json.loads(out)["needs_confirmation"] is True
+    assert "price is not known" in err
+
+
+def test_a_local_only_setup_skips_the_estimate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    from orkestra.tasks import batch
+
+    called: list[int] = []
+
+    async def estimate(*args: Any, **kwargs: Any) -> Any:
+        called.append(1)
+        raise AssertionError("a local model without a price costs nothing")
+
+    monkeypatch.setattr(batch, "estimate_batch", estimate)
+    work = _setup(tmp_path, monkeypatch)  # ollama, no price
+    code, out, _ = _run(["batch", _batch(work, [_ask("a"), _ask("b")]), "--json"], capsys)
+    assert code == 0, out
+    assert called == [] and len(fake.calls) == 2
+
+
 def test_a_costly_batch_without_a_terminal_stops(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
     capsys: pytest.CaptureFixture[str],
@@ -558,8 +612,10 @@ def _edit_batch(
     make_repo: MakeRepo,
     capsys: pytest.CaptureFixture[str],
     answers: dict[str, tuple[str, str] | str],
+    extra: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[Path, dict[str, Any]]:
-    """Run a batch of edit tasks; ``answers``: task id -> (file, new content) or raw answer."""
+    """Run a batch of edit tasks; ``answers``: task id -> (file, new content) or raw answer;
+    ``extra``: more fields per task (``verify``, ``depends_on``)."""
     _setup(tmp_path, monkeypatch, concurrency=4)
     repo = make_repo({"a.py": "x = 1\n", "b.py": "y = 1\n", "c.py": "z = 1\n"})
     monkeypatch.chdir(repo)
@@ -574,9 +630,13 @@ def _edit_batch(
             name = "c.py"
             fake.answers[f"change {task_id}"] = answer
         tasks.append({"id": task_id, "kind": "edit", "prompt": f"change {task_id}",
-                      "context": {"files": [name]}})  # fmt: skip
+                      "context": {"files": [name]}, **(extra or {}).get(task_id, {})})  # fmt: skip
     _, out, _ = _run(["batch", _batch(tmp_path, tasks), "--json"], capsys)
     return repo, json.loads(out)
+
+
+# A change that never passes its checks: the run fails and keeps its worktree.
+_FAILING_CHECK = {"verify": [{"type": "max_changed_files", "value": 0}]}
 
 
 def test_apply_batch_only_ok_applies_the_passing_runs_in_order(
@@ -606,11 +666,60 @@ def test_apply_batch_without_only_ok_refuses_a_batch_with_failed_runs(
     make_repo: MakeRepo, capsys: pytest.CaptureFixture[str],
 ) -> None:  # fmt: skip
     repo, doc = _edit_batch(tmp_path, monkeypatch, fake, make_repo, capsys, {
-        "one": ("a.py", "x = 2\n"), "bad": "CANNOT_DO: unclear",
-    })  # fmt: skip
+        "one": ("a.py", "x = 2\n"), "broken": ("c.py", "z = 2\n"),
+    }, extra={"broken": _FAILING_CHECK})  # fmt: skip
+    results = {r["task_id"]: r for r in doc["results"]}
+    assert results["broken"]["status"] != "ok"
     code, _, err = _run(["--lang", "en", "apply", "--batch", doc["batch_id"]], capsys)
     assert code == 2 and "--only-ok" in err
     assert (repo / "a.py").read_text(encoding="utf-8") == "x = 1\n"  # nothing was applied
+    # Discarding the failed run leaves nothing failed to apply: the batch goes through.
+    assert _run(["discard", results["broken"]["run_id"]], capsys)[0] == 0
+    code, out, _ = _run(["apply", "--batch", doc["batch_id"], "--json"], capsys)
+    assert code == 0, out
+    assert [a["task_id"] for a in json.loads(out)["applied"]] == ["one"]
+    assert (repo / "a.py").read_text(encoding="utf-8") == "x = 2\n"
+
+
+def test_a_failed_run_without_a_change_does_not_block_the_batch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    make_repo: MakeRepo, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    repo, doc = _edit_batch(tmp_path, monkeypatch, fake, make_repo, capsys, {
+        "one": ("a.py", "x = 2\n"), "bad": "CANNOT_DO: unclear",
+    })  # fmt: skip
+    code, out, _ = _run(["apply", "--batch", doc["batch_id"], "--json"], capsys)
+    assert code == 0, out
+    assert (repo / "a.py").read_text(encoding="utf-8") == "x = 2\n"
+
+
+def test_an_error_while_applying_keeps_the_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    make_repo: MakeRepo, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    from orkestra.errors import InternalError
+    from orkestra.workspace import service
+
+    repo, doc = _edit_batch(tmp_path, monkeypatch, fake, make_repo, capsys, {
+        "one": ("a.py", "x = 2\n"), "two": ("b.py", "y = 2\n"),
+        "three": ("c.py", "z = 2\n"),
+    }, extra={"two": {"depends_on": ["one"]}, "three": {"depends_on": ["two"]}})  # fmt: skip
+    real = service.apply_run
+
+    def apply_run(conn: Any, run_id: str, **kwargs: Any) -> Any:
+        if run_id == _results(json.dumps(doc))["two"]["run_id"]:
+            raise InternalError("git worktree remove failed")
+        return real(conn, run_id, **kwargs)
+
+    monkeypatch.setattr(service, "apply_run", apply_run)
+    code, out, _ = _run(["apply", "--batch", doc["batch_id"], "--json"], capsys)
+    assert code == 10, out
+    report = json.loads(out)
+    assert [a["task_id"] for a in report["applied"]] == ["one"]  # still reported
+    assert report["error"]["task_id"] == "two" and "remove failed" in report["error"]["message"]
+    assert report["conflict"] is None
+    assert [r["task_id"] for r in report["not_tried"]] == ["three"]
+    assert (repo / "a.py").read_text(encoding="utf-8") == "x = 2\n"
 
 
 def test_apply_batch_stops_at_a_conflict_and_reports_the_rest(
@@ -629,6 +738,19 @@ def test_apply_batch_stops_at_a_conflict_and_reports_the_rest(
     assert report["conflict"]["task_id"] == "second" and report["conflict"]["details"]
     assert [r["task_id"] for r in report["not_tried"]] == ["third"]
     assert (repo / "a.py").read_text(encoding="utf-8") == "x = 'first'\n"
+
+
+def test_not_tried_leaves_out_runs_only_ok_would_skip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    make_repo: MakeRepo, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    _, doc = _edit_batch(tmp_path, monkeypatch, fake, make_repo, capsys, {
+        "first": ("a.py", "x = 'first'\n"), "second": ("a.py", "x = 'second'\n"),
+        "broken": ("c.py", "z = 2\n"),
+    }, extra={"broken": {**_FAILING_CHECK, "depends_on": ["second"]}})  # fmt: skip
+    code, out, _ = _run(["apply", "--batch", doc["batch_id"], "--only-ok", "--json"], capsys)
+    assert code == 5, out
+    assert json.loads(out)["not_tried"] == []  # "broken" did not pass: it would be skipped
 
 
 @pytest.mark.parametrize(
@@ -676,3 +798,4 @@ def test_stats_with_a_bad_since_is_a_usage_error(
 ) -> None:  # fmt: skip
     _setup(tmp_path, monkeypatch)
     assert _run(["stats", "--since", "soon"], capsys)[0] == 2
+    assert _run(["stats", "--since", "99999999d"], capsys)[0] == 2  # no overflow traceback

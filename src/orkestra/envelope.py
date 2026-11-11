@@ -128,6 +128,7 @@ class EstimateItem(BaseModel):
     prompt_tokens: int = 0
     max_output_tokens: int | None = None  # None: a code agent
     cost_usd: float | None = None  # None: no price (code agent, model without a price)
+    agent: bool = False  # a code agent: no USD price (the user's own quota)
     exit_code: int = 0  # the task's exit code if it cannot run
     error: str | None = None
 
@@ -137,6 +138,7 @@ class EstimateTotals(BaseModel):
     tokens: int = 0  # prompt + output limit of every task that can run
     cost_usd: float = 0.0  # tasks with a price only
     unpriced: int = 0
+    unpriced_remote: int = 0  # paid models without a known price: need confirmation
     cannot_run: int = 0
 
 
@@ -199,6 +201,8 @@ def estimate_summary(document: BatchEstimate) -> str:
     lines.append(t("batch.estimate.totals", tokens=totals.tokens, cost=_usd(totals.cost_usd)))
     if totals.unpriced:
         lines.append(t("batch.estimate.unpriced", count=totals.unpriced))
+    if totals.unpriced_remote:
+        lines.append(t("batch.estimate.unpriced_remote", count=totals.unpriced_remote))
     return "\n".join(lines)
 
 

@@ -179,21 +179,34 @@ class BatchApplied:
     batch_id: str
     applied: tuple[tuple[BatchRun, Applied], ...]
     skipped: tuple[Skipped, ...]
-    conflict: Conflict | None = None
+    conflict: Conflict | None = None  # stopped at a conflict (exit code 5)
+    error: Conflict | None = None  # stopped at another error (its exit code)
+    error_code: int = 0
     not_tried: tuple[BatchRun, ...] = ()
 
 
 def _batch_rows(conn: sqlite3.Connection, batch_id: str) -> list[sqlite3.Row]:
     """The batch's edit runs in the order they started (dependencies before dependents,
-    edit tasks on the same files one after the other: Faz 7a)."""
+    edit tasks on the same files one after the other: Faz 7a). Times are compared as
+    instants: a stored UTC offset may differ from today's (daylight saving)."""
     rows = conn.execute(
-        "SELECT run_id, task_id, kind, status, applied FROM runs WHERE batch_id = ? "
-        "ORDER BY started_at, run_id",
+        "SELECT run_id, task_id, kind, status, applied, started_at FROM runs WHERE batch_id = ?",
         (batch_id,),
     ).fetchall()
     if not rows:
         raise UsageError(t("apply.error.unknown_batch", batch_id=batch_id))
-    return [row for row in rows if row["kind"] == "edit"]
+    edits = [row for row in rows if row["kind"] == "edit"]
+    return sorted(edits, key=lambda row: (datetime.fromisoformat(row["started_at"]), row["run_id"]))
+
+
+def _has_change(run_id: str) -> bool:
+    """The run still has a worktree to apply (not discarded, applied or removed)."""
+    record = gw.load_record(run_dir_for(run_id))
+    return record is not None and record.state == "active"
+
+
+def _would_apply(row: sqlite3.Row, *, only_ok: bool) -> bool:
+    return not row["applied"] and (row["status"] == "ok" or not only_ok)
 
 
 def apply_batch(
@@ -206,14 +219,17 @@ def apply_batch(
 ) -> BatchApplied:
     """Apply a batch's edit runs one by one (Mimari §12); stop at the first conflict.
 
-    Without ``only_ok`` (and ``force``) a batch with runs that did not pass is refused
-    before anything is applied. Runs applied already, and with ``only_ok`` runs that did
-    not pass, are skipped; so is a run with nothing to apply. A conflict keeps that run's
-    worktree, reports it and leaves the later runs untried.
+    Without ``only_ok`` (and ``force``) a batch with a failed run that still has a change is
+    refused before anything is applied (a failed run that was discarded, or never got a
+    worktree, has nothing to apply and does not count). Runs applied already, and with
+    ``only_ok`` runs that did not pass, are skipped; so is a run with nothing to apply. The
+    first conflict, or any other error, stops: what was applied so far is still reported,
+    with the run that stopped it and the later runs that would have been applied.
     """
     rows = _batch_rows(conn, batch_id)
-    pending = [row for row in rows if not row["applied"]]
-    failed = [row for row in pending if row["status"] != "ok"]
+    failed = [
+        r for r in rows if not r["applied"] and r["status"] != "ok" and _has_change(r["run_id"])
+    ]
     if failed and not only_ok and not force:
         runs = ", ".join(f"{row['task_id']} ({row['run_id']}, {row['status']})" for row in failed)
         raise UsageError(t("apply.error.batch_not_ok", batch_id=batch_id, runs=runs))
@@ -229,13 +245,19 @@ def apply_batch(
             continue
         try:
             applied.append((run, apply_run(conn, run.run_id, redact=redact, force=force)))
-        except WorkspaceConflict as exc:
-            later = tuple(BatchRun(r["run_id"], r["task_id"]) for r in rows[index + 1 :]
-                          if not r["applied"])  # fmt: skip
-            conflict = Conflict(run, exc.message, tuple(exc.details))
-            return BatchApplied(batch_id, tuple(applied), tuple(skipped), conflict, later)
         except UsageError as exc:  # nothing to apply, discarded, worktree gone
             skipped.append(Skipped(run, exc.message))
+        except OrkestraError as exc:  # a conflict, or git failing: stop, keep the report
+            later = tuple(
+                BatchRun(r["run_id"], r["task_id"])
+                for r in rows[index + 1 :]
+                if _would_apply(r, only_ok=only_ok) and _has_change(r["run_id"])
+            )
+            stop = Conflict(run, exc.message, tuple(exc.details))
+            done = (batch_id, tuple(applied), tuple(skipped))
+            if isinstance(exc, WorkspaceConflict):
+                return BatchApplied(*done, conflict=stop, not_tried=later)
+            return BatchApplied(*done, error=stop, error_code=int(exc.exit_code), not_tried=later)
     return BatchApplied(batch_id, tuple(applied), tuple(skipped))
 
 

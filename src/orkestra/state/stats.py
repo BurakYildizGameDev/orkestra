@@ -28,14 +28,24 @@ DEFAULT_SINCE = "7d"
 FINISHED = ("ok", "failed", "escalate", "error")
 _SINCE = re.compile(r"(\d+)([dhm])")
 _UNITS = {"d": "days", "h": "hours", "m": "minutes"}
+MAX_SINCE = timedelta(days=36500)  # far enough back; more would overflow the dates
+# UTC offsets of stored times differ by at most a day: SQL narrows with this margin.
+_OFFSET_MARGIN = timedelta(days=2)
 
 
 def parse_since(text: str) -> timedelta:
-    """``7d``, ``24h``, ``30m``: a positive whole number of days, hours or minutes."""
+    """``7d``, ``24h``, ``30m``: a positive whole number of days, hours or minutes (at most
+    about a hundred years)."""
     match = _SINCE.fullmatch(text.strip())
     if match is None or int(match[1]) == 0:
         raise UsageError(t("stats.error.since", value=text))
-    return timedelta(**{_UNITS[match[2]]: int(match[1])})
+    try:
+        window = timedelta(**{_UNITS[match[2]]: int(match[1])})
+    except OverflowError:
+        window = MAX_SINCE + MAX_SINCE
+    if window > MAX_SINCE:
+        raise UsageError(t("stats.error.since", value=text))
+    return window
 
 
 @dataclass(frozen=True)
@@ -105,31 +115,50 @@ def _tags(raw: str | None) -> tuple[str, ...]:
     return tuple(str(tag) for tag in value) if isinstance(value, list) else ()
 
 
+def _started(raw: str | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(raw) if raw else None
+    except ValueError:
+        return None
+
+
 def _runs(conn: sqlite3.Connection, since: datetime) -> list[_Run]:
+    """Runs started since ``since``. Stored times keep the UTC offset of their day, so they
+    are compared as instants; SQL only narrows the rows (strings, with a margin)."""
     rows = conn.execute(
-        "SELECT run_id, status, provider, attempts, duration_s, tags FROM runs "
-        "WHERE started_at >= ? ORDER BY started_at, run_id",
-        (since.isoformat(),),
+        "SELECT run_id, status, provider, attempts, duration_s, tags, started_at FROM runs "
+        "WHERE started_at >= ?",
+        ((since - _OFFSET_MARGIN).isoformat(),),
     ).fetchall()
+    chosen = [
+        (started, r) for r in rows if (started := _started(r["started_at"])) and started >= since
+    ]
+    chosen.sort(key=lambda pair: (pair[0], pair[1]["run_id"]))
     return [
         _Run(r["run_id"], r["status"] or "running", r["provider"], r["attempts"],
              r["duration_s"], _tags(r["tags"]))
-        for r in rows
+        for _, r in chosen
     ]  # fmt: skip
 
 
-def _usage(conn: sqlite3.Connection, since: datetime) -> list[tuple[str | None, str | None, Usage]]:
-    """``(run_id, provider, usage)`` of every settled request since ``since``."""
+def _usage(
+    conn: sqlite3.Connection, runs: Sequence[_Run], since: datetime
+) -> list[tuple[str | None, str | None, Usage]]:
+    """``(run_id, provider, usage)`` of every settled request of ``runs``, in request order:
+    tokens and cost belong to the runs in the window, so every row adds up."""
+    wanted = {run.run_id for run in runs}
     rows = conn.execute(
         "SELECT run_id, provider, prompt_tokens, completion_tokens, cost_usd, estimated "
-        "FROM usage WHERE kind = 'actual' AND created_at >= ? ORDER BY id",
-        (since.isoformat(),),
+        "FROM usage WHERE kind = 'actual' AND run_id IN "
+        "(SELECT run_id FROM runs WHERE started_at >= ?) ORDER BY id",
+        ((since - _OFFSET_MARGIN).isoformat(),),
     ).fetchall()
     return [
         (r["run_id"], r["provider"],
          Usage(r["prompt_tokens"] or 0, r["completion_tokens"] or 0, r["cost_usd"] or 0.0,
                bool(r["estimated"])))
         for r in rows
+        if r["run_id"] in wanted
     ]  # fmt: skip
 
 
@@ -139,10 +168,7 @@ def _mean(values: Iterable[float | int | None]) -> float | None:
 
 
 def _total(amounts: Iterable[Usage]) -> Usage:
-    total = Usage()
-    for amount in amounts:
-        total = total + amount
-    return total
+    return sum(amounts, Usage())
 
 
 def _row(name: str | None, runs: Sequence[_Run], amounts: Iterable[Usage]) -> Row:
@@ -184,7 +210,7 @@ def _ordered(keys: Iterable[str | None]) -> list[str | None]:
 def collect(conn: sqlite3.Connection, *, since: datetime, now: datetime) -> Report:
     runs = _runs(conn, since)
     finished = [r for r in runs if r.status in FINISHED]
-    usage = _usage(conn, since)
+    usage = _usage(conn, runs, since)
     last_used = {run_id: provider for run_id, provider, _ in usage}  # in request order
 
     by_provider = _group(finished, lambda r: (r.provider or last_used.get(r.run_id),))

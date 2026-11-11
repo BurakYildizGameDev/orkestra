@@ -31,6 +31,19 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 7b (PR #15), 2026-11-11
+10 bulgu: 9'u düzeltildi, 1'i kısmen (D-058):
+- ✅ `discard` edilmiş ya da worktree'siz başarısız koşu `apply --batch`'i engelliyordu → sadece değişikliği duran başarısız koşu sayılıyor.
+- ✅ Çakışma dışı bir hata uygulananların raporunu kaybediyordu → `error` alanı, kendi çıkış kodu, `applied`/`not_tried` korunuyor.
+- ✅ `not_tried`, `--only-ok`'un atlayacağı koşuları da listeliyordu → düzeldi.
+- ✅ Fiyatı bilinmeyen ücretli model eşiği hiç tetiklemiyordu → `unpriced_remote`, onay istiyor, ayrı mesaj.
+- ✅ Çok büyük `--since` taşıyordu → en fazla 36500 gün, kod 2.
+- ✅ `usage` `created_at`'le, koşular `started_at`'le süzülüyordu → token/maliyet penceredeki koşuların.
+- ✅ Zamanlar metin olarak karşılaştırılıyordu → `datetime` (stats ve batch sırası).
+- ✅ Tekrarlanan hata metni, ölü dal, `_total`, çift token hesabı → temizlendi.
+- ➖ Ön tahmin görevleri bir kez daha hazırlıyor → yerel kurulumda hiç yapılmıyor; ücretli sağlayıcı varken **bilinen sorun**.
+Testler: 891 geçti (+10).
+
 ### Faz 7b – Maliyet tahmini, toplu apply, stats (2026-11-11)
 **Yapılanlar (D-057):**
 - `runner.estimate_task` (ilk aday, rezervasyonla aynı tahmin), `batch.estimate_batch`, `estimate_exit_code`, `checks_cost`; `envelope.BatchEstimate` (`estimate_version: 1`) ve `estimate_summary`.

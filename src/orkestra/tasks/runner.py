@@ -531,8 +531,7 @@ async def estimate_task(
         cost: float | None = amount.cost_usd
     else:
         cost = 0.0 if first.config.local else None
-    tokens = estimate_tokens(len(system) + len(user))
-    return Estimate(first, tokens, max_output, cost, warnings=warnings)
+    return Estimate(first, amount.tokens - max_output, max_output, cost, warnings=warnings)
 
 
 async def run_task(

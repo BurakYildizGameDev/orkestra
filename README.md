@@ -370,18 +370,23 @@ provider the router would pick (prompt + `max_output_tokens`, the same estimate 
 reservation uses) and sends nothing; it uses cached price lists, like `--dry-run`. Retries,
 feedback and moving up a tier can cost more. Code agents and models without a price are
 listed as unpriced and left out of the total; a local model without a price costs 0.
+A paid (remote) model whose price is not known cannot be checked, so a batch that uses
+one asks first as well.
 
 Before a real run the batch is estimated the same way. Above `estimate.confirm_above_usd`
 (default `0.50`; `null` turns the check off) a terminal is asked; `--json`, or a run without
 a terminal, prints the estimate (`needs_confirmation: true`), runs nothing and exits with 2
-until you add `--yes-cost`.
+until you add `--yes-cost`. A setup with only local models without a price (and code
+agents) costs nothing and skips this check.
 
 **Applying.** Look at each run (`show <run_id> --diff`), discard the ones you do not want,
 then `orkestra apply --batch <batch_id> --only-ok`: the batch's passing edit runs are applied
 in the order they ran, runs that did not pass or were applied already are skipped. At the
 first conflict it stops with exit code 5 and reports what was applied, the conflicting run
-and the runs it did not try. Without `--only-ok`, a batch with failed runs is refused and
-nothing is applied.
+and the runs it did not try; any other error stops the same way, with its own exit code,
+and the report keeps what was applied. Without `--only-ok`, a batch with a failed run that
+still has a change is refused and nothing is applied (a failed run you discarded does not
+count).
 
 **Statistics.** `orkestra stats --since 7d` (or `24h`, `30m`) shows per provider and per task
 tag: finished runs, success rate, average attempts and time, tokens and cost. A run counts for

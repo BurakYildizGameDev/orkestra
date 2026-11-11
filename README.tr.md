@@ -367,17 +367,22 @@ seçeceği sağlayıcıda fiyatlar (istem + `max_output_tokens`, bütçe rezerva
 ve hiçbir şey göndermez; `--dry-run` gibi önbellekteki fiyat listelerini kullanır. Tekrarlar,
 geri bildirim ve üst kademeye geçiş daha pahalıya çıkabilir. Kod ajanları ve fiyatı bilinmeyen
 modeller "fiyatsız" listelenir ve toplama girmez; fiyatsız yerel model 0 sayılır.
+Fiyatı bilinmeyen ücretli (uzak) modelin maliyeti denetlenemez; böyle bir model kullanan
+batch de önce sorar.
 
 Gerçek koşudan önce batch aynı şekilde tahmin edilir. `estimate.confirm_above_usd` aşılırsa
 (varsayılan `0.50`; `null` denetimi kapatır) terminalde sorulur; `--json` ya da terminalsiz
 koşuda tahmin yazılır (`needs_confirmation: true`), hiçbir şey çalışmaz ve `--yes-cost`
-eklenene kadar kod 2 döner.
+eklenene kadar kod 2 döner. Sadece fiyatsız yerel modeller (ve kod ajanları) olan kurulum
+para harcamaz ve bu denetimi atlar.
 
 **Uygulama.** Her koşuya bak (`show <run_id> --diff`), istemediklerini `discard` et, sonra
 `orkestra apply --batch <batch_id> --only-ok`: batch'in geçen düzenleme koşuları çalıştıkları
 sırayla uygulanır; geçmeyenler ve zaten uygulananlar atlanır. İlk çakışmada kod 5 ile durur ve
-uygulananları, çakışan koşuyu ve denenmeyenleri bildirir. `--only-ok` olmadan, başarısız koşusu
-olan batch reddedilir ve hiçbir şey uygulanmaz.
+uygulananları, çakışan koşuyu ve denenmeyenleri bildirir; başka bir hata da aynı şekilde
+kendi çıkış koduyla durdurur ve rapor uygulananları korur. `--only-ok` olmadan, değişikliği
+duran başarısız bir koşusu olan batch reddedilir ve hiçbir şey uygulanmaz (`discard` ettiğin
+başarısız koşu sayılmaz).
 
 **İstatistik.** `orkestra stats --since 7d` (ya da `24h`, `30m`) sağlayıcı ve görev etiketi
 başına biten koşuları, başarı oranını, ortalama deneme ve süreyi, token ve maliyeti gösterir.

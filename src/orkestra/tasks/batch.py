@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from orkestra.config.schema import Config
+from orkestra.config.schema import CliAgentProvider, Config, Provider
 from orkestra.envelope import (
     BatchEnvelope,
     BatchEstimate,
@@ -40,7 +40,7 @@ from orkestra.envelope import (
     EstimateItem,
     EstimateTotals,
 )
-from orkestra.errors import ExitCode, OrkestraError, UsageError
+from orkestra.errors import ExitCode, InternalError, OrkestraError, UsageError
 from orkestra.i18n import t
 from orkestra.state import db
 from orkestra.tasks import runner
@@ -226,15 +226,19 @@ async def _run_one(
             on_start=started.append,
         )  # fmt: skip
     except OrkestraError as exc:  # no provider, consent, a bad context file ...
-        detail = "; ".join([exc.message, *exc.details])[:ERROR_CHARS]
         return BatchItem(task_id=task.id, status="error", exit_code=int(exc.exit_code),
-                         run_id=started[0] if started else None, error=detail)  # fmt: skip
+                         run_id=started[0] if started else None, error=_detail(exc))  # fmt: skip
     except Exception as exc:  # a bug in one task must not bring the batch down
         detail = f"{type(exc).__name__}: {exc}"[:ERROR_CHARS]
         return BatchItem(task_id=task.id, status="error", exit_code=int(ExitCode.INTERNAL),
                          run_id=started[0] if started else None, error=detail)  # fmt: skip
     warnings.extend(f"{task.id}: {w}" for w in outcome.warnings)
     return _item_from_outcome(task, outcome)
+
+
+def _detail(exc: OrkestraError) -> str:
+    """An error and its details on one line, cut to ``ERROR_CHARS``."""
+    return "; ".join([exc.message, *exc.details])[:ERROR_CHARS]
 
 
 def _skipped(task_id: str, key: str, **params: object) -> BatchItem:
@@ -269,26 +273,29 @@ def new_batch_id() -> str:
 
 def _estimate_item(task: TaskSpec, est: runner.Estimate) -> EstimateItem:
     if est.candidate is None:
-        error = est.error
+        if est.error is None:  # an estimate without a candidate always says why
+            raise InternalError("estimate without a candidate and without an error")
         return EstimateItem(
-            task_id=task.id, exit_code=int(error.exit_code) if error else int(ExitCode.INTERNAL),
-            error="; ".join([error.message, *error.details])[:ERROR_CHARS] if error else None,
-        )  # fmt: skip
+            task_id=task.id, exit_code=int(est.error.exit_code), error=_detail(est.error)
+        )
     return EstimateItem(
         task_id=task.id, provider=est.candidate.provider, model=est.candidate.model.id,
         tier=est.candidate.tier, prompt_tokens=est.prompt_tokens,
         max_output_tokens=est.max_output_tokens,
         cost_usd=None if est.cost_usd is None else round(est.cost_usd, 6),
+        agent=isinstance(est.candidate.config, CliAgentProvider),
     )  # fmt: skip
 
 
 def _estimate_totals(items: Sequence[EstimateItem]) -> EstimateTotals:
     runnable = [i for i in items if i.error is None]
+    unpriced = [i for i in runnable if i.cost_usd is None]
     return EstimateTotals(
         tasks=len(items),
         tokens=sum(i.prompt_tokens + (i.max_output_tokens or 0) for i in runnable),
         cost_usd=round(sum(i.cost_usd for i in runnable if i.cost_usd is not None), 6),
-        unpriced=sum(1 for i in runnable if i.cost_usd is None),
+        unpriced=len(unpriced),
+        unpriced_remote=sum(1 for i in unpriced if not i.agent),
         cannot_run=len(items) - len(runnable),
     )
 
@@ -306,6 +313,10 @@ async def estimate_batch(
     ``fetch_prices``: refresh price lists first, as the run itself would (before a real
     run); ``--estimate`` alone uses the cached ones. A task that cannot run is an item with
     its error and exit code, the others are still estimated.
+
+    Confirmation is needed above ``estimate.confirm_above_usd``, and also when a task goes
+    to a paid (remote) model whose price is not known: its cost cannot be checked, so it
+    must not slip under the threshold as $0. Code agents use the user's own quota, not USD.
     """
     options = options or runner.RunOptions()
     lock = asyncio.Lock()  # one price list fetch for the whole batch
@@ -319,17 +330,18 @@ async def estimate_batch(
                     price_lock=lock,
                 )  # fmt: skip
             except OrkestraError as exc:
-                detail = "; ".join([exc.message, *exc.details])[:ERROR_CHARS]
-                items.append(EstimateItem(task_id=task.id, exit_code=int(exc.exit_code),
-                                          error=detail))  # fmt: skip
+                items.append(
+                    EstimateItem(task_id=task.id, exit_code=int(exc.exit_code), error=_detail(exc))
+                )
                 continue
             warnings.extend(f"{task.id}: {w}" for w in est.warnings)
             items.append(_estimate_item(task, est))
     totals = _estimate_totals(items)
     limit = config.estimate.confirm_above_usd
+    above = limit is not None and (totals.cost_usd > limit or totals.unpriced_remote > 0)
     return BatchEstimate(
-        results=items, totals=totals, confirm_above_usd=limit,
-        needs_confirmation=limit is not None and totals.cost_usd > limit, warnings=warnings,
+        results=items, totals=totals, confirm_above_usd=limit, needs_confirmation=above,
+        warnings=warnings,
     )  # fmt: skip
 
 
@@ -338,9 +350,19 @@ def estimate_exit_code(document: BatchEstimate) -> int:
     return next((i.exit_code for i in document.results if i.error is not None), 0)
 
 
+def _may_cost(provider: Provider) -> bool:
+    if isinstance(provider, CliAgentProvider) or not provider.enabled:
+        return False  # agents: the user's own quota
+    return not provider.local or any(m.price_per_mtok for m in provider.models)
+
+
 def checks_cost(config: Config) -> bool:
-    """A batch is estimated before it runs only when there is a threshold to compare with."""
-    return config.estimate.confirm_above_usd is not None
+    """Estimate a batch before it runs only if there is a threshold and a provider that can
+    cost money: a setup with only local models without a price (and agents) skips the
+    extra preparation of every task."""
+    if config.estimate.confirm_above_usd is None:
+        return False
+    return any(_may_cost(p) for p in config.providers.values())
 
 
 async def run_batch(

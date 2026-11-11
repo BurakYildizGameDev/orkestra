@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Iterator
 from contextlib import closing
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -129,6 +129,35 @@ def test_per_tag_numbers(conn: sqlite3.Connection) -> None:
     assert tags["docs"].runs == 2 and tags["docs"].ok == 1 and tags["docs"].success_rate == 0.5
     assert tags["tests"].cost_usd == pytest.approx(0.1)
     assert tags[None].runs == 1
+
+
+@pytest.mark.parametrize("text", ["99999999d", "9999999999d", "999999999999999999999m"])
+def test_a_huge_since_is_a_usage_error_not_an_overflow(text: str) -> None:
+    with pytest.raises(UsageError):
+        stats.parse_since(text)
+
+
+def test_tokens_belong_to_the_runs_in_the_window(conn: sqlite3.Connection) -> None:
+    # The run started before the window, its request was settled inside it: both are out,
+    # so the totals still match the provider and tag rows.
+    _run(conn, "early", status="ok", provider="ollama", ago=timedelta(days=7, minutes=5),
+         tags=("docs",))  # fmt: skip
+    _usage(conn, "early", "ollama", 100, 50, 1.0, ago=timedelta(days=6, hours=23))
+    report = stats.collect(conn, since=NOW - timedelta(days=7), now=NOW)
+    assert report.providers == () and report.totals.prompt_tokens == 0
+    assert report.totals.cost_usd == 0
+
+
+def test_times_with_another_utc_offset_are_compared_as_instants(
+    conn: sqlite3.Connection,
+) -> None:
+    # Recorded at 08:30 UTC (before a time zone or daylight saving change); the window starts
+    # at 08:00 UTC, written as 11:00+03:00. As strings "08:30+00:00" < "11:00+03:00".
+    started = datetime(2026, 11, 11, 8, 30, tzinfo=UTC)
+    db.record_run_start(conn, run_id="r1", task_id="r1", kind="ask", started_at=started)
+    db.record_run_end(conn, "r1", status="ok", provider="ollama", attempts=1, duration_s=1.0)
+    report = stats.collect(conn, since=NOW - timedelta(hours=1), now=NOW)  # 08:00 UTC
+    assert report.totals.runs == 1
 
 
 def test_no_runs_is_an_empty_report(conn: sqlite3.Connection) -> None:
