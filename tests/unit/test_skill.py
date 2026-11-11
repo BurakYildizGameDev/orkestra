@@ -261,11 +261,12 @@ def test_every_command_and_flag_in_the_skill_exists(skill_text: str) -> None:
 @pytest.mark.parametrize(
     "words",
     [
-        ["status", "--json"],  # Faz 8
+        ["map", "--json"],  # Faz 8b
         ["batch", "tasks.yaml", "--estimates"],  # typo of --estimate
         ["apply", "--only-okay"],
         ["show", "x", "--diff", "--only-flagged"],  # Faz 8
-        ["run", "--template", "docstring"],  # Faz 8
+        ["review", "x"],  # Faz 8b
+        ["templates", "edit", "x"],  # no such subcommand
         ["providers"],
         ["config", "dump"],
         ["--nope", "doctor"],
@@ -295,6 +296,12 @@ def test_the_checker_catches_what_does_not_exist(words: list[str]) -> None:
         ["batch", "tasks.yaml", "--json", "--yes-cost"],
         ["apply", "--batch", "<batch_id>", "--only-ok", "--json"],
         ["stats", "--since", "7d", "--json"],
+        ["status", "--json"],  # Faz 8a
+        ["templates", "list", "--json"],
+        ["templates", "show", "docstring"],
+        ["run", "--template", "docstring", "--files", "src/*.py", "--param", "style=numpy"],
+        ["ask", "x", "--no-cache"],
+        ["cache", "clear"],
         ["ask", "--schema=s.json", "x"],
     ],
 )

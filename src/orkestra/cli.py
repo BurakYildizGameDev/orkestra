@@ -17,6 +17,8 @@ from typing import Annotated, Any
 import typer
 
 from orkestra import __version__, doctor, envelope, i18n
+from orkestra.cache import responses
+from orkestra.chief import status
 from orkestra.config import loader
 from orkestra.config.schema import Config, Provider
 from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
@@ -25,7 +27,7 @@ from orkestra.providers import registry
 from orkestra.routing.router import Route, describe_candidates
 from orkestra.security.redact import Redactor, config_for_display, configured_secrets
 from orkestra.state import consent, db, stats
-from orkestra.tasks import batch, runner, spec
+from orkestra.tasks import batch, runner, spec, templates
 from orkestra.workspace import service
 
 
@@ -241,6 +243,63 @@ def _execute(
         raise typer.Exit(outcome.exit_code)
 
 
+def _no_cache_option() -> Any:
+    return typer.Option("--no-cache", help=t("cli.option.no_cache"))
+
+
+def _run_batch(
+    batch_spec: batch.BatchSpec,
+    config: Config,
+    options: runner.RunOptions,
+    *,
+    parallel: int | None = None,
+    fail_fast: bool = False,
+    estimate: bool = False,
+    yes_cost: bool = False,
+    as_json: bool = False,
+) -> None:
+    """Shared by ``batch`` and ``run --template``: plan, estimate or check the cost, run."""
+    plan = batch.plan_batch(batch_spec, cwd=Path.cwd(), ignore_file=config.security.ignore_file)
+    for warning in plan.warnings:
+        typer.echo(warning, err=True)
+    if estimate:
+        costs = asyncio.run(batch.estimate_batch(batch_spec, config, options))
+        if not as_json:
+            for warning in costs.warnings:
+                typer.echo(warning, err=True)
+        typer.echo(envelope.to_json(costs) if as_json else envelope.estimate_summary(costs))
+        if code := batch.estimate_exit_code(costs):
+            raise typer.Exit(code)
+        return
+    if not yes_cost and batch.checks_cost(config):
+        costs = asyncio.run(batch.estimate_batch(batch_spec, config, options, fetch_prices=True))
+        if costs.needs_confirmation:
+            _confirm_cost(costs, as_json=as_json)
+    progress = None if as_json else (lambda item: typer.echo(envelope.batch_line(item), err=True))
+    document, code = asyncio.run(
+        batch.run_batch(
+            batch_spec, plan, config, options,
+            parallel=parallel or batch_spec.parallel or batch.DEFAULT_PARALLEL,
+            fail_fast=fail_fast, on_done=progress,
+        )
+    )  # fmt: skip
+    if not as_json:  # in --json they are in the document
+        for warning in batch.run_warnings(document, plan):
+            typer.echo(warning, err=True)
+    typer.echo(envelope.to_json(document) if as_json else envelope.batch_summary(document))
+    if code:
+        raise typer.Exit(code)
+
+
+def _template_json(item: templates.Template) -> dict[str, Any]:
+    return {
+        "name": item.name, "source": item.source, "description": item.description,
+        "params": [{"name": p.name, "default": p.default, "required": p.default is None,
+                    "description": p.description} for p in item.params],
+        "task": dict(item.task),
+    }  # fmt: skip
+
+
 def _interactive() -> bool:
     """Whether the user can be asked a question (tests replace this)."""
     return sys.stdin.isatty()
@@ -328,6 +387,12 @@ def build_app() -> typer.Typer:
         name="providers", help=t("cli.providers.help"), no_args_is_help=True
     )
     app.add_typer(providers_app)
+    templates_app = typer.Typer(
+        name="templates", help=t("cli.templates.help"), no_args_is_help=True
+    )
+    app.add_typer(templates_app)
+    cache_app = typer.Typer(name="cache", help=t("cli.cache.help"), no_args_is_help=True)
+    app.add_typer(cache_app)
 
     @providers_app.command("list", help=t("cli.providers.list.help"))
     def providers_list(
@@ -512,6 +577,7 @@ def build_app() -> typer.Typer:
         dry_run: Annotated[
             bool, typer.Option("--dry-run", help=t("cli.ask.option.dry_run"))
         ] = False,
+        no_cache: Annotated[bool, _no_cache_option()] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
@@ -524,13 +590,27 @@ def build_app() -> typer.Typer:
             context=tuple(context or ()),
             schema=schema,
         )
-        options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets)
+        options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets, no_cache=no_cache)
         _execute(task, loaded.config, options, dry_run=dry_run, as_json=as_json)
 
     @app.command("run", help=t("cli.run.help"))
     def run_command(
         ctx: typer.Context,
-        task_file: Annotated[Path, typer.Argument(metavar="TASK", help=t("cli.run.arg.task"))],
+        task_file: Annotated[
+            Path | None, typer.Argument(metavar="TASK", help=t("cli.run.arg.task"))
+        ] = None,
+        template: Annotated[
+            str | None,
+            typer.Option("--template", metavar="NAME", help=t("cli.run.option.template")),
+        ] = None,
+        files: Annotated[
+            list[str] | None,
+            typer.Option("--files", metavar="GLOB", help=t("cli.run.option.files")),
+        ] = None,
+        param: Annotated[
+            list[str] | None,
+            typer.Option("--param", metavar="KEY=VALUE", help=t("cli.run.option.param")),
+        ] = None,
         allow_secrets: Annotated[
             bool, typer.Option("--allow-secrets", help=t("cli.ask.option.allow_secrets"))
         ] = False,
@@ -541,11 +621,32 @@ def build_app() -> typer.Typer:
         dry_run: Annotated[
             bool, typer.Option("--dry-run", help=t("cli.ask.option.dry_run"))
         ] = False,
+        yes_cost: Annotated[
+            bool, typer.Option("--yes-cost", help=t("cli.batch.option.yes_cost"))
+        ] = False,
+        no_cache: Annotated[bool, _no_cache_option()] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
+        if (task_file is None) == (template is None):
+            raise UsageError(t("run.error.target"))
+        if (template is None and (files or param)) or (template is not None and not files):
+            raise UsageError(t("run.error.files"))
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+        options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets, no_cache=no_cache)
+        if template is not None:
+            cwd = Path.cwd()
+            batch_spec = templates.expand(
+                templates.find(template, cwd=cwd), files or [],
+                templates.parse_params(param or []), cwd=cwd,
+                ignore_file=loaded.config.security.ignore_file,
+            )  # fmt: skip
+            if dry_run:  # the tasks it would run, as a batch file; nothing is sent
+                typer.echo(loader.dump_yaml(templates.to_batch_document(batch_spec)), nl=False)
+                return
+            _run_batch(batch_spec, loaded.config, options, yes_cost=yes_cost, as_json=as_json)
+            return
+        assert task_file is not None
         task = spec.load_task(task_file)
-        options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets)
         _execute(task, loaded.config, options, dry_run=dry_run, as_json=as_json)
 
     @app.command("batch", help=t("cli.batch.help"))
@@ -572,47 +673,15 @@ def build_app() -> typer.Typer:
         yes_cost: Annotated[
             bool, typer.Option("--yes-cost", help=t("cli.batch.option.yes_cost"))
         ] = False,
+        no_cache: Annotated[bool, _no_cache_option()] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
-        batch_spec = batch.load_batch(batch_file)
-        plan = batch.plan_batch(
-            batch_spec, cwd=Path.cwd(), ignore_file=loaded.config.security.ignore_file
-        )
-        for warning in plan.warnings:
-            typer.echo(warning, err=True)
-        options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets)
-        if estimate:
-            costs = asyncio.run(batch.estimate_batch(batch_spec, loaded.config, options))
-            if not as_json:
-                for warning in costs.warnings:
-                    typer.echo(warning, err=True)
-            typer.echo(envelope.to_json(costs) if as_json else envelope.estimate_summary(costs))
-            if code := batch.estimate_exit_code(costs):
-                raise typer.Exit(code)
-            return
-        if not yes_cost and batch.checks_cost(loaded.config):
-            costs = asyncio.run(
-                batch.estimate_batch(batch_spec, loaded.config, options, fetch_prices=True)
-            )
-            if costs.needs_confirmation:
-                _confirm_cost(costs, as_json=as_json)
-        progress = (
-            None if as_json else (lambda item: typer.echo(envelope.batch_line(item), err=True))
-        )
-        document, code = asyncio.run(
-            batch.run_batch(
-                batch_spec, plan, loaded.config, options,
-                parallel=parallel or batch_spec.parallel or batch.DEFAULT_PARALLEL,
-                fail_fast=fail_fast, on_done=progress,
-            )
+        options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets, no_cache=no_cache)
+        _run_batch(
+            batch.load_batch(batch_file), loaded.config, options, parallel=parallel,
+            fail_fast=fail_fast, estimate=estimate, yes_cost=yes_cost, as_json=as_json,
         )  # fmt: skip
-        if not as_json:  # in --json they are in the document
-            for warning in batch.run_warnings(document, plan):
-                typer.echo(warning, err=True)
-        typer.echo(envelope.to_json(document) if as_json else envelope.batch_summary(document))
-        if code:
-            raise typer.Exit(code)
 
     @app.command("show", help=t("cli.show.help"))
     def show_command(
@@ -701,6 +770,55 @@ def build_app() -> typer.Typer:
             _echo_json(stats.to_dict(report))
         else:
             typer.echo(stats.render(report))
+
+    @app.command("status", help=t("cli.status.help"))
+    def status_command(
+        ctx: typer.Context, as_json: Annotated[bool, _json_option()] = False
+    ) -> None:
+        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+        with closing(db.connect()) as conn:
+            report = status.collect(status.default_context(loaded.config, conn, db.local_now()))
+        if as_json:
+            _echo_json({"sections": report.sections})
+        else:
+            typer.echo(status.render(report))
+
+    @templates_app.command("list", help=t("cli.templates.list.help"))
+    def templates_list(as_json: Annotated[bool, _json_option()] = False) -> None:
+        found = templates.available(Path.cwd())
+        if as_json:
+            _echo_json({"templates": [_template_json(item) for item in found.values()]})
+            return
+        for item in found.values():
+            typer.echo(t("templates.line", name=item.name, source=item.source,
+                         description=item.description))  # fmt: skip
+
+    @templates_app.command("show", help=t("cli.templates.show.help"))
+    def templates_show(
+        name: Annotated[str, typer.Argument(metavar="NAME", help=t("cli.templates.arg.name"))],
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        item = templates.find(name, cwd=Path.cwd())
+        if as_json:
+            _echo_json(_template_json(item))
+            return
+        typer.echo(f"{item.name} ({item.source}): {item.description}")
+        if item.params:
+            params = ", ".join(
+                t("templates.param_required", name=p.name) if p.default is None
+                else t("templates.param", name=p.name, default=p.default or '""')
+                for p in item.params
+            )  # fmt: skip
+            typer.echo(t("templates.params", params=params))
+        typer.echo(loader.dump_yaml(dict(item.task)), nl=False)
+
+    @cache_app.command("clear", help=t("cli.cache.clear.help"))
+    def cache_clear(as_json: Annotated[bool, _json_option()] = False) -> None:
+        removed = responses.clear()
+        if as_json:
+            _echo_json({"removed": removed})
+        else:
+            typer.echo(t("cache.cleared", count=removed))
 
     @app.command("discard", help=t("cli.discard.help"))
     def discard_command(

@@ -47,6 +47,9 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Bir batch'in geçen koşularını çalıştıkları sırayla uygula, çakışmada dur | `orkestra apply --batch <batch_id> --only-ok [--json]` |
 | İşçiler nasıl gitti: sağlayıcı ve etiket başına başarı oranı, deneme, token, maliyet, süre | `orkestra stats [--since 7d] [--json]` |
 | İşçi olarak kod ajanları (Codex CLI, Antigravity): worktree'de, süreç ağacı temizliğiyle | `cli_agent` sağlayıcıları |
+| Şef için tek bakışta durum (en fazla 15 satır): uygulanmamış koşular, bugünkü bütçe, duraklatılmış sağlayıcılar | `orkestra status [--json]` |
+| Görev şablonları (docstring, type-hints, tests, summarize, rename-refactor, translate ya da kendi şablonun): dosya başına bir görev | `orkestra run --template docstring --files "src/*.py" [--param k=v]`, `orkestra templates list\|show` |
+| Aynı `ask` tekrar önbellekten gelir: hiçbir şey gönderilmez, maliyeti yok | `--no-cache`, `orkestra cache clear` |
 | Bir koşunun envelope'u, tam çıktısı, log'u veya değişikliği | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | Koşunun değişikliğini çalışma ağacına al ya da at | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
 | Sahipsiz worktree, eski koşu kaydı ve askıda rezervasyonları temizle | `orkestra gc [--older-than 30] [--dry-run]` |
@@ -389,6 +392,42 @@ başına biten koşuları, başarı oranını, ortalama deneme ve süreyi, token
 Koşu cevabı veren sağlayıcıya sayılır; üst kademeye geçen koşu son kullandığı sağlayıcıya.
 Hâlâ `running` görünen koşular ayrıca sayılır.
 
+## Şef araçları
+
+**`orkestra status`** oturuma başlarken tek komut: şef ve profil, doğrulamayı geçip `apply` ya
+da `discard` bekleyen düzenleme koşuları, bugünkü bütçe (sağlayıcı başına) ve duraklatılmış
+sağlayıcılar; en fazla 15 satır (`--json` her şeyi verir). Sonraki fazlar kendi satırlarını
+ekler (devir dosyası, gece kuyruğu).
+
+**Şablonlar** görev dosyası yazmaktan kurtarır:
+
+```bash
+orkestra templates list
+orkestra run --template docstring --files "src/*.py" --param style=numpy --dry-run   # görevler
+orkestra run --template docstring --files "src/*.py" --param check="python -m pytest -q"
+```
+
+Eşleşen her dosya bir görev olur (şablonun adıyla etiketlenir) ve aynı maliyet denetimiyle
+batch olarak çalışır. Yerleşikler: `docstring`, `type-hints`, `tests`, `summarize` (JSON cevap,
+hiçbir şeyi değiştirmez), `rename-refactor` (`old`, `new`), `translate` (`language`).
+Parametreleri `templates show <ad>` listeler. İsteğe bağlı `check` parametresi geçmesi gereken
+bir komuttur (testlerin); verilmezse sadece değişen dosya sayısı denetlenir. Proje kendi
+şablonlarını `.orkestra/templates/<ad>.yaml` olarak ekleyebilir ya da yerleşiği ezebilir:
+`description`, `params` (`ad: {default, description}`; varsayılanı olmayan zorunludur) ve
+`task` (`id` olmadan görev alanları; `$file` ve `$<parametre>` doldurulur, dosya adındaki `$`
+olduğu gibi kalır).
+
+**Cevap önbelleği.** Doğrulamayı geçen bir `ask` cevabı `cache.ttl_days` (14) gün boyunca
+`~/.orkestra/cache/responses/` altında tutulur (gizli bilgiler maskeli, istem yok). Aynı
+modele aynı bağlam dosyalarıyla sorulan aynı soru oradan gelir: hiçbir şey gönderilmez, bütçe
+harcanmaz, zarfta `cached: true` yazar. Bağlam dosyası değişirse yeni soru sayılır. `edit`
+görevleri asla önbelleğe alınmaz. `--no-cache` (`ask`, `run`, `batch`) tek komutta atlar,
+`cache.enabled: false` kapatır, `orkestra cache clear` boşaltır.
+
+**Tasarruf (tahmini).** `orkestra stats` işçilerin kaç token yazdığını ve şefe zarflarla kaç
+token döndüğünü de gösterir. Şefin kendi kullanımı ölçülemediği için satır her zaman tahmini
+olarak işaretlenir.
+
 ## Worktree'ler: yalıtılmış değişiklikler
 
 İşçiler senin çalışma kopyanı asla değiştirmez. Kod değiştiren bir koşu `~/.orkestra/worktrees/`
@@ -430,8 +469,8 @@ mkdir -p .claude/skills && cp -r skill/orkestra .claude/skills/
 
 Sonra Claude'a örneğin şunu söyle: *"Bu 20 dosyaya docstring ekleme işini orkestra ile dağıt,
 sonucu sen denetle."* Skill şimdilik Türkçe (yayında İngilizceye çevrilecek) ve bugün var olan
-komutları kapsıyor; `status`, `map`, `review`, şablonlar ve devir o fazlar bitince skill'e
-geri eklenecek.
+komutları kapsıyor; `map`, `review`, `plan expand` ve devir o fazlar bitince skill'e geri
+eklenecek.
 
 ## Yapılandırma
 
@@ -541,7 +580,8 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 6 | Kod ajanları: Codex CLI, Antigravity CLI | ✅ |
 | 7a | Batch: bağımlılıklar, paralellik, sağlayıcı başına sınır | ✅ |
 | 7b | Maliyet tahmini, toplu apply, `stats` | ✅ |
-| 8 | Şef araçları: `status`, `review`, `map`, şablonlar, `plan expand`, önbellek, tasarruf sayacı | ⏳ |
+| 8a | Şef araçları: `status`, şablonlar, cevap önbelleği, tasarruf sayacı | ✅ |
+| 8b | Şef araçları: `review`, `map`, `plan expand` | ⏳ |
 | 9a | Claude skill: `SKILL.md`, CLI ile denetlenmiş | ✅ |
 | 9b | Claude skill: denetim ve elle senaryolar | ✅ |
 | 9c | Ucuz modeller için ara/değiştir (SEARCH/REPLACE) düzenlemesi | ✅ |

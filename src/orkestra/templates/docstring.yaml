@@ -1,0 +1,25 @@
+description:
+  en: Add docstrings to a file without changing its code.
+  tr: Bir dosyaya kodunu değiştirmeden docstring ekler.
+params:
+  style:
+    default: Google
+    description: Docstring style (Google, NumPy, reST, JSDoc ...).
+  check:
+    default: ""
+    description: A command that must pass afterwards, e.g. the tests (empty - none).
+task:
+  kind: edit
+  tier: 1
+  prompt: |
+    Add a docstring to the module and to every public function, class and method in $file
+    that has none, in $style style. Say what the code does, its arguments, its return value
+    and the errors it raises. Do not change any code, name, import or formatting: only add
+    docstrings. Keep existing docstrings as they are.
+  context:
+    files: ["$file"]
+  verify:
+    - type: max_changed_files
+      value: 1
+    - type: command
+      run: "$check"

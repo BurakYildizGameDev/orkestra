@@ -1,0 +1,15 @@
+description:
+  en: Summarize a file as JSON (purpose, main parts, dependencies). Changes nothing.
+  tr: Bir dosyayı JSON olarak özetler (amaç, ana parçalar, bağımlılıklar). Hiçbir şeyi değiştirmez.
+task:
+  kind: ask
+  tier: 1
+  prompt: |
+    Summarize $file. Answer with one JSON object:
+    {"purpose": "<one sentence>",
+     "parts": ["<a main function, class or section: what it does>"],
+     "depends_on": ["<an imported module or file>"]}
+  context:
+    files: ["$file"]
+  output:
+    format: json

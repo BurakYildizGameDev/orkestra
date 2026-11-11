@@ -1,0 +1,21 @@
+description:
+  en: Add type hints to a Python file without changing what it does.
+  tr: Bir Python dosyasına davranışını değiştirmeden tip ipuçları ekler.
+params:
+  check:
+    default: ""
+    description: A command that must pass afterwards, e.g. a type checker or the tests (empty - none).
+task:
+  kind: edit
+  tier: 2
+  prompt: |
+    Add type hints to every function and method signature in $file that lacks them, and to
+    module-level variables whose type is not obvious. Use the syntax of the Python version
+    the file already uses. Do not change any behaviour, name or formatting.
+  context:
+    files: ["$file"]
+  verify:
+    - type: max_changed_files
+      value: 1
+    - type: command
+      run: "$check"

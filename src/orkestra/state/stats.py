@@ -8,6 +8,9 @@
 - Tokens and cost come from the ``actual`` rows of ``usage`` (reservations never count), for
   the provider each request went to, so a failover's tokens count where they were spent.
 - Per tag: a run with several tags counts for each of them; runs without tags are ``None``.
+- Savings (Mimari §19, Faz 8a): what the workers wrote (``worker_output_tokens``) against
+  what came back to the chief (``envelope_chars``, as tokens). The chief's own use cannot
+  be measured, so this is always labelled an estimate.
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from typing import Any
 
 from orkestra.errors import UsageError
 from orkestra.i18n import t
+from orkestra.providers.base import estimate_tokens
 
 DEFAULT_SINCE = "7d"
 FINISHED = ("ok", "failed", "escalate", "error")
@@ -84,6 +88,16 @@ class Row:
 
 
 @dataclass(frozen=True)
+class Savings:
+    worker_output_tokens: int
+    envelope_chars: int
+
+    @property
+    def envelope_tokens(self) -> int:
+        return estimate_tokens(self.envelope_chars) if self.envelope_chars else 0
+
+
+@dataclass(frozen=True)
 class Report:
     since: datetime
     until: datetime
@@ -91,6 +105,7 @@ class Report:
     tags: tuple[Row, ...]
     totals: Row
     running: int  # started, not finished (or killed from outside): not in any number above
+    savings: Savings = Savings(0, 0)
 
 
 @dataclass(frozen=True)
@@ -101,6 +116,8 @@ class _Run:
     attempts: int | None
     duration_s: float | None
     tags: tuple[str, ...]
+    worker_output_tokens: int | None = None
+    envelope_chars: int | None = None
 
     @property
     def tag_keys(self) -> tuple[str | None, ...]:
@@ -126,7 +143,8 @@ def _runs(conn: sqlite3.Connection, since: datetime) -> list[_Run]:
     """Runs started since ``since``. Stored times keep the UTC offset of their day, so they
     are compared as instants; SQL only narrows the rows (strings, with a margin)."""
     rows = conn.execute(
-        "SELECT run_id, status, provider, attempts, duration_s, tags, started_at FROM runs "
+        "SELECT run_id, status, provider, attempts, duration_s, tags, started_at, "
+        "worker_output_tokens, envelope_chars FROM runs "
         "WHERE started_at >= ?",
         ((since - _OFFSET_MARGIN).isoformat(),),
     ).fetchall()
@@ -136,7 +154,8 @@ def _runs(conn: sqlite3.Connection, since: datetime) -> list[_Run]:
     chosen.sort(key=lambda pair: (pair[0], pair[1]["run_id"]))
     return [
         _Run(r["run_id"], r["status"] or "running", r["provider"], r["attempts"],
-             r["duration_s"], _tags(r["tags"]))
+             r["duration_s"], _tags(r["tags"]), r["worker_output_tokens"],
+             r["envelope_chars"])
         for _, r in chosen
     ]  # fmt: skip
 
@@ -235,6 +254,10 @@ def collect(conn: sqlite3.Connection, *, since: datetime, now: datetime) -> Repo
         tags=tuple(_row(tag, by_tag[tag], tag_usage.get(tag, [])) for tag in _ordered(by_tag)),
         totals=_row(None, finished, (amount for _, _, amount in usage)),
         running=len(runs) - len(finished),
+        savings=Savings(
+            sum(r.worker_output_tokens or 0 for r in finished),
+            sum(r.envelope_chars or 0 for r in finished),
+        ),
     )
 
 
@@ -256,6 +279,12 @@ def to_dict(report: Report) -> dict[str, Any]:
         "tags": [{"tag": r.name, **_numbers(r)} for r in report.tags],
         "totals": _numbers(report.totals),
         "running": report.running,
+        "savings": {
+            "worker_output_tokens": report.savings.worker_output_tokens,
+            "envelope_chars": report.savings.envelope_chars,
+            "envelope_tokens": report.savings.envelope_tokens,
+            "estimated": True,
+        },
     }
 
 
@@ -283,4 +312,9 @@ def render(report: Report) -> str:
     if report.tags:
         lines.append(t("stats.section.tags"))
         lines += [_line(r, r.name or t("stats.no_tag")) for r in report.tags]
+    saved = report.savings
+    if saved.worker_output_tokens:
+        ratio = saved.worker_output_tokens / saved.envelope_tokens if saved.envelope_tokens else 0
+        lines.append(t("stats.savings", worker=saved.worker_output_tokens,
+                       chief=saved.envelope_tokens, ratio=f"{ratio:.1f}"))  # fmt: skip
     return "\n".join(lines)
