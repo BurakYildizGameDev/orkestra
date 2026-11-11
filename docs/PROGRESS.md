@@ -30,6 +30,27 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Düzeltme – agy'nin MCP sunucusu beklemesi (2026-11-11)
+**Yapılanlar (D-055):**
+- `providers/cli_agent.py`: `run_process(watch=…, watch_interval_s=…)` gözcüsü; `CliAgent.watcher`; agy `--log-file attempts/<n>/agent.log`; `agy_mcp_stall` günlükten bekleyen sunucuları okur → agy durdurulur, `ProviderUnavailable` (sunucu adları ve günlük yolu). `agy_disabled_mcp_servers`.
+- `doctor`: `provider:agy:mcp` uyarısı (`disabled` işaretli MCP kayıtları).
+- i18n: `agent.error.agy_mcp_stall`, `doctor.agent.agy_mcp_disabled` (en, tr).
+- README (en + tr): agy ve MCP maddesi, sarmalayıcı örneği. Skill: işçiler MCP kullanamaz notu.
+- Kullanıcının makinesi (repo dışı): Unity relay'i `~/.local/bin/unity-mcp-guard.cmd` üzerinden başlıyor (agy'nin 3 MCP dosyası, gemini `settings.json`, Claude Code `unity-mcp` genel + bir projenin yerel kaydı). Yedek: `~/.gemini/mcp-yedek-2026-11-11/`. agy'de unity `enable` edildi.
+
+**Doğrulama:**
+- ✅ Unity kapalıyken gerçek ayarlarla agy koşusu 8 sn'de `SUCCESS` (önce 150 sn zaman aşımı, 0 token).
+- ✅ Bilerek takılan bir test sunucusuyla `orkestra ask --provider agy`: 30,7 sn'de durdu, mesajda sunucu adı ve günlük yolu; agy ve sunucu süreci kalmadı. Test sunucusu ayardan çıkarıldı.
+- ✅ Claude Code: `unity-mcp` Unity kapalıyken 1 sn'de "Failed to connect".
+- ✅ ruff, ruff format, pyright, pytest (828 test, +14).
+
+**Bilinen sorunlar:**
+- Unity açıkken sarmalayıcı üzerinden bağlantı henüz denenmedi (kullanıcı deneyecek).
+- Unity, bir MCP istemcisi açıldıktan sonra açılırsa sunucu o oturumda kapalı kalır: Claude Code'da `/mcp` ile yeniden bağlan, agy'yi yeniden başlat.
+- Unity'nin "MCP istemcilerini yapılandır" düğmesi sarmalayıcı kaydını ezebilir.
+- agy'nin `settings.json`'ında `permissions.deny` yok (`doctor` uyarıyor; bu düzeltmeden bağımsız).
+
+
 ### Kod denetimi – Faz 7a (PR #13), 2026-11-10
 10 bulgu, hepsi düzeltildi (D-054):
 - ✅ `src/**.py` gibi geçerli bir glob batch'i planlama aşamasında çökertiyordu, ignore edilen dosyalar yanlış kesişim veriyordu. Artık `run` ile aynı glob kuralları kullanılıyor.
@@ -153,7 +174,7 @@ Genel: her `apply`'dan önce diff'in tamamı okundu. İşi işçiye vermeden ön
 - Faz 7, 8 ve 10 komutları skill'e o fazlar bitince geri eklenecek (D-046).
 
 **Bilinen sorunlar (D-048, D-049):**
-- agy bağlanamayan MCP sunucusunu beklerken takılıyor. Kullanıcının agy MCP ayarları deneme süresince boşaltılıp sonra yedekten geri kuruldu.
+- agy bağlanamayan MCP sunucusunu beklerken takılıyor. Kullanıcının agy MCP ayarları deneme süresince boşaltılıp sonra yedekten geri kuruldu. → 2026-11-11 kapandı (D-055).
 - Tam dosya edit biçiminde küçük model kod satırı kaybedebiliyor. Doğrulayıcılar yakalıyor.
 - `node_modules` gibi ignore edilen klasörler worktree'de yok.
 - Dışarıdan öldürülen koşu `running` olarak kalıyor.
@@ -168,7 +189,7 @@ Bulunan hatalar ve düzeltmeler (D-048):
 - ✅ `apply`/`discard` sonrası boş depo klasörü kalıyordu → siliniyor.
 - ✅ autocrlf'te satır sonu farkı yanlış "birleştirildi" mesajı veriyordu; kullanıcı LF ile düzenlediyse yersiz çakışma çıkıyordu → satır sonu farkı yok sayılıyor, karışıksa LF ile birleştirilip kullanıcının satır sonuyla yazılıyor.
 - ✅ agy print modunda kabuk komutu isteyince boş cevapla çıkıyordu → istem dosyasının başında komut yasağı. Skill'e de not eklendi.
-- ➖ **Bilinen sorun:** agy bağlanamayan MCP sunucusunu beklerken takılıyor (Orkestra engelleyemez; ileride `doctor` uyarısı).
+- ➖ **Bilinen sorun:** agy bağlanamayan MCP sunucusunu beklerken takılıyor (Orkestra engelleyemez; ileride `doctor` uyarısı). → 2026-11-11 kapandı (D-055).
 - Skill: `--yes`'ten önce onay metnini kullanıcıya göster, açık kabul al. agy'ye "komut çalıştırma" yaz.
 Testler: 707 geçti (+4).
 

@@ -8,6 +8,9 @@ Common rules (``run_process``):
 - stdout and stderr go to files in the attempt directory, not into memory.
 - On timeout, Ctrl+C or cancellation the whole process tree is terminated, then killed
   after ``KILL_GRACE_S``.
+- An agent may have a watcher, asked every ``watch_interval_s`` while it runs; when it
+  reports an error, the tree is stopped the same way and that error is raised (agy waiting
+  for an MCP server that cannot connect, D-055).
 - Environment: the parent's, without ``ORKESTRA_*``, plus ``NO_COLOR=1`` and ``CI=1``.
 
 Kinds: ``codex`` (``codex exec``), ``agy`` (Antigravity, experimental), ``generic`` (any
@@ -23,7 +26,7 @@ import json
 import re
 import shutil
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
@@ -32,7 +35,7 @@ from typing import Any
 import psutil
 
 from orkestra.config.schema import CliAgentProvider
-from orkestra.errors import ProviderBadOutput, ProviderTimeout, ProviderUnavailable
+from orkestra.errors import ProviderBadOutput, ProviderError, ProviderTimeout, ProviderUnavailable
 from orkestra.i18n import t
 from orkestra.providers.base import AgentRequest, AgentResult, Usage
 
@@ -42,7 +45,13 @@ STDERR_TAIL = 500
 PROMPT_FILE = "agent_prompt.md"  # agy: the prompt, next to the run's records
 STDOUT_FILE = "agent.stdout"
 STDERR_FILE = "agent.stderr"
+AGENT_LOG = "agent.log"  # agy: its own log (--log-file), next to the run's records
+WATCH_INTERVAL_S = 1.0
 _AGY_TEXT_KEYS = ("result", "response", "text", "output", "message", "content")
+# agy reports every 30 s while MCP servers have not connected; nothing is sent until they do.
+_AGY_MCP_STALL = re.compile(r"MCP: \d+ server\(s\) still connecting after \S+: (.+?)\s*$", re.M)
+
+Watcher = Callable[[], "ProviderError | None"]
 
 
 # --- process handling ------------------------------------------------------------------
@@ -89,6 +98,24 @@ async def _feed_and_wait(proc: asyncio.subprocess.Process, data: bytes | None) -
     return await proc.wait()
 
 
+async def _wait_watched(
+    proc: asyncio.subprocess.Process, data: bytes | None, watch: Watcher | None, interval: float
+) -> int:
+    """The exit code; raises the watcher's error as soon as it reports one."""
+    done = asyncio.ensure_future(_feed_and_wait(proc, data))
+    if watch is None:
+        return await done
+    try:
+        while True:
+            finished, _ = await asyncio.wait({done}, timeout=interval)
+            if finished:
+                return done.result()
+            if (error := watch()) is not None:
+                raise error
+    finally:
+        done.cancel()  # no-op when it finished
+
+
 async def run_process(
     inv: Invocation,
     *,
@@ -97,6 +124,8 @@ async def run_process(
     timeout_s: float,
     stdout_path: Path,
     stderr_path: Path,
+    watch: Watcher | None = None,
+    watch_interval_s: float = WATCH_INTERVAL_S,
 ) -> int:
     """Run ``inv`` and return its exit code (output in the two files)."""
     with stdout_path.open("wb") as out, stderr_path.open("wb") as err:
@@ -115,10 +144,15 @@ async def run_process(
                 t("agent.error.start", command=inv.argv[0], error=reason)
             ) from exc
         try:
-            return await asyncio.wait_for(_feed_and_wait(proc, inv.stdin), timeout_s)
+            return await asyncio.wait_for(
+                _wait_watched(proc, inv.stdin, watch, watch_interval_s), timeout_s
+            )
         except TimeoutError:
             await asyncio.to_thread(kill_tree, proc.pid)
             raise ProviderTimeout(t("agent.error.timeout", seconds=timeout_s)) from None
+        except ProviderError:  # the watcher stopped it
+            await asyncio.to_thread(kill_tree, proc.pid)
+            raise
         except BaseException:
             kill_tree(proc.pid)  # Ctrl+C or cancelled: leave nothing running
             raise
@@ -137,6 +171,8 @@ def _read(path: Path) -> str:
 class CliAgent:
     """Base class: ``generic`` protocol (prompt on stdin, final message on stdout)."""
 
+    watch_interval_s = WATCH_INTERVAL_S
+
     def __init__(
         self, name: str, config: CliAgentProvider, environ: Mapping[str, str], *, executable: str
     ) -> None:
@@ -154,6 +190,10 @@ class CliAgent:
     def usage(self, stdout_path: Path) -> Usage:
         return Usage(None, None, None, estimated=True)
 
+    def watcher(self, req: AgentRequest) -> Watcher | None:
+        """Asked while the agent runs; an error it returns stops the agent. None: no watcher."""
+        return None
+
     async def run(self, req: AgentRequest) -> AgentResult:
         records = req.output_file.parent
         records.mkdir(parents=True, exist_ok=True)
@@ -161,6 +201,7 @@ class CliAgent:
         code = await run_process(
             self.invocation(req), cwd=req.workdir, env=clean_env(self.environ),
             timeout_s=req.timeout_s, stdout_path=stdout_path, stderr_path=stderr_path,
+            watch=self.watcher(req), watch_interval_s=self.watch_interval_s,
         )  # fmt: skip
         if code != 0:
             tail = _read(stderr_path).strip()[-STDERR_TAIL:] or _read(stdout_path)[-STDERR_TAIL:]
@@ -207,6 +248,11 @@ class AgyAgent(CliAgent):
     ``agy`` takes the prompt as a flag value, so the prompt is written to a file next to the
     run's records and agy is told to read it (``--add-dir`` gives it access). Print mode runs
     in agy's ``--sandbox``; edits use ``--mode accept-edits``, ask tasks ``--mode plan``.
+
+    agy starts every MCP server in its settings before it sends anything, ignoring their
+    ``disabled`` flag in print mode, and waits for all of them to connect. Its log goes next
+    to the run's records; when it reports a server still connecting (after 30 s) the run is
+    stopped as ``ProviderUnavailable`` naming the servers, so the router moves on (D-055).
     """
 
     def invocation(self, req: AgentRequest) -> Invocation:
@@ -225,6 +271,7 @@ class AgyAgent(CliAgent):
             "--mode", mode,
             "--print-timeout", f"{int(req.timeout_s)}s",
             "--add-dir", str(prompt_file.parent),
+            "--log-file", str(prompt_file.parent / AGENT_LOG),
         ]  # fmt: skip
         model = req.model or self.config.model
         if model:
@@ -237,6 +284,19 @@ class AgyAgent(CliAgent):
 
     def final_message(self, req: AgentRequest, stdout_path: Path) -> str:
         return parse_agy_output(_read(stdout_path))
+
+    def watcher(self, req: AgentRequest) -> Watcher:
+        log = req.output_file.parent / AGENT_LOG
+
+        def check() -> ProviderError | None:
+            servers = agy_mcp_stall(_read(log))
+            if not servers:
+                return None
+            return ProviderUnavailable(
+                t("agent.error.agy_mcp_stall", servers=", ".join(servers), log=log)
+            )
+
+        return check
 
 
 _KINDS: dict[str, type[CliAgent]] = {"codex": CodexAgent, "agy": AgyAgent, "generic": CliAgent}
@@ -262,7 +322,23 @@ def create_agent(name: str, config: CliAgentProvider, environ: Mapping[str, str]
 # --- agent setup checks (doctor, consent) ----------------------------------------------
 
 AGY_SETTINGS = Path.home() / ".gemini" / "antigravity-cli" / "settings.json"
+AGY_MCP_CONFIG = Path.home() / ".gemini" / "config" / "mcp_config.json"  # read by agy 1.5.5
 AGY_MUST_DENY = ("rm", "sudo")  # print mode approves tool calls by itself (Mimari §5.5)
+
+
+def agy_disabled_mcp_servers(config: Path = AGY_MCP_CONFIG) -> list[str]:
+    """MCP servers marked ``disabled`` in agy's config; print mode starts them anyway."""
+    try:
+        data = json.loads(config.read_bytes())
+    except (OSError, ValueError):
+        return []
+    servers = data.get("mcpServers") if isinstance(data, dict) else None
+    if not isinstance(servers, dict):
+        return []
+    return [
+        name for name, server in servers.items()
+        if isinstance(server, dict) and server.get("disabled") is True
+    ]  # fmt: skip
 
 
 def agy_deny_gaps(settings: Path = AGY_SETTINGS) -> list[str]:
@@ -348,6 +424,14 @@ def _text_of(value: Any) -> str | None:
         texts = [text for item in value if (text := _text_of(item))]
         return texts[-1] if texts else None
     return None
+
+
+def agy_mcp_stall(log: str) -> list[str]:
+    """MCP servers agy's log reports as still connecting (latest report); empty: none."""
+    reports = _AGY_MCP_STALL.findall(log)
+    if not reports:
+        return []
+    return [name.strip() for name in reports[-1].split(",") if name.strip()]
 
 
 def parse_agy_output(stdout: str) -> str:

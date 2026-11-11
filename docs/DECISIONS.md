@@ -470,3 +470,19 @@ Mimari §12, §13 güncellendi.
 - **Koşu kimliği çakışması:** `new_run_id`, süreç içinde verdiği kimlikleri ve diskte var olan koşu klasörlerini atlıyor. Batch aynı saniyede birkaç koşu başlattığı için gerekli oldu.
 - **Temizlik:** topolojik sıra bir kez hesaplanıyor (`BatchSpec.order`), `spec.read_document` tek okuyucu, CLI'de `spec` modül adı gölgelenmiyor.
 Mimari §12 güncellendi.
+
+## D-055 – agy'nin MCP sunucusu beklemesi (2026-11-11, Faz 6 düzeltmesi)
+**Bağlam:** D-048'deki bilinen sorun: agy, istekten önce bütün MCP sunucularının bağlanmasını bekliyor. Unity editörü kapalıyken Unity'nin relay'i hiç bağlanmıyor ve her agy koşusu boşa bitiyor. Antigravity'nin bıraktığı not (`AGY_TO_CLAUDE.md`, repoya girmedi) üç çözüm önerdi; agy 1.5.5 ile denendi.
+**Ölçülenler (agy 1.5.5, Unity kapalı, "Reply with exactly: OK"):**
+- Değişiklik yokken koşu `--print-timeout`'a (150 sn) kadar bekledi, 0 token. 1.5.3'teki ~90 sn sınırı yok artık.
+- agy CLI MCP ayarını `~/.gemini/config/mcp_config.json`'dan okuyor (`antigravity/mcp_config.json` ona sembolik bağ; `antigravity-cli/` ve `antigravity-ide/` dosyaları CLI'yi etkilemiyor). Oradaki `"disabled": true` print modunda yok sayılıyor.
+- `--settings` (oturuma özel ayar) MCP'yi kapatamıyor: `mcpEnabled`, `allowedMcpServers`, `mcpServers` ve benzeri ~20 anahtar "unknown setting".
+- `ANTIGRAVITY_CONFIG_REL_DIR` etkisiz. `ANTIGRAVITY_GEMINI_DIR` (notun önerdiği klasör izolasyonu) girişi düşürüyor ("You are not logged into Antigravity"); `settings.json`'daki izin listesini de devre dışı bırakırdı.
+- Unity çalışmıyorsa hemen çıkan bir sarmalayıcı (`cmd.exe /d /c <betik>.cmd --mcp`, `tasklist` ile denetim) ile koşu 9 sn'de `SUCCESS`.
+- `MCP_TOOL_TIMEOUT` (720000) araç çağrısı süresi; bağlantı beklemesiyle ilgisi yok, değiştirilmedi.
+**Karar:**
+- **Asıl çözüm kullanıcının makinesinde:** bağlanamayan sunucu, uygulaması kapalıyken hemen çıkan bir sarmalayıcıyla başlatılır. Kişisel yol içerdiği için repoya girmez; README'de genel bir örnek var.
+- **Orkestra güvenlik ağı:** `AgyAgent` agy'nin günlüğünü `attempts/<n>/agent.log`'a yazdırır (`--log-file`). `run_process` isteğe bağlı bir gözcü alır (`CliAgent.watcher`, saniyede bir). agy'nin gözcüsü günlükte "MCP: … still connecting after 30s: …" satırını görünce süreç ağacı durdurulur ve sunucu adlarıyla `ProviderUnavailable` verilir: router sağlayıcıyı atlar, bütçe 0 ile kapanır, sağlık kaydına düşer (art arda olursa devre açılır). İlk raporda (30 sn) durmak bilerek seçildi: agy sunucular bağlanmadan hiçbir şey göndermiyor, ilk açılışta yavaş başlayan bir sunucu yüzünden bir koşu kaybedilebilir, sonraki koşu normal.
+- **`doctor`:** `~/.gemini/config/mcp_config.json`'da `disabled: true` olan sunucular için uyarı (`provider:agy:mcp`). Dosya yok/bozuksa sessiz.
+- **Yapılmayanlar:** uygulama klasörü izolasyonu (giriş ve izinler bozuluyor), MCP için config alanı (agy'de kapatma yolu yok).
+Mimari §5.5 güncellendi.
