@@ -19,7 +19,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 7a – Batch motoru | ✅ | 2026-11-10 | `orkestra batch`, DAG, sağlayıcı semaforu, kesişen edit'ler sırayla (D-053) |
 | 7b – Tahmin, toplu apply, stats | ✅ | 2026-11-11 | `batch --estimate`/`--yes-cost`, `apply --batch --only-ok`, `stats`, skill'e batch (D-057) |
 | 8a – status, şablon, önbellek, sayaç | ✅ | 2026-11-11 | `status`, 6 şablon + proje şablonları, cevap önbelleği, tasarruf satırı (D-059) |
-| 8b – review, map, plan expand | ⏳ | | |
+| 8b – review, map, plan expand | ✅ | 2026-11-11 | review, map, plan expand, show --only-flagged, review.auto (D-061); kod denetimi düzeltmeleri (D-062) |
 | 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
 | 9b – Skill doğrulama | ✅ | 2026-11-10 | kod denetimi (D-047), elle deneme düzeltmeleri (D-048), 5/5 senaryo (D-049) |
 | 9c – Ucuz modeller için ara/değiştir | ✅ | 2026-11-10 | `edit_format: auto` (küçük dosya `whole`, büyük dosya `replace`), D-051 |
@@ -30,6 +30,52 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 8b (PR #17), 2026-11-11
+`/code-review` 10 bulgu + Claude'un kendi okumasından 7 not. 9 bulgu düzeltildi, 1'i yanlış alarm; 7 notun hepsi düzeltildi (D-062):
+- ✅ Büyük diff bölücüsü her `--- ` satırında blok açıyordu (tek dosya iki çağrı, silinen `-- yorum` hunk'ı kesiyordu) → `chief/patchparse.py`, hunk sayılarıyla ayrıştırma.
+- ✅ Şef çağrısı gerçek sağlayıcı hatasını yutup "sağlayıcı yok" diyordu; `map`'te tek zaman aşımı bütün özetleri kapatıyordu → son hata yükseliyor, dosya başına uyarı.
+- ✅ Başarıda sağlık sayacı sıfırlanmıyordu (dağınık 3 hata devre kesiciyi açıyordu) → `record_success`.
+- ➖ "Çöken kod ajanı başarılı sayılıyor" yanlış alarm: `CliAgent.run` çıkış kodunu ve boş cevabı zaten denetliyor. Sohbet modelinin boş özeti artık önbelleğe girmiyor.
+- ✅ Proje dışı ya da farklı yazılmış yolda `map` çöküyordu → kod 2, kök `resolve()`.
+- ✅ `map` yolları git köküne göre çözülüyordu; `cache clear` alt klasörden harita önbelleğini silmiyordu → çalışma dizini, ortak `project_root`.
+- ✅ `--only-flagged` boşluklu/Türkçe adları bulamıyor, gövdesiz `@@` basıyordu → düzeldi.
+- ✅ `plan expand` router/bütçe hatasını 3 kez deneyip "YAML geçersiz" diyordu → ilk seferde kendi koduyla.
+- ✅ Çevrilmemiş metinler (`Review failed`, `Could not read review`) → `t()`.
+- ✅ Notlar: geniş `except Exception`'lar (`except Exception: pass` dahil) daraltıldı; `map` ilerleme göstergesi; `--max-files` uyarısı ve `truncated`; `map <yol>` haritanın geri kalanını koruyor; `review.auto` koşunun yuvalarını kullanıyor, süreye dahil; anahtarlı dosya sadece kendisi atlanıyor; `review` diff'i maskeliyor; `plan expand` uyarı testi sıkılaştı.
+
+**Bilinen sorunlar:**
+- `review.auto`'nun maliyeti bütçede aynı `run_id` ile kayıtlı ama zarfın `usage` alanına girmiyor (sadece işçinin kullanımı).
+- Şef çağrıları (`review`, `map`, `plan expand`) geçici hatada aynı sağlayıcıyı beklemeli tekrar denemiyor, sıradaki adaya geçiyor.
+- `map <yollar>` koşusunda verilen yolların dışında kalan kayıtlar son haritadaki haliyle duruyor (değişmişse eski özet/semboller); tam `map` tazeler.
+- `plan expand`'in geri bildirim istemine giden hata metni kullanıcı dilinde (`tr`'de Türkçe), işçi istemlerinin geri kalanı İngilizce.
+- Global skill kopyası (`~/.claude/skills/orkestra/`) hâlâ 8a sürümü; PR birleşince güncellenecek.
+
+Testler: 988 geçti (+30). ruff, ruff format, pyright temiz.
+
+### Faz 8b – review, map, plan expand (2026-11-11)
+**Yapılanlar (D-061):**
+- `chief/call.py`: Şef araçları için ortak model çağırma servisi (`query_chief_model`); router üzerinden bütçe, gizlilik, gizli bilgi ve yuva denetimleri.
+- `chief/review.py`: Otomatik ön inceleme (`ReviewReport`), şema dışı çıktıda 1 tekrar ve `risk: unknown` fallback'i; 400+ satırlık büyük diff'lerde dosya dosya parçalama; atomik `review.json` yazımı; `envelope_version` 4 ve `review` özeti; `service.show`'da `--diff --only-flagged` desteği; `runner._succeed` içinde `review.auto: true` tetikleyicisi.
+- `chief/repomap.py`: Repo haritası üretimi (`RepoMapResult`), modelsiz Python `ast` (fonksiyon, asenkron fonksiyon, sınıf ve metot imzaları) ve regex sembol çıkarımı; yerel model amaç özeti; SHA256 içerik hash'iyle `.orkestra/cache/map/` önbelleği; `privacy: local_only` varsayılan gizlilik kuralı (yerel sağlayıcı yoksa uzağa içerik gitmez); `os.walk` ile `.git`, `.venv`, `node_modules` budaması; `cache clear` entegrasyonu.
+- `chief/plan.py`: Taslak planı TaskSpec uyumlu batch YAML'a genişletme (`BatchSpec`), pydantic doğrulama, geçersiz çıktıda 2 tekrar (3 deneme) sonra `PlanFormatError` (kod 2); doğrulayıcısız edit görevlerine uyarı; dosyaya yazma ancak **çalıştırmama**.
+- `cli.py`: `orkestra review <run_id> [--json]`, `orkestra map [paths...] [--max-files N] [--json]`, `orkestra plan expand <draft> -o <file> [--json]`, `orkestra show <run_id> --only-flagged`.
+- `skill/orkestra/SKILL.md`: `map --json`, `review <run_id> --json`, `show --diff --only-flagged`, `plan expand` komutları eklendi; `tests/unit/test_skill.py` (61 test) ile CLI'ye karşı doğrulandı.
+
+**Kabul kriterleri:**
+- ✅ `map` gizlilik kuralı: yerel sağlayıcı yoksa uzağa hiçbir dosya içeriği gitmiyor; sadece modelsiz yapı bilgisi çıkarılıyor ve uyarı bildiriliyor (`test_map_privacy_rule_never_sends_file_content_to_remote_when_no_local_provider`).
+- ✅ `map` önbellek: ikinci çalıştırmada değişmeyen dosyalar için model çağrılmıyor (0 çağrı); bir dosya değişince sadece o özetleniyor (1 çağrı); silinen dosya MAP.md'den düşüyor (`test_map_caches_unchanged_files_and_invalidates_changed_and_drops_deleted`).
+- ✅ `review` şema dışı çıktı: sahte model şema dışı çıktı verirse 1 tekrar deneniyor, yine olmazsa `risk: unknown` ve boş flags dönüyor (`test_review_retries_once_on_schema_invalid_output_then_falls_back_to_unknown_risk`).
+- ✅ `review` ve `--only-flagged`: geçerli inceleme üretiliyor; `show --diff --only-flagged` sadece işaretli satır aralıklarını ±5 satır bağlamla gösteriyor (`test_review_valid_flags_and_show_only_flagged`).
+- ✅ `plan expand` geçersiz YAML: geçersiz YAML üreten sahte modelde 2 tekrar (toplam 3 deneme) yapılıyor, ardından anlaşılır hata ve çıkış kodu 2 (`test_plan_expand_retries_twice_on_invalid_yaml_then_fails_with_clear_error`).
+- ✅ `plan expand` geçerli çıktı: geçerli çıktı dosyaya yazılıyor ve kesinlikle çalıştırılmıyor; doğrulayıcısız edit görevine uyarı veriyor (`test_plan_expand_valid_yaml_writes_output_and_does_not_execute`).
+- ✅ `cache clear`: hem yanıt önbelleğini hem de repo haritası önbelleğini temizliyor (`test_cache_clear_also_removes_map_cache`).
+- ✅ `review.auto`: `review.auto: true` iken başarılı edit otomatik review çalıştırıp envelope'a review alanını (`risk`, `flags_count`) ekliyor (`test_review_auto_triggers_review_on_successful_edit`).
+
+**Ertelenenler:** Yok.
+**Bilinen sorunlar:** kod denetiminde bulunanlar ve kalanlar için yukarıdaki "Kod denetimi – Faz 8b" kaydı.
+**Kod denetimi:** yapıldı (D-062).
+Testler: 958 geçti (+24).
 
 ### Kod denetimi – Faz 8a (PR #16), 2026-11-11
 10 bulgu: 9'u düzeltildi, 1'i kısmen (D-060):

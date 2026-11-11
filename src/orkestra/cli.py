@@ -394,6 +394,8 @@ def build_app() -> typer.Typer:
     app.add_typer(templates_app)
     cache_app = typer.Typer(name="cache", help=t("cli.cache.help"), no_args_is_help=True)
     app.add_typer(cache_app)
+    plan_app = typer.Typer(name="plan", help=t("cli.plan.help"), no_args_is_help=True)
+    app.add_typer(plan_app)
 
     @providers_app.command("list", help=t("cli.providers.list.help"))
     def providers_list(
@@ -698,16 +700,29 @@ def build_app() -> typer.Typer:
         ctx: typer.Context,
         run_id: Annotated[str, typer.Argument(metavar="RUN_ID", help=t("cli.show.arg.run_id"))],
         diff: Annotated[bool, typer.Option("--diff", help=t("cli.show.option.diff"))] = False,
+        only_flagged: Annotated[
+            bool, typer.Option("--only-flagged", help=t("cli.show.option.only_flagged"))
+        ] = False,
         output: Annotated[bool, typer.Option("--output", help=t("cli.show.option.output"))] = False,
         log: Annotated[bool, typer.Option("--log", help=t("cli.show.option.log"))] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         chosen = [name for name, on in (("diff", diff), ("output", output), ("log", log)) if on]
+        if only_flagged and (output or log):
+            raise UsageError(t("show.error.one_part"))
         if len(chosen) > 1:
             raise UsageError(t("show.error.one_part"))
-        part: service.Part = chosen[0] if chosen else "envelope"  # type: ignore[assignment]
+        part: service.Part = (
+            "diff"
+            if (diff or only_flagged)
+            else "output"
+            if output
+            else "log"
+            if log
+            else "envelope"
+        )
         redact = _patch_redactor(ctx.ensure_object(_State).config_path) if part == "diff" else str
-        result = service.show(run_id, part, redact=redact)
+        result = service.show(run_id, part, only_flagged=only_flagged, redact=redact)
         if part == "envelope":
             if as_json:
                 _echo_json(result)
@@ -715,7 +730,10 @@ def build_app() -> typer.Typer:
                 typer.echo(envelope.stored_summary(result))
             return
         if part == "diff" and not result:
-            typer.echo(t("show.no_changes", run_id=run_id), err=True)
+            msg = (
+                t("show.no_flagged_lines") if only_flagged else t("show.no_changes", run_id=run_id)
+            )
+            typer.echo(msg, err=True)
             return
         typer.echo(result, nl=False)
 
@@ -827,11 +845,129 @@ def build_app() -> typer.Typer:
 
     @cache_app.command("clear", help=t("cli.cache.clear.help"))
     def cache_clear(as_json: Annotated[bool, _json_option()] = False) -> None:
-        removed = responses.clear()
+        from orkestra.chief import repomap
+
+        removed = responses.clear() + repomap.clear_cache(repomap.project_root(Path.cwd()))
         if as_json:
             _echo_json({"removed": removed})
         else:
             typer.echo(t("cache.cleared", count=removed))
+
+    @app.command("review", help=t("cli.review.help"))
+    def review_command(
+        ctx: typer.Context,
+        run_id: Annotated[str, typer.Argument(metavar="RUN_ID", help=t("cli.review.arg.run_id"))],
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+        from orkestra.chief import review
+
+        report = asyncio.run(review.review_run(run_id, loaded.config))
+        if as_json:
+            _echo_json(report.model_dump(mode="json"))
+            return
+        typer.echo(t("review.summary", risk=report.risk, summary=report.summary))
+        if report.flags:
+            typer.echo(t("review.flags", count=len(report.flags)))
+            for f in report.flags:
+                typer.echo(
+                    t(
+                        "review.flag_line",
+                        severity=f.severity,
+                        file=f.file,
+                        start=f.start_line,
+                        end=f.end_line,
+                        reason=f.reason,
+                    )
+                )
+
+    @app.command("map", help=t("cli.map.help"))
+    def map_command(
+        ctx: typer.Context,
+        paths: Annotated[
+            list[Path] | None,
+            typer.Argument(metavar="[PATHS...]", help=t("cli.map.arg.paths")),
+        ] = None,
+        max_files: Annotated[
+            int | None,
+            typer.Option("--max-files", min=1, help=t("cli.map.option.max_files")),
+        ] = None,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+        from orkestra.chief import repomap
+
+        cwd = Path.cwd()
+
+        def echo_progress(done: int, total: int, path: str) -> None:
+            typer.echo(t("map.progress", done=done, total=total, path=path), err=True)
+
+        progress = echo_progress if not as_json and sys.stderr.isatty() else None
+        root = repomap.project_root(cwd)
+        result = asyncio.run(
+            repomap.generate_repomap(
+                root, paths, loaded.config, max_files=max_files, cwd=cwd, on_progress=progress
+            )
+        )
+        for w in result.warnings:
+            typer.echo(w, err=True)
+        out_path = repomap.save_map(root, result)
+
+        if as_json:
+            _echo_json(
+                {
+                    "files": [
+                        {
+                            "path": f.path,
+                            "summary": f.summary,
+                            "symbols": f.symbols,
+                            "cached": f.cached,
+                        }
+                        for f in result.files
+                    ],
+                    "total_files": result.total_files,
+                    "summarized_files": result.summarized_files,
+                    "cached_files": result.cached_files,
+                    "model_used": result.model_used,
+                    "warnings": result.warnings,
+                    "truncated": result.truncated,
+                    "map_files": len(result.map_files),
+                    "map_path": str(out_path),
+                }
+            )
+            return
+
+        typer.echo(t("map.generated", path=str(out_path), files=len(result.map_files)))
+
+    @plan_app.command("expand", help=t("cli.plan.expand.help"))
+    def plan_expand(
+        ctx: typer.Context,
+        draft: Annotated[
+            Path, typer.Argument(metavar="DRAFT", help=t("cli.plan.expand.arg.draft"))
+        ],
+        output: Annotated[
+            Path,
+            typer.Option("-o", "--output", metavar="FILE", help=t("cli.plan.expand.option.output")),
+        ],
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+        from orkestra.chief import plan
+
+        spec, warnings = asyncio.run(plan.expand_plan(draft, output, loaded.config))
+        for w in warnings:
+            typer.echo(w, err=True)
+
+        if as_json:
+            _echo_json(
+                {
+                    "output": str(output),
+                    "tasks": [t.model_dump(mode="json", by_alias=True) for t in spec.tasks],
+                    "warnings": warnings,
+                }
+            )
+            return
+        typer.echo(t("plan.expanded", path=str(output), tasks=len(spec.tasks)))
 
     @app.command("discard", help=t("cli.discard.help"))
     def discard_command(

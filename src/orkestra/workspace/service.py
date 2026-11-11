@@ -62,14 +62,27 @@ def attach_worktree(conn: sqlite3.Connection, run_id: str, wt: gw.Worktree) -> N
 # --- show ------------------------------------------------------------------------------
 
 
-def show(run_id: str, part: Part, *, redact: Callable[[str], str] = str) -> Any:
+def show(
+    run_id: str,
+    part: Part,
+    *,
+    only_flagged: bool = False,
+    redact: Callable[[str], str] = str,
+) -> Any:
     """The envelope (as data), the diff, the full output or the log of a run.
 
     ``diff`` is ``""`` when the run has no changes; it goes through ``redact``.
+    ``only_flagged`` filters the diff to flagged hunks with ±5 lines of context.
     """
     run_dir = run_dir_for(run_id)
     if part == "diff":
-        return _diff_text(run_dir, redact)
+        patch = _diff_text(run_dir, redact)
+        if not only_flagged:
+            return patch
+        from orkestra.chief import review  # chief.review uses this module
+
+        flags = review.load_flags(run_id, run_dir)
+        return review.extract_flagged_lines(patch, flags, context_lines=5)
     path = run_dir / _PART_FILES[part]
     if not path.is_file():
         raise UsageError(t("show.missing", run_id=run_id, file=path.name))
