@@ -43,6 +43,9 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Görev dosyaları (YAML/JSON): cevabı doğrula, geri bildirimle tekrar dene, üst kademeye geç | `orkestra run gorev.yaml [--dry-run] [--json]` |
 | Düzenleme görevleri: işçi kodu yalıtılmış worktree'de değiştirir, karar senin testlerinin | `orkestra run duzenle.yaml`, sonra `show --diff`, `apply` |
 | Batch: bağımlılıklarıyla birçok görev, paralel, her sağlayıcı kendi concurrency sınırında | `orkestra batch tasks.yaml [--parallel N] [--fail-fast] [--json]` |
+| Batch'ten önce maliyet tahmini (hiçbir şey gönderilmez); pahalı batch önce sorar | `orkestra batch tasks.yaml --estimate [--json]`, `--yes-cost` |
+| Bir batch'in geçen koşularını çalıştıkları sırayla uygula, çakışmada dur | `orkestra apply --batch <batch_id> --only-ok [--json]` |
+| İşçiler nasıl gitti: sağlayıcı ve etiket başına başarı oranı, deneme, token, maliyet, süre | `orkestra stats [--since 7d] [--json]` |
 | İşçi olarak kod ajanları (Codex CLI, Antigravity): worktree'de, süreç ağacı temizliğiyle | `cli_agent` sağlayıcıları |
 | Bir koşunun envelope'u, tam çıktısı, log'u veya değişikliği | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | Koşunun değişikliğini çalışma ağacına al ya da at | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
@@ -357,8 +360,29 @@ orkestra batch tasks.yaml --parallel 2 --fail-fast
 - Bağımlılık sadece sırayı belirler, uygulanmamış değişikliği sonraki göreve aktarmaz.
   Başka bir görevin değişikliğine ihtiyaç duyan görev, `apply`'dan sonra ayrı bir batch'e
   konur.
-- Çıkış kodu: her görev `ok` ise 0, değilse 1. Her sonuçta görevin zarfı vardır; iyi olanları
-  `orkestra apply <run_id>` ile uygula (toplu apply Faz 7b'de geliyor).
+- Çıkış kodu: her görev `ok` ise 0, değilse 1. Her sonuçta görevin zarfı vardır.
+
+**Maliyet.** `orkestra batch tasks.yaml --estimate`, her görevin ilk isteğini router'ın
+seçeceği sağlayıcıda fiyatlar (istem + `max_output_tokens`, bütçe rezervasyonuyla aynı tahmin)
+ve hiçbir şey göndermez; `--dry-run` gibi önbellekteki fiyat listelerini kullanır. Tekrarlar,
+geri bildirim ve üst kademeye geçiş daha pahalıya çıkabilir. Kod ajanları ve fiyatı bilinmeyen
+modeller "fiyatsız" listelenir ve toplama girmez; fiyatsız yerel model 0 sayılır.
+
+Gerçek koşudan önce batch aynı şekilde tahmin edilir. `estimate.confirm_above_usd` aşılırsa
+(varsayılan `0.50`; `null` denetimi kapatır) terminalde sorulur; `--json` ya da terminalsiz
+koşuda tahmin yazılır (`needs_confirmation: true`), hiçbir şey çalışmaz ve `--yes-cost`
+eklenene kadar kod 2 döner.
+
+**Uygulama.** Her koşuya bak (`show <run_id> --diff`), istemediklerini `discard` et, sonra
+`orkestra apply --batch <batch_id> --only-ok`: batch'in geçen düzenleme koşuları çalıştıkları
+sırayla uygulanır; geçmeyenler ve zaten uygulananlar atlanır. İlk çakışmada kod 5 ile durur ve
+uygulananları, çakışan koşuyu ve denenmeyenleri bildirir. `--only-ok` olmadan, başarısız koşusu
+olan batch reddedilir ve hiçbir şey uygulanmaz.
+
+**İstatistik.** `orkestra stats --since 7d` (ya da `24h`, `30m`) sağlayıcı ve görev etiketi
+başına biten koşuları, başarı oranını, ortalama deneme ve süreyi, token ve maliyeti gösterir.
+Koşu cevabı veren sağlayıcıya sayılır; üst kademeye geçen koşu son kullandığı sağlayıcıya.
+Hâlâ `running` görünen koşular ayrıca sayılır.
 
 ## Worktree'ler: yalıtılmış değişiklikler
 
@@ -401,8 +425,8 @@ mkdir -p .claude/skills && cp -r skill/orkestra .claude/skills/
 
 Sonra Claude'a örneğin şunu söyle: *"Bu 20 dosyaya docstring ekleme işini orkestra ile dağıt,
 sonucu sen denetle."* Skill şimdilik Türkçe (yayında İngilizceye çevrilecek) ve bugün var olan
-komutları kapsıyor; `status`, `map`, `review`, şablonlar, toplu koşu ve devir o fazlar
-bitince skill'e geri eklenecek.
+komutları kapsıyor; `status`, `map`, `review`, şablonlar ve devir o fazlar bitince skill'e
+geri eklenecek.
 
 ## Yapılandırma
 
@@ -511,7 +535,7 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 5c | API işçileriyle düzenleme görevleri | ✅ |
 | 6 | Kod ajanları: Codex CLI, Antigravity CLI | ✅ |
 | 7a | Batch: bağımlılıklar, paralellik, sağlayıcı başına sınır | ✅ |
-| 7b | Maliyet tahmini, toplu apply, `stats` | ⏳ |
+| 7b | Maliyet tahmini, toplu apply, `stats` | ✅ |
 | 8 | Şef araçları: `status`, `review`, `map`, şablonlar, `plan expand`, önbellek, tasarruf sayacı | ⏳ |
 | 9a | Claude skill: `SKILL.md`, CLI ile denetlenmiş | ✅ |
 | 9b | Claude skill: denetim ve elle senaryolar | ✅ |

@@ -17,7 +17,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 6 – CLI ajanları | ✅ | 2026-11-10 | codex, agy (deneysel), generic; süreç ağacı temizliği, dışarı yazma tespiti (D-044) |
 | 6b – MCP sınırları, Unity açık testleri (ek) | ⏳ | | agy MCP beklemesi düzeltildi (D-055, D-056); kalan: Unity açık elle testler, sonradan açılan Unity, `doctor --mcp` sondası |
 | 7a – Batch motoru | ✅ | 2026-11-10 | `orkestra batch`, DAG, sağlayıcı semaforu, kesişen edit'ler sırayla (D-053) |
-| 7b – Tahmin, toplu apply, stats | ⏳ | | |
+| 7b – Tahmin, toplu apply, stats | ✅ | 2026-11-11 | `batch --estimate`/`--yes-cost`, `apply --batch --only-ok`, `stats`, skill'e batch (D-057) |
 | 8a – status, şablon, önbellek, sayaç | ⏳ | | |
 | 8b – review, map, plan expand | ⏳ | | |
 | 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
@@ -30,6 +30,28 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 7b – Maliyet tahmini, toplu apply, stats (2026-11-11)
+**Yapılanlar (D-057):**
+- `runner.estimate_task` (ilk aday, rezervasyonla aynı tahmin), `batch.estimate_batch`, `estimate_exit_code`, `checks_cost`; `envelope.BatchEstimate` (`estimate_version: 1`) ve `estimate_summary`.
+- `orkestra batch … --estimate [--json]`, `--yes-cost`; eşik aşılınca `--json`/terminalsiz kod 2, terminalde soru.
+- `service.apply_batch`; `orkestra apply --batch <id> [--only-ok] [--force] [--json]` (`RUN_ID` isteğe bağlı).
+- `state/stats.py` ve `orkestra stats [--since 7d] [--json]`.
+- i18n (en, tr), README (en + tr): özellik tablosu, batch bölümünde maliyet/uygulama/istatistik, yol haritası. Skill: batch bölümü geri geldi, `--yes-cost` "asla yapma"da. Global skill kopyası güncellendi.
+
+**Kabul kriterleri:**
+- ✅ `--estimate` gerçek çağrı yapmıyor: sahte sağlayıcının çağrı listesi boş, `runs` tablosunda kayıt yok (`test_estimate_prices_every_task_and_sends_nothing`).
+- ✅ Eşik üstünde `--json` modu `--yes-cost` olmadan kod 2, hiçbir istek yok; `--yes-cost` ile çalışıyor (`test_a_costly_batch_in_json_mode_needs_yes_cost`). Eşik altı sormadan çalışıyor; `null` eşik hiç sormuyor; terminalde hayır → kod 2, evet → çalışıyor; terminalsiz insan modu kod 2.
+- ✅ `apply --batch --only-ok`: geçenler uygulanıyor, `escalate` atlanıyor, ikinci kez hepsi "zaten uygulanmış". `--only-ok` olmadan başarısız koşulu batch hiç uygulanmıyor. Aynı dosyada üç görev: ilki uygulanıyor, ikincisinde çakışma (kod 5, `details`), üçüncüsü `not_tried`.
+- ✅ `stats`: sağlayıcı ve etiket satırları, rezervasyon ve eski koşular dışarıda, `running` ayrı, sağlayıcısız koşu son kullandığına. Gerçek veriyle duman testi: ollama 12/22, agy 2/5.
+- ✅ Skill testi: `batch --estimate`, `--yes-cost`, `apply --batch --only-ok`, `stats` var olan komutlar; örnek batch dosyası geçerli.
+- ✅ ruff, ruff format, pyright, pytest (881 test) temiz.
+
+**Bilinen sorunlar:**
+- Tahmin ilk denemedir; geri bildirimli tekrar ve üst kademe maliyeti dahil değil (çıktıda yazıyor).
+- Fiyatsız uzak modeller eşiği tetiklemiyor (toplamda yok, `unpriced` sayısı gösteriliyor).
+- `runs` tablosunda dışarıdan öldürülüp `running` kalan koşular (D-049) `stats`'ta "hâlâ çalışıyor" görünüyor.
+
 
 ### Kod denetimi – agy MCP düzeltmesi (PR #14), 2026-11-11
 10 bulgu: 9'u düzeltildi, 1'i kısmen (D-056):

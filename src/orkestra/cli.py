@@ -24,7 +24,7 @@ from orkestra.i18n import t
 from orkestra.providers import registry
 from orkestra.routing.router import Route, describe_candidates
 from orkestra.security.redact import Redactor, config_for_display, configured_secrets
-from orkestra.state import consent, db
+from orkestra.state import consent, db, stats
 from orkestra.tasks import batch, runner, spec
 from orkestra.workspace import service
 
@@ -239,6 +239,73 @@ def _execute(
         typer.echo(envelope.human_summary(outcome.envelope), err=True)
     if outcome.exit_code:
         raise typer.Exit(outcome.exit_code)
+
+
+def _interactive() -> bool:
+    """Whether the user can be asked a question (tests replace this)."""
+    return sys.stdin.isatty()
+
+
+def _confirm_cost(costs: envelope.BatchEstimate, *, as_json: bool) -> None:
+    """A batch whose estimate is above ``estimate.confirm_above_usd`` (Mimari §19): ``--json``
+    returns the estimate and needs ``--yes-cost``; a terminal is asked; anything else stops.
+    Stopping is exit code 2 and nothing has run."""
+    cost, limit = f"${costs.totals.cost_usd:.4f}", f"${costs.confirm_above_usd or 0:.4f}"
+    if as_json:
+        typer.echo(envelope.to_json(costs))
+        typer.echo(t("batch.estimate.needs_yes_cost", cost=cost, limit=limit), err=True)
+        raise typer.Exit(int(ExitCode.USAGE))
+    typer.echo(envelope.estimate_summary(costs))
+    if not _interactive():
+        typer.echo(t("batch.estimate.needs_yes_cost", cost=cost, limit=limit), err=True)
+        raise typer.Exit(int(ExitCode.USAGE))
+    try:
+        agreed = typer.confirm(t("batch.estimate.confirm", cost=cost, limit=limit), default=False)
+    except (typer.Abort, EOFError):  # Windows reports NUL as a TTY; reading it hits EOF
+        agreed = False
+    if not agreed:
+        typer.echo(t("batch.estimate.declined"), err=True)
+        raise typer.Exit(int(ExitCode.USAGE))
+
+
+def _echo_batch_applied(report: service.BatchApplied, *, as_json: bool) -> None:
+    if as_json:
+        conflict = report.conflict
+        _echo_json({
+            "batch_id": report.batch_id,
+            "applied": [
+                {"run_id": run.run_id, "task_id": run.task_id, "repo": str(done.repo),
+                 "files": list(done.files), "merged": list(done.merged)}
+                for run, done in report.applied
+            ],
+            "skipped": [{"run_id": s.run.run_id, "task_id": s.run.task_id, "reason": s.reason}
+                        for s in report.skipped],
+            "conflict": None if conflict is None else {
+                "run_id": conflict.run.run_id, "task_id": conflict.run.task_id,
+                "message": conflict.message, "details": list(conflict.details),
+            },
+            "not_tried": [{"run_id": r.run_id, "task_id": r.task_id} for r in report.not_tried],
+        })  # fmt: skip
+        return
+    for run, done in report.applied:
+        typer.echo(t("apply.batch.applied", run_id=run.run_id, task_id=run.task_id,
+                     count=len(done.files)))  # fmt: skip
+        if done.merged:
+            typer.echo(t("apply.batch.merged", files=", ".join(done.merged)))
+    for item in report.skipped:
+        typer.echo(t("apply.batch.skipped", run_id=item.run.run_id, task_id=item.run.task_id,
+                     reason=item.reason))  # fmt: skip
+    if report.conflict is not None:
+        c = report.conflict
+        typer.echo(t("apply.batch.conflict", run_id=c.run.run_id, task_id=c.run.task_id,
+                     message=c.message), err=True)  # fmt: skip
+        for line in c.details:
+            typer.echo(f"  {line}", err=True)
+        if report.not_tried:
+            runs = ", ".join(f"{r.task_id} ({r.run_id})" for r in report.not_tried)
+            typer.echo(t("apply.batch.not_tried", runs=runs), err=True)
+    typer.echo(t("apply.batch.summary", batch_id=report.batch_id, applied=len(report.applied),
+                 skipped=len(report.skipped)))  # fmt: skip
 
 
 def build_app() -> typer.Typer:
@@ -488,6 +555,12 @@ def build_app() -> typer.Typer:
             str | None,
             typer.Option("--profile", metavar="NAME", help=t("cli.ask.option.profile")),
         ] = None,
+        estimate: Annotated[
+            bool, typer.Option("--estimate", help=t("cli.batch.option.estimate"))
+        ] = False,
+        yes_cost: Annotated[
+            bool, typer.Option("--yes-cost", help=t("cli.batch.option.yes_cost"))
+        ] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
@@ -497,13 +570,28 @@ def build_app() -> typer.Typer:
         )
         for warning in plan.warnings:
             typer.echo(warning, err=True)
+        options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets)
+        if estimate:
+            costs = asyncio.run(batch.estimate_batch(batch_spec, loaded.config, options))
+            if not as_json:
+                for warning in costs.warnings:
+                    typer.echo(warning, err=True)
+            typer.echo(envelope.to_json(costs) if as_json else envelope.estimate_summary(costs))
+            if code := batch.estimate_exit_code(costs):
+                raise typer.Exit(code)
+            return
+        if not yes_cost and batch.checks_cost(loaded.config):
+            costs = asyncio.run(
+                batch.estimate_batch(batch_spec, loaded.config, options, fetch_prices=True)
+            )
+            if costs.needs_confirmation:
+                _confirm_cost(costs, as_json=as_json)
         progress = (
             None if as_json else (lambda item: typer.echo(envelope.batch_line(item), err=True))
         )
         document, code = asyncio.run(
             batch.run_batch(
-                batch_spec, plan, loaded.config,
-                runner.RunOptions(profile=profile, allow_secrets=allow_secrets),
+                batch_spec, plan, loaded.config, options,
                 parallel=parallel or batch_spec.parallel or batch.DEFAULT_PARALLEL,
                 fail_fast=fail_fast, on_done=progress,
             )
@@ -544,11 +632,34 @@ def build_app() -> typer.Typer:
     @app.command("apply", help=t("cli.apply.help"))
     def apply_command(
         ctx: typer.Context,
-        run_id: Annotated[str, typer.Argument(metavar="RUN_ID", help=t("cli.show.arg.run_id"))],
+        run_id: Annotated[
+            str | None, typer.Argument(metavar="RUN_ID", help=t("cli.show.arg.run_id"))
+        ] = None,
+        batch_id: Annotated[
+            str | None,
+            typer.Option("--batch", metavar="BATCH_ID", help=t("cli.apply.option.batch")),
+        ] = None,
+        only_ok: Annotated[
+            bool, typer.Option("--only-ok", help=t("cli.apply.option.only_ok"))
+        ] = False,
         force: Annotated[bool, typer.Option("--force", help=t("cli.apply.option.force"))] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
+        if (run_id is None) == (batch_id is None):
+            raise UsageError(t("apply.error.target"))
+        if only_ok and batch_id is None:
+            raise UsageError(t("apply.error.only_ok"))
         redact = _patch_redactor(ctx.ensure_object(_State).config_path)
+        if batch_id is not None:
+            with closing(db.connect()) as conn:
+                report = service.apply_batch(
+                    conn, batch_id, only_ok=only_ok, redact=redact, force=force
+                )
+            _echo_batch_applied(report, as_json=as_json)
+            if report.conflict is not None:
+                raise typer.Exit(int(ExitCode.CONFLICT))
+            return
+        assert run_id is not None
         with closing(db.connect()) as conn:
             done = service.apply_run(conn, run_id, redact=redact, force=force)
         if as_json:
@@ -560,6 +671,23 @@ def build_app() -> typer.Typer:
         typer.echo(t("apply.done", count=len(done.files), run_id=run_id, repo=done.repo))
         if done.merged:
             typer.echo(t("apply.merged", files=", ".join(done.merged)))
+
+    @app.command("stats", help=t("cli.stats.help"))
+    def stats_command(
+        since: Annotated[
+            str,
+            typer.Option("--since", metavar="DURATION", help=t("cli.stats.option.since")),
+        ] = stats.DEFAULT_SINCE,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        window = stats.parse_since(since)
+        now = db.local_now()
+        with closing(db.connect()) as conn:
+            report = stats.collect(conn, since=now - window, now=now)
+        if as_json:
+            _echo_json(stats.to_dict(report))
+        else:
+            typer.echo(stats.render(report))
 
     @app.command("discard", help=t("cli.discard.help"))
     def discard_command(

@@ -318,7 +318,9 @@ def test_waiting_tasks_hold_no_budget_reservation(
     work = _setup(tmp_path, monkeypatch)
     _budget_config(tmp_path / "orkestra-home")  # budgets and prices keep the consent (D-027)
     tasks = [_ask(f"t{n}") for n in range(3)]
-    code, out, _ = _run(["batch", _batch(work, tasks), "--parallel", "3", "--json"], capsys)
+    # --yes-cost: the estimate ($1.23) is above the default threshold (Faz 7b).
+    argv = ["batch", _batch(work, tasks), "--parallel", "3", "--json", "--yes-cost"]
+    code, out, _ = _run(argv, capsys)
     assert code == 0, out  # one at a time, each settles at its real cost (0) first
     assert json.loads(out)["totals"]["ok"] == 3
 
@@ -399,3 +401,278 @@ def test_a_run_that_crashes_after_it_started_keeps_its_run_id(
     item = _results(out)["a"]
     assert item["status"] == "error" and item["run_id"]
     assert paths.run_dir(item["run_id"]).is_dir()
+
+
+# --- Faz 7b: cost estimate ---------------------------------------------------------------
+
+
+def _priced(home: Path, extra: str = "") -> None:
+    """One task's estimate is about $0.41 (4096 output tokens at $100/M): 1 fits under the
+    default $0.50 threshold, 2 do not. Prices keep the consent (D-027)."""
+    (home / "config.yaml").write_text(
+        _config(4).replace(
+            "        edit_format: whole\n",
+            "        edit_format: whole\n        price_per_mtok: {input: 1.0, output: 100.0}\n",
+        )
+        + extra,
+        encoding="utf-8",
+    )
+
+
+def _run_count() -> int:
+    with closing(sqlite3.connect(paths.state_db_path())) as conn:
+        return int(conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0])
+
+
+def test_estimate_prices_every_task_and_sends_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    _priced(tmp_path / "orkestra-home")
+    argv = ["batch", _batch(work, [_ask("a"), _ask("b")]), "--estimate", "--json"]
+    code, out, _ = _run(argv, capsys)
+    assert code == 0, out
+    assert fake.calls == [] and _run_count() == 0
+    doc = json.loads(out)
+    items = {item["task_id"]: item for item in doc["results"]}
+    assert items["a"]["provider"] == "ollama" and items["a"]["model"] == "coder"
+    assert items["a"]["max_output_tokens"] == 4096
+    assert 0.40 < items["a"]["cost_usd"] < 0.42
+    assert doc["totals"]["cost_usd"] == pytest.approx(
+        items["a"]["cost_usd"] + items["b"]["cost_usd"]
+    )
+    assert doc["totals"]["tasks"] == 2 and doc["totals"]["unpriced"] == 0
+    assert doc["confirm_above_usd"] == 0.5 and doc["needs_confirmation"] is True
+
+
+def test_estimate_in_human_mode_lists_every_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    _priced(tmp_path / "orkestra-home")
+    argv = ["--lang", "en", "batch", _batch(work, [_ask("a"), _ask("b")]), "--estimate"]
+    code, out, _ = _run(argv, capsys)
+    assert code == 0 and fake.calls == []
+    assert "a" in out and "b" in out and "ollama/coder" in out and "$0.8" in out
+
+
+def test_a_task_without_a_provider_shows_why_in_the_estimate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    argv = ["batch", _batch(work, [_ask("a"), _ask("b", provider="nope")]), "--estimate",
+            "--json"]  # fmt: skip
+    code, out, _ = _run(argv, capsys)
+    assert code == 2, out  # the exit code of the task that cannot run (unknown provider)
+    items = {item["task_id"]: item for item in json.loads(out)["results"]}
+    assert items["a"]["error"] is None and items["a"]["provider"] == "ollama"
+    assert items["b"]["provider"] is None and "nope" in items["b"]["error"]
+    assert items["b"]["exit_code"] == 2
+
+
+def test_a_costly_batch_in_json_mode_needs_yes_cost(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    _priced(tmp_path / "orkestra-home")
+    file = _batch(work, [_ask("a"), _ask("b")])
+    code, out, err = _run(["batch", file, "--json"], capsys)
+    assert code == 2 and fake.calls == [] and _run_count() == 0
+    doc = json.loads(out)  # the estimate, so the chief can show it to the user
+    assert doc["needs_confirmation"] is True and len(doc["results"]) == 2
+    assert "--yes-cost" in err
+    code, out, _ = _run(["batch", file, "--json", "--yes-cost"], capsys)
+    assert code == 0, out
+    assert len(fake.calls) == 2 and json.loads(out)["totals"]["ok"] == 2
+
+
+def test_a_cheap_batch_runs_without_asking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    _priced(tmp_path / "orkestra-home")
+    code, out, _ = _run(["batch", _batch(work, [_ask("a")]), "--json"], capsys)
+    assert code == 0, out
+    assert len(fake.calls) == 1
+
+
+def test_no_threshold_never_asks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    _priced(tmp_path / "orkestra-home", "estimate:\n  confirm_above_usd: null\n")
+    code, out, _ = _run(["batch", _batch(work, [_ask("a"), _ask("b")]), "--json"], capsys)
+    assert code == 0, out
+    assert len(fake.calls) == 2
+
+
+@pytest.mark.parametrize(("agreed", "code", "calls"), [(False, 2, 0), (True, 0, 2)])
+def test_interactive_mode_asks_before_a_costly_batch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str], agreed: bool, code: int, calls: int,
+) -> None:  # fmt: skip
+    from orkestra import cli
+
+    asked: list[str] = []
+
+    def confirm(text: str, default: bool = False) -> bool:
+        asked.append(text)
+        return agreed
+
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr(cli.typer, "confirm", confirm)
+    work = _setup(tmp_path, monkeypatch)
+    _priced(tmp_path / "orkestra-home")
+    result, out, _ = _run(["--lang", "en", "batch", _batch(work, [_ask("a"), _ask("b")])], capsys)
+    assert result == code and len(fake.calls) == calls and len(asked) == 1
+    assert "$0.8" in out  # the estimate was shown before the question
+
+
+def test_a_costly_batch_without_a_terminal_stops(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    from orkestra import cli
+
+    monkeypatch.setattr(cli, "_interactive", lambda: False)
+    work = _setup(tmp_path, monkeypatch)
+    _priced(tmp_path / "orkestra-home")
+    code, _, err = _run(["--lang", "en", "batch", _batch(work, [_ask("a"), _ask("b")])], capsys)
+    assert code == 2 and fake.calls == []
+    assert "--yes-cost" in err
+
+
+# --- Faz 7b: apply --batch ---------------------------------------------------------------
+
+
+def _edit_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fake: FakeOllama,
+    make_repo: MakeRepo,
+    capsys: pytest.CaptureFixture[str],
+    answers: dict[str, tuple[str, str] | str],
+) -> tuple[Path, dict[str, Any]]:
+    """Run a batch of edit tasks; ``answers``: task id -> (file, new content) or raw answer."""
+    _setup(tmp_path, monkeypatch, concurrency=4)
+    repo = make_repo({"a.py": "x = 1\n", "b.py": "y = 1\n", "c.py": "z = 1\n"})
+    monkeypatch.chdir(repo)
+    tasks = []
+    for task_id, answer in answers.items():
+        if isinstance(answer, tuple):
+            name, content = answer
+            fake.answers[f"change {task_id}"] = json.dumps(
+                {"files": [{"path": name, "content": content}], "note": task_id}
+            )
+        else:
+            name = "c.py"
+            fake.answers[f"change {task_id}"] = answer
+        tasks.append({"id": task_id, "kind": "edit", "prompt": f"change {task_id}",
+                      "context": {"files": [name]}})  # fmt: skip
+    _, out, _ = _run(["batch", _batch(tmp_path, tasks), "--json"], capsys)
+    return repo, json.loads(out)
+
+
+def test_apply_batch_only_ok_applies_the_passing_runs_in_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    make_repo: MakeRepo, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    repo, doc = _edit_batch(tmp_path, monkeypatch, fake, make_repo, capsys, {
+        "one": ("a.py", "x = 2\n"), "two": ("b.py", "y = 2\n"), "bad": "CANNOT_DO: unclear",
+    })  # fmt: skip
+    statuses = {r["task_id"]: r["status"] for r in doc["results"]}
+    assert statuses == {"one": "ok", "two": "ok", "bad": "escalate"}
+    code, out, _ = _run(["apply", "--batch", doc["batch_id"], "--only-ok", "--json"], capsys)
+    assert code == 0, out
+    report = json.loads(out)
+    assert sorted(a["task_id"] for a in report["applied"]) == ["one", "two"]
+    assert [s["task_id"] for s in report["skipped"]] == ["bad"]
+    assert report["conflict"] is None and report["not_tried"] == []
+    assert (repo / "a.py").read_text(encoding="utf-8") == "x = 2\n"
+    assert (repo / "b.py").read_text(encoding="utf-8") == "y = 2\n"
+    assert (repo / "c.py").read_text(encoding="utf-8") == "z = 1\n"
+    code, out, _ = _run(["apply", "--batch", doc["batch_id"], "--only-ok", "--json"], capsys)
+    assert code == 0 and json.loads(out)["applied"] == []  # all applied already: skipped
+
+
+def test_apply_batch_without_only_ok_refuses_a_batch_with_failed_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    make_repo: MakeRepo, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    repo, doc = _edit_batch(tmp_path, monkeypatch, fake, make_repo, capsys, {
+        "one": ("a.py", "x = 2\n"), "bad": "CANNOT_DO: unclear",
+    })  # fmt: skip
+    code, _, err = _run(["--lang", "en", "apply", "--batch", doc["batch_id"]], capsys)
+    assert code == 2 and "--only-ok" in err
+    assert (repo / "a.py").read_text(encoding="utf-8") == "x = 1\n"  # nothing was applied
+
+
+def test_apply_batch_stops_at_a_conflict_and_reports_the_rest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    make_repo: MakeRepo, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    repo, doc = _edit_batch(tmp_path, monkeypatch, fake, make_repo, capsys, {
+        "first": ("a.py", "x = 'first'\n"), "second": ("a.py", "x = 'second'\n"),
+        "third": ("a.py", "x = 'third'\n"),
+    })  # fmt: skip
+    assert all(r["status"] == "ok" for r in doc["results"])
+    code, out, _ = _run(["apply", "--batch", doc["batch_id"], "--only-ok", "--json"], capsys)
+    assert code == 5, out
+    report = json.loads(out)
+    assert [a["task_id"] for a in report["applied"]] == ["first"]  # same files: in a row
+    assert report["conflict"]["task_id"] == "second" and report["conflict"]["details"]
+    assert [r["task_id"] for r in report["not_tried"]] == ["third"]
+    assert (repo / "a.py").read_text(encoding="utf-8") == "x = 'first'\n"
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["apply"],  # neither a run nor a batch
+        ["apply", "r-1", "--batch", "b-1"],  # both
+        ["apply", "r-1", "--only-ok"],  # --only-ok belongs to --batch
+        ["apply", "--batch", "b-unknown"],
+    ],
+)
+def test_apply_batch_usage_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+) -> None:  # fmt: skip
+    _setup(tmp_path, monkeypatch)
+    code, _, _ = _run(argv, capsys)
+    assert code == 2
+
+
+# --- Faz 7b: stats -----------------------------------------------------------------------
+
+
+def test_stats_after_a_batch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    tasks = [_ask("a", tags=["docs"]), _ask("b", tags=["docs", "tests"])]
+    assert _run(["batch", _batch(work, tasks), "--json"], capsys)[0] == 0
+    code, out, _ = _run(["stats", "--since", "1d", "--json"], capsys)
+    assert code == 0, out
+    doc = json.loads(out)
+    ollama = {p["provider"]: p for p in doc["providers"]}["ollama"]
+    assert ollama["runs"] == 2 and ollama["ok"] == 2 and ollama["success_rate"] == 1.0
+    assert ollama["prompt_tokens"] == 20 and ollama["completion_tokens"] == 10
+    tags = {row["tag"]: row for row in doc["tags"]}
+    assert tags["docs"]["runs"] == 2 and tags["tests"]["runs"] == 1
+    code, out, _ = _run(["--lang", "en", "stats"], capsys)
+    assert code == 0 and "ollama" in out
+
+
+def test_stats_with_a_bad_since_is_a_usage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    _setup(tmp_path, monkeypatch)
+    assert _run(["stats", "--since", "soon"], capsys)[0] == 2

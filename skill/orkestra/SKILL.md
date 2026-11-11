@@ -101,7 +101,7 @@ verify:
 allow_new_files: false
 ```
 
-Alanlar: `id` (harf veya rakamla başlar, sonra harf/rakam, `.`, `_`, `-`), `kind` (`ask` | `edit`), `tier` (1–3), `prompt`, `context.files` / `context.globs`, `verify`, `verify_defaults` (bkz. aşağı), `privacy` (`normal` | `local_only`), `allow_new_files`, `output` (`format: json`, `schema: dosya.json`), `limits` (`timeout_s`, `max_retries`), `workspace`, `provider`, `model`, `edit_format` (`auto` | `replace` | `whole`, bkz. aşağı), `tags` (kayıtta görünen etiketler), `depends_on` (şimdilik kullanılmıyor). Bilinmeyen alan hata verir (kod 2).
+Alanlar: `id` (harf veya rakamla başlar, sonra harf/rakam, `.`, `_`, `-`), `kind` (`ask` | `edit`), `tier` (1–3), `prompt`, `context.files` / `context.globs`, `verify`, `verify_defaults` (bkz. aşağı), `privacy` (`normal` | `local_only`), `allow_new_files`, `output` (`format: json`, `schema: dosya.json`), `limits` (`timeout_s`, `max_retries`), `workspace`, `provider`, `model`, `edit_format` (`auto` | `replace` | `whole`, bkz. aşağı), `tags` (kayıtta ve `orkestra stats` içinde görünen etiketler), `depends_on` (batch içinde: bu görevler `ok` bitmeden başlamaz). Bilinmeyen alan hata verir (kod 2).
 
 Doğrulayıcılar (`verify`):
 - `command`: komut 0 ile bitmeli (`run`, `timeout_s`; boru veya `&&` gerekiyorsa `shell: true`).
@@ -121,14 +121,38 @@ Düzenleme görevleri hakkında bilmen gerekenler:
 
 İyi istem kuralları: tek bir sorumluluk; kapsam dışını açıkça yaz; çıktı biçimini belirt; mevcut stil örneği ver.
 
-Birden çok görev varsa her biri için ayrı görev dosyası yaz ve sırayla çalıştır (`orkestra run` her seferinde bir görev). Aynı dosyayı değiştiren işleri ayrı görevlere bölme, tek görevde topla; bir görevin değişikliği sonraki göreve lazımsa önce onu denetleyip `apply` et.
+Birden çok görev varsa bir batch dosyası yaz (`.orkestra/tasks/batch.yaml`); her görev, görev dosyasıyla aynı alanları alır:
+
+```yaml
+parallel: 4
+tasks:
+  - id: docs-a
+    kind: edit
+    prompt: "src/a.py içindeki her fonksiyona docstring ekle; kodu değiştirme."
+    context: {files: [src/a.py]}
+    verify:
+      - {type: command, run: "python -m pytest -q"}
+  - id: ozet
+    kind: ask
+    prompt: "docs-a bittikten sonra src/a.py'nin genel yapısını üç cümleyle özetle."
+    context: {files: [src/a.py]}
+    depends_on: [docs-a]
+```
+
+- Aynı dosyayı değiştiren işleri ayrı görevlere bölme, tek görevde topla. Orkestra dosyaları kesişen düzenleme görevlerini sırayla çalıştırır ve uyarır, ama ikisi de kullanıcının dosyalarından başlar ve ikisini birden uygulamak çakışabilir.
+- `depends_on` sadece sıradır: bağımlı görev, önceki görevin **uygulanmamış** değişikliğini görmez. Değişikliğe ihtiyaç varsa önce o batch'i denetleyip `apply` et, sonra ayrı bir batch çalıştır.
+- Uzak (ücretli) sağlayıcı kullanacak bir batch'ten önce maliyete bak: `orkestra batch .orkestra/tasks/batch.yaml --estimate --json`. Hiçbir şey gönderilmez. Tahmin, ilk adaydaki ilk denemedir; tekrarlar ve üst kademeye geçiş daha pahalıya çıkabilir.
+- Tahmin `estimate.confirm_above_usd`'yi aşarsa `batch --json` çalışmaz, kod 2 ile tahmin belgesini döner (`needs_confirmation: true`). Tahmini kullanıcıya göster; **kullanıcı kabul ederse** `--yes-cost` ekleyip tekrar çalıştır.
 
 ## 5. Çalıştırma ve okuma
 
 ```bash
 orkestra run .orkestra/tasks/kisa-ad.yaml --dry-run --json   # isteğe bağlı: nereye gidecek?
 orkestra run .orkestra/tasks/kisa-ad.yaml --json
+orkestra batch .orkestra/tasks/batch.yaml --json   # birden çok görev: tek JSON belgesi
 ```
+
+Batch belgesi: `batch_id`, `results` (her görev için `task_id`, `status`, `run_id` ve görevin zarfı; `skipped`: bağımlılığı `ok` bitmedi), `totals`. Her görevin zarfını aşağıdaki gibi oku.
 
 Sadece **sonuç zarfını** oku. Token tasarrufunun anahtarı bu; tam çıktıyı ancak gerekirse oku. Önemli alanlar:
 - `status`: `ok` · `failed` (doğrulama geçmedi, yükseltme yapılamadı) · `escalate` (iş şefe dönmeli) · `error` (sistem hatası; `error` alanında neden).
@@ -154,17 +178,19 @@ orkestra show <run_id> --json     # zarfı tekrar al
 
 `apply` sadece `status: ok` koşuları uygular. `--force` (doğrulamayı geçmemiş değişikliği uygulamak) bayrağını kullanıcı açıkça istemeden **asla** kullanma.
 
+Batch'te her `ok` koşunun diff'ini yukarıdaki gibi denetle. Hepsi uygunsa `orkestra apply --batch <batch_id> --only-ok --json`: geçen koşular çalıştıkları sırayla uygulanır, geçmeyenler ve zaten uygulananlar atlanır (`skipped`). Uygun bulmadığın bir koşu varsa önce onu `orkestra discard <run_id>` ile at. Çakışmada (kod 5) durur: `applied` uygulananlar, `conflict` çakışan koşu (yukarıdaki gibi kendin uygula), `not_tried` denenmeyenler; çakışmayı çözdükten sonra aynı komutu tekrar çalıştır. `--only-ok` olmadan, geçmeyen koşusu olan batch hiç uygulanmaz.
+
 `status: escalate` veya `failed` ise: `verification` ve gerekirse `orkestra show <run_id> --log` ile nedenini anla, işi kendin yap ya da durumu kullanıcıya açıkla. Değişiklik bırakan başarısız koşunun worktree'si durur; işin bitince `orkestra discard <run_id>`. Aynı görevi değişiklik yapmadan tekrar çalıştırma.
 
 Uzun bir çalışmanın sonunda sahipsiz worktree'leri ve eski kayıtları temizlemek için `orkestra gc --dry-run` ile bak, kullanıcı isterse `orkestra gc` çalıştır.
 
 ## 7. Raporlama
 
-İş bitince kullanıcıya kısaca bildir: hangi işler delege edildi, hangi sağlayıcı/kademe, kaç deneme, maliyet (zarftaki `usage.cost_usd`; günlük toplam için `orkestra budget --json`), neyi kendin düzelttin. Uzun log yapıştırma.
+İş bitince kullanıcıya kısaca bildir: hangi işler delege edildi, hangi sağlayıcı/kademe, kaç deneme, maliyet (zarftaki `usage.cost_usd`; günlük toplam için `orkestra budget --json`), neyi kendin düzelttin. Uzun log yapıştırma. Kullanıcı hangi işçinin ne kadar başarılı olduğunu sorarsa: `orkestra stats --since 7d --json` (sağlayıcı ve etiket başına koşu, başarı oranı, deneme, token, maliyet, süre).
 
 ## Asla yapma
 - İşçi çıktısını incelemeden `apply` etme; `apply --force` kullanıcı istemeden yok.
 - API anahtarlarını istem, görev dosyası veya bağlama koyma.
 - `.env`, anahtar dosyaları veya `.orkestraignore` kapsamındaki dosyaları bağlama ekleme.
-- Kullanıcının izni olmadan sağlayıcı onaylama (`--yes`) veya gizli bilgiyi uzağa gönderme (`--allow-secrets`).
+- Kullanıcının izni olmadan sağlayıcı onaylama (`--yes`), maliyet eşiğini geçme (`--yes-cost`) veya gizli bilgiyi uzağa gönderme (`--allow-secrets`).
 - Bütçe bittiğinde kullanıcıya sormadan config'teki limitleri değiştirme.

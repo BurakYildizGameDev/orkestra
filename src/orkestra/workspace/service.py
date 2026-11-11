@@ -1,4 +1,5 @@
-"""Run records and their worktrees: ``show``, ``apply``, ``discard``, ``gc`` (Mimari §3, §9).
+"""Run records and their worktrees: ``show``, ``apply`` (one run or a batch), ``discard``,
+``gc`` (Mimari §3, §9, §12).
 
 A run with a worktree has ``runs/<run_id>/worktree.json`` (repository, worktree path,
 baseline commit, state) and the ``workspace``/``worktree`` columns of its ``runs`` row.
@@ -17,7 +18,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from orkestra import paths
-from orkestra.errors import OrkestraError, UsageError
+from orkestra.errors import OrkestraError, UsageError, WorkspaceConflict
 from orkestra.i18n import t
 from orkestra.state import budget, db
 from orkestra.workspace import git_worktree as gw
@@ -152,6 +153,90 @@ def apply_run(
     db.update_run(conn, run_id, applied=1)
     gw.remove(wt)
     return Applied(run_id, wt.repo, result.files, result.merged)
+
+
+@dataclass(frozen=True)
+class BatchRun:
+    run_id: str
+    task_id: str
+
+
+@dataclass(frozen=True)
+class Skipped:
+    run: BatchRun
+    reason: str
+
+
+@dataclass(frozen=True)
+class Conflict:
+    run: BatchRun
+    message: str
+    details: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class BatchApplied:
+    batch_id: str
+    applied: tuple[tuple[BatchRun, Applied], ...]
+    skipped: tuple[Skipped, ...]
+    conflict: Conflict | None = None
+    not_tried: tuple[BatchRun, ...] = ()
+
+
+def _batch_rows(conn: sqlite3.Connection, batch_id: str) -> list[sqlite3.Row]:
+    """The batch's edit runs in the order they started (dependencies before dependents,
+    edit tasks on the same files one after the other: Faz 7a)."""
+    rows = conn.execute(
+        "SELECT run_id, task_id, kind, status, applied FROM runs WHERE batch_id = ? "
+        "ORDER BY started_at, run_id",
+        (batch_id,),
+    ).fetchall()
+    if not rows:
+        raise UsageError(t("apply.error.unknown_batch", batch_id=batch_id))
+    return [row for row in rows if row["kind"] == "edit"]
+
+
+def apply_batch(
+    conn: sqlite3.Connection,
+    batch_id: str,
+    *,
+    only_ok: bool,
+    redact: Callable[[str], str] = str,
+    force: bool = False,
+) -> BatchApplied:
+    """Apply a batch's edit runs one by one (Mimari §12); stop at the first conflict.
+
+    Without ``only_ok`` (and ``force``) a batch with runs that did not pass is refused
+    before anything is applied. Runs applied already, and with ``only_ok`` runs that did
+    not pass, are skipped; so is a run with nothing to apply. A conflict keeps that run's
+    worktree, reports it and leaves the later runs untried.
+    """
+    rows = _batch_rows(conn, batch_id)
+    pending = [row for row in rows if not row["applied"]]
+    failed = [row for row in pending if row["status"] != "ok"]
+    if failed and not only_ok and not force:
+        runs = ", ".join(f"{row['task_id']} ({row['run_id']}, {row['status']})" for row in failed)
+        raise UsageError(t("apply.error.batch_not_ok", batch_id=batch_id, runs=runs))
+    applied: list[tuple[BatchRun, Applied]] = []
+    skipped: list[Skipped] = []
+    for index, row in enumerate(rows):
+        run = BatchRun(row["run_id"], row["task_id"])
+        if row["applied"]:
+            skipped.append(Skipped(run, t("apply.batch.reason.already")))
+            continue
+        if row["status"] != "ok" and only_ok:
+            skipped.append(Skipped(run, t("apply.batch.reason.status", status=row["status"])))
+            continue
+        try:
+            applied.append((run, apply_run(conn, run.run_id, redact=redact, force=force)))
+        except WorkspaceConflict as exc:
+            later = tuple(BatchRun(r["run_id"], r["task_id"]) for r in rows[index + 1 :]
+                          if not r["applied"])  # fmt: skip
+            conflict = Conflict(run, exc.message, tuple(exc.details))
+            return BatchApplied(batch_id, tuple(applied), tuple(skipped), conflict, later)
+        except UsageError as exc:  # nothing to apply, discarded, worktree gone
+            skipped.append(Skipped(run, exc.message))
+    return BatchApplied(batch_id, tuple(applied), tuple(skipped))
 
 
 def discard_run(run_id: str) -> bool:

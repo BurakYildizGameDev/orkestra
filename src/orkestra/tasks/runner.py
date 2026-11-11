@@ -474,6 +474,67 @@ async def plan_task(
             state.close()
 
 
+@dataclass(frozen=True)
+class Estimate:
+    """``batch --estimate``: the first request to the first candidate (Mimari §19).
+
+    ``cost_usd`` is ``None`` when the price is not known (a code agent, a remote model
+    without a price); a local model without a price costs 0. Retries, feedback and
+    escalation are not included, so a run can cost more.
+    """
+
+    candidate: Candidate | None
+    prompt_tokens: int
+    max_output_tokens: int | None  # None: a code agent (no output limit, no price)
+    cost_usd: float | None
+    error: OrkestraError | None = None  # no candidate: why
+    warnings: tuple[str, ...] = ()
+
+
+async def estimate_task(
+    task: TaskSpec,
+    config: Config,
+    options: RunOptions | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
+    cwd: Path | None = None,
+    now: db.Clock = db.local_now,
+    conn: sqlite3.Connection | None = None,
+    fetch_prices: bool = False,
+    price_lock: asyncio.Lock | None = None,
+) -> Estimate:
+    """Tokens and cost of the task's first request; nothing is sent to a worker.
+
+    ``fetch_prices``: refresh price lists first (before a real run); ``--estimate`` alone
+    uses the cached ones, like ``--dry-run``. A task that cannot even be prepared (bad
+    context file, no repository) raises, as ``run`` would.
+    """
+    env = os.environ if environ is None else environ
+    prep = _prepare(task, options or RunOptions(), config, env, cwd)
+    state = db.connect() if conn is None else conn
+    try:
+        planned = await _route(prep, state, now(), fetch_prices=fetch_prices, price_lock=price_lock)
+    finally:
+        if conn is None:
+            state.close()
+    warnings = tuple(prep.warnings)
+    if not planned.candidates:
+        return Estimate(None, 0, None, None, error=planned.error(), warnings=warnings)
+    first = planned.candidates[0]
+    if isinstance(first.config, CliAgentProvider):
+        tokens = estimate_tokens(len(prep.agent_user))
+        return Estimate(first, tokens, None, None, warnings=warnings)
+    system, user = prep.messages(prep.edit_format(first))
+    max_output = first.model.max_output_tokens or config.defaults.max_output_tokens
+    amount = budget.estimate(len(system) + len(user), max_output, first.price)
+    if first.price is not None:
+        cost: float | None = amount.cost_usd
+    else:
+        cost = 0.0 if first.config.local else None
+    tokens = estimate_tokens(len(system) + len(user))
+    return Estimate(first, tokens, max_output, cost, warnings=warnings)
+
+
 async def run_task(
     task: TaskSpec,
     config: Config,
