@@ -4,6 +4,10 @@ Reviews changes in a run's worktree or patch against the task prompt using a tie
 Produces a structured JSON report (risk, flags, summary).
 On schema-invalid output, retries once, then falls back to ``risk: unknown``.
 Results are saved to ``runs/<run_id>/review.json`` and envelope's ``review`` field is populated.
+
+After the code review (D-062): a provider or routing error is raised (``orkestra review``
+exits with its code; ``review.auto`` leaves the run without a review), the diff is masked
+before it is sent, and large diffs are split on real file boundaries (``patchparse``).
 """
 
 from __future__ import annotations
@@ -11,21 +15,29 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
+from orkestra.chief import patchparse
 from orkestra.chief.call import query_chief_model
+from orkestra.config.loader import read_yaml
 from orkestra.config.schema import Config
-from orkestra.envelope import ENVELOPE_VERSION
-from orkestra.errors import OrkestraError
+from orkestra.envelope import ENVELOPE_VERSION, EnvelopeReview, ResultEnvelope, to_json
+from orkestra.errors import OrkestraError, UsageError
 from orkestra.i18n import t
+from orkestra.security.redact import Redactor, configured_secrets
+from orkestra.tasks.runner import ProviderSlots
 from orkestra.workspace import service
 
 REVIEW_FILE_NAME = "review.json"
 LARGE_DIFF_LINES = 400
+
+Risk = Literal["low", "medium", "high", "unknown"]
+_RISK_ORDER: tuple[Risk, ...] = ("unknown", "high", "medium", "low")  # the first one wins
 
 
 class ReviewFormatError(OrkestraError):
@@ -41,7 +53,7 @@ class ReviewFlag(BaseModel):
 
 
 class ReviewReport(BaseModel):
-    risk: Literal["low", "medium", "high", "unknown"]
+    risk: Risk
     flags: list[ReviewFlag] = Field(default_factory=list)
     summary: str = ""
     model: str | None = None
@@ -82,11 +94,14 @@ def _extract_json_block(text: str) -> str:
 
 
 def parse_review_response(raw: str) -> ReviewReport:
-    """Parse and validate review JSON response from model."""
+    """Parse and validate review JSON response from model.
+
+    The messages go back to the model as feedback, so they are English (worker prompts).
+    """
     cleaned = _extract_json_block(raw)
     try:
         data = json.loads(cleaned)
-    except Exception as exc:
+    except ValueError as exc:
         raise ReviewFormatError(f"Output is not valid JSON: {exc}") from exc
 
     if not isinstance(data, dict):
@@ -98,240 +113,177 @@ def parse_review_response(raw: str) -> ReviewReport:
         raise ReviewFormatError(f"Output does not conform to review schema: {exc}") from exc
 
 
-def _split_patch_by_files(patch: str) -> list[tuple[str, str]]:
-    """Split unified diff patch into (file_path, file_patch) pairs."""
-    blocks: list[tuple[str, str]] = []
-    current_file = ""
-    current_lines: list[str] = []
+class _Reviewer:
+    def __init__(
+        self,
+        config: Config,
+        run_id: str,
+        task_prompt: str,
+        slots: ProviderSlots | None,
+        conn: sqlite3.Connection | None,
+    ) -> None:
+        self.config = config
+        self.run_id = run_id
+        self.task_prompt = task_prompt
+        self.slots = slots
+        self.conn = conn
 
-    for line in patch.splitlines(keepends=True):
-        if line.startswith("diff --git ") or line.startswith("--- "):
-            if current_lines and current_file:
-                blocks.append((current_file, "".join(current_lines)))
-                current_lines = []
-            if line.startswith("diff --git "):
-                parts = line.strip().split()
-                if len(parts) >= 4:
-                    current_file = parts[3].removeprefix("b/")
-            elif line.startswith("--- ") and not current_file:
-                current_file = line.strip().split()[-1].removeprefix("a/")
-        current_lines.append(line)
-
-    if current_lines and current_file:
-        blocks.append((current_file, "".join(current_lines)))
-    elif current_lines:
-        blocks.append(("diff", "".join(current_lines)))
-
-    return blocks
-
-
-async def _review_patch_text(
-    patch: str,
-    task_prompt: str,
-    config: Config,
-    run_id: str,
-) -> tuple[ReviewReport, str | None]:
-    """Query model with retry for a patch segment."""
-    user_prompt = f"Task:\n{task_prompt}\n\nDiff:\n{patch}"
-    label: str | None = None
-
-    try:
-        resp, label = await query_chief_model(
-            config,
-            tier=config.review.tier,
+    async def _ask(self, user: str) -> tuple[str, str]:
+        return await query_chief_model(
+            self.config,
+            tier=self.config.review.tier,
             system=_SYSTEM_PROMPT,
-            user=user_prompt,
+            user=user,
             json_mode=True,
-            run_id=run_id,
+            run_id=self.run_id,
+            slots=self.slots,
+            conn=self.conn,
         )
-        report = parse_review_response(resp)
-        report.model = label
-        return report, label
-    except ReviewFormatError as exc:
-        # Retry ONCE with feedback (Mimari §19)
-        feedback_user = (
-            f"Your previous response did not match the required JSON schema: {exc}.\n"
-            f"Please respond strictly with valid JSON.\n\nTask:\n{task_prompt}\n\nDiff:\n{patch}"
-        )
+
+    async def review(self, patch: str) -> ReviewReport:
+        """One patch: a bad answer gets one retry with feedback, then ``risk: unknown``.
+        Provider and routing errors are raised."""
+        user = f"Task:\n{self.task_prompt}\n\nDiff:\n{patch}"
+        answer, label = await self._ask(user)
         try:
-            resp, label = await query_chief_model(
-                config,
-                tier=config.review.tier,
-                system=_SYSTEM_PROMPT,
-                user=feedback_user,
-                json_mode=True,
-                run_id=run_id,
+            report = parse_review_response(answer)
+        except ReviewFormatError as exc:
+            feedback = (
+                f"Your previous response did not match the required JSON schema: {exc}.\n"
+                f"Please respond strictly with valid JSON.\n\n{user}"
             )
-            report = parse_review_response(resp)
-            report.model = label
-            return report, label
-        except Exception:
-            # Second failure: fall back to risk: unknown
-            return (
-                ReviewReport(
-                    risk="unknown",
-                    flags=[],
-                    summary=t("review.unknown_fallback"),
-                    model=label,
-                ),
-                label,
-            )
-    except Exception as exc:
-        return (
-            ReviewReport(
-                risk="unknown",
-                flags=[],
-                summary=f"Review failed: {exc}",
-                model=label,
-            ),
-            label,
-        )
+            answer, label = await self._ask(feedback)
+            try:
+                report = parse_review_response(answer)
+            except ReviewFormatError:
+                return ReviewReport(
+                    risk="unknown", summary=t("review.unknown_fallback"), model=label
+                )
+        return report.model_copy(update={"model": label})
 
 
-async def review_run(run_id: str, config: Config) -> ReviewReport:
-    """Run code review for ``run_id``, save review.json, and update envelope."""
+async def review_run(
+    run_id: str,
+    config: Config,
+    *,
+    slots: ProviderSlots | None = None,
+    conn: sqlite3.Connection | None = None,
+) -> ReviewReport:
+    """Run code review for ``run_id``, save review.json, and update envelope.
+
+    ``slots`` and ``conn`` are the running task's when ``review.auto`` calls it, so the
+    review waits for the same provider limits (D-062).
+    """
     run_dir = service.run_dir_for(run_id)
-
-    # Read task prompt
-    task_prompt = ""
-    task_yaml = run_dir / "task.yaml"
-    if task_yaml.is_file():
-        try:
-            task_data = json.loads(task_yaml.read_bytes()) if task_yaml.suffix == ".json" else {}
-            if not task_data:
-                from orkestra.config.loader import read_yaml
-
-                task_data = read_yaml(task_yaml)
-            task_prompt = str(task_data.get("prompt", ""))
-        except Exception:
-            task_prompt = ""
-
-    # Read patch
-    patch = service._diff_text(run_dir, redact=str)
+    redact = Redactor(configured_secrets(config), passwords=False)
+    # A saved patch was masked when it was written; mask again with today's keys anyway.
+    patch = redact(service.show(run_id, "diff"))
     if not patch.strip():
-        report = ReviewReport(risk="low", flags=[], summary=t("review.no_changes"))
-        _save_review(run_dir, report)
-        _update_envelope(run_dir, report)
-        return report
-
-    # Split if large
-    patch_lines = patch.count("\n")
-    if patch_lines > LARGE_DIFF_LINES:
-        file_blocks = _split_patch_by_files(patch)
-        if len(file_blocks) > 1:
-            all_flags: list[ReviewFlag] = []
-            summaries: list[str] = []
-            risks: list[str] = []
-            model_label: str | None = None
-
-            for file_name, file_patch in file_blocks:
-                sub_report, m = await _review_patch_text(file_patch, task_prompt, config, run_id)
-                model_label = m or model_label
-                all_flags.extend(sub_report.flags)
-                if sub_report.summary:
-                    summaries.append(f"{file_name}: {sub_report.summary}")
-                risks.append(sub_report.risk)
-
-            highest_risk: Literal["low", "medium", "high", "unknown"] = "low"
-            if "unknown" in risks:
-                highest_risk = "unknown"
-            elif "high" in risks:
-                highest_risk = "high"
-            elif "medium" in risks:
-                highest_risk = "medium"
-
-            combined_report = ReviewReport(
-                risk=highest_risk,
-                flags=all_flags,
-                summary="; ".join(summaries),
-                model=model_label,
-            )
-            _save_review(run_dir, combined_report)
-            _update_envelope(run_dir, combined_report)
-            return combined_report
-
-    report, model_label = await _review_patch_text(patch, task_prompt, config, run_id)
-    report.model = model_label
+        report = ReviewReport(risk="low", summary=t("review.no_changes"))
+    else:
+        reviewer = _Reviewer(config, run_id, _task_prompt(run_dir), slots, conn)
+        report = await _review_patch(reviewer, patch)
     _save_review(run_dir, report)
     _update_envelope(run_dir, report)
     return report
 
 
+def _task_prompt(run_dir: Path) -> str:
+    task_yaml = run_dir / "task.yaml"
+    if not task_yaml.is_file():
+        return ""
+    prompt = read_yaml(task_yaml).get("prompt", "")
+    return prompt if isinstance(prompt, str) else str(prompt)
+
+
+async def _review_patch(reviewer: _Reviewer, patch: str) -> ReviewReport:
+    """A large diff with several files is reviewed file by file and the results merged."""
+    files = patchparse.parse_patch(patch)
+    if patch.count("\n") <= LARGE_DIFF_LINES or len(files) < 2:
+        return await reviewer.review(patch)
+    reports = [(f.path, await reviewer.review(f.text)) for f in files]
+    risks = {report.risk for _path, report in reports}
+    return ReviewReport(
+        risk=next(r for r in _RISK_ORDER if r in risks),
+        flags=[flag for _path, report in reports for flag in report.flags],
+        summary="; ".join(f"{path}: {r.summary}" for path, r in reports if r.summary),
+        model=next((r.model for _path, r in reversed(reports) if r.model), None),
+    )
+
+
 def _save_review(run_dir: Path, report: ReviewReport) -> None:
-    path = run_dir / REVIEW_FILE_NAME
+    _write_atomic(run_dir / REVIEW_FILE_NAME, json.dumps(report.model_dump(mode="json"), indent=2))
+
+
+def _write_atomic(path: Path, text: str) -> None:
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-    data = report.model_dump(mode="json")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
 
 
 def _update_envelope(run_dir: Path, report: ReviewReport) -> None:
+    """Add ``review`` to a finished run's envelope (``review.auto`` adds it before the
+    envelope is written)."""
     env_path = run_dir / "envelope.json"
     if not env_path.is_file():
         return
     try:
-        data = json.loads(env_path.read_text(encoding="utf-8"))
-        data["envelope_version"] = ENVELOPE_VERSION
-        data["review"] = {"risk": report.risk, "flags_count": len(report.flags)}
-        tmp = env_path.with_name(f"{env_path.name}.{os.getpid()}.tmp")
-        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, env_path)
-    except Exception:
-        pass
+        envelope = ResultEnvelope.model_validate_json(env_path.read_bytes())
+    except (OSError, ValidationError) as exc:
+        raise UsageError(t("review.error.envelope", path=env_path.name, reason=exc)) from exc
+    updated = envelope.model_copy(
+        update={
+            "envelope_version": ENVELOPE_VERSION,
+            "review": EnvelopeReview(risk=report.risk, flags_count=len(report.flags)),
+        }
+    )
+    _write_atomic(env_path, to_json(updated))
+
+
+def load_flags(run_id: str, run_dir: Path) -> list[ReviewFlag]:
+    """The flags in ``review.json`` (``show --only-flagged``); missing or unreadable → 2."""
+    path = run_dir / REVIEW_FILE_NAME
+    if not path.is_file():
+        raise UsageError(t("show.no_review", run_id=run_id))
+    try:
+        return ReviewReport.model_validate_json(path.read_bytes()).flags
+    except (OSError, ValidationError) as exc:
+        raise UsageError(
+            t("show.error.review_unreadable", run_id=run_id, path=path.name, reason=exc)
+        ) from exc
 
 
 def extract_flagged_lines(patch: str, flags: Sequence[ReviewFlag], context_lines: int = 5) -> str:
-    """Extract flagged line ranges from unified diff with +-context_lines of context."""
-    if not flags:
-        return ""
-
-    flags_by_file: dict[str, list[tuple[int, int]]] = {}
+    """The flagged line ranges of the diff with ±``context_lines`` of context: each flagged
+    file's header, and only the hunks that have a line in a range."""
+    ranges: dict[str, list[tuple[int, int]]] = {}
     for flag in flags:
-        # Standardize file path
-        norm = flag.file.replace("\\", "/").removeprefix("a/").removeprefix("b/")
-        flags_by_file.setdefault(norm, []).append(
-            (max(1, flag.start_line - context_lines), flag.end_line + context_lines)
-        )
+        span = (max(1, flag.start_line - context_lines), flag.end_line + context_lines)
+        path = flag.file.replace("\\", "/").removeprefix("./")
+        ranges.setdefault(path, []).append(span)
+        if path.startswith(("a/", "b/")):  # a model may copy the diff's side prefix
+            ranges.setdefault(path[2:], []).append(span)
 
-    output_lines: list[str] = []
-    current_file = ""
-    current_hunk_new_line = 0
-    in_target_file = False
-    file_ranges: list[tuple[int, int]] = []
-
-    for line in patch.splitlines(keepends=True):
-        if line.startswith("diff --git ") or line.startswith("+++ "):
-            if line.startswith("diff --git "):
-                parts = line.strip().split()
-                current_file = (
-                    parts[3].removeprefix("b/").replace("\\", "/") if len(parts) >= 4 else ""
-                )
-            elif line.startswith("+++ "):
-                current_file = line.strip().split()[-1].removeprefix("b/").replace("\\", "/")
-            in_target_file = current_file in flags_by_file
-            file_ranges = flags_by_file.get(current_file, [])
-            if in_target_file:
-                output_lines.append(line)
+    out: list[str] = []
+    for file in patchparse.parse_patch(patch):
+        wanted = ranges.get(file.path)
+        if not wanted:
             continue
+        shown = _flagged_hunks(file.hunks, wanted)
+        if shown:
+            out.extend(file.header)
+            out.extend(shown)
+    return "".join(out)
 
-        if not in_target_file:
-            continue
 
-        if line.startswith("@@ "):
-            output_lines.append(line)
-            # Parse @@ -a,b +start,len @@
-            match = re.search(r"\+(\d+)", line)
-            current_hunk_new_line = int(match.group(1)) if match else 1
-            continue
+def _flagged_hunks(hunks: Sequence[patchparse.Hunk], wanted: list[tuple[int, int]]) -> list[str]:
+    def inside(line_no: int) -> bool:
+        return any(start <= line_no <= end for start, end in wanted)
 
-        prefix = line[:1]
-        line_num = current_hunk_new_line
-        if prefix in (" ", "+"):
-            current_hunk_new_line += 1
-
-        # Check if line_num matches any flagged range
-        matches = any(start <= line_num <= end for start, end in file_ranges)
-        if matches:
-            output_lines.append(line)
-
-    return "".join(output_lines)
+    out: list[str] = []
+    for hunk in hunks:
+        lines = [line for line_no, line in patchparse.numbered(hunk) if inside(line_no)]
+        if lines:
+            out.append(hunk.header)
+            out.extend(lines)
+    return out

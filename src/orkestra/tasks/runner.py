@@ -60,6 +60,7 @@ from orkestra.config.loader import dump_yaml
 from orkestra.config.schema import CliAgentProvider, Config, EditFormat, resolve_edit_format
 from orkestra.envelope import (
     Changes,
+    EnvelopeReview,
     EnvelopeUsage,
     Escalation,
     Failover,
@@ -1366,19 +1367,23 @@ class _TaskRun:
             and envelope.changes is not None
             and envelope.changes.files > 0
         ):
-            try:
-                from orkestra.chief import review
-                from orkestra.envelope import EnvelopeReview
-
-                report = await review.review_run(self.run_id, self.prep.config)
-                envelope = envelope.model_copy(
-                    update={
-                        "review": EnvelopeReview(risk=report.risk, flags_count=len(report.flags))
-                    }
-                )
-            except Exception as exc:
-                self.log.warning("automatic review failed: %s", exc)
+            envelope = await self._auto_review(envelope)
         return self._finish(envelope, text, 0)
+
+    async def _auto_review(self, envelope: ResultEnvelope) -> ResultEnvelope:
+        """``review.auto``: review the change with this run's provider slots; the run stays
+        ``ok`` without a review when that fails, and its duration includes it (D-062)."""
+        from orkestra.chief import review  # chief.review imports this module
+
+        try:
+            report = await review.review_run(
+                self.run_id, self.prep.config, slots=self.slots, conn=self.conn
+            )
+        except OrkestraError as exc:
+            self.log.warning("automatic review failed: %s %s", type(exc).__name__, exc.message)
+            return envelope.model_copy(update={"duration_s": self._duration()})
+        found = EnvelopeReview(risk=report.risk, flags_count=len(report.flags))
+        return envelope.model_copy(update={"review": found, "duration_s": self._duration()})
 
     def _checks_failed(self, answer: _Answer) -> TaskOutcome:
         """No answer passed. On tier 3 there is nothing left to try: the chief takes over."""

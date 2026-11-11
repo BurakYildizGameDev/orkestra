@@ -16,6 +16,7 @@ from orkestra import paths
 from orkestra.config.schema import CliAgentProvider, Config
 from orkestra.errors import (
     BudgetExhausted,
+    OrkestraError,
     ProviderError,
     ProviderTimeout,
 )
@@ -41,6 +42,13 @@ from orkestra.state import budget, db, health
 from orkestra.tasks.runner import ProviderSlots, new_run_id
 
 
+def prompt_has_secrets(
+    config: Config, text: str, *, environ: Mapping[str, str] | None = None
+) -> bool:
+    """Whether ``text`` holds a key or token that must not reach a remote provider."""
+    return bool(blocking(scan_text("chief", text, configured_secrets(config, environ))))
+
+
 async def query_chief_model(
     config: Config,
     *,
@@ -57,26 +65,22 @@ async def query_chief_model(
 ) -> tuple[str, str]:
     """Query a candidate model chosen by the router for a chief tool.
 
-    Returns ``(answer_text, provider_model_label)``.
-    Raises ``NoProviderAvailable`` if no suitable candidate is available.
+    Returns ``(answer_text, provider_model_label)``. Candidates are tried in the router's
+    order; when all of them fail, the last provider (or budget) error is raised, and when
+    none could be tried, the router's own error (``NoProviderAvailable``,
+    ``ConsentRequired``) (D-062).
     """
     env = os.environ if environ is None else environ
     current_time = db.local_now() if now is None else now
     effective_run_id = run_id or new_run_id(current_time)
     provider_slots = slots or ProviderSlots(config)
 
-    # Check secrets in prompts
-    known_secrets = configured_secrets(config)
-    findings = scan_text("chief", system + "\n" + user, known_secrets)
-    has_secrets = bool(blocking(findings))
-
-    prompt_chars = len(system) + len(user)
     needs = TaskNeeds(
         kind="ask",
         tier=tier,
         privacy="local_only" if privacy == "local_only" else "normal",
-        prompt_chars=prompt_chars,
-        has_secrets=has_secrets,
+        prompt_chars=len(system) + len(user),
+        has_secrets=prompt_has_secrets(config, system + "\n" + user, environ=env),
         allow_secrets=False,
     )
 
@@ -88,37 +92,33 @@ async def query_chief_model(
     try:
         snapshot = take_snapshot(conn, config, current_time, environ=env)
         route_result = route(needs, config, snapshot, profile=None)
-        if not route_result.candidates:
-            raise route_result.error()
-
-        remaining = list(route_result.candidates)
-        last_error: Exception | None = None
-
-        while remaining:
-            candidate = remaining.pop(0)
+        last_error: OrkestraError | None = None
+        for candidate in route_result.candidates:
             if health.get(conn, candidate.provider).is_open(current_time):
                 continue
-
-            answer = await _try_candidate(
-                candidate=candidate,
-                config=config,
-                conn=conn,
-                system=system,
-                user=user,
-                json_mode=json_mode,
-                run_id=effective_run_id,
-                slots=provider_slots,
-                current_time=current_time,
-                env=env,
-            )
+            try:
+                answer = await _try_candidate(
+                    candidate=candidate,
+                    config=config,
+                    conn=conn,
+                    system=system,
+                    user=user,
+                    json_mode=json_mode,
+                    run_id=effective_run_id,
+                    slots=provider_slots,
+                    current_time=current_time,
+                    env=env,
+                )
+            except (ProviderError, BudgetExhausted) as exc:
+                last_error = exc
+                continue
             if answer is not None:
                 return answer, candidate.label
-
-        if last_error:
+        if last_error is not None:
             raise last_error
         raise route_result.error()
     finally:
-        if should_close_conn and conn is not None:
+        if should_close_conn:
             conn.close()
 
 
@@ -134,6 +134,11 @@ async def _try_candidate(
     current_time: datetime,
     env: Mapping[str, str],
 ) -> str | None:
+    """The candidate's answer; ``None`` when another task paused it while this one waited.
+
+    A provider error is recorded in its health and raised; a success closes the failure
+    streak (D-062). ``BudgetExhausted`` means nothing was sent.
+    """
     slot = slots(candidate.provider)
     await slot.acquire()
     try:
@@ -142,27 +147,16 @@ async def _try_candidate(
 
         prompt_chars = len(system) + len(user)
         max_output = candidate.model.max_output_tokens or config.defaults.max_output_tokens
-        amount = budget.estimate(
-            prompt_chars,
-            max_output,
-            candidate.price,
-            runs=1,
+        amount = budget.estimate(prompt_chars, max_output, candidate.price, runs=1)
+        reservation = budget.reserve(
+            conn,
+            provider=candidate.provider,
+            model=candidate.model.id,
+            run_id=run_id,
+            budget=candidate.config.budget,
+            amount=amount,
+            now=current_time,
         )
-
-        try:
-            reservation = budget.reserve(
-                conn,
-                provider=candidate.provider,
-                model=candidate.model.id,
-                run_id=run_id,
-                budget=candidate.config.budget,
-                amount=amount,
-                now=current_time,
-            )
-        except BudgetExhausted:
-            return None
-
-        result_text: str | None = None
         try:
             if isinstance(candidate.config, CliAgentProvider):
                 agent = create_agent(candidate.provider, candidate.config, env)
@@ -176,33 +170,31 @@ async def _try_candidate(
                     model=candidate.model.id,
                     output_file=output_file,
                 )
+                # A non-zero exit or an empty answer is a ProviderBadOutput (CliAgent.run).
                 agent_res = await agent.run(agent_req)
                 result_text = agent_res.final_message
-                prompt_toks = estimate_tokens(len(system) + len(user))
-                compl_toks = estimate_tokens(len(result_text))
                 budget.settle(
                     conn,
                     reservation,
-                    prompt_tokens=prompt_toks,
-                    completion_tokens=compl_toks,
+                    prompt_tokens=estimate_tokens(prompt_chars),
+                    completion_tokens=estimate_tokens(len(result_text)),
                     cost_usd=0.0,
                     estimated=True,
                     now=current_time,
                 )
             else:
                 provider = create_chat_provider(candidate.provider, candidate.config, env)
-                timeout = request_timeout(candidate.config, config.defaults)
                 comp_req = CompletionRequest(
                     model=candidate.model.id,
                     system=system,
                     user=user,
                     json_mode=json_mode,
-                    timeout_s=timeout,
+                    timeout_s=request_timeout(candidate.config, config.defaults),
                     max_output_tokens=max_output,
                 )
                 res = await provider.complete(comp_req)
                 result_text = res.text
-                prompt_toks = res.usage.prompt_tokens or estimate_tokens(len(system) + len(user))
+                prompt_toks = res.usage.prompt_tokens or estimate_tokens(prompt_chars)
                 compl_toks = res.usage.completion_tokens or estimate_tokens(len(result_text))
                 cost = res.usage.cost_usd
                 if cost is None and candidate.price is not None:
@@ -216,7 +208,6 @@ async def _try_candidate(
                     estimated=res.usage.cost_usd is None,
                     now=current_time,
                 )
-            return result_text
         except ProviderError as exc:
             if isinstance(exc, ProviderTimeout):
                 budget.settle_as_reserved(conn, reservation, now=current_time)
@@ -231,9 +222,11 @@ async def _try_candidate(
                     now=current_time,
                 )
             health.record_failure(conn, candidate.provider, exc, current_time)
-            return None
+            raise
         except BaseException:
             budget.release(conn, reservation)
             raise
+        health.record_success(conn, candidate.provider)
+        return result_text
     finally:
         slot.release()

@@ -37,7 +37,10 @@ Projeyi tanımıyorsan tüm dosyaları açma; önce haritaya bak:
 
 ```bash
 orkestra map --json           # veya .orkestra/MAP.md dosyasını oku
+orkestra map src/api --json   # sadece değişen klasörü yenile; haritanın geri kalanı korunur
 ```
+
+Haritanın `warnings` alanını oku: özet alamayan dosyalar (gizli bilgi, sağlayıcı hatası) ve `truncated: true` (`--max-files` sınırı) orada yazar.
 
 `unapplied` altında koşu varsa önce onları denetle (§6): uygula ya da `discard` et.
 
@@ -207,6 +210,7 @@ orkestra show <run_id> --json     # zarfı tekrar al
 1. Diff büyükse önce ön inceleme al, sonra sadece işaretli kısımları oku:
    `orkestra review <run_id> --json` → `orkestra show <run_id> --diff --only-flagged`.
    `risk: high` veya `unknown` ise, ya da değişiklik güvenlik, kimlik doğrulama veya veri silme ile ilgiliyse diff'in **tamamını** satır satır oku.
+   `review` sadece danışman niteliğinde bir ön incelemedir; `risk: low` diff'i okumama izni değildir. `review` hata verirse (ör. kod 3: inceleme modeli yok ya da hata verdi) diff'in tamamını kendin oku.
    Diff'i incele. Doğrulayıcıların yakalayamayacağı şeylere bak: mantık hatası, gereksiz değişiklik, stil uyumsuzluğu, güvenlik, istenmeyen dosyalar.
 2. Uygunsa: `orkestra apply <run_id>`. Değilse: `orkestra discard <run_id>` ve ya istemi iyileştirip tekrar çalıştır ya da kendin yap.
 3. `apply` çakışma verirse (kod 5) **hiçbir dosya** yazılmamıştır, çakışmayanlar da yazılmamıştır. Worktree durur. Hata `details` içinde sadece çakışan dosyaları listeler. Değişikliğin tamamı `orkestra show <run_id> --diff` içindedir. Diff'teki **her dosyayı** kendin uygula: çakışmayanları olduğu gibi, çakışanları kullanıcının son haliyle birleştirerek. Bütün dosyaları uyguladıktan sonra `orkestra discard <run_id>` çalıştır. Emin değilsen önce kullanıcıya sor.

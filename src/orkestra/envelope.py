@@ -21,7 +21,7 @@ Status = Literal["ok", "failed", "escalate", "error"]
 
 
 class EnvelopeReview(BaseModel):
-    risk: str
+    risk: Literal["low", "medium", "high", "unknown"]
     flags_count: int
 
 

@@ -847,7 +847,7 @@ def build_app() -> typer.Typer:
     def cache_clear(as_json: Annotated[bool, _json_option()] = False) -> None:
         from orkestra.chief import repomap
 
-        removed = responses.clear() + repomap.clear_cache(Path.cwd())
+        removed = responses.clear() + repomap.clear_cache(repomap.project_root(Path.cwd()))
         if as_json:
             _echo_json({"removed": removed})
         else:
@@ -897,15 +897,21 @@ def build_app() -> typer.Typer:
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
         from orkestra.chief import repomap
 
-        root = loader.find_git_root(Path.cwd()) or Path.cwd()
+        cwd = Path.cwd()
+
+        def echo_progress(done: int, total: int, path: str) -> None:
+            typer.echo(t("map.progress", done=done, total=total, path=path), err=True)
+
+        progress = echo_progress if not as_json and sys.stderr.isatty() else None
+        root = repomap.project_root(cwd)
         result = asyncio.run(
-            repomap.generate_repomap(root, paths, loaded.config, max_files=max_files)
+            repomap.generate_repomap(
+                root, paths, loaded.config, max_files=max_files, cwd=cwd, on_progress=progress
+            )
         )
         for w in result.warnings:
             typer.echo(w, err=True)
-
-        md_content = repomap.render_markdown(result.files)
-        out_path = repomap.write_map_file(root, md_content)
+        out_path = repomap.save_map(root, result)
 
         if as_json:
             _echo_json(
@@ -924,11 +930,14 @@ def build_app() -> typer.Typer:
                     "cached_files": result.cached_files,
                     "model_used": result.model_used,
                     "warnings": result.warnings,
+                    "truncated": result.truncated,
+                    "map_files": len(result.map_files),
+                    "map_path": str(out_path),
                 }
             )
             return
 
-        typer.echo(t("map.generated", path=str(out_path), files=result.total_files))
+        typer.echo(t("map.generated", path=str(out_path), files=len(result.map_files)))
 
     @plan_app.command("expand", help=t("cli.plan.expand.help"))
     def plan_expand(

@@ -83,13 +83,15 @@ def parse_and_validate_batch(raw: str) -> batch.BatchSpec:
             raise PlanFormatError(t("plan.error.task_not_mapping", index=i))
         try:
             tasks.append(parse_task(item, source=f"tasks[{i}]"))
-        except Exception as exc:
-            raise PlanFormatError(t("plan.error.task_validation", index=i, reason=exc)) from exc
+        except UsageError as exc:
+            reason = "; ".join([exc.message, *exc.details])
+            raise PlanFormatError(t("plan.error.task_validation", index=i, reason=reason)) from exc
 
     try:
         return batch.from_tasks(tasks, source="plan expand", parallel=data.get("parallel"))
-    except Exception as exc:
-        raise PlanFormatError(t("plan.error.batch_validation", reason=exc)) from exc
+    except UsageError as exc:
+        reason = "; ".join([exc.message, *exc.details])
+        raise PlanFormatError(t("plan.error.batch_validation", reason=reason)) from exc
 
 
 def check_verifier_warnings(spec: batch.BatchSpec) -> list[str]:
@@ -120,7 +122,9 @@ async def expand_plan(
 ) -> tuple[batch.BatchSpec, list[str]]:
     """Expand draft plan into batch YAML, write to output_path, and return (BatchSpec, warnings).
 
-    Does NOT execute the batch.
+    Does NOT execute the batch. Only an answer that is not a valid batch is retried (with
+    the error as feedback); routing, budget and provider errors are raised as they are
+    (D-062).
     """
     if not draft_path.is_file():
         raise UsageError(t("plan.error.draft_not_found", path=draft_path))
@@ -132,7 +136,7 @@ async def expand_plan(
     if map_text:
         user_prompt += f"\n\nProject Map:\n{map_text}"
 
-    last_error: Exception | None = None
+    last_error: PlanFormatError | None = None
     spec: batch.BatchSpec | None = None
 
     for attempt in range(1 + MAX_RETRIES):
@@ -142,16 +146,16 @@ async def expand_plan(
             else f"Your previous response was invalid: {last_error}.\n"
             f"Please output strictly valid YAML with tasks matching the schema:\n\n{user_prompt}"
         )
+        resp, _ = await query_chief_model(
+            config,
+            tier=2,
+            system=_SYSTEM_PROMPT,
+            user=prompt_to_send,
+        )
         try:
-            resp, _ = await query_chief_model(
-                config,
-                tier=2,
-                system=_SYSTEM_PROMPT,
-                user=prompt_to_send,
-            )
             spec = parse_and_validate_batch(resp)
             break
-        except Exception as exc:
+        except PlanFormatError as exc:
             last_error = exc
 
     if spec is None:
