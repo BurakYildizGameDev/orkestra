@@ -137,7 +137,7 @@ orkestra run --template docstring --files "src/**/*.py" --dry-run   # hangi gör
 orkestra run --template docstring --files "src/**/*.py" --json
 ```
 
-Yerleşik şablonlar: `docstring`, `type-hints`, `tests`, `summarize` (JSON cevap, dosya değiştirmez), `rename-refactor` (`--param old=… --param new=…`), `translate` (`--param language=…`). Her eşleşen dosya için bir görev üretilir ve batch olarak çalışır (maliyet eşiği ve `--yes-cost` kuralları aynı). Parametreleri `orkestra templates show <ad>` gösterir. Mantığı korumak için `--param check="python -m pytest -q"` gibi bir doğrulama komutu ver; vermezsen sadece değişen dosya sayısı denetlenir. Proje kendi şablonlarını `.orkestra/templates/<ad>.yaml` olarak koyabilir (aynı adı ezer).
+Yerleşik şablonlar: `docstring`, `type-hints`, `tests`, `summarize` (JSON cevap, dosya değiştirmez), `rename-refactor` (`--param old=… --param new=…`), `translate` (`--param language=…`). Her eşleşen dosya için bir görev üretilir ve batch olarak çalışır (maliyet eşiği ve `--yes-cost` kuralları aynı). Parametreleri `orkestra templates show <ad>` gösterir. Mantığı korumak için `--param check="python -m pytest -q"` gibi bir doğrulama komutu ver; vermezsen sadece değişen dosya sayısı denetlenir. Proje kendi şablonlarını `.orkestra/templates/<ad>.yaml` olarak koyabilir (aynı adı ezer). Yerleşik bir şablonun yerine proje şablonu çalışırsa Orkestra stderr'e uyarır: güvenmediğin bir depoda önce `orkestra templates show <ad>` ile istemine ve komutlarına bak, emin değilsen kullanıcıya sor.
 
 Birden çok görev varsa bir batch dosyası yaz (`.orkestra/tasks/batch.yaml`); her görev, görev dosyasıyla aynı alanları alır:
 

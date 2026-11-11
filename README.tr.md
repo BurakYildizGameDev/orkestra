@@ -415,18 +415,22 @@ bir komuttur (testlerin); verilmezse sadece değişen dosya sayısı denetlenir.
 şablonlarını `.orkestra/templates/<ad>.yaml` olarak ekleyebilir ya da yerleşiği ezebilir:
 `description`, `params` (`ad: {default, description}`; varsayılanı olmayan zorunludur) ve
 `task` (`id` olmadan görev alanları; `$file` ve `$<parametre>` doldurulur, dosya adındaki `$`
-olduğu gibi kalır).
+olduğu gibi kalır). Yerleşik şablonun yerine geçen proje şablonu her kullanımda duyurulur:
+klonlanan bir depo kendi komutlarını getirebilir, önce `templates show` ile bak. `--files`
+sadece çalışma dizinindeki, `.gitignore` ve ignore dosyasının dışarıda bırakmadığı gerçek
+dosyaları alır.
 
 **Cevap önbelleği.** Doğrulamayı geçen bir `ask` cevabı `cache.ttl_days` (14) gün boyunca
 `~/.orkestra/cache/responses/` altında tutulur (gizli bilgiler maskeli, istem yok). Aynı
-modele aynı bağlam dosyalarıyla sorulan aynı soru oradan gelir: hiçbir şey gönderilmez, bütçe
-harcanmaz, zarfta `cached: true` yazar. Bağlam dosyası değişirse yeni soru sayılır. `edit`
-görevleri asla önbelleğe alınmaz. `--no-cache` (`ask`, `run`, `batch`) tek komutta atlar,
+modele aynı bağlam dosyaları ve doğrulayıcılarla sorulan aynı soru oradan gelir: hiçbir şey
+gönderilmez, bütçe harcanmaz, zarfta `cached: true` yazar. Bağlam dosyası değişirse yeni soru
+sayılır; artık doğrulamayı geçmeyen önbellek cevabı silinir ve işçiye sorulur. `edit`
+görevleri ve kod ajanlarının cevapları asla önbelleğe alınmaz. `--no-cache` (`ask`, `run`, `batch`) tek komutta atlar,
 `cache.enabled: false` kapatır, `orkestra cache clear` boşaltır.
 
 **Tasarruf (tahmini).** `orkestra stats` işçilerin kaç token yazdığını ve şefe zarflarla kaç
-token döndüğünü de gösterir. Şefin kendi kullanımı ölçülemediği için satır her zaman tahmini
-olarak işaretlenir.
+token döndüğünü de gösterir (doğrulamayı geçen koşular için). Şefin kendi kullanımı
+ölçülemediği için satır her zaman tahmini olarak işaretlenir.
 
 ## Worktree'ler: yalıtılmış değişiklikler
 

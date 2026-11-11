@@ -13,6 +13,7 @@ import sqlite3
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import cached_property
 from typing import Any
 
 from orkestra.config.schema import Config
@@ -26,12 +27,17 @@ SHOWN_PROVIDERS = 4  # budget lines before "+N more"
 CHIEF_ENV = "ORKESTRA_CHIEF"
 
 
-@dataclass(frozen=True)
+@dataclass
 class StatusContext:
     config: Config
     conn: sqlite3.Connection
     now: datetime
     environ: Mapping[str, str] = field(default_factory=dict)
+
+    @cached_property
+    def providers(self) -> list[registry.ProviderRow]:
+        """Budget, consent and health of every provider, read once for all sections."""
+        return registry.provider_overview(self.config, self.conn, self.now)
 
 
 @dataclass(frozen=True)
@@ -128,7 +134,7 @@ def _limits_text(row: registry.ProviderRow) -> str:
 
 @section("budget", order=50)
 def _budget(ctx: StatusContext) -> Section:
-    rows = [r for r in registry.provider_overview(ctx.config, ctx.conn, ctx.now) if r.enabled]
+    rows = [r for r in ctx.providers if r.enabled]
     data = {
         "day": ctx.now.date().isoformat(),
         "providers": [
@@ -148,8 +154,7 @@ def _budget(ctx: StatusContext) -> Section:
 
 @section("health", order=70)
 def _health(ctx: StatusContext) -> Section:
-    rows = registry.provider_overview(ctx.config, ctx.conn, ctx.now)
-    paused = [r for r in rows if r.health.is_open(ctx.now)]
+    paused = [r for r in ctx.providers if r.health.is_open(ctx.now)]
     data = {"paused": [
         {"name": r.name, "until": r.health.open_until.isoformat() if r.health.open_until else None,
          "error": r.health.last_error}

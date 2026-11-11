@@ -418,18 +418,22 @@ batch, with the same cost check. Built-in: `docstring`, `type-hints`, `tests`, `
 must pass (your tests); without it only the number of changed files is checked. A project can
 add or override templates in `.orkestra/templates/<name>.yaml`: `description`, `params`
 (`name: {default, description}`; no default means required) and `task` (task fields without
-`id`; `$file` and `$<param>` are filled in, a `$` in a file name stays as it is).
+`id`; `$file` and `$<param>` are filled in, a `$` in a file name stays as it is). A project
+template that replaces a built-in one is announced on every use: a cloned repository could
+ship its own commands, so look at it with `templates show` first. `--files` only takes real
+files inside the working directory that `.gitignore` and the ignore file keep.
 
 **Answer cache.** An `ask` task's answer that passed its checks is kept for `cache.ttl_days`
 (14) days under `~/.orkestra/cache/responses/` (secrets masked, no prompt). The same question
-to the same model with the same context files comes from there: nothing is sent, no budget
-is used, the envelope says `cached: true`. A changed context file is a new question. `edit`
-tasks are never cached. `--no-cache` (on `ask`, `run`, `batch`) skips it for one command,
+to the same model with the same context files and checks comes from there: nothing is sent,
+no budget is used, the envelope says `cached: true`. A changed context file is a new
+question, and a cached answer that no longer passes its checks is dropped and the worker is
+asked. `edit` tasks and code agents' answers are never cached. `--no-cache` (on `ask`, `run`, `batch`) skips it for one command,
 `cache.enabled: false` turns it off, `orkestra cache clear` empties it.
 
 **Savings (estimated).** `orkestra stats` also shows how many tokens the workers wrote and how
-many came back to the chief in envelopes. The chief's own use cannot be measured, so the
-line is always marked as an estimate.
+many came back to the chief in envelopes, for the runs that passed. The chief's own use
+cannot be measured, so the line is always marked as an estimate.
 
 ## Worktrees: isolated changes
 

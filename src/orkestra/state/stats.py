@@ -254,9 +254,10 @@ def collect(conn: sqlite3.Connection, *, since: datetime, now: datetime) -> Repo
         tags=tuple(_row(tag, by_tag[tag], tag_usage.get(tag, [])) for tag in _ordered(by_tag)),
         totals=_row(None, finished, (amount for _, _, amount in usage)),
         running=len(runs) - len(finished),
+        # Only runs that passed saved the chief work; a failed one it has to do itself.
         savings=Savings(
-            sum(r.worker_output_tokens or 0 for r in finished),
-            sum(r.envelope_chars or 0 for r in finished),
+            sum(r.worker_output_tokens or 0 for r in finished if r.status == "ok"),
+            sum(r.envelope_chars or 0 for r in finished if r.status == "ok"),
         ),
     )
 
@@ -314,7 +315,10 @@ def render(report: Report) -> str:
         lines += [_line(r, r.name or t("stats.no_tag")) for r in report.tags]
     saved = report.savings
     if saved.worker_output_tokens:
-        ratio = saved.worker_output_tokens / saved.envelope_tokens if saved.envelope_tokens else 0
-        lines.append(t("stats.savings", worker=saved.worker_output_tokens,
-                       chief=saved.envelope_tokens, ratio=f"{ratio:.1f}"))  # fmt: skip
+        worker, chief = saved.worker_output_tokens, saved.envelope_tokens
+        if chief and worker > chief:
+            lines.append(t("stats.savings", worker=worker, chief=chief,
+                           ratio=f"{worker / chief:.1f}"))  # fmt: skip
+        else:  # the envelopes were as big as the answers: nothing to claim
+            lines.append(t("stats.savings_none", worker=worker, chief=chief))
     return "\n".join(lines)

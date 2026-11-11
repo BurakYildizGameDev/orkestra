@@ -535,3 +535,18 @@ Mimari §3 (komut tablosu), §12, §19 güncellendi.
 - **Tasarruf sayacı:** sütunlar Faz 0'dan beri yazılıyordu; `stats` penceredeki biten koşuların toplamını ve zarfın tahmini tokenını gösteriyor, hep "tahmini" etiketiyle.
 - **Skill:** `status`, şablonlar, önbellek geri eklendi (D-046). `map`, `review`, `plan expand` 8b'de.
 Mimari §19 güncellendi.
+
+## D-060 – Faz 8a kod denetimi düzeltmeleri (2026-11-11, Faz 8a)
+**Bağlam:** PR #16 için `/code-review`: 10 bulgu. 9'u düzeltildi, 1'i kısmen.
+**Karar:**
+- **Ajan cevabı önbelleğe sızmıyor:** önbellek anahtarı her adayda sıfırlanıyor ve kod ajanının cevabı hiç yazılmıyor. Önceden sohbet modeli başarısız olup görev bir ajana geçince ajanın cevabı sohbet modelinin anahtarıyla saklanıyor, sonraki koşuda onunmuş gibi dönüyordu.
+- **Bayat cevap siliniyor:** önbellekten gelip doğrulamayı geçmeyen cevap siliniyor ve işçinin deneme hakkından (`max_retries`) sayılmıyor; işçiye geri bildirimle soruluyor. Anahtara görevin doğrulayıcıları da giriyor: aynı soruyu farklı denetleyen görevler aynı kaydı paylaşmıyor.
+- **Saat dilimsiz kayıt** isabet sayılmıyor (önceden `TypeError` ile koşu çöküyordu).
+- **`--files` sadece gerçek dosyalar:** `context.existing_files` var olmayan yolu, klasörü, ignore dosyalarının dışarıda bıraktığı dosyayı ve çalışma dizini dışını eliyor; eşleşen yoksa kod 2.
+- **`params` denetimi:** sözlük değilse anlaşılır hata (kod 2); `ad: değer` kısa yazımı varsayılan sayılıyor (önceden sessizce zorunlu oluyordu).
+- **Yerleşiği ezen proje şablonu duyuruluyor:** her `run --template` ve `templates show`'da stderr'e uyarı, JSON'da `overrides_builtin` ve `path`. Engellenmiyor, çünkü proje şablonu bilinçli bir özellik ve bir görev dosyası da aynı komutları çalıştırabilir; ama klonlanan depo sessizce kendi komutlarını çalıştıramıyor. Skill şefe önce `templates show` demesini söylüyor.
+- **Tasarruf:** sadece `ok` koşular; oran 1'in altındaysa "tasarruf yok" satırı (önceden "0.3 kat az" yazıyordu).
+- **Çeviri:** şablon hata metinleri ve `templates show` başlığı `t()` ile.
+- **CLI:** `run --template --dry-run --json` JSON veriyor; `--yes-cost` görev dosyasıyla kod 2.
+- **`status` (kısmen):** sağlayıcı özeti bir kez okunuyor (iki bölüm paylaşıyor), uygulanmamış koşu sorgusu worktree'si olmayanları SQL'de eliyor. `discard` edilen koşular hâlâ kayıt dosyası okunarak eleniyor; bunun için `runs`'a yeni bir durum sütunu (yeni migration) gerekir, şimdilik bilinen sorun.
+Mimari §19 güncellendi.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+import sys
 from collections.abc import Callable
 from contextlib import closing
 from datetime import timedelta
@@ -388,3 +389,164 @@ def test_stats_shows_the_estimated_savings(
     assert savings["envelope_tokens"] > 0 and savings["estimated"] is True
     code, out, _ = _run(["--lang", "en", "stats"], capsys)
     assert code == 0 and "estimated" in out.lower()
+
+
+# --- code review fixes (PR #16) ----------------------------------------------------------
+
+FAKE_AGENT = Path(__file__).resolve().parents[1] / "fixtures" / "fake_agent.py"
+
+
+def test_a_code_agent_answer_is_never_cached_under_a_chat_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    agent = (
+        "  fake:\n    type: cli_agent\n    command: '" + sys.executable.replace("'", "''") + "'\n"
+        "    kind: generic\n    extra_args: ['" + str(FAKE_AGENT).replace("'", "''") + "', echo]\n"
+    )
+    work = _setup(tmp_path, monkeypatch, CONFIG + agent)
+    loaded = load_config(cwd=work, environ={}).config
+    with closing(db.connect()) as conn:
+        consent.grant(conn, "fake", loaded.providers["fake"], db.local_now())
+    fake.answers["Hi?"] = "CANNOT_DO: not me"  # the chat model gives up; the agent answers
+    code, out, _ = _run(["ask", "Hi?", "--json"], capsys)
+    assert code == 0, out
+    assert json.loads(out)["provider"] == "fake"
+    code, out, _ = _run(["ask", "Hi?", "--json"], capsys)
+    assert code == 0, out
+    assert len(fake.calls) == 2  # the chat model was asked again, not answered from a cache
+    assert json.loads(out)["cached"] is False
+
+
+def test_a_cached_answer_that_fails_its_checks_is_dropped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    flag = work / "flag"
+    flag.write_text("x", encoding="utf-8")
+    check = (
+        f'"{sys.executable}" -c "import os, sys; sys.exit(0 if os.path.exists(\'flag\') else 1)"'
+    )
+    task = {"id": "q", "kind": "ask", "prompt": "Say yes.", "limits": {"max_retries": 0},
+            "verify": [{"type": "command", "run": check}]}  # fmt: skip
+    (work / "q.json").write_text(json.dumps(task), encoding="utf-8")
+    assert _run(["run", "q.json", "--json"], capsys)[0] == 0  # answered and cached
+    flag.unlink()  # the world changed: the cached answer no longer passes
+    code, _, _ = _run(["run", "q.json", "--json"], capsys)
+    assert code == 1
+    assert len(fake.calls) == 2  # the worker was still asked (the cached try is free)
+    flag.write_text("x", encoding="utf-8")
+    assert _run(["run", "q.json", "--json"], capsys)[0] == 0
+    assert len(fake.calls) == 3  # the stale entry was dropped, not replayed
+
+
+def test_different_checks_are_a_different_question(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    for name, pattern in (("a.json", "fine"), ("b.json", "answer")):
+        task = {"id": name[0], "kind": "ask", "prompt": "Same question.",
+                "verify": [{"type": "regex", "must_match": [pattern]}]}  # fmt: skip
+        (work / name).write_text(json.dumps(task), encoding="utf-8")
+        assert _run(["run", name, "--json"], capsys)[0] == 0
+    assert len(fake.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "files",
+    [["src/typo.py"], ["src"], ["build/gen.py"], ["../outside.py"]],
+)
+def test_template_files_must_be_real_unignored_files_inside(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama, make_repo: MakeRepo,
+    capsys: pytest.CaptureFixture[str], files: list[str],
+) -> None:  # fmt: skip
+    repo = _docstring_repo(tmp_path, monkeypatch, fake, make_repo, names=("a.py",))
+    (repo / ".gitignore").write_text("build/\n", encoding="utf-8")
+    (repo / "build").mkdir()
+    (repo / "build" / "gen.py").write_text("x = 1\n", encoding="utf-8")
+    (repo.parent / "outside.py").write_text("x = 1\n", encoding="utf-8")
+    argv = ["run", "--template", "docstring", "--dry-run"]
+    for pattern in files:
+        argv += ["--files", pattern]
+    code, _, _ = _run(argv, capsys)
+    assert code == 2  # no file: nothing to make a task for
+
+
+@pytest.mark.parametrize(
+    ("params", "expect"),
+    [("params: [style, check]\n", 2), ("params:\n  style: Google\n", 0)],
+)
+def test_template_params_are_checked_and_have_a_short_form(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    params: str, expect: int,
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    project = work / ".orkestra" / "templates"
+    project.mkdir(parents=True)
+    (project / "mine.yaml").write_text(
+        f"description: Mine.\n{params}task:\n  kind: ask\n  prompt: Look at $file in $style.\n",
+        encoding="utf-8",
+    )
+    code, out, err = _run(["templates", "show", "mine", "--json"], capsys)
+    assert code == expect, out + err
+    if expect == 0:  # "style: Google" is a default, not a required parameter
+        assert json.loads(out)["params"][0] == {
+            "name": "style", "default": "Google", "required": False, "description": "",
+        }  # fmt: skip
+
+
+def test_a_project_template_that_overrides_a_builtin_one_is_announced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama, make_repo: MakeRepo,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    repo = _docstring_repo(tmp_path, monkeypatch, fake, make_repo, names=("a.py",))
+    project = repo / ".orkestra" / "templates"
+    project.mkdir(parents=True)
+    (project / "docstring.yaml").write_text(
+        "description: Ours.\ntask:\n  kind: ask\n  prompt: Look at $file.\n", encoding="utf-8"
+    )
+    code, _, err = _run(["--lang", "en", "run", "--template", "docstring", "--files", "src/a.py",
+                         "--dry-run"], capsys)  # fmt: skip
+    assert code == 0
+    assert "built-in" in err and "docstring.yaml" in err
+
+
+def test_template_dry_run_in_json_mode_is_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama, make_repo: MakeRepo,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    _docstring_repo(tmp_path, monkeypatch, fake, make_repo, names=("a.py",))
+    argv = ["run", "--template", "docstring", "--files", "src/a.py", "--dry-run", "--json"]
+    code, out, _ = _run(argv, capsys)
+    assert code == 0 and [t["id"] for t in json.loads(out)["tasks"]] == ["docstring-a"]
+    assert _run(["run", "x.yaml", "--yes-cost"], capsys)[0] == 2  # --yes-cost needs a batch
+
+
+def test_savings_count_only_runs_that_passed_and_say_when_there_were_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    _setup(tmp_path, monkeypatch)
+    fake.answers["Hi?"] = "x" * 10  # short answer: the envelope is bigger than the output
+    assert _run(["ask", "Hi?", "--json"], capsys)[0] == 0
+    fake.answers["Bad?"] = "CANNOT_DO: no"
+    assert _run(["ask", "Bad?", "--json"], capsys)[0] == 1
+    code, out, _ = _run(["stats", "--json"], capsys)
+    assert json.loads(out)["savings"]["worker_output_tokens"] == 12  # the escalated run left out
+    code, out, _ = _run(["--lang", "en", "stats"], capsys)
+    assert code == 0 and "x less" not in out  # 12 tokens out, more back: no saving to claim
+    assert "no saving" in out
+
+
+def test_a_cache_entry_without_a_time_zone_is_a_miss(tmp_path: Path) -> None:
+    from datetime import datetime
+
+    from orkestra.cache import responses
+
+    (tmp_path / "k.json").write_text(
+        json.dumps({"created_at": "2026-11-11T10:00:00", "text": "old"}), encoding="utf-8"
+    )
+    now = datetime.now().astimezone()
+    assert responses.load("k", now=now, ttl_days=14, root=tmp_path) is None

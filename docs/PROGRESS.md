@@ -31,6 +31,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 8a (PR #16), 2026-11-11
+10 bulgu: 9'u düzeltildi, 1'i kısmen (D-060):
+- ✅ Kod ajanının cevabı sohbet modelinin önbellek anahtarıyla saklanabiliyordu → anahtar aday başına, ajan cevabı hiç saklanmıyor.
+- ✅ Doğrulamayı geçmeyen önbellek cevabı kalıyor ve deneme hakkı yiyordu → siliniyor, sayılmıyor; anahtarda doğrulayıcılar da var.
+- ✅ `--files` var olmayan/ignore edilen/dışarıdaki yolu görev yapıyordu → sadece gerçek dosyalar.
+- ✅ Tasarruf oranı 1'in altında da "kat az" diyordu, başarısız koşuları sayıyordu → düzeldi.
+- ✅ Saat dilimsiz önbellek kaydı koşuyu çökertiyordu → isabet sayılmıyor.
+- ✅ `params` listesi çöküş, kısa yazım sessizce zorunlu → hata ve varsayılan.
+- ✅ Yerleşiği ezen proje şablonu sessizdi → her kullanımda uyarı, JSON'da `overrides_builtin`.
+- ✅ Çevrilmemiş şablon hata metinleri ve `templates show` başlığı → `t()`.
+- ✅ `--dry-run --json` YAML veriyordu, `--yes-cost` görev dosyasıyla yok sayılıyordu → düzeldi.
+- ➖ `status` uygulanmamış koşular için kayıt dosyalarını okuyor → sağlayıcı özeti tek okuma, SQL daraltıldı; `discard` durumunu `runs`'ta tutmak (yeni migration) **bilinen sorun**.
+Testler: 934 geçti (+13).
+
 ### Faz 8a – status, şablonlar, cevap önbelleği, tasarruf sayacı (2026-11-11)
 **Yapılanlar (D-059):**
 - `chief/status.py` (bölüm kaydı, 15 satır) ve `orkestra status [--json]`; `service.unapplied_runs`.

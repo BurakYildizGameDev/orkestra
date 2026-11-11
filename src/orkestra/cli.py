@@ -294,6 +294,7 @@ def _run_batch(
 def _template_json(item: templates.Template) -> dict[str, Any]:
     return {
         "name": item.name, "source": item.source, "description": item.description,
+        "path": item.path or None, "overrides_builtin": item.overrides,
         "params": [{"name": p.name, "default": p.default, "required": p.default is None,
                     "description": p.description} for p in item.params],
         "task": dict(item.task),
@@ -629,19 +630,28 @@ def build_app() -> typer.Typer:
     ) -> None:
         if (task_file is None) == (template is None):
             raise UsageError(t("run.error.target"))
-        if (template is None and (files or param)) or (template is not None and not files):
+        batch_only = files or param or yes_cost
+        if (template is None and batch_only) or (template is not None and not files):
             raise UsageError(t("run.error.files"))
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
         options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets, no_cache=no_cache)
         if template is not None:
             cwd = Path.cwd()
+            chosen = templates.find(template, cwd=cwd)
+            if chosen.overrides:  # the repository's own commands may run: say so
+                typer.echo(t("template.warning.overrides", name=chosen.name,
+                             path=chosen.path), err=True)  # fmt: skip
             batch_spec = templates.expand(
-                templates.find(template, cwd=cwd), files or [],
+                chosen, files or [],
                 templates.parse_params(param or []), cwd=cwd,
                 ignore_file=loaded.config.security.ignore_file,
             )  # fmt: skip
             if dry_run:  # the tasks it would run, as a batch file; nothing is sent
-                typer.echo(loader.dump_yaml(templates.to_batch_document(batch_spec)), nl=False)
+                document = templates.to_batch_document(batch_spec)
+                if as_json:
+                    _echo_json(document)
+                else:
+                    typer.echo(loader.dump_yaml(document), nl=False)
                 return
             _run_batch(batch_spec, loaded.config, options, yes_cost=yes_cost, as_json=as_json)
             return
@@ -802,7 +812,10 @@ def build_app() -> typer.Typer:
         if as_json:
             _echo_json(_template_json(item))
             return
-        typer.echo(f"{item.name} ({item.source}): {item.description}")
+        typer.echo(t("templates.header", name=item.name, source=item.source,
+                     description=item.description))  # fmt: skip
+        if item.overrides:
+            typer.echo(t("template.warning.overrides", name=item.name, path=item.path))
         if item.params:
             params = ", ".join(
                 t("templates.param_required", name=p.name) if p.default is None

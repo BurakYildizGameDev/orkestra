@@ -5,9 +5,13 @@ the current language or else English), ``params`` (``name: {default, description
 ``default`` means the parameter is required) and ``task`` (task fields without ``id``).
 
 - Built-in templates ship in ``orkestra/templates/``; ``.orkestra/templates/<name>.yaml`` in
-  the working directory overrides one with the same name, or adds a new one.
+  the working directory overrides one with the same name (``overrides`` says so, and the
+  CLI warns: a cloned repository could ship its own commands), or adds a new one.
+- ``params``: ``name: {default, description}``, or ``name: value`` for a default only;
+  ``name:`` with nothing (or no ``default``) is a required parameter.
 - ``expand``: one task per file the ``--files`` patterns match (globs as in ``context.globs``:
-  ``.gitignore`` and the ignore file are respected). In every string of ``task``, ``$file``
+  ``.gitignore`` and the ignore file are respected; only real files inside the working
+  directory count, also for plain paths). In every string of ``task``, ``$file``
   becomes the file (relative to the working directory) and ``$<param>`` the parameter's
   value, with ``string.Template.safe_substitute``: an inserted value is never substituted
   again, so a ``$`` in a file name stays as it is. A ``command`` check whose ``run`` ends
@@ -32,7 +36,7 @@ from ruamel.yaml import YAML, YAMLError
 from orkestra.errors import UsageError
 from orkestra.i18n import get_language, t
 from orkestra.tasks.batch import BatchSpec, from_tasks
-from orkestra.tasks.context import glob_files
+from orkestra.tasks.context import existing_files
 from orkestra.tasks.spec import TaskSpec, parse_task
 
 PROJECT_DIR = Path(".orkestra") / "templates"
@@ -57,35 +61,41 @@ class Template:
     description: str
     params: tuple[Param, ...]
     task: Mapping[str, Any]
+    path: str = ""  # where it was read from (a project template's file)
+    overrides: bool = False  # a project template with a built-in one's name
 
 
 def _builtin_dir() -> Traversable:
     return resources.files("orkestra").joinpath("templates")
 
 
-def _bad(path: object, problem: str) -> UsageError:
-    return UsageError(t("template.error.invalid", path=path, problem=problem))
+def _bad(path: object, key: str, **params: object) -> UsageError:
+    return UsageError(t(key, path=path, **params))
 
 
 def _parse(name: str, source: Source, text: str, where: object) -> Template:
     try:
         data = YAML(typ="safe").load(text)
     except YAMLError as exc:
-        raise _bad(where, str(exc).splitlines()[0]) from None
+        raise _bad(where, "template.error.yaml", problem=str(exc).splitlines()[0]) from None
     if not isinstance(data, dict):
-        raise _bad(where, "not a mapping")
+        raise _bad(where, "config.error.not_mapping")
     unknown = sorted(set(data) - TEMPLATE_KEYS)
     if unknown:
-        raise _bad(where, ", ".join(unknown))
+        raise _bad(where, "template.error.keys", keys=", ".join(unknown))
     task = data.get("task")
     if not isinstance(task, dict) or "id" in task:
-        raise _bad(where, "task")
+        raise _bad(where, "template.error.task")
+    raw = data.get("params") or {}
+    if not isinstance(raw, dict):
+        raise _bad(where, "template.error.params")
     params: list[Param] = []
-    for key, value in (data.get("params") or {}).items():
-        spec = value if isinstance(value, dict) else {}
-        default = spec.get("default")
-        params.append(Param(str(key), None if default is None else str(default),
-                            str(spec.get("description", ""))))  # fmt: skip
+    for key, value in raw.items():
+        if isinstance(value, dict):  # {default, description}
+            default, about = value.get("default"), str(value.get("description", ""))
+        else:  # short form: the default itself (nothing: required)
+            default, about = value, ""
+        params.append(Param(str(key), None if default is None else str(default), about))
     return Template(name, source, _description(data.get("description")), tuple(params), task)
 
 
@@ -108,7 +118,12 @@ def available(cwd: Path) -> dict[str, Template]:
         for path in sorted(project.glob("*.yaml")):
             if _NAME.match(path.stem):
                 text = path.read_bytes().decode("utf-8", errors="replace")
-                found[path.stem] = _parse(path.stem, "project", text, path)
+                template = _parse(path.stem, "project", text, path)
+                overrides = found.get(path.stem, template).source == "builtin"
+                found[path.stem] = Template(
+                    template.name, "project", template.description, template.params,
+                    template.task, str(path), overrides,
+                )  # fmt: skip
     return found
 
 
@@ -190,7 +205,7 @@ def expand(
     """One task per matching file, as a batch. No match is a usage error."""
     values = _values(template, params)
     root = cwd.resolve()
-    files = [p.relative_to(root).as_posix() for p in glob_files(patterns, root, ignore_file)]
+    files = [p.relative_to(root).as_posix() for p in existing_files(patterns, root, ignore_file)]
     if not files:
         raise UsageError(t("template.error.no_files", patterns=", ".join(patterns)))
     tasks: list[TaskSpec] = []

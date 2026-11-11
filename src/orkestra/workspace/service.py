@@ -273,7 +273,7 @@ def unapplied_runs(conn: sqlite3.Connection) -> list[Unapplied]:
     (``status``, Faz 8a)."""
     rows = conn.execute(
         "SELECT run_id, task_id, started_at FROM runs "
-        "WHERE kind = 'edit' AND status = 'ok' AND applied = 0"
+        "WHERE kind = 'edit' AND status = 'ok' AND applied = 0 AND worktree IS NOT NULL"
     ).fetchall()
     waiting: list[tuple[datetime, Unapplied]] = []
     for row in rows:

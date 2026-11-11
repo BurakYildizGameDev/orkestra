@@ -764,6 +764,7 @@ class _TaskRun:
 
         Returns the outcome when an answer passed, otherwise what to do next.
         """
+        self.cache_key = None  # set per candidate, so no other candidate's key is reused
         config = candidate.config
         if isinstance(config, CliAgentProvider):
             return await self._try_agent(candidate, config)
@@ -784,16 +785,20 @@ class _TaskRun:
                 self.cache_key = self._cache_key(candidate, completion)
                 cached = self._cached(candidate, completion)
                 if cached is not None:
-                    tries += 1
-                    answers += 1
+                    # A cached answer is not one of the worker's answers (max_retries): if it
+                    # fails the checks now, it is dropped and the worker is asked.
                     attempt_dir = self._cache_attempt(candidate)
                     verdict = await self._answered(
                         candidate, cached, attempt_dir, tries, answers, completion, base_user
                     )
                     self.cache_hit = False
-                    if not isinstance(verdict, str):
+                    if isinstance(verdict, TaskOutcome):
                         return verdict
-                    user = verdict  # the cached answer failed the checks: ask the worker
+                    responses.forget(self.cache_key or "")
+                    self.log.info("cached answer failed its checks; dropped")
+                    if not isinstance(verdict, str):
+                        verdict = base_user  # nothing to feed back: ask the task itself
+                    user = verdict
                     continue
             prompt_chars = len(completion.system) + len(completion.user)
             amount = budget.estimate(
@@ -918,13 +923,15 @@ class _TaskRun:
     # --- answer cache (Faz 8a, Mimari §19) -------------------------------------------------
 
     def _cache_key(self, candidate: Candidate, completion: CompletionRequest) -> str | None:
-        """The key of this prompt, when answers of this task may be cached at all."""
+        """The key of this prompt, when answers of this task may be cached at all. The checks
+        are part of it: an answer that passed one task's checks says nothing about another's."""
         settings = self.prep.config.cache
         if self.task.kind != "ask" or not settings.enabled or self.prep.options.no_cache:
             return None
+        checks = self.task.model_dump(mode="json", include={"verify", "verify_defaults"})
         return responses.make_key(
             candidate.provider, candidate.model.id, completion.system, completion.user,
-            json_mode=completion.json_mode,
+            json_mode=completion.json_mode, checks=checks,
         )  # fmt: skip
 
     def _cached(
@@ -950,8 +957,13 @@ class _TaskRun:
         return attempt_dir
 
     def _remember(self, candidate: Candidate, text: str) -> None:
-        """Store an answer that passed its checks (not one that came from the cache)."""
-        if self.cache_key is None or self.cache_hit:
+        """Store an answer that passed its checks: a chat worker's answer to this candidate's
+        own key, never one that came from the cache or from a code agent."""
+        if (
+            self.cache_key is None
+            or self.cache_hit
+            or isinstance(candidate.config, CliAgentProvider)
+        ):
             return
         responses.store(
             self.cache_key, self.prep.redact_output(text), now=self.now(),
