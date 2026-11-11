@@ -27,6 +27,14 @@ Emin değilsen bir kez kullanıcıya sor.
 
 ## 2. Oturum başı ve ilk kullanım
 
+Her oturumun başında tek komut (en fazla 15 satır: profil, uygulanmamış koşular, bugünkü bütçe, duraklatılmış sağlayıcılar):
+
+```bash
+orkestra status --json
+```
+
+`unapplied` altında koşu varsa önce onları denetle (§6): uygula ya da `discard` et.
+
 İlk delegeden önce bir kez durumu kontrol et:
 
 ```bash
@@ -121,6 +129,16 @@ Düzenleme görevleri hakkında bilmen gerekenler:
 
 İyi istem kuralları: tek bir sorumluluk; kapsam dışını açıkça yaz; çıktı biçimini belirt; mevcut stil örneği ver.
 
+Çoğu zaman görev dosyası yazmana gerek yok, hazır şablon kullan:
+
+```bash
+orkestra templates list --json
+orkestra run --template docstring --files "src/**/*.py" --dry-run   # hangi görevler?
+orkestra run --template docstring --files "src/**/*.py" --json
+```
+
+Yerleşik şablonlar: `docstring`, `type-hints`, `tests`, `summarize` (JSON cevap, dosya değiştirmez), `rename-refactor` (`--param old=… --param new=…`), `translate` (`--param language=…`). Her eşleşen dosya için bir görev üretilir ve batch olarak çalışır (maliyet eşiği ve `--yes-cost` kuralları aynı). Parametreleri `orkestra templates show <ad>` gösterir. Mantığı korumak için `--param check="python -m pytest -q"` gibi bir doğrulama komutu ver; vermezsen sadece değişen dosya sayısı denetlenir. Proje kendi şablonlarını `.orkestra/templates/<ad>.yaml` olarak koyabilir (aynı adı ezer). Yerleşik bir şablonun yerine proje şablonu çalışırsa Orkestra stderr'e uyarır: güvenmediğin bir depoda önce `orkestra templates show <ad>` ile istemine ve komutlarına bak, emin değilsen kullanıcıya sor.
+
 Birden çok görev varsa bir batch dosyası yaz (`.orkestra/tasks/batch.yaml`); her görev, görev dosyasıyla aynı alanları alır:
 
 ```yaml
@@ -153,6 +171,8 @@ orkestra batch .orkestra/tasks/batch.yaml --json   # birden çok görev: tek JSO
 ```
 
 Batch belgesi: `batch_id`, `results` (her görev için `task_id`, `status`, `run_id` ve görevin zarfı; `skipped`: bağımlılığı `ok` bitmedi), `totals`. Her görevin zarfını aşağıdaki gibi oku.
+
+Aynı `ask` sorusu (aynı model, istem ve bağlam dosyaları) doğrulamayı geçtiyse önbellekten gelir: istek gitmez, maliyet 0, zarfta `cached: true`. Bağlam dosyası değişince yeni soru sayılır. Taze cevap gerekiyorsa `--no-cache`.
 
 Sadece **sonuç zarfını** oku. Token tasarrufunun anahtarı bu; tam çıktıyı ancak gerekirse oku. Önemli alanlar:
 - `status`: `ok` · `failed` (doğrulama geçmedi, yükseltme yapılamadı) · `escalate` (iş şefe dönmeli) · `error` (sistem hatası; `error` alanında neden).

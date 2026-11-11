@@ -261,6 +261,36 @@ def apply_batch(
     return BatchApplied(batch_id, tuple(applied), tuple(skipped))
 
 
+@dataclass(frozen=True)
+class Unapplied:
+    run_id: str
+    task_id: str
+    summary: str
+
+
+def unapplied_runs(conn: sqlite3.Connection) -> list[Unapplied]:
+    """Edit runs that passed and still wait for ``apply`` or ``discard``, newest first
+    (``status``, Faz 8a)."""
+    rows = conn.execute(
+        "SELECT run_id, task_id, started_at FROM runs "
+        "WHERE kind = 'edit' AND status = 'ok' AND applied = 0 AND worktree IS NOT NULL"
+    ).fetchall()
+    waiting: list[tuple[datetime, Unapplied]] = []
+    for row in rows:
+        if not _has_change(row["run_id"]):
+            continue
+        try:
+            data = json.loads((run_dir_for(row["run_id"]) / _PART_FILES["envelope"]).read_bytes())
+        except (OSError, ValueError):
+            data = {}
+        summary = data.get("summary") if isinstance(data, dict) else None
+        started = datetime.fromisoformat(row["started_at"])
+        item = Unapplied(row["run_id"], row["task_id"], summary if isinstance(summary, str) else "")
+        waiting.append((started, item))
+    waiting.sort(key=lambda pair: pair[0], reverse=True)
+    return [item for _, item in waiting]
+
+
 def discard_run(run_id: str) -> bool:
     """Remove a run's worktree without applying it. ``False``: there was nothing to remove."""
     run_dir = run_dir_for(run_id)

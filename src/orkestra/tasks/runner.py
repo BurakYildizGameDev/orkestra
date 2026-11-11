@@ -55,6 +55,7 @@ from typing import Any, get_args
 import pathspec
 
 from orkestra import paths
+from orkestra.cache import responses
 from orkestra.config.loader import dump_yaml
 from orkestra.config.schema import CliAgentProvider, Config, EditFormat, resolve_edit_format
 from orkestra.envelope import (
@@ -190,6 +191,7 @@ class RunOptions:
 
     profile: str | None = None
     allow_secrets: bool = False
+    no_cache: bool = False  # --no-cache: never answer an ask task from the cache (Faz 8a)
 
 
 @dataclass(frozen=True)
@@ -644,6 +646,8 @@ class _TaskRun:
         self.failovers: list[Failover] = []
         self.escalations: list[Escalation] = []
         self.used: list[Usage] = []  # every answered request of the run (envelope usage)
+        self.cache_key: str | None = None  # ask tasks: the first prompt's key (Faz 8a)
+        self.cache_hit = False  # the answer being judged came from the cache
         self.log = logging.getLogger("orkestra")
         self.started = clock()
 
@@ -760,6 +764,7 @@ class _TaskRun:
 
         Returns the outcome when an answer passed, otherwise what to do next.
         """
+        self.cache_key = None  # set per candidate, so no other candidate's key is reused
         config = candidate.config
         if isinstance(config, CliAgentProvider):
             return await self._try_agent(candidate, config)
@@ -776,6 +781,25 @@ class _TaskRun:
         answers = 0
         while True:
             completion = self._completion(candidate, config, user)
+            if user is base_user:  # only the task's own prompt; feedback retries are not cached
+                self.cache_key = self._cache_key(candidate, completion)
+                cached = self._cached(candidate, completion)
+                if cached is not None:
+                    # A cached answer is not one of the worker's answers (max_retries): if it
+                    # fails the checks now, it is dropped and the worker is asked.
+                    attempt_dir = self._cache_attempt(candidate)
+                    verdict = await self._answered(
+                        candidate, cached, attempt_dir, tries, answers, completion, base_user
+                    )
+                    self.cache_hit = False
+                    if isinstance(verdict, TaskOutcome):
+                        return verdict
+                    responses.forget(self.cache_key or "")
+                    self.log.info("cached answer failed its checks; dropped")
+                    if not isinstance(verdict, str):
+                        verdict = base_user  # nothing to feed back: ask the task itself
+                    user = verdict
+                    continue
             prompt_chars = len(completion.system) + len(completion.user)
             amount = budget.estimate(
                 prompt_chars, completion.max_output_tokens, candidate.price,
@@ -856,31 +880,95 @@ class _TaskRun:
             )  # fmt: skip
             health.record_success(self.conn, candidate.provider)
             self.used.append(usage)
-            self._write(attempt_dir / "response.txt", result.text, answer=True)
-            reason = _cannot_do(result.text)
-            if reason is None and self.edit_format == "whole":
-                # JSON mode: {"cannot_do": "..."}. SEARCH/REPLACE answers hold raw code, where
-                # such a literal is content, not a refusal.
-                reason = ef.cannot_do(result.text)
-            if reason is not None:
-                self.escalate_reason = t("ask.cannot_do", reason=reason or "-")
-                self.last_problem = "escalate"
-                return self._fail(candidate, None, tries, retry.Action.ESCALATE, reason=reason)
-            if self.prep.edit is not None and result.raw_finish_reason == "length":
-                # Whole files did not fit into the output limit: feedback cannot fix that.
-                message = t("edit.truncated", tokens=completion.max_output_tokens)
-                self.escalate_reason, self.last_problem = message, "escalate"
-                return self._fail(candidate, None, tries, retry.Action.TOP_TIER, reason=message,
-                                  error=OUTPUT_TRUNCATED)  # fmt: skip
             answers += 1
-            checks = await self._verify(result.text, attempt_dir)
-            verdict = self._judge(
-                candidate, result, checks, tries, answers, completion.max_output_tokens,
-                base_user,
-            )  # fmt: skip
+            verdict = await self._answered(
+                candidate, result, attempt_dir, tries, answers, completion, base_user
+            )
             if not isinstance(verdict, str):
                 return verdict
             user = verdict
+
+    async def _answered(
+        self,
+        candidate: Candidate,
+        result: CompletionResult,
+        attempt_dir: Path,
+        tries: int,
+        answers: int,
+        completion: CompletionRequest,
+        base_user: str,
+    ) -> TaskOutcome | retry.Action | str:
+        """A chat worker's answer (sent or from the cache): refusal, cut-off, checks."""
+        self._write(attempt_dir / "response.txt", result.text, answer=True)
+        reason = _cannot_do(result.text)
+        if reason is None and self.edit_format == "whole":
+            # JSON mode: {"cannot_do": "..."}. SEARCH/REPLACE answers hold raw code, where
+            # such a literal is content, not a refusal.
+            reason = ef.cannot_do(result.text)
+        if reason is not None:
+            self.escalate_reason = t("ask.cannot_do", reason=reason or "-")
+            self.last_problem = "escalate"
+            return self._fail(candidate, None, tries, retry.Action.ESCALATE, reason=reason)
+        if self.prep.edit is not None and result.raw_finish_reason == "length":
+            # Whole files did not fit into the output limit: feedback cannot fix that.
+            message = t("edit.truncated", tokens=completion.max_output_tokens)
+            self.escalate_reason, self.last_problem = message, "escalate"
+            return self._fail(candidate, None, tries, retry.Action.TOP_TIER, reason=message,
+                              error=OUTPUT_TRUNCATED)  # fmt: skip
+        checks = await self._verify(result.text, attempt_dir)
+        return self._judge(
+            candidate, result, checks, tries, answers, completion.max_output_tokens, base_user
+        )
+
+    # --- answer cache (Faz 8a, Mimari §19) -------------------------------------------------
+
+    def _cache_key(self, candidate: Candidate, completion: CompletionRequest) -> str | None:
+        """The key of this prompt, when answers of this task may be cached at all. The checks
+        are part of it: an answer that passed one task's checks says nothing about another's."""
+        settings = self.prep.config.cache
+        if self.task.kind != "ask" or not settings.enabled or self.prep.options.no_cache:
+            return None
+        checks = self.task.model_dump(mode="json", include={"verify", "verify_defaults"})
+        return responses.make_key(
+            candidate.provider, candidate.model.id, completion.system, completion.user,
+            json_mode=completion.json_mode, checks=checks,
+        )  # fmt: skip
+
+    def _cached(
+        self, candidate: Candidate, completion: CompletionRequest
+    ) -> CompletionResult | None:
+        if self.cache_key is None:
+            return None
+        ttl = self.prep.config.cache.ttl_days
+        text = responses.load(self.cache_key, now=self.now(), ttl_days=ttl)
+        if text is None:
+            return None
+        self.log.info("answer for %s from the cache", candidate.label)
+        self.cache_hit = True
+        self.used.append(Usage(0, 0, 0.0))  # nothing was sent: nothing used, nothing paid
+        return CompletionResult(text, Usage(0, 0, 0.0), "stop")
+
+    def _cache_attempt(self, candidate: Candidate) -> Path:
+        """The records of a cached answer: an attempt that sent nothing."""
+        self.attempts += 1
+        attempt_dir = self.run_dir / "attempts" / str(self.attempts)
+        record = {"provider": candidate.provider, "cached": True}
+        self._write(attempt_dir / "request.json", json.dumps(record, indent=2))
+        return attempt_dir
+
+    def _remember(self, candidate: Candidate, text: str) -> None:
+        """Store an answer that passed its checks: a chat worker's answer to this candidate's
+        own key, never one that came from the cache or from a code agent."""
+        if (
+            self.cache_key is None
+            or self.cache_hit
+            or isinstance(candidate.config, CliAgentProvider)
+        ):
+            return
+        responses.store(
+            self.cache_key, self.prep.redact_output(text), now=self.now(),
+            provider=candidate.provider, model=candidate.model.id,
+        )  # fmt: skip
 
     def _judge(
         self,
@@ -1267,6 +1355,9 @@ class _TaskRun:
     ) -> TaskOutcome:
         answer = _Answer(candidate, result.text, checks, result)
         envelope, text = self._answer_envelope(answer, "ok", limit)
+        if self.cache_hit:
+            envelope = envelope.model_copy(update={"cached": True})
+        self._remember(candidate, result.text)
         return self._finish(envelope, text, 0)
 
     def _checks_failed(self, answer: _Answer) -> TaskOutcome:

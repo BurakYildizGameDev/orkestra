@@ -18,7 +18,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 6b – MCP sınırları, Unity açık testleri (ek) | ⏳ | | agy MCP beklemesi düzeltildi (D-055, D-056); kalan: Unity açık elle testler, sonradan açılan Unity, `doctor --mcp` sondası |
 | 7a – Batch motoru | ✅ | 2026-11-10 | `orkestra batch`, DAG, sağlayıcı semaforu, kesişen edit'ler sırayla (D-053) |
 | 7b – Tahmin, toplu apply, stats | ✅ | 2026-11-11 | `batch --estimate`/`--yes-cost`, `apply --batch --only-ok`, `stats`, skill'e batch (D-057) |
-| 8a – status, şablon, önbellek, sayaç | ⏳ | | |
+| 8a – status, şablon, önbellek, sayaç | ✅ | 2026-11-11 | `status`, 6 şablon + proje şablonları, cevap önbelleği, tasarruf satırı (D-059) |
 | 8b – review, map, plan expand | ⏳ | | |
 | 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
 | 9b – Skill doğrulama | ✅ | 2026-11-10 | kod denetimi (D-047), elle deneme düzeltmeleri (D-048), 5/5 senaryo (D-049) |
@@ -30,6 +30,42 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 8a (PR #16), 2026-11-11
+10 bulgu: 9'u düzeltildi, 1'i kısmen (D-060):
+- ✅ Kod ajanının cevabı sohbet modelinin önbellek anahtarıyla saklanabiliyordu → anahtar aday başına, ajan cevabı hiç saklanmıyor.
+- ✅ Doğrulamayı geçmeyen önbellek cevabı kalıyor ve deneme hakkı yiyordu → siliniyor, sayılmıyor; anahtarda doğrulayıcılar da var.
+- ✅ `--files` var olmayan/ignore edilen/dışarıdaki yolu görev yapıyordu → sadece gerçek dosyalar.
+- ✅ Tasarruf oranı 1'in altında da "kat az" diyordu, başarısız koşuları sayıyordu → düzeldi.
+- ✅ Saat dilimsiz önbellek kaydı koşuyu çökertiyordu → isabet sayılmıyor.
+- ✅ `params` listesi çöküş, kısa yazım sessizce zorunlu → hata ve varsayılan.
+- ✅ Yerleşiği ezen proje şablonu sessizdi → her kullanımda uyarı, JSON'da `overrides_builtin`.
+- ✅ Çevrilmemiş şablon hata metinleri ve `templates show` başlığı → `t()`.
+- ✅ `--dry-run --json` YAML veriyordu, `--yes-cost` görev dosyasıyla yok sayılıyordu → düzeldi.
+- ➖ `status` uygulanmamış koşular için kayıt dosyalarını okuyor → sağlayıcı özeti tek okuma, SQL daraltıldı; `discard` durumunu `runs`'ta tutmak (yeni migration) **bilinen sorun**.
+Testler: 934 geçti (+13).
+
+### Faz 8a – status, şablonlar, cevap önbelleği, tasarruf sayacı (2026-11-11)
+**Yapılanlar (D-059):**
+- `chief/status.py` (bölüm kaydı, 15 satır) ve `orkestra status [--json]`; `service.unapplied_runs`.
+- `tasks/templates.py`, `orkestra/templates/*.yaml` (docstring, type-hints, tests, summarize, rename-refactor, translate), `.orkestra/templates/`; `orkestra templates list|show`, `orkestra run --template --files --param [--dry-run] [--yes-cost]`; `batch.from_tasks`; batch akışı `cli._run_batch`'te ortak.
+- `cache/responses.py`, runner'da isabet/kayıt (`_answered` ortak cevap denetimi), `--no-cache` (`ask`, `run`, `batch`), `orkestra cache clear`.
+- `stats`'ta tasarruf satırı ve `savings` alanı.
+- i18n (en, tr), README (en + tr): özellik tablosu, "Şef araçları" bölümü, yol haritası (8a/8b). Skill: `status`, şablonlar, önbellek. Global skill kopyası güncellendi.
+
+**Kabul kriterleri (8a kısmı):**
+- ✅ `status` 31 sağlayıcıyla bile 15 satırı geçmiyor; `--json` geçerli ve 31 sağlayıcının hepsini taşıyor (`test_status_never_goes_over_15_lines`).
+- ✅ `run --template docstring --files "src/*.py"` 3 dosya için 3 görevlik batch üretip çalıştırıyor; `runs.tags`'te `docstring` var (`test_run_template_makes_one_task_per_file_and_runs_them_as_a_batch`).
+- ✅ Aynı `ask` iki kez → ikincisi sağlayıcıyı çağırmıyor (sayaç 1), `cached: true`, maliyet 0, bütçeye satır yazılmıyor; `edit` önbelleğe alınmıyor; doğrulamayı geçmeyen cevap önbelleğe girmiyor; bağlam dosyası değişince yeni soru; `--no-cache`, `cache.enabled: false`, TTL, `cache clear`.
+- ✅ Tuzak: dosya adındaki `$` olduğu gibi kalıyor (`safe_substitute`).
+- ✅ ruff, ruff format, pyright, pytest (921 test) temiz. Gerçek kurulumda `status`, `templates list`, `run --template summarize --dry-run` duman testi.
+
+**Ertelenenler (8b):** `review`, `show --only-flagged`, `map`, `plan expand`.
+
+**Bilinen sorunlar:**
+- Şablon parametre açıklamaları sadece İngilizce (`templates show --json`'da görünür; insan çıktısı sadece ad ve varsayılanı gösteriyor).
+- `status`'ta devir ve kuyruk satırları Faz 10/12'de gelecek.
+
 
 ### Kod denetimi – Faz 7b (PR #15), 2026-11-11
 10 bulgu: 9'u düzeltildi, 1'i kısmen (D-058):

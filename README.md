@@ -48,6 +48,9 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | How the workers did: success rate, attempts, tokens, cost and time per provider and tag | `orkestra stats [--since 7d] [--json]` |
 | Code agents (Codex CLI, Antigravity) as workers, in the worktree, with process-tree cleanup | `cli_agent` providers |
 | A run's envelope, full output, log or change | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
+| The chief's view at a glance (at most 15 lines): unapplied runs, today's budget, paused providers | `orkestra status [--json]` |
+| Task templates (docstring, type-hints, tests, summarize, rename-refactor, translate, or your own): one task per file | `orkestra run --template docstring --files "src/*.py" [--param k=v]`, `orkestra templates list\|show` |
+| The same `ask` again comes from the cache: nothing is sent, it costs nothing | `--no-cache`, `orkestra cache clear` |
 | Bring a run's change into your working tree, or throw it away | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
 | Clean up abandoned worktrees, old run records and stale reservations | `orkestra gc [--older-than 30] [--dry-run]` |
 | Environment check: config, provider access, API key variables, Ollama models, consent, paused providers, git, codex/agy | `orkestra doctor [--json] [--warm]` |
@@ -393,6 +396,45 @@ tag: finished runs, success rate, average attempts and time, tokens and cost. A 
 the provider that answered; an escalated run counts for the last provider it used. Runs still
 marked `running` are counted apart.
 
+## Chief tools
+
+**`orkestra status`** is the one command to start a session with: the chief and profile, the
+edit runs that passed and wait for `apply` or `discard`, today's budget per provider and the
+paused providers, in at most 15 lines (`--json` has everything). Later phases add their own
+lines (the handoff file, the night queue).
+
+**Templates** save writing task files:
+
+```bash
+orkestra templates list
+orkestra run --template docstring --files "src/*.py" --param style=numpy --dry-run   # the tasks
+orkestra run --template docstring --files "src/*.py" --param check="python -m pytest -q"
+```
+
+Every matching file becomes one task (tagged with the template's name), and they run as a
+batch, with the same cost check. Built-in: `docstring`, `type-hints`, `tests`, `summarize`
+(a JSON answer, changes nothing), `rename-refactor` (`old`, `new`), `translate` (`language`).
+`templates show <name>` lists the parameters. The optional `check` parameter is a command that
+must pass (your tests); without it only the number of changed files is checked. A project can
+add or override templates in `.orkestra/templates/<name>.yaml`: `description`, `params`
+(`name: {default, description}`; no default means required) and `task` (task fields without
+`id`; `$file` and `$<param>` are filled in, a `$` in a file name stays as it is). A project
+template that replaces a built-in one is announced on every use: a cloned repository could
+ship its own commands, so look at it with `templates show` first. `--files` only takes real
+files inside the working directory that `.gitignore` and the ignore file keep.
+
+**Answer cache.** An `ask` task's answer that passed its checks is kept for `cache.ttl_days`
+(14) days under `~/.orkestra/cache/responses/` (secrets masked, no prompt). The same question
+to the same model with the same context files and checks comes from there: nothing is sent,
+no budget is used, the envelope says `cached: true`. A changed context file is a new
+question, and a cached answer that no longer passes its checks is dropped and the worker is
+asked. `edit` tasks and code agents' answers are never cached. `--no-cache` (on `ask`, `run`, `batch`) skips it for one command,
+`cache.enabled: false` turns it off, `orkestra cache clear` empties it.
+
+**Savings (estimated).** `orkestra stats` also shows how many tokens the workers wrote and how
+many came back to the chief in envelopes, for the runs that passed. The chief's own use
+cannot be measured, so the line is always marked as an estimate.
+
 ## Worktrees: isolated changes
 
 Workers never change your checkout. A run that changes code gets its own git worktree under
@@ -433,8 +475,8 @@ mkdir -p .claude/skills && cp -r skill/orkestra .claude/skills/
 
 Then ask Claude, for example: *"Add docstrings to these 20 files with orkestra, and review the
 result."* The skill is in Turkish for now (it will be translated with the release) and covers
-the commands that exist today; `status`, `map`, `review`, templates and handoff come back into
-it once those phases land.
+the commands that exist today; `map`, `review`, `plan expand` and handoff come back into it
+once those phases land.
 
 ## Configuration
 
@@ -544,7 +586,8 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 6 | Code agents: Codex CLI, Antigravity CLI | ✅ |
 | 7a | Batch runs: dependencies, parallelism, per-provider limits | ✅ |
 | 7b | Cost estimate, batch apply, `stats` | ✅ |
-| 8 | Chief tools: `status`, `review`, `map`, templates, `plan expand`, cache, savings counter | ⏳ |
+| 8a | Chief tools: `status`, templates, answer cache, savings counter | ✅ |
+| 8b | Chief tools: `review`, `map`, `plan expand` | ⏳ |
 | 9a | Claude skill: `SKILL.md`, checked against the CLI | ✅ |
 | 9b | Claude skill: review and manual scenarios | ✅ |
 | 9c | SEARCH/REPLACE edits for cheap models (`edit_format: auto`) | ✅ |

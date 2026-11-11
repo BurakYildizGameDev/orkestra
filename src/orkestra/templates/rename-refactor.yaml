@@ -1,0 +1,24 @@
+description:
+  en: Rename a symbol in a file (its definition and every use); change nothing else.
+  tr: Bir dosyada bir adı yeniden adlandırır (tanımı ve her kullanımı); başka bir şeyi değiştirmez.
+params:
+  old:
+    description: The current name.
+  new:
+    description: The new name.
+  check:
+    default: ""
+    description: A command that must pass afterwards, e.g. the tests (empty - none).
+task:
+  kind: edit
+  tier: 1
+  prompt: |
+    In $file, rename $old to $new: its definition and every use in this file. Change nothing
+    else. If $old is neither defined nor used in $file, answer CANNOT_DO.
+  context:
+    files: ["$file"]
+  verify:
+    - type: max_changed_files
+      value: 1
+    - type: command
+      run: "$check"

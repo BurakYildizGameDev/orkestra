@@ -1,0 +1,28 @@
+description:
+  en: Write tests for a file in a new test file; the file itself must not change.
+  tr: Bir dosya için yeni bir test dosyası yazar; dosyanın kendisi değişmez.
+params:
+  test_dir:
+    default: tests
+    description: Folder for the new test file.
+  framework:
+    default: pytest
+    description: Test framework to use.
+  check:
+    default: ""
+    description: A command that must pass afterwards, e.g. the test run (empty - none).
+task:
+  kind: edit
+  tier: 2
+  prompt: |
+    Write $framework tests for $file in a new test file under $test_dir/. Cover the public
+    functions and classes: normal cases, edge cases and errors. Do not change $file or any
+    other existing file.
+  context:
+    files: ["$file"]
+  allow_new_files: true
+  verify:
+    - type: protect_paths
+      paths: ["$file"]
+    - type: command
+      run: "$check"

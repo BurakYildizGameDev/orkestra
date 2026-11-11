@@ -158,6 +158,24 @@ def glob_files(globs: Sequence[str], base: Path, ignore_file: str | None = None)
     return expand_globs(globs, root, _specs(root, ignore_file)[1])
 
 
+def existing_files(globs: Sequence[str], base: Path, ignore_file: str | None = None) -> list[Path]:
+    """Like ``glob_files``, but only real files inside ``base`` that the ignore files keep:
+    a plain path that names nothing, a directory, an ignored file or a path outside is left
+    out (``run --template --files``, Faz 8a)."""
+    root = base.resolve()
+    specs = _specs(root, ignore_file)[1]
+    kept: list[Path] = []
+    for path in expand_globs(globs, root, specs):
+        resolved = path.resolve()
+        try:
+            display = resolved.relative_to(root).as_posix()
+        except ValueError:
+            continue
+        if resolved.is_file() and not _ignored_by(display, specs):
+            kept.append(resolved)
+    return kept
+
+
 def collect_context(
     paths: Sequence[Path],
     *,

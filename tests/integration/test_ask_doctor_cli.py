@@ -15,6 +15,16 @@ from orkestra.cli import app
 from orkestra.config.loader import load_config
 from orkestra.state import consent, db
 
+
+@pytest.fixture(autouse=True)
+def no_answer_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests send the same question again on purpose (failover, budget, health):
+    every request must reach a provider. The answer cache has its own tests (Faz 8a)."""
+    from orkestra.cache import responses
+
+    monkeypatch.setattr(responses, "load", lambda *args, **kwargs: None)
+
+
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 OLLAMA = "http://ollama.test:11434"
 ROUTER = "https://router.test/api/v1"

@@ -106,6 +106,12 @@ def load_batch(path: Path) -> BatchSpec:
     return BatchSpec(tuple(tasks), _parallel(data.get("parallel")), str(path), order)
 
 
+def from_tasks(tasks: Sequence[TaskSpec], source: str, parallel: int | None = None) -> BatchSpec:
+    """A batch made in code (``run --template``), checked like a batch file."""
+    _check_ids(tasks)
+    return BatchSpec(tuple(tasks), _parallel(parallel), source, _order(tasks))
+
+
 def _check_ids(tasks: Sequence[TaskSpec]) -> None:
     seen: set[str] = set()
     for task in tasks:

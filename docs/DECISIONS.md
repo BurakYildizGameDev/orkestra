@@ -524,3 +524,29 @@ Mimari §3 (komut tablosu), §12, §19 güncellendi.
 - **Token ve maliyet penceredeki koşuların:** `usage` satırları `created_at`'e göre değil, penceredeki koşulara göre seçiliyor; toplam, sağlayıcı ve etiket satırları birbirini tutuyor.
 - **Temizlik:** hata metni tek yardımcıda (`_detail`), adaysız tahminin ölü dalı `InternalError`, `_total` `sum`, istem tokenı tek hesap.
 Mimari §3 (komut tablosu), §12, §19 güncellendi.
+
+## D-059 – Şef araçları: status, şablonlar, cevap önbelleği, tasarruf sayacı (2026-11-11, Faz 8a)
+**Bağlam:** Faz 8'in ilk yarısı. Mimari §19 ayrıntıların bir kısmını açık bırakıyordu.
+**Karar:**
+- **`status`:** `chief/status.py`, bölümler `@section(ad, order)` ile kayıt oluyor; sonraki fazlar bu modüle dokunmadan satır ekleyecek. Bölüm başına sınır (3 koşu, 4 sağlayıcı satırı, kalanı "+N") ve merkezde 15 satır: aşarsa son satır `status --json`'u gösteriyor. JSON her şeyi taşıyor. Şef `ORKESTRA_CHIEF` ortam değişkeninden, yoksa `defaults.chief`; devir ve kuyruk satırları Faz 10/12'de.
+- **Şablonlar:** biçim `description` / `params` / `task`. Ayrı bir `params` şeması yerine görev alanlarında `string.Template.safe_substitute` (Jinja yok, Mimari). İsteğe bağlı `check` parametresi boş kalınca o `command` doğrulayıcısı düşüyor: yerleşik şablonlar dil bağımsız kalıyor, kullanıcı kendi test komutunu veriyor. Yerleşik açıklamalar dil başına (`{en, tr}`), çünkü kullanıcıya görünüyor; parametre açıklamaları ve işçi istemleri İngilizce. Şablon görevleri `batch` ile aynı yardımcıdan (`cli._run_batch`) geçiyor, böylece maliyet eşiği ve `--yes-cost` geçerli; `run` bunun için `--yes-cost` aldı. `--dry-run` görevleri batch dosyası olarak yazıyor (şef çalıştırmadan görebilsin).
+- **Cevap önbelleği:** `cache/responses.py`. Anahtara şema ayrıca girmiyor, çünkü system isteminde; bağlam dosyalarının içeriği user isteminde. Sadece görevin kendi istemi önbellekten okunuyor (geri bildirimli tekrar istemleri önceki cevaba bağlı). İsabette cevap yine doğrulanıyor; geçmezse işçiye normal soruluyor. İsabet bütçeye, `daily_runs`'a ve sağlık kaydına dokunmuyor. Kayıtta gizli bilgiler maskeli (koşu kayıtlarıyla aynı), istem yok. Kod ajanları dışarıda: cevapları çalışma dizinine bağlı.
+- **Testler:** aynı soruyu bilerek tekrar soran iki eski test modülü (`test_state_cli`, `test_ask_doctor_cli`; yedeğe geçiş, bütçe, sağlık) önbelleği kapatan, nedenini yazan bir modül fikstürü aldı.
+- **Tasarruf sayacı:** sütunlar Faz 0'dan beri yazılıyordu; `stats` penceredeki biten koşuların toplamını ve zarfın tahmini tokenını gösteriyor, hep "tahmini" etiketiyle.
+- **Skill:** `status`, şablonlar, önbellek geri eklendi (D-046). `map`, `review`, `plan expand` 8b'de.
+Mimari §19 güncellendi.
+
+## D-060 – Faz 8a kod denetimi düzeltmeleri (2026-11-11, Faz 8a)
+**Bağlam:** PR #16 için `/code-review`: 10 bulgu. 9'u düzeltildi, 1'i kısmen.
+**Karar:**
+- **Ajan cevabı önbelleğe sızmıyor:** önbellek anahtarı her adayda sıfırlanıyor ve kod ajanının cevabı hiç yazılmıyor. Önceden sohbet modeli başarısız olup görev bir ajana geçince ajanın cevabı sohbet modelinin anahtarıyla saklanıyor, sonraki koşuda onunmuş gibi dönüyordu.
+- **Bayat cevap siliniyor:** önbellekten gelip doğrulamayı geçmeyen cevap siliniyor ve işçinin deneme hakkından (`max_retries`) sayılmıyor; işçiye geri bildirimle soruluyor. Anahtara görevin doğrulayıcıları da giriyor: aynı soruyu farklı denetleyen görevler aynı kaydı paylaşmıyor.
+- **Saat dilimsiz kayıt** isabet sayılmıyor (önceden `TypeError` ile koşu çöküyordu).
+- **`--files` sadece gerçek dosyalar:** `context.existing_files` var olmayan yolu, klasörü, ignore dosyalarının dışarıda bıraktığı dosyayı ve çalışma dizini dışını eliyor; eşleşen yoksa kod 2.
+- **`params` denetimi:** sözlük değilse anlaşılır hata (kod 2); `ad: değer` kısa yazımı varsayılan sayılıyor (önceden sessizce zorunlu oluyordu).
+- **Yerleşiği ezen proje şablonu duyuruluyor:** her `run --template` ve `templates show`'da stderr'e uyarı, JSON'da `overrides_builtin` ve `path`. Engellenmiyor, çünkü proje şablonu bilinçli bir özellik ve bir görev dosyası da aynı komutları çalıştırabilir; ama klonlanan depo sessizce kendi komutlarını çalıştıramıyor. Skill şefe önce `templates show` demesini söylüyor.
+- **Tasarruf:** sadece `ok` koşular; oran 1'in altındaysa "tasarruf yok" satırı (önceden "0.3 kat az" yazıyordu).
+- **Çeviri:** şablon hata metinleri ve `templates show` başlığı `t()` ile.
+- **CLI:** `run --template --dry-run --json` JSON veriyor; `--yes-cost` görev dosyasıyla kod 2.
+- **`status` (kısmen):** sağlayıcı özeti bir kez okunuyor (iki bölüm paylaşıyor), uygulanmamış koşu sorgusu worktree'si olmayanları SQL'de eliyor. `discard` edilen koşular hâlâ kayıt dosyası okunarak eleniyor; bunun için `runs`'a yeni bir durum sütunu (yeni migration) gerekir, şimdilik bilinen sorun.
+Mimari §19 güncellendi.

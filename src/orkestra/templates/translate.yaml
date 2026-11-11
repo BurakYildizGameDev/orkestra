@@ -1,0 +1,22 @@
+description:
+  en: Translate the comments, docstrings and user-facing texts of a file.
+  tr: Bir dosyanın yorumlarını, docstring'lerini ve kullanıcıya görünen metinlerini çevirir.
+params:
+  language:
+    description: The target language, e.g. German.
+  check:
+    default: ""
+    description: A command that must pass afterwards, e.g. the tests (empty - none).
+task:
+  kind: edit
+  tier: 1
+  prompt: |
+    Translate the comments, docstrings and user-facing strings in $file into $language. Do not
+    change code, names, keys, or placeholders such as {name}, %s or {0}.
+  context:
+    files: ["$file"]
+  verify:
+    - type: max_changed_files
+      value: 1
+    - type: command
+      run: "$check"
