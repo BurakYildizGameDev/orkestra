@@ -22,6 +22,9 @@ from orkestra.chief import status
 from orkestra.config import loader
 from orkestra.config.schema import Config, Provider
 from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
+from orkestra.handoff import brief as handoff_brief
+from orkestra.handoff import model as handoff_model
+from orkestra.handoff import store as handoff_store
 from orkestra.i18n import t
 from orkestra.providers import registry
 from orkestra.routing.router import Route, describe_candidates
@@ -379,6 +382,21 @@ def _echo_batch_applied(report: service.BatchApplied, *, as_json: bool) -> None:
                  skipped=len(report.skipped)))  # fmt: skip
 
 
+def _handoff_target(ctx: typer.Context) -> tuple[Config, Path]:
+    loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+    return loaded.config, Path.cwd() / loaded.config.handoff.file
+
+
+def _chief(flag: str | None, config: Config, *, required: bool) -> str:
+    """``--chief`` > ``ORKESTRA_CHIEF``; ``update`` must know who is writing (Faz 10a)."""
+    name = (flag or os.environ.get("ORKESTRA_CHIEF", "")).strip()
+    if name:
+        return name
+    if required:
+        raise UsageError(t("handoff.error.no_chief"))
+    return config.defaults.chief
+
+
 def build_app() -> typer.Typer:
     """Build the typer app. Help texts are translated here, so set the language first."""
     app = typer.Typer(name="orkestra", help=t("cli.help"), no_args_is_help=True)
@@ -396,6 +414,8 @@ def build_app() -> typer.Typer:
     app.add_typer(cache_app)
     plan_app = typer.Typer(name="plan", help=t("cli.plan.help"), no_args_is_help=True)
     app.add_typer(plan_app)
+    handoff_app = typer.Typer(name="handoff", help=t("cli.handoff.help"), no_args_is_help=True)
+    app.add_typer(handoff_app)
 
     @providers_app.command("list", help=t("cli.providers.list.help"))
     def providers_list(
@@ -807,9 +827,131 @@ def build_app() -> typer.Typer:
         with closing(db.connect()) as conn:
             report = status.collect(status.default_context(loaded.config, conn, db.local_now()))
         if as_json:
-            _echo_json({"sections": report.sections})
+            # One line: ``status`` promises a compact view, and a chief or a script reads it.
+            typer.echo(json.dumps({"sections": report.sections}))
         else:
             typer.echo(status.render(report))
+
+    @handoff_app.command("init", help=t("cli.handoff.init.help"))
+    def handoff_init(ctx: typer.Context, as_json: Annotated[bool, _json_option()] = False) -> None:
+        config, path = _handoff_target(ctx)
+        handoff_store.init_file(
+            path,
+            project=Path.cwd().name,
+            chief=_chief(None, config, required=False),
+            at=db.local_now(),
+            commit=handoff_brief.head_commit(Path.cwd()),
+        )
+        if as_json:
+            _echo_json({"path": str(path)})
+        else:
+            typer.echo(t("handoff.init.created", path=path))
+
+    @handoff_app.command("update", help=t("cli.handoff.update.help"))
+    def handoff_update(
+        ctx: typer.Context,
+        section: Annotated[str, typer.Option("--section", help=t("cli.handoff.option.section"))],
+        add: Annotated[str | None, typer.Option("--add", help=t("cli.handoff.option.add"))] = None,
+        set_text: Annotated[
+            str | None, typer.Option("--set", help=t("cli.handoff.option.set"))
+        ] = None,
+        chief: Annotated[
+            str | None, typer.Option("--chief", help=t("cli.handoff.option.chief"))
+        ] = None,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        config, path = _handoff_target(ctx)
+        result = handoff_store.update(
+            path,
+            config=config,
+            section=section,
+            chief=_chief(chief, config, required=True),
+            now=db.local_now(),
+            add=add,
+            set_text=set_text,
+            commit=handoff_brief.head_commit(Path.cwd()),
+        )
+        updated = result.last_updated
+        if as_json:
+            _echo_json(
+                {
+                    "section": result.section,
+                    "action": result.action,
+                    "archived": result.archived,
+                    "last_updated": {
+                        "chief": updated.chief,
+                        "at": updated.at.isoformat() if updated.at is not None else None,
+                        "commit": updated.commit,
+                    },
+                }
+            )
+            return
+        typer.echo(t("handoff.update.saved", path=path, section=result.section,
+                     action=result.action))  # fmt: skip
+        if result.archived:
+            typer.echo(t("handoff.update.archived", count=result.archived))
+
+    @handoff_app.command("check", help=t("cli.handoff.check.help"))
+    def handoff_check(
+        ctx: typer.Context,
+        strict: Annotated[
+            bool, typer.Option("--strict", help=t("cli.handoff.option.strict"))
+        ] = False,
+        warn_only: Annotated[
+            bool, typer.Option("--warn-only", help=t("cli.handoff.option.warn_only"))
+        ] = False,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        config, path = _handoff_target(ctx)
+        exists = path.exists()
+        warnings: list[str] = []
+        state: handoff_brief.Staleness | None = None
+        if not exists:
+            warnings.append(t("handoff.check.missing"))
+        else:
+            document = handoff_model.parse(path.read_text(encoding="utf-8"))
+            state = handoff_brief.staleness(document, config, Path.cwd(), handoff_brief.default_git)
+            if state is not None and state.unknown_commit:
+                warnings.append(t("handoff.check.unknown_commit", commit=state.commit))
+            elif state is not None and state.stale and state.count is not None:
+                warnings.append(t("handoff.check.stale", count=state.count))
+        stale = bool(state is not None and state.stale)
+        if as_json:
+            _echo_json({"exists": exists, "stale": stale, "warnings": warnings})
+        elif warnings:
+            for line in warnings:
+                typer.echo(line)
+        else:
+            typer.echo(t("handoff.check.ok"))
+        if warn_only:
+            return
+        if strict and (warnings or not exists):
+            raise typer.Exit(code=int(ExitCode.TASK_FAILED))
+
+    @handoff_app.command("show", help=t("cli.handoff.show.help"))
+    def handoff_show(
+        ctx: typer.Context,
+        brief: Annotated[bool, typer.Option("--brief", help=t("cli.handoff.option.brief"))] = False,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        config, path = _handoff_target(ctx)
+        if not path.exists():
+            raise UsageError(t("handoff.error.missing", path=path))
+        if brief:
+            with closing(db.connect()) as conn:
+                result = handoff_brief.build(
+                    config, conn, db.local_now(), path=path, cwd=Path.cwd()
+                )
+            if as_json:
+                _echo_json({"brief": result.text, "lines": len(result.lines)})
+            else:
+                typer.echo(result.text)
+            return
+        text = path.read_text(encoding="utf-8")
+        if as_json:
+            _echo_json(handoff_model.as_json(handoff_model.parse(text)))
+        else:
+            typer.echo(text, nl=False)
 
     @templates_app.command("list", help=t("cli.templates.list.help"))
     def templates_list(as_json: Annotated[bool, _json_option()] = False) -> None:

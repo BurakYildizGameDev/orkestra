@@ -223,7 +223,21 @@ Batch'te her `ok` koşunun diff'ini yukarıdaki gibi denetle. Hepsi uygunsa `ork
 
 Uzun bir çalışmanın sonunda sahipsiz worktree'leri ve eski kayıtları temizlemek için `orkestra gc --dry-run` ile bak, kullanıcı isterse `orkestra gc` çalıştır.
 
-## 7. Raporlama
+## 7. Devir dosyasını güncel tut
+
+Projede `.orkestra/HANDOFF.md` varsa (yoksa uzun işlerde `orkestra handoff init` öner):
+- Anlamlı bir adım bitince ve önemli bir karar alınca dosyayı güncelle:
+  `orkestra handoff update --chief claude --section done --add "…"` ·
+  `orkestra handoff update --chief claude --section decisions --add "…"`
+- Yarım bırakacaksan `in_progress` bölümüne dosya, branch ve **somut** sonraki adımı yaz
+  (`--section in_progress --set "file: … | branch: … | next: …"`). Goal, status, open_questions
+  ve watch_out bölümleri `--set` ile değişir.
+- Oturuma bir devirle başladıysan tüm projeyi baştan tarama: önce `orkestra handoff show --brief`
+  (git durumu, son commit'ler, uygulanmamış koşular, kalan bütçe dahil) oku.
+- `orkestra handoff check` dosyanın kaç commit geride olduğunu söyler; uyarı varsa
+  `git log --oneline` ile gerçek durumu doğrula.
+
+## 8. Raporlama
 
 İş bitince kullanıcıya kısaca bildir: hangi işler delege edildi, hangi sağlayıcı/kademe, kaç deneme, maliyet (zarftaki `usage.cost_usd`; günlük toplam için `orkestra budget --json`), neyi kendin düzelttin. Uzun log yapıştırma. Kullanıcı hangi işçinin ne kadar başarılı olduğunu sorarsa: `orkestra stats --since 7d --json` (sağlayıcı ve etiket başına koşu, başarı oranı, deneme, token, maliyet, süre).
 

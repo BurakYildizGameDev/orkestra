@@ -51,6 +51,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | The chief's view at a glance (at most 15 lines): unapplied runs, today's budget, paused providers | `orkestra status [--json]` |
 | Task templates (docstring, type-hints, tests, summarize, rename-refactor, translate, or your own): one task per file | `orkestra run --template docstring --files "src/*.py" [--param k=v]`, `orkestra templates list\|show` |
 | The same `ask` again comes from the cache: nothing is sent, it costs nothing | `--no-cache`, `orkestra cache clear` |
+| Handoff file: what the next AI chief needs to continue; a short brief with the real git state, unapplied runs and budget | `orkestra handoff init`, `update --section … --add/--set`, `check`, `show [--brief] [--json]` |
 | Bring a run's change into your working tree, or throw it away | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
 | Clean up abandoned worktrees, old run records and stale reservations | `orkestra gc [--older-than 30] [--dry-run]` |
 | Environment check: config, provider access, API key variables, Ollama models, consent, paused providers, git, codex/agy | `orkestra doctor [--json] [--warm]` |
@@ -400,8 +401,20 @@ marked `running` are counted apart.
 
 **`orkestra status`** is the one command to start a session with: the chief and profile, the
 edit runs that passed and wait for `apply` or `discard`, today's budget per provider and the
-paused providers, in at most 15 lines (`--json` has everything). Later phases add their own
-lines (the handoff file, the night queue).
+paused providers, in at most 15 lines (`--json` has everything). It also shows the handoff
+file's goal when the project has one (the night queue joins in a later phase).
+
+**Handoff file (`orkestra handoff`).** When a chief's quota runs out, the work continues in
+`.orkestra/HANDOFF.md` instead of the next AI's memory: the goal, the status, what is done,
+the decisions, open questions and the traps, plus who updated it and at which commit
+(`orkestra handoff init` creates it, `update --section done --add "…"` appends a dated,
+attributed item, `--set` replaces a text section). `orkestra handoff check` warns when the
+file is older than `handoff.stale_after_commits` commits (`--strict` exits 1, `--warn-only`
+never fails). `orkestra handoff show --brief` prints the short brief for the next chief: the
+file's key sections plus the real branch, `git status`, the last commits, unapplied runs and
+the remaining budget, never more than `handoff.brief_max_lines` lines. Text written through
+`update` is redacted, and `Done`/`Decisions` that outgrow `handoff.max_lines` move their
+oldest items to `.orkestra/HANDOFF.archive.md` (appended, never deleted).
 
 **Templates** save writing task files:
 

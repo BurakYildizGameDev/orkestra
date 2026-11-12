@@ -50,6 +50,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Şef için tek bakışta durum (en fazla 15 satır): uygulanmamış koşular, bugünkü bütçe, duraklatılmış sağlayıcılar | `orkestra status [--json]` |
 | Görev şablonları (docstring, type-hints, tests, summarize, rename-refactor, translate ya da kendi şablonun): dosya başına bir görev | `orkestra run --template docstring --files "src/*.py" [--param k=v]`, `orkestra templates list\|show` |
 | Aynı `ask` tekrar önbellekten gelir: hiçbir şey gönderilmez, maliyeti yok | `--no-cache`, `orkestra cache clear` |
+| Devir dosyası: sıradaki yapay zekâ şefinin devam etmesi için gerekenler; gerçek git durumu, uygulanmamış koşular ve bütçeyle kısa özet | `orkestra handoff init`, `update --section … --add/--set`, `check`, `show [--brief] [--json]` |
 | Bir koşunun envelope'u, tam çıktısı, log'u veya değişikliği | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | Koşunun değişikliğini çalışma ağacına al ya da at | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
 | Sahipsiz worktree, eski koşu kaydı ve askıda rezervasyonları temizle | `orkestra gc [--older-than 30] [--dry-run]` |
@@ -396,8 +397,20 @@ Hâlâ `running` görünen koşular ayrıca sayılır.
 
 **`orkestra status`** oturuma başlarken tek komut: şef ve profil, doğrulamayı geçip `apply` ya
 da `discard` bekleyen düzenleme koşuları, bugünkü bütçe (sağlayıcı başına) ve duraklatılmış
-sağlayıcılar; en fazla 15 satır (`--json` her şeyi verir). Sonraki fazlar kendi satırlarını
-ekler (devir dosyası, gece kuyruğu).
+sağlayıcılar; en fazla 15 satır (`--json` her şeyi verir). Devir dosyası varsa hedefi de
+gösterir (gece kuyruğu sonraki fazda katılır).
+
+**Devir dosyası (`orkestra handoff`).** Şefin kotası dolduğunda iş, sıradaki yapay zekânın
+hafızası yerine `.orkestra/HANDOFF.md` ile devam eder: hedef, durum, bitenler, kararlar, açık
+sorular ve tuzaklar; kimin ne zaman hangi commit'te güncellediği. `orkestra handoff init`
+dosyayı oluşturur, `update --section done --add "…"` tarihli ve şefli madde ekler, `--set`
+metin bölümünü değiştirir. `orkestra handoff check`, dosya `handoff.stale_after_commits`
+commit'ten daha eskiyse uyarır (`--strict` kod 1, `--warn-only` asla durdurmaz).
+`orkestra handoff show --brief` sıradaki şef için kısa özeti yazar: dosyanın kilit
+bölümleri, gerçek dal, `git status`, son commit'ler, uygulanmamış koşular ve kalan bütçe; asla
+`handoff.brief_max_lines` satırı geçmez. `update` ile yazılan metin maskelenir; `Done`/
+`Decisions` `handoff.max_lines`'ı aşınca en eski maddeler `.orkestra/HANDOFF.archive.md`'ye
+eklenir (silinmez).
 
 **Şablonlar** görev dosyası yazmaktan kurtarır:
 

@@ -92,6 +92,12 @@ class TranslationError(InternalError):
     """A broken or incomplete translation catalog (a bug in Orkestra, not user input)."""
 
 
+class HandoffLocked(OrkestraError):
+    """Another process holds the handoff file's lock for too long (Faz 10a)."""
+
+    exit_code = ExitCode.CONFLICT
+
+
 class ProviderError(OrkestraError):
     """Base class for errors raised by provider adapters.
 

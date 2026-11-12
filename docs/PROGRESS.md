@@ -23,13 +23,56 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
 | 9b – Skill doğrulama | ✅ | 2026-11-10 | kod denetimi (D-047), elle deneme düzeltmeleri (D-048), 5/5 senaryo (D-049) |
 | 9c – Ucuz modeller için ara/değiştir | ✅ | 2026-11-10 | `edit_format: auto` (küçük dosya `whole`, büyük dosya `replace`), D-051 |
-| 10 – Şef devri | ⏳ | | |
+| 10a – Devir dosyası ve özet | ✅ | 2026-11-12 | `handoff init/update/check/show`, `status` devir satırı, migration 2 |
+| 10b – Devretme (`handoff to`) | ⏳ | | |
 | 11 – Arayüz, sihirbaz, 5 dil | ⏳ | | |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
 | 13 – Benchmark | ⏳ | | |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 10a – Devir dosyası ve özet (2026-11-12)
+**Yapılanlar (D-063):**
+- `handoff/model.py`: sabit İngilizce başlıklarla ayrıştırma/yazma; bilinmeyen bölümler, bölüm sırası, boş satırlar, Türkçe/emoji, kod bloğu içindeki `## ` ve CRLF bayt bayt korunuyor. İşaretçi yokluğu (`missing_marker`) ve çift başlık (`duplicate_section`) uyarı olarak dönüyor (ilk bölüm kullanılır, ikincisi silinmez). `Last updated` zaman damgasının dakika/saniye hassasiyeti dosyadan korunuyor.
+- `handoff/store.py`: aynı klasörde geçici dosya + `os.replace` ile atomik yazma; bağımlılıksız `O_CREAT|O_EXCL` kilidi, enjekte edilebilir saat/uyku, bayat kilit temizliği, zaman aşımında `HandoffLocked` (kod 5); oku-değiştir-yaz kilidin içinde; `Done`/`Decisions` taşması arşive **ekleniyor**; `update` metni `Redactor(configured_secrets)` ile maskeleniyor.
+- `handoff/brief.py`: LLM'siz özet; kural tabanlı, `brief_max_lines` hiçbir koşulda aşılmıyor (`… (+N)` ile kesme); otomatik bölümler branch, `git status --short` (≤15 satır), son 5 commit, uygulanmamış koşular, kalan bütçe; git yoksa tek satır not; kılavuz `importlib.resources` ile okunuyor; özet redaksiyondan geçiyor.
+- Migration `0002_handoffs.sql`: `handoffs (id, from_chief, to_chief, at, commit, brief_path)`; tablo 10a'da gelir, satırı 10b yazar.
+- CLI: `orkestra handoff init | update | check | show [--brief]` (+`--json`); `--section`, `--add`, `--set`, `--chief`, `--strict`, `--warn-only`. Hata yolları `UsageError` (kod 2) ve `t()` ile.
+- `chief/status.py`: `@section("handoff", order=20)`; dosya yoksa satır yok, varsa hedef + eskime uyarısı; `--json`'da tam veri.
+- i18n (en + tr, 49 anahtar), `prompts/chief_guide.md` (paket verisi), skill §7, README (en + tr) "Şef devri" bölümü.
+- Paket verisi doğrulandı: `uv build --wheel` çıktısında `orkestra/prompts/chief_guide.md`, `orkestra/handoff/*.py` ve `orkestra/state/migrations/0002_handoffs.sql` var.
+
+**Kabul kriterleri:**
+- ✅ Elle düzenlenmiş, bilinmeyen bölümlü dosya ayrıştır→yaz sonrası bozulmuyor (`test_parse_and_render_keep_every_byte_of_a_hand_edited_file`, `test_unknown_sections_survive_an_update_in_their_original_place`).
+- ✅ Kod bloğu içindeki `## ` başlık sayılmıyor (`test_a_heading_inside_a_code_fence_is_not_a_section`).
+- ✅ CRLF okunuyor ve CRLF yazılıyor (`test_crlf_is_read_and_written_back_with_crlf_only`).
+- ✅ İşaretçisiz dosya ayrıştırılıyor ve raporlanıyor (`test_a_file_without_the_marker_is_parsed_but_reported`).
+- ✅ Eşzamanlı iki `update` (iki süreç, 20+20 madde) dosyayı bozmuyor, kilit kalmıyor (`test_two_processes_adding_twenty_items_each_keep_all_forty`).
+- ✅ Kilit zaman aşımı ve bayat kilit (`test_a_live_lock_times_out_with_a_clear_error`, `test_a_stale_lock_is_removed_and_the_update_goes_through`).
+- ✅ Arşiv: en eskiler taşınıyor, arşiv ekleniyor, madde kaybolmuyor (`test_done_entries_move_to_the_archive_oldest_first_and_the_archive_is_appended`).
+- ✅ Sır maskeleniyor (`test_configured_and_pattern_secrets_are_masked_in_the_file_and_archive`).
+- ✅ `show --brief` satır sınırını aşmıyor (40 ve 10 satır; devasa bölümler; `… (+N)`) (`test_the_brief_never_exceeds_its_limit_even_with_huge_sections`, `test_a_limit_of_ten_is_still_good`).
+- ✅ Özet repo dışında çökmüyor (`test_a_non_git_directory_gets_a_note_and_does_not_crash`, `test_show_prints_the_file_and_the_brief_never_goes_over_the_limit`).
+- ✅ Eşik altı/üstü eskime ve geçmişte olmayan commit uyarısı (`test_a_stale_file_gets_an_explicit_warning`, `test_a_commit_that_is_not_in_history_gets_an_explicit_warning`, `test_check_warns_after_the_threshold_and_strict_turns_that_into_exit_1`).
+- ✅ `check`: `--strict` kod 1, `--warn-only` her durumda 0, dosya yok (`test_check_warns_after_the_threshold_and_strict_turns_that_into_exit_1`, `test_check_without_a_file_says_so_and_strict_exits_1_but_warn_only_never_does`).
+- ✅ `init` var olan dosyayı ezmiyor (kod 2) (`test_init_creates_the_file_and_refuses_to_overwrite_it`, `test_init_creates_the_template_and_never_overwrites`).
+- ✅ `update`: her bölüm, geçersiz bölüm/şef/dosya → kod 2, `Last updated` doğru; repo dışında `commit: none` (`test_set_covers_every_non_list_section`, `test_add_covers_both_list_sections`, `test_bad_update_arguments_exit_2`, `test_update_outside_a_repository_records_no_commit`).
+- ✅ `show` dosya yokken kod 2; `show --json` bütün bölümler + bilinmeyen bölümler (`test_update_and_show_require_an_existing_file`, `test_show_json_lists_every_section_and_reports_unknown_ones`).
+- ✅ `status`: dosya yokken satır yok, varken var; 31 sağlayıcı + devir dosyasıyla ≤15 satır; `--json`'da bölüm (`test_status_has_no_handoff_section_without_a_file_and_one_with_it`, `test_status_with_thirty_one_providers_and_a_handoff_file_still_fits_fifteen_lines`).
+- ✅ Migration: yeni veritabanında `handoffs` var, 1. sürüm veritabanı yükseltiliyor (`test_schema_tables`, `test_a_version_1_database_is_upgraded_to_the_handoffs_table`).
+- ✅ i18n: en/tr anahtar kümeleri ve yer tutucular aynı (`test_catalog_key_sets_match`, `test_catalog_placeholders_match`).
+- ✅ Skill §7 komutları gerçek CLI'de var (`tests/unit/test_skill.py`, 61 test).
+
+**Ertelenenler:** `handoff to <şef>`, `install-hook`, `launch.py`, `handoffs` tablosuna satır yazımı → Faz 10b.
+
+**Bilinen sorunlar:**
+- `show --brief` "In progress" bölümünü özete katmıyor: mevcut 10a testi (`test_a_non_git_directory_gets_a_note_and_does_not_crash`) dosyadaki `branch:` metninin özette geçmemesini bekliyor, Mimari §17 ise In progress'i listeliyor. Test esas alındı (D-063); In progress bilgisi özette yok, devir dosyasında duruyor.
+- `status --json` tek satır basıyor (insan çıktısı değişmedi): 15 satır sözünü `--json` çıktısında da korumak için.
+- `Last updated` alanına yazılan zaman, dosyada dakika hassasiyeti varsa dakika olarak yazılıyor (elle düzenlenmiş dosyanın biçimi bozulmasın diye).
+- Elle devir senaryosu (Claude Code → agy) ⏳ 10b'de.
+
+Testler: 1049 geçti (+61 handoff; önceki 988).
 
 ### Kod denetimi – Faz 8b (PR #17), 2026-11-11
 `/code-review` 10 bulgu + Claude'un kendi okumasından 7 not. 9 bulgu düzeltildi, 1'i yanlış alarm; 7 notun hepsi düzeltildi (D-062):
