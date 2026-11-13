@@ -261,7 +261,7 @@ def test_every_command_and_flag_in_the_skill_exists(skill_text: str) -> None:
 @pytest.mark.parametrize(
     "words",
     [
-        ["handoff", "show"],  # Faz 10
+        ["handoff", "delete"],  # Faz 10 has init/update/check/show, not delete
         ["batch", "tasks.yaml", "--estimates"],  # typo of --estimate
         ["apply", "--only-okay"],
         ["show", "--diff", "--only-flagged"],  # RUN_ID missing
@@ -326,7 +326,7 @@ def test_the_checker_accepts_prose_references_that_exist(span: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "span", ["apply --nope", "providers grant", "--offline", "--schema x --strict"]
+    "span", ["apply --nope", "providers grant", "--offline", "--schema x --strictly"]
 )
 def test_the_checker_catches_prose_references_that_do_not_exist(span: str) -> None:
     assert check_reference(_cli(), span)

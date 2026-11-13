@@ -14,9 +14,11 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import cached_property
+from pathlib import Path
 from typing import Any
 
 from orkestra.config.schema import Config
+from orkestra.handoff import brief, model, store
 from orkestra.i18n import t
 from orkestra.providers import registry
 from orkestra.workspace import service
@@ -25,6 +27,11 @@ MAX_LINES = 15
 SHOWN_RUNS = 3  # unapplied runs listed by name
 SHOWN_PROVIDERS = 4  # budget lines before "+N more"
 CHIEF_ENV = "ORKESTRA_CHIEF"
+STATUS_WARNING_KEYS: dict[str, str] = {
+    "no_git": "status.handoff.no_git",
+    "unknown_commit": "status.handoff.unknown_commit",
+    "stale": "status.handoff.stale",
+}
 
 
 @dataclass
@@ -104,6 +111,28 @@ def _profile(ctx: StatusContext) -> Section:
     profile = ctx.config.defaults.profile
     return Section([t("status.profile", chief=chief, profile=profile)],
                    {"chief": chief, "profile": profile})  # fmt: skip
+
+
+@section("handoff", order=20)
+def _handoff(ctx: StatusContext) -> Section | None:
+    """The handoff file's goal and, when it is old, one warning line; none without the file."""
+    path = store.handoff_path(ctx.config, Path.cwd())
+    if not path.exists():
+        return None
+    document = model.parse(store.read(path))
+    goal_text = model.section_text(document, "goal") or ""
+    first = next((line.strip() for line in goal_text.splitlines() if line.strip()), "")
+    state = brief.staleness(document, ctx.config, Path.cwd(), brief.default_git)
+    data = {
+        "path": str(path),
+        "goal": first,
+        "stale": bool(state is not None and state.stale),
+        "commit": state.commit if state is not None else None,
+        "commits_after": state.count if state is not None else None,
+    }
+    lines = [t("status.handoff.line", goal=" ".join(first.split())[:70] or "-")]
+    lines.extend(brief.warning_lines(state, STATUS_WARNING_KEYS))
+    return Section(lines, data)
 
 
 @section("unapplied", order=30)
