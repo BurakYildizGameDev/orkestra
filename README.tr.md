@@ -502,8 +502,8 @@ mkdir -p .claude/skills && cp -r skill/orkestra .claude/skills/
 
 Sonra Claude'a örneğin şunu söyle: *"Bu 20 dosyaya docstring ekleme işini orkestra ile dağıt,
 sonucu sen denetle."* Skill şimdilik Türkçe (yayında İngilizceye çevrilecek) ve bugün var olan
-komutları kapsıyor; `map`, `review`, `plan expand` ve devir o fazlar bitince skill'e geri
-eklenecek.
+bütün komutları kapsıyor: `batch`, `map`, `review`, `plan expand` ve devir dosyası da
+(`handoff update`, `show --brief`, `to --print-only`).
 
 ## Yapılandırma
 
@@ -614,11 +614,11 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 7a | Batch: bağımlılıklar, paralellik, sağlayıcı başına sınır | ✅ |
 | 7b | Maliyet tahmini, toplu apply, `stats` | ✅ |
 | 8a | Şef araçları: `status`, şablonlar, cevap önbelleği, tasarruf sayacı | ✅ |
-| 8b | Şef araçları: `review`, `map`, `plan expand` | ⏳ |
+| 8b | Şef araçları: `review`, `map`, `plan expand` | ✅ |
 | 9a | Claude skill: `SKILL.md`, CLI ile denetlenmiş | ✅ |
 | 9b | Claude skill: denetim ve elle senaryolar | ✅ |
 | 9c | Ucuz modeller için ara/değiştir (SEARCH/REPLACE) düzenlemesi | ✅ |
-| 10 | Şef devri (Claude ↔ Codex ↔ Antigravity) | ⏳ |
+| 10 | Şef devri (Claude ↔ Codex ↔ Antigravity) | ✅ |
 | 11 | Terminal arayüzü, kurulum sihirbazı, 5 dil | ⏳ |
 | 12 | Gece vardiyası kuyruğu, bildirimler, öğrenen yönlendirme | ⏳ |
 | 13 | Benchmark (kötü sonuçlarla birlikte) | ⏳ |
