@@ -126,3 +126,25 @@ def update_run(conn: sqlite3.Connection, run_id: str, **fields: Any) -> None:
     assignments = ", ".join(f"{column} = ?" for column in values)
     with transaction(conn):
         conn.execute(f"UPDATE runs SET {assignments} WHERE run_id = ?", (*values.values(), run_id))
+
+
+# --- handoffs ---------------------------------------------------------------------------
+
+
+def record_handoff(
+    conn: sqlite3.Connection,
+    *,
+    from_chief: str | None,
+    to_chief: str,
+    at: datetime,
+    commit: str | None,
+    brief_path: str | None,
+) -> int:
+    """Write one handoff row (Faz 10b); it is stored before the next chief starts."""
+    with transaction(conn):
+        cursor = conn.execute(
+            'INSERT INTO handoffs (from_chief, to_chief, at, "commit", brief_path) '
+            "VALUES (?, ?, ?, ?, ?)",
+            (from_chief, to_chief, at.isoformat(), commit, brief_path),
+        )
+    return int(cursor.lastrowid or 0)

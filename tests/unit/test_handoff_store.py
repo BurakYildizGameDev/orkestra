@@ -12,6 +12,7 @@ import pytest
 from orkestra.config.schema import Config, HandoffCfg, ModelSpec, OpenAICompatProvider
 from orkestra.errors import HandoffLocked, UsageError
 from orkestra.handoff import model, store
+from orkestra.i18n import t
 
 NOW = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
 
@@ -298,3 +299,93 @@ def test_add_rejects_line_breaks(tmp_path: Path) -> None:
         store.update(path, config=Config(version=1), section="done", add="line one\nline two",
                      chief="claude", now=NOW)  # fmt: skip
     assert path.read_text(encoding="utf-8") == before
+
+
+# --- Claude review of Faz 10 (D-066) -----------------------------------------------------
+
+
+@pytest.mark.parametrize("text", ["line\n## Done\nfake", "```python\nnot closed"])
+def test_set_text_that_would_change_the_sections_is_refused(tmp_path: Path, text: str) -> None:
+    """A ``## `` line opens a fake section; an open fence hides every later heading."""
+    path = tmp_path / "HANDOFF.md"
+    _write(path, model.template("demo", "claude", NOW, None))
+    before = path.read_bytes()
+    with pytest.raises(UsageError) as exc_info:
+        store.update(path, config=Config(version=1), section="status", set_text=text,
+                     chief="claude", now=NOW)  # fmt: skip
+    assert exc_info.value.message == t("handoff.error.breaks_structure", section="status")
+    assert path.read_bytes() == before
+    assert not store.lock_path(path).exists()
+
+
+def test_set_text_with_a_heading_inside_a_closed_fence_is_accepted(tmp_path: Path) -> None:
+    path = tmp_path / "HANDOFF.md"
+    _write(path, model.template("demo", "claude", NOW, None))
+    text = "```md\n## not a heading\n```"
+    store.update(path, config=Config(version=1), section="watch_out", set_text=text,
+                 chief="claude", now=NOW)  # fmt: skip
+    assert model.section_text(model.parse(store.read(path)), "watch_out") == text
+
+
+def test_set_text_with_crlf_in_a_crlf_file_has_no_double_carriage_return(tmp_path: Path) -> None:
+    path = tmp_path / "HANDOFF.md"
+    path.write_bytes(model.template("demo", "claude", NOW, None).replace("\n", "\r\n").encode())
+    store.update(path, config=Config(version=1), section="watch_out", set_text="w1\r\nw2\rw3",
+                 chief="claude", now=NOW)  # fmt: skip
+    raw = path.read_bytes()
+    assert b"\r\r" not in raw
+    assert raw.count(b"\n") == raw.count(b"\r\n")
+    assert model.section_text(model.parse(store.read(path)), "watch_out") == "w1\nw2\nw3"
+
+
+def test_moves_in_a_row_write_one_archive_heading(tmp_path: Path) -> None:
+    path = tmp_path / "HANDOFF.md"
+    _write(path, model.template("demo", "claude", NOW, None))
+    config = Config(version=1, handoff=HandoffCfg(max_lines=2))
+    for n in range(5):
+        store.update(path, config=config, section="done", add=f"item {n}", chief="claude",
+                     now=NOW)  # fmt: skip
+    archive = store.archive_path(path).read_text(encoding="utf-8")
+    assert archive.count("## Done (archived)") == 1
+    assert [line for line in archive.splitlines() if line.startswith("- ")] == [
+        "- [2026-11-11 claude] item 0",
+        "- [2026-11-11 claude] item 1",
+        "- [2026-11-11 claude] item 2",
+    ]
+
+
+def test_the_archive_gets_a_new_heading_when_the_section_changes(tmp_path: Path) -> None:
+    path = tmp_path / "HANDOFF.md"
+    _write(path, model.template("demo", "claude", NOW, None))
+    config = Config(version=1, handoff=HandoffCfg(max_lines=1))
+    for section in ("done", "done", "decisions", "decisions", "done"):
+        store.update(path, config=config, section=section, add="x", chief="claude", now=NOW)
+    headings = [
+        line
+        for line in store.archive_path(path).read_text(encoding="utf-8").splitlines()
+        if line.startswith("## ")
+    ]
+    assert headings == ["## Done (archived)", "## Decisions (archived)", "## Done (archived)"]
+
+
+def test_the_archive_uses_the_line_ending_of_the_handoff_file(tmp_path: Path) -> None:
+    path = tmp_path / "HANDOFF.md"
+    path.write_bytes(model.template("demo", "claude", NOW, None).replace("\n", "\r\n").encode())
+    config = Config(version=1, handoff=HandoffCfg(max_lines=1))
+    for n in range(3):
+        store.update(path, config=config, section="done", add=f"item {n}", chief="claude",
+                     now=NOW)  # fmt: skip
+    raw = store.archive_path(path).read_bytes()
+    assert raw.count(b"\r\n") > 0
+    assert raw.count(b"\n") == raw.count(b"\r\n")
+
+
+def test_timestamps_are_written_to_the_second(tmp_path: Path) -> None:
+    """Mimari §17 shows a short time; microseconds are noise in a file people read."""
+    now = datetime(2026, 11, 11, 12, 0, 5, 123456, tzinfo=UTC)
+    path = tmp_path / "HANDOFF.md"
+    store.init_file(path, project="demo", chief="claude", at=now, commit=None)
+    assert "at: 2026-11-11T12:00:05+00:00 |" in store.read(path)
+    store.update(path, config=Config(version=1), section="goal", set_text="x", chief="agy",
+                 now=now)  # fmt: skip
+    assert "chief: agy | at: 2026-11-11T12:00:05+00:00 | commit: none" in store.read(path)

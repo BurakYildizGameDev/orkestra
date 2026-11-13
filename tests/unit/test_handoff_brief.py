@@ -145,7 +145,28 @@ def test_a_non_git_directory_gets_a_note_and_does_not_crash(
 
     text = _build(path, _config(), conn, git=no_git)
     assert t("handoff.brief.no_git") in text
-    assert "branch:" not in text
+    # No git branch line; the ``branch:`` inside In progress is the chief's own text (D-066).
+    branch_line = t("handoff.brief.branch", branch="")
+    assert not any(line.startswith(branch_line) for line in text.splitlines())
+
+
+def test_a_repository_without_commits_still_shows_its_branch(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    path = _document(tmp_path)
+
+    def unborn(args: list[str], cwd: Path) -> tuple[bool, str]:
+        if "--is-inside-work-tree" in args:
+            return True, "true\n"
+        if "branch" in args:
+            return True, "main\n"
+        if "status" in args:
+            return True, ""
+        return False, "fatal: your current branch 'main' does not have any commits yet"
+
+    text = _build(path, _config(), conn, git=unborn)
+    assert t("handoff.brief.branch", branch="main") in text
+    assert t("handoff.brief.no_git") not in text
 
 
 def test_a_stale_file_gets_an_explicit_warning(tmp_path: Path, conn: sqlite3.Connection) -> None:
@@ -271,3 +292,66 @@ def test_the_brief_survives_every_pressure_at_once(
     assert 0 < len(lines) <= 10
     assert lines[0] == t("handoff.brief.goal")
     assert lines[-1].startswith("... (")
+
+
+# --- Claude review of Faz 10 (D-066) -----------------------------------------------------
+
+
+def test_in_progress_is_in_the_brief_right_after_status(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    """The next step lives in ``In progress``; the next chief must see it (Mimari §17)."""
+    text = _build(_document(tmp_path), _config(), conn, limit=200)
+    lines = text.splitlines()
+    assert "file: src/x.py | branch: faz-10a | next: tests" in lines
+    status = lines.index(t("handoff.brief.status"))
+    in_progress = lines.index(t("handoff.brief.in_progress"))
+    open_questions = lines.index(t("handoff.brief.open_questions"))
+    assert status < in_progress < open_questions
+
+
+def _full_git(count: str) -> Git:
+    status = "".join(f"?? file-{n}.txt\n" for n in range(40))
+    log = "".join(f"commit {n}\n" for n in range(5))
+    return _git_ok(status=status, log=log, count=count)
+
+
+def test_a_full_brief_keeps_the_stale_warning_and_the_guide(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    """At the default 60 lines a busy project must not push the guide out of the brief."""
+    goal = "\n".join(f"goal line {n}" for n in range(30))
+    path = _document(tmp_path, goal=goal, done=30)
+    text = _build(path, _config(stale_after_commits=5), conn, limit=60, git=_full_git("9"))
+    lines = text.splitlines()
+    assert len(lines) <= 60
+    assert lines[0] == t("handoff.brief.goal")
+    assert t("handoff.brief.stale", count=9) in lines
+    assert t("handoff.brief.guide") in lines
+    guide_last = (
+        "- Never approve a provider or exceed a cost threshold without the user's permission."
+    )
+    assert lines[-2] == guide_last  # the whole guide fits, the cut is in the project content
+    assert lines[-1].startswith("... (")
+
+
+def test_a_tiny_limit_still_keeps_the_stale_warning(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    path = _document(tmp_path, goal="\n".join(f"goal line {n}" for n in range(30)), done=5)
+    text = _build(path, _config(stale_after_commits=5), conn, limit=10, git=_full_git("9"))
+    lines = text.splitlines()
+    assert len(lines) <= 10
+    assert t("handoff.brief.stale", count=9) in lines
+    assert lines[-1].startswith("... (")
+
+
+def test_the_cut_count_covers_every_line_that_is_not_shown(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    path = _document(tmp_path, goal="\n".join(f"goal line {n}" for n in range(30)), done=30)
+    full = _build(path, _config(), conn, limit=10_000, git=_full_git("0")).splitlines()
+    cut = _build(path, _config(), conn, limit=60, git=_full_git("0")).splitlines()
+    marker = next(line for line in cut if line.startswith("... ("))
+    shown = len(cut) - 1
+    assert marker == t("handoff.brief.more", count=len(full) - shown)

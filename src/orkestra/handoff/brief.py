@@ -30,6 +30,7 @@ GIT_STATUS_LINES = 15
 RECENT_COMMITS = 5
 RECENT_ITEMS = 5
 WRAP_WIDTH = 120  # a hand-written paragraph becomes display lines, so the limit means lines
+MIN_BODY_LINES = 20  # project lines that must fit beside the guide, or the guide is cut
 
 
 @dataclass(frozen=True)
@@ -127,7 +128,7 @@ def build(
     state = staleness(document, config, cwd, run_git)
     lines: list[str] = []
 
-    for slug in ("goal", "status", "open_questions", "watch_out"):
+    for slug in ("goal", "status", "in_progress", "open_questions", "watch_out"):
         _section(lines, document, slug)
 
     for slug in ("done", "decisions"):
@@ -140,12 +141,18 @@ def build(
     lines.extend(_git_lines(cwd, run_git))
     lines.extend(_unapplied_lines(conn, unapplied))
     lines.extend(_budget_lines(config, conn, now, environ))
-    lines.extend(warning_lines(state, BRIEF_WARNING_KEYS))
-    lines.extend(_guide())
 
     redact = Redactor(configured_secrets(config, environ))
-    lines = [redact(line) for line in lines]
-    lines = _limit(_wrap(lines), config.handoff.brief_max_lines)
+
+    def prepare(raw: list[str]) -> list[str]:
+        return _wrap([redact(line) for line in raw])
+
+    lines = _fit(
+        prepare(lines),
+        prepare(warning_lines(state, BRIEF_WARNING_KEYS)),
+        prepare(_guide()),
+        config.handoff.brief_max_lines,
+    )
     return Brief("\n".join(lines), lines, state)
 
 
@@ -159,10 +166,13 @@ def _section(lines: list[str], document: model.Document, slug: str) -> None:
 
 
 def _git_lines(cwd: Path, git: Git) -> list[str]:
-    ok, branch = git(["rev-parse", "--abbrev-ref", "HEAD"], cwd)
-    if not ok:
+    inside, tree = git(["rev-parse", "--is-inside-work-tree"], cwd)
+    if not inside or tree.strip() != "true":
         return [t("handoff.brief.no_git")]
-    lines = [t("handoff.brief.branch", branch=branch.strip())]
+    ok, branch = git(["rev-parse", "--abbrev-ref", "HEAD"], cwd)
+    if not ok:  # an unborn branch has no HEAD yet
+        ok, branch = git(["branch", "--show-current"], cwd)
+    lines = [t("handoff.brief.branch", branch=branch.strip())] if ok and branch.strip() else []
     ok, status = git(["status", "--short"], cwd)
     if ok:
         changed = [line for line in status.splitlines() if line.strip()]
@@ -233,8 +243,26 @@ def _wrap(lines: list[str]) -> list[str]:
     return wrapped
 
 
-def _limit(lines: list[str], limit: int) -> list[str]:
-    if len(lines) <= limit:
-        return lines
-    kept = lines[: max(limit - 1, 0)]
-    return [*kept, t("handoff.brief.more", count=len(lines) - len(kept))]
+def _fit(body: list[str], warnings: list[str], guide: list[str], limit: int) -> list[str]:
+    """Keep the brief within ``limit`` lines without losing what matters most (D-066).
+
+    The staleness warning always stays (when even it does not fit, the plain cut is used).
+    The guide stays while at least ``MIN_BODY_LINES`` of project content fit next to it; a
+    non-Claude chief learns Orkestra only from it. The project content is cut from its end,
+    and the last line says how many lines in total are not shown.
+    """
+    if len(body) + len(warnings) + len(guide) <= limit:
+        return [*body, *warnings, *guide]
+    room = limit - len(warnings) - len(guide) - 1
+    if room >= MIN_BODY_LINES:
+        return [*body[:room], *warnings, *guide, _more(len(body) - room)]
+    room = limit - len(warnings) - 1
+    if room >= 1:
+        return [*body[:room], *warnings, _more(len(body) - room + len(guide))]
+    everything = [*body, *warnings, *guide]
+    kept = everything[: max(limit - 1, 0)]
+    return [*kept, _more(len(everything) - len(kept))]
+
+
+def _more(count: int) -> str:
+    return t("handoff.brief.more", count=count)

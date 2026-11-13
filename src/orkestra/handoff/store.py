@@ -107,11 +107,14 @@ def update(
              clock=clock, sleep=sleep)  # fmt: skip
     try:
         document = model.parse(read(path))
+        expected = _headings_after(document, section)
         if add is not None:
             item = redact(add)
             model.add_item(document, section, f"[{now.date().isoformat()} {chief}] {item}")
         else:
-            model.set_section(document, section, redact(set_text or ""))
+            model.set_section(document, section, redact(_one_newline(set_text or "")))
+        if [found.heading for found in document.sections] != expected:
+            raise UsageError(t("handoff.error.breaks_structure", section=section))
         archived = _archive(document, config, path, redact)
         model.set_last_updated(document, chief, now, commit)
         _atomic_write(path, model.render(document))
@@ -122,6 +125,21 @@ def update(
     if last_updated is None:  # set_last_updated always writes it
         raise UsageError(t("handoff.error.missing_section", section=model.LAST_UPDATED))
     return UpdateResult(section, "add" if add is not None else "set", last_updated, archived)
+
+
+def _headings_after(document: model.Document, section: str) -> list[str]:
+    """The headings the file must have after changing ``section``: the same ones (plus the
+    section itself if it was missing). A ``## `` line or an open code fence in the new text
+    would add or hide headings, so such a text is refused (D-066)."""
+    headings = [found.heading for found in document.sections]
+    if document.section(section) is None:
+        headings.append(model.SECTION_HEADINGS[section])
+    return headings
+
+
+def _one_newline(text: str) -> str:
+    """``--set`` text with CRLF or CR becomes LF; the file's own line ending is added on write."""
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _validate_chief(chief: str) -> None:
@@ -196,12 +214,24 @@ def _archive(
         return 0
     archive = archive_path(path)
     archive.parent.mkdir(parents=True, exist_ok=True)
-    with open(archive, "a", encoding="utf-8", newline="\n") as handle:
+    last_heading = _last_heading(archive)
+    newline = document.newline
+    with open(archive, "a", encoding="utf-8", newline="") as handle:
         for slug, lines in collapsed:
-            handle.write(f"\n## {model.SECTION_HEADINGS[slug]} (archived)\n")
+            heading = f"## {model.SECTION_HEADINGS[slug]} (archived)"
+            if heading != last_heading:  # moves in a row share one heading (D-066)
+                handle.write(f"{newline}{heading}{newline}")
+                last_heading = heading
             for line in lines:
-                handle.write(redact(line) + "\n")
+                handle.write(redact(line) + newline)
     return sum(len(lines) for _, lines in collapsed)
+
+
+def _last_heading(archive: Path) -> str | None:
+    if not archive.exists():
+        return None
+    headings = [line for line in read(archive).splitlines() if line.startswith("## ")]
+    return headings[-1].strip() if headings else None
 
 
 def _atomic_write(path: Path, text: str) -> None:

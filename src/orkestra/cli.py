@@ -24,6 +24,7 @@ from orkestra.config.schema import Config, Provider
 from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
 from orkestra.handoff import brief as handoff_brief
 from orkestra.handoff import check as handoff_check_service
+from orkestra.handoff import launch as handoff_launch
 from orkestra.handoff import model as handoff_model
 from orkestra.handoff import store as handoff_store
 from orkestra.i18n import t
@@ -912,7 +913,7 @@ def build_app() -> typer.Typer:
         elif result.warnings:
             for line in result.warnings:
                 typer.echo(line)
-        else:
+        elif not warn_only:  # the pre-commit hook says nothing when there is nothing to say
             typer.echo(t("handoff.check.ok"))
         if warn_only:
             return
@@ -943,6 +944,53 @@ def build_app() -> typer.Typer:
             _echo_json(handoff_model.as_json(handoff_model.parse(text)))
         else:
             typer.echo(text, nl=False)
+
+    @handoff_app.command("to", help=t("cli.handoff.to.help"))
+    def handoff_to(
+        ctx: typer.Context,
+        chief: Annotated[str, typer.Argument(metavar="CHIEF", help=t("cli.handoff.arg.chief"))],
+        print_only: Annotated[
+            bool, typer.Option("--print-only", help=t("cli.handoff.option.print_only"))
+        ] = False,
+        allow_dirty: Annotated[
+            bool, typer.Option("--allow-dirty", help=t("cli.handoff.option.allow_dirty"))
+        ] = False,
+    ) -> None:
+        config, path = _handoff_target(ctx)
+
+        def announce(mode: str, warnings: list[str]) -> None:
+            for line in warnings:
+                typer.echo(line, err=True)
+            typer.echo(t("handoff.to.starting", chief=chief, mode=mode), err=True)
+
+        with closing(db.connect()) as conn:
+            result = handoff_launch.to(
+                chief,
+                config,
+                conn,
+                db.local_now(),
+                path=path,
+                cwd=Path.cwd(),
+                from_chief=_chief(None, config, required=False),
+                allow_dirty=allow_dirty,
+                print_only=print_only,
+                before_start=announce,
+            )
+        if print_only:
+            typer.echo(result.brief)
+            return
+        if result.exit_code:
+            raise typer.Exit(code=result.exit_code)
+
+    @handoff_app.command("install-hook", help=t("cli.handoff.install_hook.help"))
+    def handoff_install_hook() -> None:
+        result = handoff_launch.install_hook(Path.cwd())
+        if result.created:
+            typer.echo(t("handoff.hook.created", path=result.path))
+        elif result.updated:
+            typer.echo(t("handoff.hook.updated", path=result.path))
+        else:
+            typer.echo(t("handoff.hook.exists", path=result.path))
 
     @templates_app.command("list", help=t("cli.templates.list.help"))
     def templates_list(as_json: Annotated[bool, _json_option()] = False) -> None:

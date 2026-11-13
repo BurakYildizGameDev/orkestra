@@ -422,3 +422,35 @@ def test_status_with_thirty_one_providers_and_a_handoff_file_still_fits_fifteen_
     doc = json.loads(out)
     assert len(doc["sections"]["budget"]["providers"]) == 31
     assert doc["sections"]["handoff"]["goal"] == "finish phase 10a"
+
+
+# --- Claude review of Faz 10 (D-066) -----------------------------------------------------
+
+
+def test_check_warn_only_is_silent_when_up_to_date_and_prints_the_warning_when_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    """``--warn-only`` runs in the pre-commit hook: say nothing unless there is a reminder."""
+    repo = _repo(tmp_path, monkeypatch, CONFIG.replace("stale_after_commits: 5",
+                                                       "stale_after_commits: 1"))  # fmt: skip
+    assert _run(["handoff", "init"], capsys)[0] == 0
+    code, out, err = _run(["handoff", "check", "--warn-only"], capsys)
+    assert (code, out, err) == (0, "", "")
+    for n in range(2):
+        (repo / f"b{n}.txt").write_text("b\n", encoding="utf-8")
+        _git(repo, "add", f"b{n}.txt")
+        _git(repo, "commit", "-q", "-m", f"later {n}")
+    code, out, _ = _run(["handoff", "check", "--warn-only"], capsys)
+    assert code == 0
+    assert out == t("handoff.check.stale", count=2) + "\n"
+
+
+def test_update_that_would_add_a_heading_exits_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    _repo(tmp_path, monkeypatch)
+    assert _run(["handoff", "init"], capsys)[0] == 0
+    code, _, err = _run(["handoff", "update", "--section", "status", "--set",
+                         "ok\n## Done\nfake", "--chief", "claude"], capsys)  # fmt: skip
+    assert code == 2
+    assert t("handoff.error.breaks_structure", section="status") in err

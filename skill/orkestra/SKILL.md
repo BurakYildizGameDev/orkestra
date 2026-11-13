@@ -237,6 +237,20 @@ Projede `.orkestra/HANDOFF.md` varsa (yoksa uzun işlerde `orkestra handoff init
 - `orkestra handoff check` dosyanın kaç commit geride olduğunu söyler; uyarı varsa
   `git log --oneline` ile gerçek durumu doğrula.
 
+Kotadan dolayı veya kullanıcı istediğinde işi başka bir şefe devret:
+- Önce dosyayı güncelle (`in_progress` + `status`) ve yarım değişiklikleri commit et
+  (devir dosyasının kendisi sayılmaz; başka commit edilmemiş dosya varsa `to` kod 5 ile durur
+  ve dosyaları sayar). `--allow-dirty` yalnızca kullanıcı bilerek istiyorsa.
+- `orkestra handoff to <şef>`'i **sen çalıştırma**: hedef ajanı etkileşimli başlatır ve
+  terminali ona verir, senin komut aracında terminal yoktur (takılır ya da hemen kapanır).
+  Kullanıcıya, bu oturumu kapattıktan sonra kendi terminalinde proje klasöründe
+  `orkestra handoff to <şef>` yazmasını söyle. Özet `arg`, `stdin` veya `.orkestra/BRIEF.md`
+  üzerinden gider (`prompt_mode`); yeni şef repo kökünde ve `ORKESTRA_CHIEF=<şef>` ile başlar.
+- Ne gideceğini göstermek için kendin `orkestra handoff to <şef> --print-only` çalıştırabilirsin
+  (hiçbir şey başlatmaz, kayıt yazmaz).
+- İsteğe bağlı hatırlatıcı: `orkestra handoff install-hook` deponun `pre-commit` kancasına
+  işaretli bir blok ekler (var olan kancayı ezmez, commit'i asla engellemez).
+
 ## 8. Raporlama
 
 İş bitince kullanıcıya kısaca bildir: hangi işler delege edildi, hangi sağlayıcı/kademe, kaç deneme, maliyet (zarftaki `usage.cost_usd`; günlük toplam için `orkestra budget --json`), neyi kendin düzelttin. Uzun log yapıştırma. Kullanıcı hangi işçinin ne kadar başarılı olduğunu sorarsa: `orkestra stats --since 7d --json` (sağlayıcı ve etiket başına koşu, başarı oranı, deneme, token, maliyet, süre).
