@@ -25,13 +25,26 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 9c – Ucuz modeller için ara/değiştir | ✅ | 2026-11-10 | `edit_format: auto` (küçük dosya `whole`, büyük dosya `replace`), D-051 |
 | 10a – Devir dosyası ve özet | ✅ | 2026-11-12 | `handoff init/update/check/show`, `status` devir satırı, migration 2; Claude denetimi (D-066) |
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
-| 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068) |
+| 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
 | 11b – Terminal arayüzü, 5 dil | ⏳ | | Textual `ui`, sihirbaz ekranları, de/es/fr |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
 | 13 – Benchmark | ⏳ | | |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 11a (PR #21), 2026-11-14
+`/code-review` 10 bulgu; hepsi düzeltildi (D-069). Önce kırmızı testler (19 kırmızı; bir kısmı bu fazın kendi testleriydi: onay sırası ve "tek dönen yedek" kararı değişti).
+- ✅ Terminalde düz `init` var olan dosyayı düzenlemiyor; `--plain --force` örnekten başlıyor (`test_a_bare_init_at_a_terminal_never_edits_an_existing_file`, `test_a_bare_init_at_a_terminal_without_a_file_opens_the_wizard`, `test_plain_with_force_starts_again_from_the_example_and_keeps_the_old_file`).
+- ✅ Önceki yedek asla ezilmiyor (`test_an_earlier_backup_is_never_replaced`).
+- ✅ Var olan dosyada `base_url`, `command`, model alanları, `extra_args`, yorumlar kalıyor (`test_rerunning_keeps_what_the_wizard_does_not_ask_about`).
+- ✅ Sunulmayan özel sağlayıcı kapatılmıyor (`test_a_provider_the_wizard_never_offered_is_left_alone`).
+- ✅ Varsayılanlar mevcut config'ten (`test_the_defaults_come_from_the_current_config`).
+- ✅ Onay kaydedilen girdiyi gösteriyor, yalnız onaylanan kaydediliyor (`test_consent_is_asked_for_what_was_saved_and_only_confirmed_ones_count`).
+- ✅ Yeni proje dosyası yalnız cevaplar (`test_a_new_project_file_holds_only_the_answers`).
+- ✅ Embedding modelleri dışarıda (`test_embedding_models_are_not_offered_as_chat_workers`).
+- ✅ `1,²` yeniden soruluyor (`test_a_wrong_answer_is_asked_again_with_the_reason`).
+- ✅ Tekrarlanan yardımcılar `loader`'da birleşti (davranış testleri yukarıda).
 
 ### Faz 11a – Algılama, kurulum sihirbazı, config yazma (2026-11-14)
 **Yapılanlar (D-068):**

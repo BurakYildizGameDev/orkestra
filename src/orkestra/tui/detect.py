@@ -13,6 +13,7 @@ import os
 import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -50,7 +51,8 @@ KNOWN_APIS = (
 class OllamaFound:
     url: str
     reachable: bool
-    models: tuple[str, ...]
+    models: tuple[str, ...]  # chat models only
+    skipped: tuple[str, ...] = ()  # embedding models: they cannot answer a task
 
 
 @dataclass(frozen=True)
@@ -110,17 +112,42 @@ def _ollama(url: str, fetch: TagsFetcher) -> OllamaFound:
         payload = fetch(f"{url.rstrip('/')}/api/tags", OLLAMA_TIMEOUT_S)
     except (httpx.HTTPError, ValueError, OSError):
         return OllamaFound(url, False, ())
-    return OllamaFound(url, True, _model_names(payload))
+    chat, skipped = _model_names(payload)
+    return OllamaFound(url, True, chat, skipped)
 
 
-def _model_names(payload: object) -> tuple[str, ...]:
+EMBEDDING_FAMILIES = frozenset({"bert", "nomic-bert"})
+
+
+def _is_embedding(name: str, item: dict[str, Any]) -> bool:
+    """``nomic-embed-text``, ``mxbai-embed-large`` …: by name, or by Ollama's model family."""
+    details = item.get("details")
+    families: set[str] = set()
+    if isinstance(details, dict):
+        family = details.get("family")
+        if isinstance(family, str):
+            families.add(family)
+        listed = details.get("families")
+        if isinstance(listed, list):
+            families.update(value for value in listed if isinstance(value, str))
+    return "embed" in name.lower() or bool(families & EMBEDDING_FAMILIES)
+
+
+def _model_names(payload: object) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if not isinstance(payload, dict):
-        return ()
+        return (), ()
     models = payload.get("models")
     if not isinstance(models, list):
-        return ()
-    names = [item.get("name") for item in models if isinstance(item, dict)]
-    return tuple(name for name in names if isinstance(name, str) and name)
+        return (), ()
+    chat: list[str] = []
+    skipped: list[str] = []
+    for item in models:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if isinstance(name, str) and name:
+            (skipped if _is_embedding(name, item) else chat).append(name)
+    return tuple(chat), tuple(skipped)
 
 
 def summary_lines(found: Detection) -> list[str]:
@@ -129,6 +156,8 @@ def summary_lines(found: Detection) -> list[str]:
     if found.ollama.reachable:
         models = ", ".join(found.ollama.models) or "-"
         lines.append(t("wizard.detect.ollama", url=found.ollama.url, models=models))
+        if found.ollama.skipped:
+            lines.append(t("wizard.detect.embedding", models=", ".join(found.ollama.skipped)))
     else:
         lines.append(t("wizard.detect.ollama_missing", url=found.ollama.url))
     for agent in found.agents:

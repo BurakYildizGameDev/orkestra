@@ -7,9 +7,11 @@ Mappings merge deeply, lists are replaced, ``providers.<name>: null`` removes a 
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import os
 import re
+import tempfile
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from importlib import resources
@@ -167,12 +169,12 @@ def find_sources(
     elif kind != "global":
         raise ConfigError(t("config.error.not_found", path=base))
     project = find_project_config(Path.cwd() if cwd is None else cwd)
-    if project is not None and not (sources and _same_file(project, sources[0].path)):
+    if project is not None and not (sources and same_file(project, sources[0].path)):
         sources.append(ConfigSource(project, "project"))
     return tuple(sources)
 
 
-def _same_file(a: Path, b: Path) -> bool:
+def same_file(a: Path, b: Path) -> bool:
     try:
         return a.samefile(b)
     except OSError:
@@ -339,11 +341,23 @@ class InitResult:
     gitignore: Path | None  # .gitignore that received the cache entry, if any
 
 
-def _atomic_write(path: Path, data: bytes) -> None:
+def atomic_write(path: Path, data: bytes) -> None:
+    """A unique temporary file in the same folder, then ``os.replace``; never half a file.
+
+    Shared by ``init`` and ``config.writer`` (one writer, one backup rule).
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, path)
+    descriptor, temporary = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(data)
+        os.replace(temporary, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(temporary)
+        raise
 
 
 def ensure_gitignore_entry(gitignore: Path, entry: str = GITIGNORE_ENTRY) -> bool:
@@ -359,7 +373,7 @@ def ensure_gitignore_entry(gitignore: Path, entry: str = GITIGNORE_ENTRY) -> boo
     newline = "\r\n" if "\r\n" in existing else "\n"
     if existing and not existing.endswith(("\n", "\r")):
         existing += newline
-    _atomic_write(gitignore, (existing + entry + newline).encode("utf-8", "surrogateescape"))
+    atomic_write(gitignore, (existing + entry + newline).encode("utf-8", "surrogateescape"))
     return True
 
 
@@ -380,7 +394,7 @@ def dump_yaml(data: Any) -> str:
     return stream.getvalue()
 
 
-def _free_backup_path(target: Path) -> Path:
+def free_backup_path(target: Path) -> Path:
     """``<name>.bak``, else ``<name>.bak.1``, ``.bak.2`` …: an earlier backup is never replaced."""
     candidate = target.with_name(target.name + ".bak")
     number = 0
@@ -406,9 +420,9 @@ def init_config(
     try:
         if not target.exists() or force:
             if target.exists() and target.read_bytes() != example:
-                backup = _free_backup_path(target)
-                _atomic_write(backup, target.read_bytes())
-            _atomic_write(target, example)
+                backup = free_backup_path(target)
+                atomic_write(backup, target.read_bytes())
+            atomic_write(target, example)
             written = True
         root = find_git_root((Path.cwd() if cwd is None else cwd).resolve()) if project else None
         if root is not None and ensure_gitignore_entry(root / ".gitignore"):

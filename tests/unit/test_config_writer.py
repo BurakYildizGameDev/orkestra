@@ -73,8 +73,10 @@ def test_saving_over_a_file_keeps_the_previous_version_as_bak(tmp_path: Path) ->
     assert result.backup == backup
     assert backup.read_bytes() == USER_FILE.encode("utf-8")
     document["language"] = "auto"
-    writer.save(path, document)
-    assert "language: en" in backup.read_text(encoding="utf-8")  # one rolling backup
+    second = writer.save(path, document)
+    assert second.backup == tmp_path / "config.yaml.bak.1"  # the first backup is never replaced
+    assert "language: en" in (tmp_path / "config.yaml.bak.1").read_text(encoding="utf-8")
+    assert backup.read_bytes() == USER_FILE.encode("utf-8")
 
 
 def test_a_new_file_has_no_backup(tmp_path: Path) -> None:
@@ -116,3 +118,17 @@ def test_a_file_that_is_not_a_mapping_is_a_config_error(tmp_path: Path) -> None:
     with pytest.raises(ConfigError) as exc_info:
         writer.load_document(path)
     assert exc_info.value.message == t("config.error.not_mapping", path=path)
+
+
+def test_an_earlier_backup_is_never_replaced(tmp_path: Path) -> None:
+    """``init --force`` may have kept the user's real config as ``.bak``; it must survive."""
+    path = tmp_path / "config.yaml"
+    path.write_bytes(USER_FILE.encode("utf-8"))
+    earlier = tmp_path / "config.yaml.bak"
+    earlier.write_bytes(b"version: 1\n# the user's real config\n")
+    document = writer.load_document(path)
+    document["language"] = "en"
+    result = writer.save(path, document)
+    assert earlier.read_bytes() == b"version: 1\n# the user's real config\n"
+    assert result.backup == tmp_path / "config.yaml.bak.1"
+    assert (tmp_path / "config.yaml.bak.1").read_bytes() == USER_FILE.encode("utf-8")

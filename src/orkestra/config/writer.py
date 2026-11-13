@@ -2,17 +2,16 @@
 
 ``ruamel.yaml`` round trip keeps comments, key order and quoting. Before anything touches the
 disk the new text is validated (a project file together with the base config it overrides);
-an invalid config is never saved. The previous file is kept as ``<name>.bak`` (one rolling
-backup) and the new one replaces it atomically, with the file's own line endings.
+an invalid config is never saved. The previous file is kept as ``<name>.bak`` (``.bak.1``,
+``.bak.2`` … when one exists: an earlier backup, e.g. from ``init --force``, is never replaced)
+and the new one replaces it atomically, with the file's own line endings. Atomic writing,
+the backup name and the same-file check are ``loader``'s, so both writers follow one rule.
 
 The setup wizard (``--plain`` now, the terminal interface in Faz 11b) writes only through here.
 """
 
 from __future__ import annotations
 
-import contextlib
-import os
-import tempfile
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
@@ -51,7 +50,8 @@ def _represent_null(representer: Any, data: None) -> Any:
 
 
 def backup_path(path: Path) -> Path:
-    return path.with_name(path.name + ".bak")
+    """Where the next backup of ``path`` goes (never over an earlier one)."""
+    return loader.free_backup_path(path)
 
 
 def _parse(path: Path, text: str) -> CommentedMap:
@@ -92,7 +92,7 @@ def validate(path: Path, text: str, *, base: Path | None = None) -> Config:
     """The config ``text`` would give, merged over ``base`` (for a project file)."""
     data: dict[str, Any] = loader.read_yaml_text(path, text)
     sources = [path]
-    if base is not None and base.is_file() and not _same(base, path):
+    if base is not None and base.is_file() and not loader.same_file(base, path):
         data = loader.merge_dicts(loader.read_yaml(base), data)
         sources.insert(0, base)
     try:
@@ -117,29 +117,8 @@ def save(path: Path, document: CommentedMap, *, base: Path | None = None) -> Sav
         path.parent.mkdir(parents=True, exist_ok=True)
         if old is not None:
             backup = backup_path(path)
-            _atomic_write(backup, old)
-        _atomic_write(path, text.encode("utf-8"))
+            loader.atomic_write(backup, old)
+        loader.atomic_write(path, text.encode("utf-8"))
     except OSError as exc:
         raise ConfigError(t("config.error.write", path=path, reason=exc)) from exc
     return SaveResult(path, backup, config)
-
-
-def _atomic_write(path: Path, data: bytes) -> None:
-    descriptor, temporary = tempfile.mkstemp(
-        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(data)
-        os.replace(temporary, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(temporary)
-        raise
-
-
-def _same(a: Path, b: Path) -> bool:
-    try:
-        return a.resolve() == b.resolve()
-    except OSError:
-        return False

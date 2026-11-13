@@ -3,18 +3,28 @@
 The flow does not know how it asks: ``run_plain`` talks to a ``Prompter`` (``init --plain``
 gives it ``typer.prompt``; the Faz 11b terminal interface gives it its screens), and
 ``defaults_answers`` answers everything from detection alone (``init --defaults``). Both end in
-``save_answers``, which writes through ``config.writer`` (comments kept, validated, ``.bak``,
-atomic) and records consent only for providers the user explicitly confirmed. ``--defaults``
-never grants consent: consent is always an explicit user action.
+``save_answers``, which writes through ``config.writer`` (comments kept, validated, backup,
+atomic).
 
-Steps: language → detection → providers (detected ones preselected, at least one) → model
-tiers → budget → consent → where to save (global or project).
+Consent comes **after** saving (``ask_consents`` + ``record_consents``): the user is shown the
+entry exactly as it was saved, which is the same settings whose hash is recorded, and
+``--defaults`` never asks, so it never grants anything (D-068).
+
+Steps: language → detection → providers (preselected: the enabled ones of the current config
+and the detected ones; at least one) → model tiers → budget → default chief → where to save
+(global or project) → save → consent → doctor. Every default comes from the current config
+when there is one, so pressing Enter changes nothing.
+
+Editing an existing file never deletes what the user wrote: a provider the wizard offered and
+the user did not pick is only turned off; a provider the wizard never offered (a custom one)
+is left alone; the identity of an entry (``base_url``, ``command``, ``api_key_env`` …) is kept,
+and a model keeps its other fields when only its tier changes.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -25,7 +35,14 @@ from pydantic import TypeAdapter
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from orkestra.config import loader, writer
-from orkestra.config.schema import Provider
+from orkestra.config.schema import (
+    CONFIG_VERSION,
+    CliAgentProvider,
+    Config,
+    OllamaProvider,
+    OpenAICompatProvider,
+    Provider,
+)
 from orkestra.i18n import SUPPORTED_LANGUAGES, t
 from orkestra.providers import registry
 from orkestra.state import consent, db
@@ -39,6 +56,9 @@ API_TIER = 2
 AGENT_TIER = 3
 API_DAILY_USD = 2.0
 TIERS = ("1", "2", "3")
+# Keys that say *which* provider an entry is; an existing entry keeps its own (only a missing
+# one is filled in), so a custom address or command path survives a re-run.
+IDENTITY_KEYS = ("type", "base_url", "command", "api_key_env", "local", "experimental")
 
 _PROVIDER: TypeAdapter[Any] = TypeAdapter(Provider)
 
@@ -70,7 +90,6 @@ class Prompter(Protocol):
 class ProviderPick:
     name: str
     settings: dict[str, Any]  # plain data for ``providers.<name>``
-    consent: bool = False
 
     @property
     def enabled(self) -> bool:
@@ -89,11 +108,10 @@ class Answers:
 @dataclass(frozen=True)
 class Outcome:
     path: Path
-    written: bool
+    config: Config  # the saved, validated effective config
     backup: Path | None = None
     gitignore: Path | None = None
     providers: list[str] = field(default_factory=list)
-    consent: list[str] = field(default_factory=list)  # providers whose consent was recorded
 
 
 # --- provider settings -------------------------------------------------------------------
@@ -143,7 +161,7 @@ def agent_settings(name: str, *, daily_runs: int, enabled: bool = True) -> dict[
 
 
 def defaults_answers(found: detect.Detection) -> Answers:
-    """Turn on what was found; ask nothing and grant no consent (Mimari §22)."""
+    """Turn on what was found; ask nothing (and so grant no consent, Mimari §22)."""
     picks: list[ProviderPick] = []
     if found.ollama.reachable and found.ollama.models:
         models = [(model, LOCAL_TIER) for model in found.ollama.models]
@@ -158,10 +176,10 @@ def defaults_answers(found: detect.Detection) -> Answers:
     notes = [t("wizard.note.key_needs_model", env=key.api.env) for key in found.keys if key.present]
     if not picks:
         notes.append(t("wizard.note.nothing_found"))
-    return Answers(providers=picks, chief=_default_chief(found), notes=notes)
+    return Answers(providers=picks, chief=_detected_chief(found), notes=notes)
 
 
-def _default_chief(found: detect.Detection) -> str | None:
+def _detected_chief(found: detect.Detection) -> str | None:
     for name in CHIEFS:
         agent = found.agent(name)
         if agent is not None and agent.found:
@@ -178,10 +196,16 @@ def run_plain(
     *,
     set_language: Callable[[str], None],
     project: bool | None = None,
+    current: Config | None = None,
 ) -> Answers:
-    """Ask every step; a wrong answer is asked again with the reason."""
+    """Ask every step; a wrong answer is asked again with the reason.
+
+    ``current``: the config being edited; its values are the defaults.
+    """
     choices = ", ".join(LANGUAGE_CHOICES)
-    language = _choice(ask, t("wizard.ask.language", choices=choices), LANGUAGE_CHOICES, "auto")
+    default_language = current.language if current is not None else "auto"
+    language = _choice(ask, t("wizard.ask.language", choices=choices), LANGUAGE_CHOICES,
+                       default_language)  # fmt: skip
     if language != "auto":
         set_language(language)  # every following question is in the chosen language
 
@@ -189,18 +213,17 @@ def run_plain(
     for line in detect.summary_lines(found):
         ask.say(f"  {line}")
 
-    picks = [_pick(ask, name, found) for name in _choose_providers(ask, found)]
-    for pick in picks:
-        if not pick.enabled:
-            continue  # a provider that stays off needs no consent yet
-        for line in consent.describe(pick.name, _PROVIDER.validate_python(pick.settings)):
-            ask.say(line)
-        pick.consent = ask.confirm(t("consent.confirm"), default=False)
+    existing = current.providers if current is not None else {}
+    picks = [
+        _pick(ask, name, found, existing.get(name))
+        for name in _choose_providers(ask, found, existing)
+    ]
 
     chief: str | None = None
-    if (default_chief := _default_chief(found)) is not None:
+    default_chief = current.defaults.chief if current is not None else _detected_chief(found)
+    if default_chief is not None:
         chief = _choice(ask, t("wizard.ask.chief", choices=", ".join(CHIEFS)), CHIEFS,
-                        default_chief)  # fmt: skip
+                        default_chief if default_chief in CHIEFS else CHIEFS[0])  # fmt: skip
     if project is None:
         project = ask.confirm(t("wizard.ask.project"), default=False)
     return Answers(providers=picks, language=language, chief=chief, project=project)
@@ -215,13 +238,19 @@ def _detected(name: str, found: detect.Detection) -> bool:
     return any(key.present for key in found.keys if key.api.name == name)
 
 
-def _choose_providers(ask: Prompter, found: detect.Detection) -> list[str]:
+def _choose_providers(
+    ask: Prompter, found: detect.Detection, existing: Mapping[str, Provider]
+) -> list[str]:
     names = candidate_names()
     ask.say(t("wizard.providers.title"))
     for number, name in enumerate(names, start=1):
         mark = t("wizard.providers.found") if _detected(name, found) else ""
         ask.say(t("wizard.providers.item", number=number, name=name, mark=mark).rstrip())
-    preselected = [str(n) for n, name in enumerate(names, start=1) if _detected(name, found)]
+    preselected = [
+        str(number)
+        for number, name in enumerate(names, start=1)
+        if _detected(name, found) or (name in existing and existing[name].enabled)
+    ]
     while True:
         raw = ask.ask(t("wizard.ask.providers"), ",".join(preselected) or None)
         numbers = _numbers(raw, len(names))
@@ -230,31 +259,48 @@ def _choose_providers(ask: Prompter, found: detect.Detection) -> list[str]:
         ask.say(t("wizard.error.providers"))
 
 
-def _pick(ask: Prompter, name: str, found: detect.Detection) -> ProviderPick:
+def _pick(
+    ask: Prompter, name: str, found: detect.Detection, current: Provider | None
+) -> ProviderPick:
     if name == "ollama":
-        return ProviderPick(name, ollama_settings(found.ollama.url, _ollama_models(ask, found)))
+        known = current if isinstance(current, OllamaProvider) else None
+        url = known.base_url if known is not None else found.ollama.url
+        return ProviderPick(name, ollama_settings(url, _ollama_models(ask, found, known)))
     if name in AGENT_DAILY_RUNS:
+        agent = current if isinstance(current, CliAgentProvider) else None
         enabled = True
         if name == "agy":
             ask.say(t("wizard.agy.experimental"))
-            enabled = ask.confirm(t("wizard.ask.agy_enable"), default=False)
+            enabled = ask.confirm(t("wizard.ask.agy_enable"),
+                                  default=agent is not None and agent.enabled)  # fmt: skip
         runs = AGENT_DAILY_RUNS[name]
+        if agent is not None and agent.budget.daily_runs is not None:
+            runs = agent.budget.daily_runs
         if enabled:
             runs = int(_number(ask, t("wizard.ask.daily_runs", name=name), runs, integer=True))
         return ProviderPick(name, agent_settings(name, daily_runs=runs, enabled=enabled))
     api = next(api for api in detect.KNOWN_APIS if api.name == name)
-    model = _required(ask, t("wizard.ask.api_model", name=name))
-    tier = _tier(ask, t("wizard.ask.tier", model=model), API_TIER)
-    usd = _number(ask, t("wizard.ask.daily_usd", name=name), API_DAILY_USD, integer=False)
+    chat = current if isinstance(current, OpenAICompatProvider) else None
+    first = chat.models[0] if chat is not None and chat.models else None
+    model = _required(ask, t("wizard.ask.api_model", name=name), first.id if first else None)
+    tier = _tier(ask, t("wizard.ask.tier", model=model), first.tier if first else API_TIER)
+    usd = API_DAILY_USD
+    if chat is not None and chat.budget.daily_usd is not None:
+        usd = chat.budget.daily_usd
+    usd = _number(ask, t("wizard.ask.daily_usd", name=name), usd, integer=False)
     return ProviderPick(name, api_settings(api, model, tier, usd))
 
 
-def _ollama_models(ask: Prompter, found: detect.Detection) -> list[tuple[str, int]]:
-    available = list(found.ollama.models)
+def _ollama_models(
+    ask: Prompter, found: detect.Detection, current: OllamaProvider | None
+) -> list[tuple[str, int]]:
+    tiers = {model.id: model.tier for model in current.models} if current is not None else {}
+    available = [*tiers, *(model for model in found.ollama.models if model not in tiers)]
     if available:
         for number, model in enumerate(available, start=1):
             ask.say(t("wizard.ollama.model", number=number, name=model))
-        everything = ",".join(str(n) for n in range(1, len(available) + 1))
+        preselected = [n for n, model in enumerate(available, start=1) if model in tiers]
+        everything = ",".join(str(n) for n in preselected or range(1, len(available) + 1))
         while True:
             numbers = _numbers(ask.ask(t("wizard.ask.ollama_models"), everything), len(available))
             if numbers:
@@ -262,8 +308,11 @@ def _ollama_models(ask: Prompter, found: detect.Detection) -> list[tuple[str, in
             ask.say(t("wizard.error.numbers"))
         chosen = [available[number - 1] for number in numbers]
     else:
-        chosen = [_required(ask, t("wizard.ask.ollama_model"))]
-    return [(model, _tier(ask, t("wizard.ask.tier", model=model), LOCAL_TIER)) for model in chosen]
+        chosen = [_required(ask, t("wizard.ask.ollama_model"), None)]
+    return [
+        (model, _tier(ask, t("wizard.ask.tier", model=model), tiers.get(model, LOCAL_TIER)))
+        for model in chosen
+    ]
 
 
 def _numbers(raw: str, count: int) -> list[int]:
@@ -272,7 +321,8 @@ def _numbers(raw: str, count: int) -> list[int]:
     for part in raw.replace(" ", "").split(","):
         if not part:
             continue
-        if not part.isdigit() or not 1 <= int(part) <= count:
+        # ASCII digits only: "²".isdigit() is True, but int("²") fails (code review #21).
+        if not (part.isascii() and part.isdigit()) or not 1 <= int(part) <= count:
             return []
         if int(part) not in numbers:
             numbers.append(int(part))
@@ -287,9 +337,9 @@ def _choice(ask: Prompter, text: str, choices: tuple[str, ...], default: str) ->
         ask.say(t("wizard.error.choice", value=raw, choices=", ".join(choices)))
 
 
-def _required(ask: Prompter, text: str) -> str:
+def _required(ask: Prompter, text: str, default: str | None) -> str:
     while True:
-        raw = ask.ask(text, None).strip()
+        raw = ask.ask(text, default).strip()
         if raw:
             return raw
         ask.say(t("wizard.error.required"))
@@ -318,15 +368,50 @@ def _number(ask: Prompter, text: str, default: float, *, integer: bool) -> float
         return value
 
 
+# --- consent (after saving) ---------------------------------------------------------------
+
+
+def consent_names(answers: Answers) -> list[str]:
+    """The picked providers that are on; one that stays off needs no consent yet."""
+    return [pick.name for pick in answers.providers if pick.enabled]
+
+
+def ask_consents(ask: Prompter, config: Config, names: Iterable[str]) -> list[str]:
+    """Show each provider as it was saved and ask; returns the ones the user agreed to."""
+    agreed: list[str] = []
+    for name in names:
+        provider = config.providers.get(name)
+        if provider is None or not provider.enabled:
+            continue
+        for line in consent.describe(name, provider):
+            ask.say(line)
+        if ask.confirm(t("consent.confirm"), default=False):
+            agreed.append(name)
+    return agreed
+
+
+def record_consents(config: Config, names: Iterable[str], now: datetime) -> list[str]:
+    """Record consent for exactly the saved settings (the hash ``providers list`` checks)."""
+    recorded: list[str] = []
+    wanted = [name for name in names if name in config.providers]
+    if not wanted:
+        return recorded
+    with closing(db.connect()) as conn:
+        for name in wanted:
+            registry.enable_provider(conn, name, config.providers[name], now)
+            recorded.append(name)
+    return recorded
+
+
 # --- writing -----------------------------------------------------------------------------
 
 
 def apply(document: CommentedMap, answers: Answers, *, fresh: bool) -> CommentedMap:
     """Put the answers into ``document`` without touching anything else in it.
 
-    ``fresh`` (a new file from the example): providers that were not picked are removed. In
-    an existing file they are only turned off (``enabled: false``); nothing the user wrote is
-    deleted.
+    ``fresh`` (a new file from the example): providers that were not picked are removed and
+    the example's budgets are replaced. In an existing file nothing the user wrote is deleted
+    (see the module docstring).
     """
     if answers.language is not None:
         document["language"] = answers.language
@@ -334,9 +419,10 @@ def apply(document: CommentedMap, answers: Answers, *, fresh: bool) -> Commented
         _mapping(document, "defaults")["chief"] = answers.chief
     providers = _mapping(document, "providers")
     picked = {pick.name for pick in answers.providers}
+    offered = set(candidate_names())
     for name in list(providers):
-        if name in picked:
-            continue
+        if name in picked or name not in offered:
+            continue  # a provider the wizard never offered is not the wizard's to change
         if fresh:
             del providers[name]
         elif isinstance(providers[name], CommentedMap):
@@ -345,13 +431,39 @@ def apply(document: CommentedMap, answers: Answers, *, fresh: bool) -> Commented
         entry = providers.get(name := pick.name)
         if not isinstance(entry, CommentedMap):
             entry = providers[name] = CommentedMap()
-        if fresh and "budget" in pick.settings:
-            # the example's own limits are examples, not choices; a user file keeps its own
-            entry["budget"] = _yaml_value(pick.settings["budget"])
-        _merge(entry, pick.settings)
-        if pick.enabled and "enabled" in entry:
-            entry["enabled"] = True
+        _apply_pick(entry, pick, fresh=fresh)
     return document
+
+
+def _apply_pick(entry: CommentedMap, pick: ProviderPick, *, fresh: bool) -> None:
+    for key, value in pick.settings.items():
+        if key in IDENTITY_KEYS and not fresh and key in entry:
+            continue  # the user's own address, command, key variable … stay
+        if key == "models" and isinstance(entry.get("models"), list) and not fresh:
+            entry["models"] = _merge_models(entry["models"], value)
+        elif key == "budget" and fresh:
+            entry["budget"] = _yaml_value(value)  # the example's limits are not choices
+        elif isinstance(value, Mapping) and isinstance(entry.get(key), CommentedMap):
+            _merge(entry[key], value)
+        else:
+            entry[key] = _yaml_value(value)
+    if pick.enabled and "enabled" in entry:
+        entry["enabled"] = True
+
+
+def _merge_models(existing: list[Any], picked: list[dict[str, Any]]) -> CommentedSeq:
+    """The picked models in their order; a model that was already there keeps every other
+    field (``context_window``, prices, comments) and only takes the new tier."""
+    by_id = {model.get("id"): model for model in existing if isinstance(model, CommentedMap)}
+    merged = CommentedSeq()
+    for model in picked:
+        known = by_id.get(model["id"])
+        if known is None:
+            merged.append(_yaml_value(model))
+            continue
+        _merge(known, model)
+        merged.append(known)
+    return merged
 
 
 def _mapping(document: CommentedMap, key: str) -> CommentedMap:
@@ -383,6 +495,19 @@ def _yaml_value(value: Any) -> Any:
     return value
 
 
+def _global_builtins_to_turn_off(answers: Answers, base: Path) -> list[str]:
+    """For a new project file: built-in providers of the global config the user did not pick
+    are turned off in this project; custom ones are left to the global config."""
+    if not base.is_file():
+        return []
+    global_providers = loader.read_yaml(base).get("providers")
+    if not isinstance(global_providers, Mapping):
+        return []
+    picked = {pick.name for pick in answers.providers}
+    offered = set(candidate_names())
+    return [name for name in global_providers if name in offered and name not in picked]
+
+
 def save_answers(
     answers: Answers,
     *,
@@ -391,28 +516,36 @@ def save_answers(
     fresh: bool | None = None,
     cwd: Path | None = None,
 ) -> Outcome:
-    """Write the answers (global or project file) and record the confirmed consents.
+    """Write the answers (global or project file). Consent is a separate, later step.
 
-    ``fresh=None``: start from the example when the file does not exist yet, otherwise edit
-    the file in place. ``--defaults`` passes ``True`` (``--force`` already allowed replacing).
+    ``fresh=None``: start new when the file does not exist yet, otherwise edit the file in
+    place. ``True`` (``--defaults --force``, ``--plain --force``) starts again from the
+    example (a project file: from an empty one); the old file is kept as a backup.
     """
     workdir = Path.cwd() if cwd is None else cwd
     target = loader.init_target(config_flag, project=answers.project, cwd=workdir)
     base = loader.base_config_target(config_flag)[0] if answers.project else None
-    from_example = not target.exists() if fresh is None else fresh
-    document = writer.template_document() if from_example else writer.load_document(target)
-    result = writer.save(target, apply(document, answers, fresh=from_example), base=base)
-    granted: list[str] = []
-    confirmed = [pick for pick in answers.providers if pick.consent and pick.enabled]
-    if confirmed:
-        with closing(db.connect()) as conn:
-            for pick in confirmed:
-                registry.enable_provider(conn, pick.name, result.config.providers[pick.name], now)
-                granted.append(pick.name)
+    from_scratch = not target.exists() if fresh is None else fresh
+    if not from_scratch:
+        document = apply(writer.load_document(target), answers, fresh=False)
+    elif base is not None:
+        # A new project file holds only the answers: the whole example would override every
+        # global setting (code review #21).
+        document = CommentedMap()
+        document["version"] = CONFIG_VERSION
+        document = apply(document, answers, fresh=True)
+        providers = _mapping(document, "providers")
+        for name in _global_builtins_to_turn_off(answers, base):
+            off = CommentedMap()
+            off["enabled"] = False
+            providers[name] = off
+    else:
+        document = apply(writer.template_document(), answers, fresh=True)
+    result = writer.save(target, document, base=base)
     gitignore: Path | None = None
     if answers.project:
         root = loader.find_git_root(workdir.resolve())
         if root is not None and loader.ensure_gitignore_entry(root / ".gitignore"):
             gitignore = root / ".gitignore"
-    return Outcome(target, True, result.backup, gitignore,
-                   [pick.name for pick in answers.providers], granted)  # fmt: skip
+    return Outcome(target, result.config, result.backup, gitignore,
+                   [pick.name for pick in answers.providers])  # fmt: skip

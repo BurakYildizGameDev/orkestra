@@ -21,7 +21,7 @@ from orkestra.cache import responses
 from orkestra.chief import status
 from orkestra.config import loader
 from orkestra.config.schema import Config, Provider
-from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
+from orkestra.errors import ConfigError, ExitCode, OrkestraError, UsageError, exit_code_for
 from orkestra.handoff import brief as handoff_brief
 from orkestra.handoff import check as handoff_check_service
 from orkestra.handoff import launch as handoff_launch
@@ -446,9 +446,11 @@ def _echo_outcome(outcome: wizard.Outcome, notes: list[str]) -> None:
         typer.echo(t("init.gitignore", entry=loader.GITIGNORE_ENTRY, path=outcome.gitignore))
     for note in notes:
         typer.echo(note)
-    if outcome.consent:
-        typer.echo(t("wizard.consent.granted", names=", ".join(outcome.consent)))
-    waiting = [name for name in outcome.providers if name not in outcome.consent]
+
+
+def _echo_consent(granted: list[str], waiting: list[str]) -> None:
+    if granted:
+        typer.echo(t("wizard.consent.granted", names=", ".join(granted)))
     if waiting:
         typer.echo(t("wizard.consent.missing", names=", ".join(waiting)))
 
@@ -470,24 +472,43 @@ def _init_defaults(config_flag: Path | None, *, project: bool, force: bool, as_j
         _echo_json(
             {
                 "path": str(outcome.path),
-                "written": outcome.written,
+                "written": True,
                 "backup": str(outcome.backup) if outcome.backup else None,
                 "providers": outcome.providers,
-                "consent": outcome.consent,
+                "consent": [],  # --defaults never grants consent (Mimari §22)
                 "notes": answers.notes,
             }
         )
         return
     _echo_outcome(outcome, answers.notes)
+    _echo_consent([], outcome.providers)
 
 
-def _init_plain(config_flag: Path | None, *, project: bool) -> None:
+def _current_config(config_flag: Path | None) -> Config | None:
+    """The config being edited, for the wizard's defaults; ``None`` when there is none yet."""
+    try:
+        loaded = loader.load_config(config_flag)
+    except ConfigError:
+        return None  # an unreadable config: the wizard starts from what it detects
+    return loaded.config if loaded.sources else None
+
+
+def _init_plain(config_flag: Path | None, *, project: bool, force: bool) -> None:
     prompter = _TyperPrompter()
     try:
-        answers = wizard.run_plain(prompter, detect.detect(), set_language=i18n.set_language,
-                                   project=True if project else None)  # fmt: skip
-        outcome = wizard.save_answers(answers, config_flag=config_flag, now=db.local_now())
+        answers = wizard.run_plain(
+            prompter, detect.detect(), set_language=i18n.set_language,
+            project=True if project else None,
+            current=None if force else _current_config(config_flag),
+        )  # fmt: skip
+        outcome = wizard.save_answers(answers, config_flag=config_flag, now=db.local_now(),
+                                      fresh=True if force else None)  # fmt: skip
         _echo_outcome(outcome, answers.notes)
+        # Consent for the entries exactly as saved: the same settings whose hash is recorded.
+        names = wizard.consent_names(answers)
+        agreed = wizard.ask_consents(prompter, outcome.config, names)
+        granted = wizard.record_consents(outcome.config, agreed, db.local_now())
+        _echo_consent(granted, [name for name in names if name not in granted])
         if prompter.confirm(t("wizard.ask.doctor"), default=True):
             _echo_doctor(asyncio.run(doctor.run_doctor(config_flag=config_flag)))
     except (typer.Abort, EOFError):
@@ -634,10 +655,17 @@ def build_app() -> typer.Typer:
             return
         # A bare ``init`` at a terminal opens the wizard; ``--force`` still means "reset the
         # file to the example", and without a terminal the example is copied as before.
-        if plain or (not as_json and not force and _at_terminal()):
-            _init_plain(state.config_path, project=project)
-            return
         target = loader.init_target(state.config_path, project=project)
+        if plain:
+            _init_plain(state.config_path, project=project, force=force)
+            return
+        if not as_json and not force and _at_terminal():
+            if target.exists():  # editing an existing file is "init --plain", never implicit
+                typer.echo(t("init.exists", path=target))
+                typer.echo(t("wizard.hint.edit"))
+                return
+            _init_plain(state.config_path, project=project, force=False)
+            return
         result = loader.init_config(target, force=force, project=project)
         if as_json:
             _echo_json(

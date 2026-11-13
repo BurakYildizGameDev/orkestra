@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from orkestra import paths
+from orkestra import cli, paths
 from orkestra.cli import app
 from orkestra.config import loader
 from orkestra.config.schema import OllamaProvider
@@ -132,10 +132,10 @@ def test_init_plain_writes_the_answers_and_grants_only_the_confirmed_consent(
         "",     # ollama models: all
         "",     # tier
         "7",    # codex daily runs
-        "y",    # consent ollama
-        "n",    # consent codex
         "",     # chief
         "",     # project? no
+        "y",    # consent ollama (asked after saving, for the saved entry)
+        "n",    # consent codex
         "n",    # run doctor now? no
     ]  # fmt: skip
     monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(answers) + "\n"))
@@ -159,7 +159,7 @@ def test_init_plain_into_a_project_file_adds_the_gitignore_entry(
     (work / ".git").mkdir()
     _detect_returns(monkeypatch, _found(agents=("codex",)))
     number = str(wizard.candidate_names().index("codex") + 1)
-    answers = ["en", number, "", "n", "", "y", "n"]  # runs, consent, chief, project, doctor
+    answers = ["en", number, "", "", "y", "n", "n"]  # runs, chief, project, consent, doctor
     monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(answers) + "\n"))
     code, _, err = _run(["init", "--plain"], capsys)
     assert code == 0, err
@@ -185,7 +185,7 @@ def test_a_turkish_user_answers_evet_and_hayir_and_sees_turkish_hints(
     """``typer.confirm`` only knows y/n and says "invalid input" in English."""
     _detect_returns(monkeypatch, _found(agents=("codex",)))
     number = str(wizard.candidate_names().index("codex") + 1)
-    answers = ["tr", number, "", "belki", "e", "", "h", "hayır"]  # runs, consent x2, chief, ...
+    answers = ["tr", number, "", "", "h", "belki", "e", "hayır"]  # runs, chief, project, ...
     monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(answers) + "\n"))
     code, out, err = _run(["init", "--plain"], capsys)
     assert code == 0, err
@@ -194,3 +194,54 @@ def test_a_turkish_user_answers_evet_and_hayir_and_sees_turkish_hints(
     assert "invalid input" not in out + err
     consent = json.loads(_run(["providers", "list", "--json"], capsys)[1])["providers"]
     assert {row["name"]: row["consent"] for row in consent} == {"codex": "granted"}
+
+
+# --- code review of PR #21 ------------------------------------------------------------------
+
+
+def test_a_bare_init_at_a_terminal_never_edits_an_existing_file(
+    work: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    """The help promises "never overwrites without --force"; editing is ``init --plain``."""
+    monkeypatch.setattr(cli, "_at_terminal", lambda: True)
+    target = paths.orkestra_home() / "config.yaml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("version: 1\n# mine\n", encoding="utf-8")
+    code, out, _ = _run(["init"], capsys)
+    assert code == 0
+    assert target.read_text(encoding="utf-8") == "version: 1\n# mine\n"
+    assert t("init.exists", path=target) in out
+    assert t("wizard.hint.edit") in out
+
+
+def test_a_bare_init_at_a_terminal_without_a_file_opens_the_wizard(
+    work: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    monkeypatch.setattr(cli, "_at_terminal", lambda: True)
+    _detect_returns(monkeypatch, _found(agents=("codex",)))
+    number = str(wizard.candidate_names().index("codex") + 1)
+    answers = ["tr", number, "", "", "h", "h", "h"]  # runs, chief, project, consent, doctor
+    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(answers) + "\n"))
+    code, _, err = _run(["init"], capsys)
+    assert code == 0, err
+    assert loader.load_config(paths.orkestra_home() / "config.yaml").config.language == "tr"
+
+
+def test_plain_with_force_starts_again_from_the_example_and_keeps_the_old_file(
+    work: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    _detect_returns(monkeypatch, _found(agents=("codex",)))
+    target = paths.orkestra_home() / "config.yaml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("version: 1\nlanguage: tr   # mine\n", encoding="utf-8")
+    number = str(wizard.candidate_names().index("codex") + 1)
+    answers = ["en", number, "", "", "n", "n", "n"]
+    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(answers) + "\n"))
+    code, _, err = _run(["init", "--plain", "--force"], capsys)
+    assert code == 0, err
+    text = target.read_text(encoding="utf-8")
+    assert "# mine" not in text
+    assert text.startswith("# Orkestra configuration.")
+    assert (target.with_name("config.yaml.bak")).read_text(encoding="utf-8") == (
+        "version: 1\nlanguage: tr   # mine\n"
+    )
