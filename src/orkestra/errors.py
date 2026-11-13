@@ -98,6 +98,16 @@ class HandoffLocked(OrkestraError):
     exit_code = ExitCode.CONFLICT
 
 
+class HandoffNotClean(OrkestraError):
+    """The working tree has uncommitted changes; the handoff would start from a dirty state.
+
+    Exit code 5 (conflict), like ``HandoffLocked``: the user must commit or pass
+    ``--allow-dirty`` (Faz 10b, D-065).
+    """
+
+    exit_code = ExitCode.CONFLICT
+
+
 class ProviderError(OrkestraError):
     """Base class for errors raised by provider adapters.
 

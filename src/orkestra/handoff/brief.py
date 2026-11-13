@@ -159,10 +159,13 @@ def _section(lines: list[str], document: model.Document, slug: str) -> None:
 
 
 def _git_lines(cwd: Path, git: Git) -> list[str]:
-    ok, branch = git(["rev-parse", "--abbrev-ref", "HEAD"], cwd)
-    if not ok:
+    inside, tree = git(["rev-parse", "--is-inside-work-tree"], cwd)
+    if not inside or tree.strip() != "true":
         return [t("handoff.brief.no_git")]
-    lines = [t("handoff.brief.branch", branch=branch.strip())]
+    ok, branch = git(["rev-parse", "--abbrev-ref", "HEAD"], cwd)
+    if not ok:  # an unborn branch has no HEAD yet
+        ok, branch = git(["branch", "--show-current"], cwd)
+    lines = [t("handoff.brief.branch", branch=branch.strip())] if ok and branch.strip() else []
     ok, status = git(["status", "--short"], cwd)
     if ok:
         changed = [line for line in status.splitlines() if line.strip()]

@@ -51,7 +51,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | The chief's view at a glance (at most 15 lines): unapplied runs, today's budget, paused providers | `orkestra status [--json]` |
 | Task templates (docstring, type-hints, tests, summarize, rename-refactor, translate, or your own): one task per file | `orkestra run --template docstring --files "src/*.py" [--param k=v]`, `orkestra templates list\|show` |
 | The same `ask` again comes from the cache: nothing is sent, it costs nothing | `--no-cache`, `orkestra cache clear` |
-| Handoff file: what the next AI chief needs to continue; a short brief with the real git state, unapplied runs and budget | `orkestra handoff init`, `update --section … --add/--set`, `check`, `show [--brief] [--json]` |
+| Handoff file: what the next AI chief needs to continue; a short brief with the real git state, unapplied runs and budget | `orkestra handoff init`, `update --section … --add/--set`, `check`, `show [--brief] [--json]`, `to <chief> [--print-only] [--allow-dirty]`, `install-hook` |
 | Bring a run's change into your working tree, or throw it away | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
 | Clean up abandoned worktrees, old run records and stale reservations | `orkestra gc [--older-than 30] [--dry-run]` |
 | Environment check: config, provider access, API key variables, Ollama models, consent, paused providers, git, codex/agy | `orkestra doctor [--json] [--warm]` |
@@ -415,6 +415,18 @@ file's key sections plus the real branch, `git status`, the last commits, unappl
 the remaining budget, never more than `handoff.brief_max_lines` lines. Text written through
 `update` is redacted, and `Done`/`Decisions` that outgrow `handoff.max_lines` move their
 oldest items to `.orkestra/HANDOFF.archive.md` (appended, never deleted).
+
+`orkestra handoff to <chief>` finally hands over: it builds the brief, writes one `handoffs`
+row (who, to whom, when, at which commit, where the brief was written) and starts the target
+agent in your terminal; Orkestra exits with the agent's own exit code. How the brief arrives is
+`chiefs.<name>.prompt_mode`: `arg` (last argument), `stdin`, or `file`
+(`.orkestra/BRIEF.md` plus one short instruction). A `.cmd`/`.bat` launcher or a brief over
+8000 characters falls back to `file` with a warning. `--print-only` shows exactly what would be
+sent without starting anything or recording a row. With uncommitted changes `to` stops with
+exit code 5 unless you pass `--allow-dirty`; the generated `BRIEF.md` alone never counts as
+dirty. `orkestra handoff install-hook` adds a marked, idempotent block to the repository's
+`pre-commit` hook (it never overwrites the hook and never blocks a commit; in a worktree it
+uses the hooks path git reports).
 
 **Templates** save writing task files:
 

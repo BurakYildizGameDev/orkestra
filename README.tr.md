@@ -50,7 +50,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Şef için tek bakışta durum (en fazla 15 satır): uygulanmamış koşular, bugünkü bütçe, duraklatılmış sağlayıcılar | `orkestra status [--json]` |
 | Görev şablonları (docstring, type-hints, tests, summarize, rename-refactor, translate ya da kendi şablonun): dosya başına bir görev | `orkestra run --template docstring --files "src/*.py" [--param k=v]`, `orkestra templates list\|show` |
 | Aynı `ask` tekrar önbellekten gelir: hiçbir şey gönderilmez, maliyeti yok | `--no-cache`, `orkestra cache clear` |
-| Devir dosyası: sıradaki yapay zekâ şefinin devam etmesi için gerekenler; gerçek git durumu, uygulanmamış koşular ve bütçeyle kısa özet | `orkestra handoff init`, `update --section … --add/--set`, `check`, `show [--brief] [--json]` |
+| Devir dosyası: sıradaki yapay zekâ şefinin devam etmesi için gerekenler; gerçek git durumu, uygulanmamış koşular ve bütçeyle kısa özet | `orkestra handoff init`, `update --section … --add/--set`, `check`, `show [--brief] [--json]`, `to <şef> [--print-only] [--allow-dirty]`, `install-hook` |
 | Bir koşunun envelope'u, tam çıktısı, log'u veya değişikliği | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | Koşunun değişikliğini çalışma ağacına al ya da at | `orkestra apply <run_id>`, `orkestra discard <run_id>` |
 | Sahipsiz worktree, eski koşu kaydı ve askıda rezervasyonları temizle | `orkestra gc [--older-than 30] [--dry-run]` |
@@ -411,6 +411,18 @@ bölümleri, gerçek dal, `git status`, son commit'ler, uygulanmamış koşular 
 `handoff.brief_max_lines` satırı geçmez. `update` ile yazılan metin maskelenir; `Done`/
 `Decisions` `handoff.max_lines`'ı aşınca en eski maddeler `.orkestra/HANDOFF.archive.md`'ye
 eklenir (silinmez).
+
+`orkestra handoff to <şef>` devri gerçekleştirir: özeti hazırlar, tek bir `handoffs` kaydı
+yazar (kim, kime, ne zaman, hangi commit'te, özet nereye yazıldı) ve hedef ajanı senin
+terminalinde başlatır; Orkestra hedef ajanın çıkış koduyla çıkar. Özetin nasıl ulaşacağını
+`chiefs.<ad>.prompt_mode` belirler: `arg` (son argüman), `stdin` ya da `file`
+(`.orkestra/BRIEF.md` ve kısa bir talimat). `.cmd`/`.bat` başlatıcı ya da 8000 karakteri aşan
+bir özet uyarıyla `file` moduna düşer. `--print-only` hiçbir şey başlatmadan ve kayıt
+yazmadan ne gönderileceğini gösterir. Commit edilmemiş değişiklik varsa `to` kod 5 ile durur;
+`--allow-dirty` ile devam edilir (yalnızca üretilen `BRIEF.md` ağacı kirli saymaz).
+`orkestra handoff install-hook`, deponun `pre-commit` kancasına işaretli ve tekrar
+çalıştırılabilir bir blok ekler (var olan kancayı ezmez, commit'i asla engellemez; worktree'de
+git'in bildirdiği hooks yolunu kullanır).
 
 **Şablonlar** görev dosyası yazmaktan kurtarır:
 

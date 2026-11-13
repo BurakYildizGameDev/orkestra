@@ -24,13 +24,43 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 9b – Skill doğrulama | ✅ | 2026-11-10 | kod denetimi (D-047), elle deneme düzeltmeleri (D-048), 5/5 senaryo (D-049) |
 | 9c – Ucuz modeller için ara/değiştir | ✅ | 2026-11-10 | `edit_format: auto` (küçük dosya `whole`, büyük dosya `replace`), D-051 |
 | 10a – Devir dosyası ve özet | ✅ | 2026-11-12 | `handoff init/update/check/show`, `status` devir satırı, migration 2 |
-| 10b – Devretme (`handoff to`) | ⏳ | | |
+| 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065) |
 | 11 – Arayüz, sihirbaz, 5 dil | ⏳ | | |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
 | 13 – Benchmark | ⏳ | | |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 10b – Devretme (`handoff to`) (2026-11-13)
+**Yapılanlar (D-065):**
+- `handoff/launch.py`: `to` (özet → `which` → kirli ağaç → mod → `BRIEF.md` → `handoffs` satırı → `before_start` → çocuk) ve `install_hook` (işaretli, idempotent, ezmeyen `pre-commit` bloğu; worktree'de `git rev-parse --git-path hooks`). `arg`/`stdin`/`file` modları; `.cmd`/`.bat` ve 8000 karakter üstü özette uyarıyla `file`'a geri düşüş. Windows'ta alt süreç, Unix'te stdin yoksa `os.execvp`; `shell=True` yok; çıkış kodu çocuğunki.
+- `errors.HandoffNotClean` (kod 5) ve `state.db.record_handoff` (başlatmadan **önce** yazılır; `--print-only` yazmaz).
+- CLI: `orkestra handoff to <şef> [--print-only] [--allow-dirty]`, `orkestra handoff install-hook`; uyarılar terminal çocuğa geçmeden basılıyor.
+- `tests/fixtures/fake_chief.py` (arg/stdin/file/echo, `$FAKE_CHIEF_OUT`, `$FAKE_CHIEF_EXIT`) ve 32 yeni test (birim + uçtan uca). i18n 15 anahtar (en + tr), skill §7, README (en + tr) güncellendi.
+- `brief._git_lines`: commit'siz (unborn) depoda yanlış "git deposu yok" mesajı düzeltildi; dal `branch --show-current` yedeğiyle gösteriliyor.
+- Gerçek makine doğrulaması: `claude` → `claude.cmd` olduğu için arg modu fiilen `file`'a düşüyor; `agy` (`agy.exe`) `file`, `codex` (`codex.exe`) `arg`.
+
+**Kabul kriterleri:**
+- ✅ `arg` modunda özet son argüman, `stdin` modunda stdin, `file` modunda `.orkestra/BRIEF.md` + kısa talimat (`test_arg_mode_gives_the_brief_as_the_last_argument`, `test_stdin_mode_feeds_the_brief_on_stdin`, `test_file_mode_writes_the_brief_and_gives_a_short_instruction`).
+- ✅ Uzun özet ve `.cmd` başlatıcı uyarıyla `file`'a düşüyor (`test_a_long_brief_falls_back_from_arg_to_file_with_a_warning`, `test_a_cmd_launcher_falls_back_to_file_mode`).
+- ✅ Başlatıcı yoksa kod 2, hiçbir dosya/kayıt yazılmaz (`test_a_missing_launcher_is_a_usage_error_and_writes_nothing`).
+- ✅ `--print-only` başlatmaz, kayıt yazmaz, `show --brief` ile aynı metni verir (`test_print_only_does_not_need_the_launcher_and_records_nothing`, `test_to_print_only_prints_the_brief_and_starts_nothing`).
+- ✅ Kirli ağaç kod 5; `--allow-dirty` devam eder; `BRIEF.md` tek başına kirli saymaz (`test_a_dirty_tree_stops_the_handoff_and_allow_dirty_continues`, `test_the_brief_file_alone_does_not_make_the_tree_dirty`, `test_to_on_a_dirty_tree_exits_5_and_allow_dirty_starts`).
+- ✅ `handoffs` satırı başlatmadan önce ve tüm alanlarıyla yazılıyor; `from_chief` `ORKESTRA_CHIEF`'ten (`test_the_record_is_written_before_the_chief_starts`, `test_the_handoff_row_has_every_field`, `test_the_handoff_row_records_the_writing_chief`).
+- ✅ Çocuğun çıkış kodu `to`'nun kodu (`test_the_child_exit_code_becomes_the_result_exit_code`, `test_to_starts_the_fake_chief_and_exits_with_its_code`).
+- ✅ Unix'te `execvp` enjekte edilerek doğrulandı (`test_the_unix_launch_uses_execvp_with_the_same_arguments`).
+- ✅ `install-hook`: repo yoksa kod 2; oluşturma, var olanı koruma, idempotentlik, worktree yolu, göreli yol, commit'i engellememe (`test_install_hook_*`).
+- ✅ Uyarılar çocuk başlamadan basılıyor (`test_before_start_runs_with_the_final_mode_just_before_the_child`).
+- ✅ Bilinmeyen şef ve eksik devir dosyası kod 2 (`test_an_unknown_chief_is_a_usage_error`, `test_a_missing_handoff_file_is_a_usage_error`, `test_to_with_an_unknown_chief_exits_2`).
+- ✅ Commit'siz depoda özet dalı gösteriyor (`test_a_repository_without_commits_still_shows_its_branch`).
+- ✅ Tam paket: ruff, ruff format, pyright temiz; `uv run pytest` → **1096 passed, 3 deselected**.
+- ✅ Gerçek CLI duman testi (geçici repo): `handoff init`, `update`, `check`, `show --brief`, `to claude --print-only`, `install-hook` iki kez (ikincisi "zaten var"), sahte şefle gerçek süreç, kirli ağaçta kod 5, `FAKE_CHIEF_EXIT=7` → kod 7.
+
+**Ertelenenler / bilinen sorunlar:**
+- `.cmd` başlatıcıda arg modu hiç kullanılamıyor (bilinçli: Windows alıntılama riski). Claude bu makinede `.cmd` olduğu için fiilen hep `file`.
+- Kotası dolan şefi otomatik algılama ve gece kuyruğu Faz 12'de.
+- PR yığılmış: `faz-10b` → `faz-10a` (PR #18 birleştirilmedi); GLM denetimi bekliyor.
 
 ### Faz 10a – Devir dosyası ve özet (2026-11-12)
 **Yapılanlar (D-063):**

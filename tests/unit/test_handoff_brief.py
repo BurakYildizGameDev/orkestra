@@ -148,6 +148,25 @@ def test_a_non_git_directory_gets_a_note_and_does_not_crash(
     assert "branch:" not in text
 
 
+def test_a_repository_without_commits_still_shows_its_branch(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    path = _document(tmp_path)
+
+    def unborn(args: list[str], cwd: Path) -> tuple[bool, str]:
+        if "--is-inside-work-tree" in args:
+            return True, "true\n"
+        if "branch" in args:
+            return True, "main\n"
+        if "status" in args:
+            return True, ""
+        return False, "fatal: your current branch 'main' does not have any commits yet"
+
+    text = _build(path, _config(), conn, git=unborn)
+    assert t("handoff.brief.branch", branch="main") in text
+    assert t("handoff.brief.no_git") not in text
+
+
 def test_a_stale_file_gets_an_explicit_warning(tmp_path: Path, conn: sqlite3.Connection) -> None:
     path = _document(tmp_path)
     text = _build(path, _config(stale_after_commits=5), conn, git=_git_ok(count="6"))
