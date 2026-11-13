@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -389,3 +390,51 @@ def test_timestamps_are_written_to_the_second(tmp_path: Path) -> None:
     store.update(path, config=Config(version=1), section="goal", set_text="x", chief="agy",
                  now=now)  # fmt: skip
     assert "chief: agy | at: 2026-11-11T12:00:05+00:00 | commit: none" in store.read(path)
+
+
+# --- Windows lock race (CI windows py3.13, 2026-11-13, D-067) ----------------------------
+
+
+def _flaky_opener(fail_times: int) -> tuple[list[str], Callable[[str, int], int]]:
+    calls: list[str] = []
+
+    def opener(path: str, flags: int) -> int:
+        calls.append(path)
+        if len(calls) <= fail_times:
+            raise PermissionError(13, "Permission denied", path)
+        return os.open(path, flags)
+
+    return calls, opener
+
+
+def test_a_lock_that_windows_is_still_deleting_is_waited_for(tmp_path: Path) -> None:
+    """Windows: O_EXCL on a lock file its owner is deleting raises PermissionError, not
+    FileExistsError; that is "busy, try again", not a crash."""
+    lock = tmp_path / "HANDOFF.md.lock"
+    calls, opener = _flaky_opener(fail_times=2)
+    sleeps: list[float] = []
+    store._acquire(lock, now=NOW, timeout_s=5.0, stale_after_s=30.0, clock=lambda: 0.0,
+                   sleep=sleeps.append, opener=opener, platform="nt")  # fmt: skip
+    assert len(calls) == 3
+    assert sleeps == [store.POLL_S, store.POLL_S]
+    assert lock.exists()
+
+
+def test_a_lock_windows_never_releases_times_out_with_the_lock_error(tmp_path: Path) -> None:
+    lock = tmp_path / "HANDOFF.md.lock"
+    _, opener = _flaky_opener(fail_times=10_000)
+    ticks = iter(float(n) for n in range(10_000))
+    with pytest.raises(HandoffLocked) as exc_info:
+        store._acquire(lock, now=NOW, timeout_s=3.0, stale_after_s=30.0,
+                       clock=lambda: next(ticks), sleep=lambda seconds: None, opener=opener,
+                       platform="nt")  # fmt: skip
+    assert exc_info.value.message == t("handoff.error.locked", path=lock)
+
+
+def test_a_permission_error_outside_windows_is_a_real_error(tmp_path: Path) -> None:
+    """On Unix it means the folder is not writable; waiting would only hide that."""
+    _, opener = _flaky_opener(fail_times=1)
+    with pytest.raises(PermissionError):
+        store._acquire(tmp_path / "HANDOFF.md.lock", now=NOW, timeout_s=5.0,
+                       stale_after_s=30.0, clock=lambda: 0.0, sleep=lambda seconds: None,
+                       opener=opener, platform="posix")  # fmt: skip

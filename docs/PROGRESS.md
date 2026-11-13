@@ -32,6 +32,16 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Düzeltme – Windows'ta devir kilidi yarışı (2026-11-13, D-067)
+PR #20'nin CI'ında (windows py3.13) iki süreçli kilit testi bir kez çöktü: Windows'ta silinmekte olan kilit dosyasına `O_EXCL` `PermissionError` veriyor, kod yalnız `FileExistsError` bekliyordu. Önce kırmızı test (`TypeError: _acquire() got an unexpected keyword argument 'opener'`, 3 test), sonra düzeltme.
+- ✅ Windows'ta `PermissionError` "meşgul" sayılıyor, bekleniyor (`test_a_lock_that_windows_is_still_deleting_is_waited_for`).
+- ✅ Hiç bırakılmayan kilit yine `HandoffLocked` (`test_a_lock_windows_never_releases_times_out_with_the_lock_error`).
+- ✅ Unix'te `PermissionError` gerçek hata olarak yükseliyor (`test_a_permission_error_outside_windows_is_a_real_error`).
+- ✅ `test_two_processes_adding_twenty_items_each_keep_all_forty` yerelde 30/30.
+- README yol haritası (en + tr): 8b ve 10 ✅; skill kapsamı cümlesi güncellendi.
+
+Testler: **1137 geçti** (1134 + 3).
+
 ### Kod denetimi – Faz 10 (Claude, PR #18 + #19), 2026-11-13
 Kullanıcı "Faz 10 full test" istedi. ruff, ruff format, pyright temiz ve 1096 test geçiyordu; ama geçici repoda gerçek CLI + sahte şefle duman testi 10 kod bulgusu ve 1 süreç bulgusu verdi. Hepsi düzeltildi (D-066). Önce kırmızı testler: 47 kırmızı (36 yeni davranış + `Spawn` imzası değişen 11 eski test), 3 yeni test baştan yeşildi (dürüst not: kapalı kod bloğundaki `## `, bölüm değişince yeni arşiv başlığı, kesme sayısı).
 

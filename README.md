@@ -504,8 +504,8 @@ mkdir -p .claude/skills && cp -r skill/orkestra .claude/skills/
 
 Then ask Claude, for example: *"Add docstrings to these 20 files with orkestra, and review the
 result."* The skill is in Turkish for now (it will be translated with the release) and covers
-the commands that exist today; `map`, `review`, `plan expand` and handoff come back into it
-once those phases land.
+every command that exists today, including `batch`, `map`, `review`, `plan expand` and the
+handoff file (`handoff update`, `show --brief`, `to --print-only`).
 
 ## Configuration
 
@@ -616,11 +616,11 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 7a | Batch runs: dependencies, parallelism, per-provider limits | ✅ |
 | 7b | Cost estimate, batch apply, `stats` | ✅ |
 | 8a | Chief tools: `status`, templates, answer cache, savings counter | ✅ |
-| 8b | Chief tools: `review`, `map`, `plan expand` | ⏳ |
+| 8b | Chief tools: `review`, `map`, `plan expand` | ✅ |
 | 9a | Claude skill: `SKILL.md`, checked against the CLI | ✅ |
 | 9b | Claude skill: review and manual scenarios | ✅ |
 | 9c | SEARCH/REPLACE edits for cheap models (`edit_format: auto`) | ✅ |
-| 10 | Chief handoff (Claude ↔ Codex ↔ Antigravity) | ⏳ |
+| 10 | Chief handoff (Claude ↔ Codex ↔ Antigravity) | ✅ |
 | 11 | Terminal UI, setup wizard, 5 languages | ⏳ |
 | 12 | Night shift queue, notifications, adaptive routing | ⏳ |
 | 13 | Benchmark (with the bad results too) | ⏳ |
