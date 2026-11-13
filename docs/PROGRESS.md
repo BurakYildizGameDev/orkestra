@@ -25,12 +25,40 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 9c – Ucuz modeller için ara/değiştir | ✅ | 2026-11-10 | `edit_format: auto` (küçük dosya `whole`, büyük dosya `replace`), D-051 |
 | 10a – Devir dosyası ve özet | ✅ | 2026-11-12 | `handoff init/update/check/show`, `status` devir satırı, migration 2; Claude denetimi (D-066) |
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
-| 11 – Arayüz, sihirbaz, 5 dil | ⏳ | | |
+| 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068) |
+| 11b – Terminal arayüzü, 5 dil | ⏳ | | Textual `ui`, sihirbaz ekranları, de/es/fr |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
 | 13 – Benchmark | ⏳ | | |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 11a – Algılama, kurulum sihirbazı, config yazma (2026-11-14)
+**Yapılanlar (D-068):**
+- `tui/detect.py`: Ollama (`/api/tags`, 2 sn) ve modelleri, `codex`/`agy`/`claude` ve sürümleri, 6 bilinen API anahtar değişkeninin yalnız varlığı.
+- `config/writer.py`: ruamel round-trip, kaydetmeden önce doğrulama (proje dosyası base ile), tek `.bak`, atomik yazma, CRLF korunur.
+- `tui/wizard.py`: arayüzden bağımsız akış (`run_plain`, `defaults_answers`, `apply`, `save_answers`); her dilde evet/hayır.
+- `orkestra init`: `--plain`, `--defaults`; terminalde düz `init` sihirbazı açar, terminal yoksa eski davranış.
+- README (en + tr) hızlı başlangıç ve özellik tablosu.
+
+**Kabul kriterleri (11a'ya düşenler):**
+- ✅ Sadece OpenRouter seçilince yazılan config'te Ollama yok, config geçerli, örneğin yorumları duruyor (`test_only_openrouter_in_a_fresh_config_leaves_no_ollama`); var olan dosyada seçilmeyen sağlayıcı `enabled: false`, kullanıcı yorumları duruyor (`test_deselecting_in_an_existing_file_disables_instead_of_deleting`). *Textual pilot testi 11b'de.*
+- ✅ Geçersiz değer kaydedilmiyor, hata seçili dilde: yazıcı (`test_an_invalid_value_is_not_saved_and_the_error_is_translated`) ve sihirbaz yeniden soruyor (`test_a_wrong_answer_is_asked_again_with_the_reason`).
+- ✅ `init --defaults` onay vermiyor; `providers list` onaysız gösteriyor (`test_init_defaults_turns_on_what_was_found_without_consent`, `test_defaults_turn_on_what_was_found_and_grant_nothing`).
+- ✅ Algılama anahtar değerini hiç okumuyor ve göstermiyor (`test_api_keys_are_only_checked_by_name_and_never_read`, `test_the_detection_summary_shows_no_key_value`).
+- ✅ Dil sihirbazda seçilince sonraki sorular hemen o dilde (`test_the_wizard_switches_language_right_after_it_is_chosen`); evet/hayır her dilde (`test_yes_and_no_are_understood_in_every_supported_language`, `test_a_turkish_user_answers_evet_and_hayir_and_sees_turkish_hints`).
+- ✅ Yorumlar ve sıra korunuyor; örnek config bayt bayt (`test_the_example_config_round_trips_byte_for_byte`, `test_a_change_keeps_every_comment`).
+- ⏳ 11b: arayüzde dil değişimi, `--lang de`, 5 dilde anahtar kümesi, `TERM=dumb` → `ui` hatası, Textual pilot testleri.
+
+**Duman testi (gerçek CLI, bu makinede gerçek algılama, geçici `ORKESTRA_HOME`):** `init --defaults` → codex açık, agy kapalı, onay yok, yorumlar yerinde; ikinci kez "zaten var"; `--defaults --json --force` → `.bak`; `init --plain` borudan Türkçe cevaplarla (yanlış numara, kademe 7, bütçe -1, "belki" tekrar soruldu; `e`/`h` kabul edildi) → `orkestra.yaml`, `.gitignore` girdisi, yalnız openrouter'a onay. Sahte anahtar değeri ne çıktıda ne dosyada. Duman testi iki hata buldu, ikisi de önce kırmızı testle düzeltildi: `typer.confirm` Türkçe cevabı reddediyordu; örneğin `daily_tokens` sınırı yeni dosyaya sızıyordu.
+
+**Bilinen sorunlar:**
+- Algılama Ollama'yı yalnız varsayılan adreste arıyor.
+- `providers enable`'ın onay sorusu hâlâ yalnız `y/n`.
+- ruamel `anahtar:` sonrası hizalama boşluklarını korumuyor (yorumlar korunuyor).
+- Terminaldeki etkileşimli kullanım (gerçek klavye) elle denenmedi; cevaplar borudan verildi.
+
+Testler: **1195 geçti** (1137 + 58). ruff, ruff format, pyright temiz.
 
 ### Düzeltme – Windows'ta devir kilidi yarışı (2026-11-13, D-067)
 PR #20'nin CI'ında (windows py3.13) iki süreçli kilit testi bir kez çöktü: Windows'ta silinmekte olan kilit dosyasına `O_EXCL` `PermissionError` veriyor, kod yalnız `FileExistsError` bekliyordu. Önce kırmızı test (`TypeError: _acquire() got an unexpected keyword argument 'opener'`, 3 test), sonra düzeltme.

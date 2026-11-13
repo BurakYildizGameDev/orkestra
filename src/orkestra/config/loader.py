@@ -92,6 +92,11 @@ def read_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
+def read_yaml_text(path: Path, text: str) -> dict[str, Any]:
+    """Like ``read_yaml`` for text that is not on disk yet (the config writer validates it)."""
+    return _parse_yaml(path, text)
+
+
 def _parse_yaml(path: Path, text: str) -> dict[str, Any]:
     try:
         data = YAML(typ="safe").load(text)

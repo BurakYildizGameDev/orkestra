@@ -33,6 +33,7 @@ from orkestra.routing.router import Route, describe_candidates
 from orkestra.security.redact import Redactor, config_for_display, configured_secrets
 from orkestra.state import consent, db, stats
 from orkestra.tasks import batch, runner, spec, templates
+from orkestra.tui import detect, wizard
 from orkestra.workspace import service
 
 
@@ -399,6 +400,101 @@ def _chief(flag: str | None, config: Config, *, required: bool) -> str:
     return config.defaults.chief
 
 
+def _at_terminal() -> bool:
+    """A person at a terminal: bare ``init`` opens the wizard only then (Faz 11a)."""
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+class _TyperPrompter:
+    """The wizard's ``Prompter`` for ``init --plain``: plain questions with ``typer.prompt``."""
+
+    def say(self, text: str) -> None:
+        typer.echo(text)
+
+    def ask(self, text: str, default: str | None = None) -> str:
+        return str(typer.prompt(text, default="" if default is None else default,
+                                show_default=default is not None))  # fmt: skip
+
+    def confirm(self, text: str, default: bool = False) -> bool:
+        hint = t("wizard.yes_no.default_yes" if default else "wizard.yes_no.default_no")
+        while True:
+            raw = str(typer.prompt(f"{text} {hint}", default="", show_default=False))
+            if not raw.strip():
+                return default
+            answer = wizard.yes_no(raw)
+            if answer is not None:
+                return answer
+            typer.echo(t("wizard.error.yes_no"))
+
+
+def _echo_doctor(report: doctor.DoctorReport) -> None:
+    for check in report.checks:
+        label = t(f"doctor.status.{check.status}")
+        typer.echo(f"[{label}] {check.name}: {check.message}")
+        for detail in check.data.get("details", []):
+            typer.echo(f"    - {detail}")
+        if "hint" in check.data:
+            typer.echo(f"    {t('doctor.hint', command=check.data['hint'])}")
+    typer.echo(t("doctor.summary.ok" if report.ok else "doctor.summary.fail"))
+
+
+def _echo_outcome(outcome: wizard.Outcome, notes: list[str]) -> None:
+    typer.echo(t("wizard.saved", path=outcome.path))
+    if outcome.backup is not None:
+        typer.echo(t("wizard.backup", path=outcome.backup))
+    if outcome.gitignore is not None:
+        typer.echo(t("init.gitignore", entry=loader.GITIGNORE_ENTRY, path=outcome.gitignore))
+    for note in notes:
+        typer.echo(note)
+    if outcome.consent:
+        typer.echo(t("wizard.consent.granted", names=", ".join(outcome.consent)))
+    waiting = [name for name in outcome.providers if name not in outcome.consent]
+    if waiting:
+        typer.echo(t("wizard.consent.missing", names=", ".join(waiting)))
+
+
+def _init_defaults(config_flag: Path | None, *, project: bool, force: bool, as_json: bool) -> None:
+    target = loader.init_target(config_flag, project=project)
+    if target.exists() and not force:
+        if as_json:
+            _echo_json({"path": str(target), "written": False, "backup": None,
+                        "providers": [], "consent": [], "notes": []})  # fmt: skip
+        else:
+            typer.echo(t("init.exists", path=target))
+        return
+    answers = wizard.defaults_answers(detect.detect())
+    answers.project = project
+    outcome = wizard.save_answers(answers, config_flag=config_flag, now=db.local_now(),
+                                  fresh=True)  # fmt: skip
+    if as_json:
+        _echo_json(
+            {
+                "path": str(outcome.path),
+                "written": outcome.written,
+                "backup": str(outcome.backup) if outcome.backup else None,
+                "providers": outcome.providers,
+                "consent": outcome.consent,
+                "notes": answers.notes,
+            }
+        )
+        return
+    _echo_outcome(outcome, answers.notes)
+
+
+def _init_plain(config_flag: Path | None, *, project: bool) -> None:
+    prompter = _TyperPrompter()
+    try:
+        answers = wizard.run_plain(prompter, detect.detect(), set_language=i18n.set_language,
+                                   project=True if project else None)  # fmt: skip
+        outcome = wizard.save_answers(answers, config_flag=config_flag, now=db.local_now())
+        _echo_outcome(outcome, answers.notes)
+        if prompter.confirm(t("wizard.ask.doctor"), default=True):
+            _echo_doctor(asyncio.run(doctor.run_doctor(config_flag=config_flag)))
+    except (typer.Abort, EOFError):
+        # No answer to read (closed stdin, or NUL that Windows reports as a terminal).
+        raise UsageError(t("wizard.error.no_input")) from None
+
+
 def build_app() -> typer.Typer:
     """Build the typer app. Help texts are translated here, so set the language first."""
     app = typer.Typer(name="orkestra", help=t("cli.help"), no_args_is_help=True)
@@ -522,9 +618,25 @@ def build_app() -> typer.Typer:
         project: Annotated[
             bool, typer.Option("--project", help=t("cli.init.option.project"))
         ] = False,
+        plain: Annotated[bool, typer.Option("--plain", help=t("cli.init.option.plain"))] = False,
+        defaults: Annotated[
+            bool, typer.Option("--defaults", help=t("cli.init.option.defaults"))
+        ] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         state = ctx.ensure_object(_State)
+        if plain and defaults:
+            raise UsageError(t("wizard.error.plain_and_defaults"))
+        if plain and as_json:
+            raise UsageError(t("wizard.error.plain_json"))
+        if defaults:
+            _init_defaults(state.config_path, project=project, force=force, as_json=as_json)
+            return
+        # A bare ``init`` at a terminal opens the wizard; ``--force`` still means "reset the
+        # file to the example", and without a terminal the example is copied as before.
+        if plain or (not as_json and not force and _at_terminal()):
+            _init_plain(state.config_path, project=project)
+            return
         target = loader.init_target(state.config_path, project=project)
         result = loader.init_config(target, force=force, project=project)
         if as_json:
@@ -1205,14 +1317,7 @@ def build_app() -> typer.Typer:
         if as_json:
             _echo_json({"ok": report.ok, "checks": [asdict(c) for c in report.checks]})
         else:
-            for check in report.checks:
-                label = t(f"doctor.status.{check.status}")
-                typer.echo(f"[{label}] {check.name}: {check.message}")
-                for detail in check.data.get("details", []):
-                    typer.echo(f"    - {detail}")
-                if "hint" in check.data:
-                    typer.echo(f"    {t('doctor.hint', command=check.data['hint'])}")
-            typer.echo(t("doctor.summary.ok" if report.ok else "doctor.summary.fail"))
+            _echo_doctor(report)
         if not report.ok:
             raise typer.Exit(int(ExitCode.TASK_FAILED))
 
