@@ -662,3 +662,11 @@ Mimari §17 güncellendi (D-065).
 - **i18n:** 3 yeni anahtar (`handoff.error.dirty_more`, `handoff.error.breaks_structure`, `handoff.error.hook_not_shell`), `handoff.error.dirty` ve `cli.handoff.option.warn_only` metni değişti (en + tr).
 - **Bilinen, düzeltilmeyen:** bayat kilit temizliğinde iki süreç aynı anda bayat kilidi görürse ikisi de girebilir (yalnız çökmüş bir kilitten sonra, çok dar pencere); Windows'ta kilitsiz bir okuyucu (`show`/`status`) dosyayı açık tutarken `os.replace` `PermissionError` verebilir (çok dar pencere).
 Mimari §17 güncellendi (D-066).
+
+## D-067 – Windows'ta devir kilidi yarışı (2026-11-13, Faz 10a)
+**Bağlam:** PR #20'nin CI'ında (windows-latest, py3.13) `test_two_processes_adding_twenty_items_each_keep_all_forty` bir kez kırmızı oldu: süreçlerden biri `PermissionError: [Errno 13] Permission denied: '…HANDOFF.md.lock'` ile çöktü. Windows'ta kilidin sahibi kilit dosyasını silerken (silme bekliyor) başka bir sürecin `os.open(O_CREAT|O_EXCL)` çağrısı `FileExistsError` değil `PermissionError` alır; `_acquire` yalnız `FileExistsError` yakaladığı için `handoff update` aynı anda iki şef yazarken rastgele çökebiliyordu. 10a, GLM ve Claude denetimlerinde gözden kaçmıştı (yerelde 1134 test geçiyordu).
+**Karar:**
+- Windows'ta (`os.name == "nt"`) `PermissionError` "kilit meşgul" sayılır: aynı bekleme/zaman aşımı yolu (`HandoffLocked`, kod 5). Bayat kilit denetimindeki `stat`/`unlink` için de aynı kural.
+- Unix'te `PermissionError` gerçek bir hatadır (klasör yazılamıyor); beklemek bunu gizlerdi, olduğu gibi yükselir.
+- `_acquire`'a enjekte edilebilir `opener` ve `platform` eklendi; üç birim testi (Windows'ta bekleyip alıyor, hiç bırakılmazsa zaman aşımı, Unix'te gerçek hata). İki süreçli test yerelde 30/30 geçti.
+Mimari §17 güncellendi (D-067).

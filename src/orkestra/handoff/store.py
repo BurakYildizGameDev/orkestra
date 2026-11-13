@@ -176,24 +176,42 @@ def _acquire(
     stale_after_s: float,
     clock: Callable[[], float],
     sleep: Callable[[float], None],
+    opener: Callable[[str, int], int] = os.open,
+    platform: str = os.name,
 ) -> None:
     start = clock()
     while True:
         try:
-            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            os.close(opener(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY))
             return
         except FileExistsError:
-            try:
-                age = now.timestamp() - lock.stat().st_mtime
-            except FileNotFoundError:
+            if _removed_stale(lock, now=now, stale_after_s=stale_after_s, platform=platform):
                 continue
-            if age > stale_after_s:
-                with contextlib.suppress(FileNotFoundError):
-                    lock.unlink()
-                continue
-            if clock() - start >= timeout_s:
-                raise HandoffLocked(t("handoff.error.locked", path=lock)) from None
-            sleep(POLL_S)
+        except PermissionError:
+            # Windows: the owner is deleting the lock right now (delete pending), so O_EXCL
+            # fails with "access denied" instead of "exists". Busy, not broken (D-067).
+            if platform != "nt":
+                raise
+        if clock() - start >= timeout_s:
+            raise HandoffLocked(t("handoff.error.locked", path=lock)) from None
+        sleep(POLL_S)
+
+
+def _removed_stale(lock: Path, *, now: datetime, stale_after_s: float, platform: str) -> bool:
+    """``True`` when the lock is gone or was stale and removed: try again at once."""
+    try:
+        age = now.timestamp() - lock.stat().st_mtime
+        if age <= stale_after_s:
+            return False
+        with contextlib.suppress(FileNotFoundError):
+            lock.unlink()
+        return True
+    except FileNotFoundError:
+        return True
+    except PermissionError:
+        if platform != "nt":
+            raise
+        return False  # Windows: being deleted by its owner; wait for it
 
 
 def _archive(
