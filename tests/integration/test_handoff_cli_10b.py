@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -93,6 +94,17 @@ def _prepare(
     _git(repo, "add", "a.txt", ".orkestra/HANDOFF.md")
     _git(repo, "commit", "-q", "-m", "init")
     return repo
+
+
+@pytest.fixture(autouse=True)
+def child_as_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
+    """On Unix ``to`` would ``execvpe`` and replace pytest itself with the fake chief.
+
+    These end-to-end tests need the real child and its exit code, so the child always runs as a
+    subprocess here; the ``execvpe`` path has its own unit test with an injected function.
+    """
+    real = launch.default_spawn
+    monkeypatch.setattr(launch, "default_spawn", functools.partial(real, platform="nt"))
 
 
 def _rows() -> list[sqlite3.Row]:

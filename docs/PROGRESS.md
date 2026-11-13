@@ -56,6 +56,7 @@ Error: The working tree has 1 uncommitted change(s) ... assert 5 == 0           
 - ✅ Özet: In progress geri geldi (kullanıcı kararı, D-063 geri alındı); kesmede eskime uyarısı ve kılavuz kalıyor (`test_in_progress_is_in_the_brief_right_after_status`, `test_a_full_brief_keeps_the_stale_warning_and_the_guide`, `test_a_tiny_limit_still_keeps_the_stale_warning`, `test_the_cut_count_covers_every_line_that_is_not_shown`).
 - ✅ Arşiv tek başlık ve dosyanın satır sonu; saniye hassasiyetinde zaman (`test_moves_in_a_row_write_one_archive_heading`, `test_the_archive_gets_a_new_heading_when_the_section_changes`, `test_the_archive_uses_the_line_ending_of_the_handoff_file`, `test_timestamps_are_written_to_the_second`).
 - ✅ Süreç: 10b tablo satırı "⏳ elle senaryo bekliyor" oldu.
+- ✅ CI (Linux/macOS) DeepSeek'in 10b commit'inden (`c024702`) beri kırmızıydı: uçtan uca `to` testleri Unix'te gerçek `execvp` ile pytest'in yerine geçiyordu. Bu testlerde çocuk alt süreç olarak başlıyor (`child_as_subprocess`).
 
 **Değişen var olan testler (bilerek, D-066):** iki kirli ağaç testinin beklenen mesajı `files="a.txt"` aldı; kanca testindeki `startswith(existing)` "blok çıkarılınca eski içerik aynen" oldu (blok artık shebang altında); özet testindeki `"branch:" not in text` dal satırına daraltıldı; `Spawn` sahteleri `cwd, env` parametresi aldı; Unix `execvp` testi `execvpe` + `chdir` oldu.
 
