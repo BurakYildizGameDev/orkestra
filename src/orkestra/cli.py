@@ -429,23 +429,14 @@ def _init_defaults(config_flag: Path | None, *, project: bool, force: bool, as_j
 
 
 def _init_plain(config_flag: Path | None, *, project: bool, force: bool) -> None:
-    prompter = _TyperPrompter()
     try:
-        answers = wizard.run_plain(
-            prompter, detect.detect(), set_language=i18n.set_language,
-            project=True if project else None,
-            current=None if force else wizard.current_config(config_flag),
+        wizard.run_and_save(
+            _TyperPrompter(), detect.detect(), config_flag=config_flag, project=project,
+            force=force, set_language=i18n.set_language,
+            run_doctor=lambda: doctor.report_lines(
+                asyncio.run(doctor.run_doctor(config_flag=config_flag))
+            ),
         )  # fmt: skip
-        outcome = wizard.save_answers(answers, config_flag=config_flag, now=db.local_now(),
-                                      fresh=True if force else None)  # fmt: skip
-        _echo_outcome(outcome, answers.notes)
-        # Consent for the entries exactly as saved: the same settings whose hash is recorded.
-        names = wizard.consent_names(answers)
-        agreed = wizard.ask_consents(prompter, outcome.config, names)
-        granted = wizard.record_consents(outcome.config, agreed, db.local_now())
-        _echo_consent(granted, [name for name in names if name not in granted])
-        if prompter.confirm(t("wizard.ask.doctor"), default=True):
-            _echo_doctor(asyncio.run(doctor.run_doctor(config_flag=config_flag)))
     except (typer.Abort, EOFError):
         # No answer to read (closed stdin, or NUL that Windows reports as a terminal).
         raise UsageError(t("wizard.error.no_input")) from None
@@ -463,8 +454,11 @@ def _init_interactive(config_flag: Path | None, *, project: bool) -> None:
     interface.run()
     for line in interface.summary:  # the interface is gone; the result stays in the terminal
         typer.echo(line)
-    if interface.wizard_error is not None:
+    if not interface.wizard_done:  # quit while a question was open
+        typer.echo(t("wizard.cancelled"))
         raise typer.Exit(int(ExitCode.USAGE))
+    if interface.wizard_exit_code:
+        raise typer.Exit(interface.wizard_exit_code)  # the error's own code, as --plain gives
 
 
 def build_app() -> typer.Typer:

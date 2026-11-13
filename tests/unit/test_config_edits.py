@@ -111,3 +111,43 @@ def test_without_any_config_file_there_is_nothing_to_edit(tmp_path: Path) -> Non
     with pytest.raises(ConfigError) as exc_info:
         edits.set_value(("language",), "tr", config_flag=missing, cwd=tmp_path)
     assert exc_info.value.message == t("config.error.not_found", path=missing)
+
+
+# --- code review of PR #22 ------------------------------------------------------------------
+
+
+def test_clearing_a_limit_removes_it_where_it_is_defined(
+    base: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    """The project file names the provider, but the limit lives in the base config."""
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / ".git").mkdir()
+    project = work / loader.PROJECT_CONFIG_NAME
+    project.write_bytes(b"version: 1\nproviders:\n  local:\n    enabled: true\n")
+    monkeypatch.chdir(work)
+    result = edits.set_value(("providers", "local", "budget", "daily_requests"), None,
+                             config_flag=base, cwd=work)  # fmt: skip
+    assert result.config.providers["local"].budget.daily_requests is None
+    assert "daily_requests" not in base.read_text(encoding="utf-8")
+    assert project.read_bytes() == b"version: 1\nproviders:\n  local:\n    enabled: true\n"
+
+
+def test_clearing_a_limit_that_is_not_set_writes_nothing(base: Path, tmp_path: Path) -> None:
+    before = base.read_bytes()
+    result = edits.set_value(("providers", "codex", "budget", "daily_runs"), None,
+                             config_flag=base, cwd=tmp_path)  # fmt: skip
+    assert result.config.providers["codex"].budget.daily_runs is None
+    assert base.read_bytes() == before
+    assert sorted(p.name for p in base.parent.iterdir()) == ["config.yaml"]  # no backup
+
+
+def test_several_values_for_one_file_are_one_save(base: Path, tmp_path: Path) -> None:
+    results = edits.set_values(
+        [(("defaults", "profile"), "cheap"), (("defaults", "max_retries"), 1)],
+        config_flag=base, cwd=tmp_path,
+    )  # fmt: skip
+    assert len(results) == 1
+    assert results[0].config.defaults.profile == "cheap"
+    assert results[0].config.defaults.max_retries == 1
+    assert sorted(p.name for p in base.parent.iterdir()) == ["config.yaml", "config.yaml.bak"]

@@ -594,3 +594,33 @@ def current_config(config_flag: Path | None) -> Config | None:
     except ConfigError:
         return None  # an unreadable config: the wizard starts from what it detects
     return loaded.config if loaded.sources else None
+
+
+def run_and_save(
+    ask: Prompter,
+    found: detect.Detection,
+    *,
+    config_flag: Path | None,
+    project: bool,
+    force: bool,
+    set_language: Callable[[str], None],
+    run_doctor: Callable[[], list[str]],
+) -> Outcome:
+    """The whole wizard, the same for ``init --plain`` and the interface: ask, save, consent
+    for the saved entries, optionally ``doctor``. Everything is told through ``ask.say``."""
+    answers = run_plain(ask, found, set_language=set_language,
+                        project=True if project else None,
+                        current=None if force else current_config(config_flag))  # fmt: skip
+    outcome = save_answers(answers, config_flag=config_flag, now=db.local_now(),
+                           fresh=True if force else None)  # fmt: skip
+    for line in outcome_lines(outcome, answers.notes):
+        ask.say(line)
+    names = consent_names(answers)
+    granted = record_consents(outcome.config, ask_consents(ask, outcome.config, names),
+                              db.local_now())  # fmt: skip
+    for line in consent_lines(granted, [name for name in names if name not in granted]):
+        ask.say(line)
+    if ask.confirm(t("wizard.ask.doctor"), default=True):
+        for line in run_doctor():
+            ask.say(line)
+    return outcome

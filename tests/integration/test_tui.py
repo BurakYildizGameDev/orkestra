@@ -283,3 +283,93 @@ async def test_the_provider_test_runs_that_providers_doctor_checks_only() -> Non
     assert [(check.name, check.status) for check in checks] == [("provider:codex", "info")]
     lines = doctor.report_lines(doctor.DoctorReport(tuple(checks)))
     assert lines[-1] == t("doctor.summary.ok")
+
+
+# --- code review of PR #22 ------------------------------------------------------------------
+
+
+async def test_ui_opens_with_a_broken_config_and_says_what_is_wrong(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    """The interface is most needed when the config is broken; it must not crash."""
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / "config.yaml"
+    path.write_text("version: 1\nproviders:\n  x:\n    type: nonsense\n", encoding="utf-8")
+    app = OrkestraApp(config_flag=path, mode="ui")
+    async with app.run_test(size=(140, 45)) as pilot:
+        await pilot.pause()
+        text = str(app.query_one("#status-text", Static).render())
+        app.query_one(TabbedContent).active = "profiles"
+        await pilot.pause()
+    assert text.startswith(t("config.error.invalid", sources=path))
+
+
+async def test_saving_the_profile_only_writes_what_changed(base: Path) -> None:
+    app = OrkestraApp(config_flag=base, mode="ui")
+    async with app.run_test(size=(140, 45)) as pilot:
+        app.query_one(TabbedContent).active = "profiles"
+        await pilot.pause()
+        app.query_one("#defaults-profile", Select).value = "cheap"
+        await pilot.click("#defaults-save")
+        await pilot.pause()
+    text = base.read_text(encoding="utf-8")
+    assert "profile: cheap" in text
+    assert "chief:" not in text  # the chief was not touched, so it is not written
+    assert sorted(p.name for p in base.parent.iterdir()) == ["config.yaml", "config.yaml.bak"]
+
+
+async def test_other_tabs_show_a_change_made_in_one_tab(base: Path) -> None:
+    app = OrkestraApp(config_flag=base, mode="ui")
+    async with app.run_test(size=(140, 45)) as pilot:
+        app.query_one(TabbedContent).active = "consent"
+        await pilot.pause()
+        app.query_one("#consent-table", DataTable).move_cursor(row=0)  # "local"
+        await pilot.click("#consent-grant")
+        await pilot.pause()
+        await pilot.click("#confirm-yes")
+        await pilot.pause()
+        row = app.query_one("#providers-table", DataTable).get_row_at(0)
+    assert t("providers.consent.granted") in str(row[1])
+
+
+async def test_a_test_result_for_a_pane_that_is_gone_is_dropped(base: Path) -> None:
+    app = OrkestraApp(config_flag=base, mode="ui")
+    async with app.run_test(size=(140, 45)) as pilot:
+        await pilot.pause()
+        await app.rebuild("settings")
+        app.show_test_result("late result")  # the old pane is gone; nothing may crash
+        await pilot.pause()
+        assert str(app.query_one("#providers-message", Static).render()) == "late result"
+
+
+async def test_an_unexpected_failure_in_the_wizard_is_not_reported_as_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    from orkestra.errors import ExitCode
+    from orkestra.tui import wizard
+
+    monkeypatch.chdir(tmp_path)
+
+    def broken(*args: object, **kwargs: object) -> object:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(wizard, "save_answers", broken)
+    target = tmp_path / "home" / "config.yaml"
+    app = OrkestraApp(config_flag=target, mode="wizard", found=_found(keys=("OPENROUTER_API_KEY",)))
+    number = str(wizard.candidate_names().index("openrouter") + 1)
+    async with app.run_test(size=(120, 40)) as pilot:
+        for answer in ("en", number, "x/model", "", "", "n"):
+            await _answer(pilot, app, answer)
+        await _finished(pilot, app)
+    assert app.wizard_exit_code == int(ExitCode.INTERNAL)
+    assert app.wizard_error is not None and "disk full" in app.wizard_error
+
+
+def test_the_wizard_runs_in_a_daemon_thread_so_quitting_never_waits_for_it(
+    tmp_path: Path,
+) -> None:  # fmt: skip
+    """``doctor`` may wait for a slow host; Ctrl+Q must not wait for it (code review)."""
+    app = OrkestraApp(config_flag=tmp_path / "c.yaml", mode="wizard", found=_found())
+    thread = app.background(lambda: None)
+    thread.join(5)
+    assert thread.daemon is True

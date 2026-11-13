@@ -15,7 +15,9 @@ from __future__ import annotations
 import asyncio
 import os
 import queue
+import sqlite3
 import sys
+import threading
 from collections.abc import Callable, Mapping
 from contextlib import closing
 from pathlib import Path
@@ -24,6 +26,7 @@ from typing import Any, ClassVar, Literal, TextIO
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -41,7 +44,13 @@ from orkestra import doctor, i18n
 from orkestra.chief import status
 from orkestra.config import edits, loader
 from orkestra.config.schema import Config
-from orkestra.errors import ConfigError, OrkestraError, WizardCancelled
+from orkestra.errors import (
+    ConfigError,
+    ExitCode,
+    OrkestraError,
+    WizardCancelled,
+    exit_code_for,
+)
 from orkestra.handoff import brief as handoff_brief
 from orkestra.handoff import store as handoff_store
 from orkestra.i18n import t
@@ -114,15 +123,19 @@ class _ThreadPrompter:
         if not self._app.is_running:  # Ctrl+Q while a question was open: stop, never hang
             raise WizardCancelled(t("wizard.cancelled"))
 
-    def say(self, text: str) -> None:
+    def _call(self, callback: Callable[..., object], *args: object) -> None:
         self._running()
-        self._app.call_from_thread(self._app.wizard_say, text)
+        try:
+            self._app.call_from_thread(callback, *args)
+        except RuntimeError:  # the app ended between the check and the call
+            raise WizardCancelled(t("wizard.cancelled")) from None
+
+    def say(self, text: str) -> None:
+        self._call(self._app.wizard_say, text)
 
     def ask(self, text: str, default: str | None = None) -> str:
-        self._running()
         answers: queue.Queue[str | None] = queue.Queue()
-        self._app.call_from_thread(self._app.push_screen, QuestionScreen(text, default),
-                                   answers.put)  # fmt: skip
+        self._call(self._app.push_screen, QuestionScreen(text, default), answers.put)
         while True:
             try:
                 answer = answers.get(timeout=ANSWER_POLL_S)
@@ -242,7 +255,7 @@ class ProvidersPane(_Pane):
             self.reload()
         else:
             self.message("providers-message", t("ui.test.running", name=name))
-            self.orkestra.test_provider(name, lambda text: self.message("providers-message", text))
+            self.orkestra.test_provider(name)
 
 
 class BudgetsPane(_Pane):
@@ -286,19 +299,19 @@ class BudgetsPane(_Pane):
 class ProfilesPane(_Pane):
     def compose(self) -> ComposeResult:
         config = self.orkestra.config()
-        profiles = sorted(config.profiles) if config is not None else []
-        chiefs = sorted(config.chiefs) if config is not None else []
+        if config is None:  # a Select without options would crash the whole interface
+            yield Static(self.orkestra.config_problem(), id="defaults-message", markup=False)
+            return
         yield Static(t("ui.profiles.profile"), markup=False)
-        profile = config.defaults.profile if config is not None else Select.NULL
         yield Select(
-            [(name, name) for name in profiles], id="defaults-profile", allow_blank=False,
-            value=profile,
+            [(name, name) for name in sorted(config.profiles)], id="defaults-profile",
+            allow_blank=False, value=config.defaults.profile,
         )  # fmt: skip
         yield Static(t("ui.profiles.chief"), markup=False)
-        chief = config.defaults.chief if config is not None else Select.NULL
         yield Select(
-            [(name, name) for name in chiefs], id="defaults-chief", allow_blank=False, value=chief
-        )
+            [(name, name) for name in sorted(config.chiefs)], id="defaults-chief",
+            allow_blank=False, value=config.defaults.chief,
+        )  # fmt: skip
         yield Button(t("ui.button.save"), id="defaults-save")
         yield Static("", id="defaults-message", markup=False)
 
@@ -306,12 +319,19 @@ class ProfilesPane(_Pane):
         if event.button.id != "defaults-save":
             return
         event.stop()
-        lines = []
+        config = self.orkestra.config()
+        if config is None:
+            return
+        changes: list[tuple[tuple[str, ...], str]] = []
+        current = {"profile": config.defaults.profile, "chief": config.defaults.chief}
         for key, widget in (("profile", "#defaults-profile"), ("chief", "#defaults-chief")):
             value = self.query_one(widget, Select).value
-            if isinstance(value, str):
-                lines.append(self.orkestra.save(("defaults", key), value))
-        self.message("defaults-message", "\n".join(lines))
+            if isinstance(value, str) and value != current[key]:
+                changes.append((("defaults", key), value))
+        if not changes:
+            self.message("defaults-message", t("ui.unchanged"))
+            return
+        self.message("defaults-message", self.orkestra.save_many(changes))
 
 
 class ConsentPane(_Pane):
@@ -426,6 +446,7 @@ class OrkestraApp(App[None]):
         self._force = force
         self.wizard_done = False
         self.wizard_error: str | None = None
+        self.wizard_exit_code = 0  # the exit code ``init`` ends with (0: the wizard finished)
         self.summary: list[str] = []  # the wizard's result, printed again after the app ends
         self.last_save_ok = False
 
@@ -450,7 +471,7 @@ class OrkestraApp(App[None]):
     def on_mount(self) -> None:
         self.title = t("ui.title")
         if self.mode == "wizard":
-            self.run_worker(self._run_wizard, thread=True, exclusive=True)
+            self.background(self._run_wizard)
 
     async def rebuild(self, active: str, settings_message: str = "") -> None:
         """Build every widget again, so all texts are in the current language."""
@@ -462,11 +483,31 @@ class OrkestraApp(App[None]):
 
     # --- services the panes call (reading; writing goes through config.edits) --------------
 
+    def background(self, work: Callable[[], None]) -> threading.Thread:
+        """Run ``work`` in a daemon thread: quitting never waits for it (a ``doctor`` probe
+        can wait for a slow host; a Textual thread worker would be joined on exit)."""
+        thread = threading.Thread(target=work, daemon=True)
+        thread.start()
+        return thread
+
     def config(self) -> Config | None:
         try:
             return loader.load_config(self.config_flag).config
         except ConfigError:
             return None
+
+    def config_problem(self) -> str:
+        """Why the config cannot be read (shown instead of a tab's controls)."""
+        try:
+            loader.load_config(self.config_flag)
+        except ConfigError as exc:
+            return error_text(exc)
+        return ""
+
+    def refresh_panes(self) -> None:
+        """After a change every tab shows the new state, not only the one that changed it."""
+        for pane in self.query(_Pane):
+            pane.reload()
 
     def guard(self, produce: Callable[[], str]) -> str:
         try:
@@ -508,7 +549,17 @@ class OrkestraApp(App[None]):
             self.last_save_ok = False
             return error_text(exc)
         self.last_save_ok = True
+        self.refresh_panes()
         return t("ui.saved", path=result.path)
+
+    def save_many(self, changes: list[tuple[tuple[str, ...], str]]) -> str:
+        """Several values; the ones for one file are a single save."""
+        try:
+            results = edits.set_values(changes, config_flag=self.config_flag)
+        except OrkestraError as exc:
+            return error_text(exc)
+        self.refresh_panes()
+        return "\n".join(t("ui.saved", path=result.path) for result in results)
 
     def consent_description(self, name: str) -> list[str]:
         config = self.config()
@@ -522,26 +573,41 @@ class OrkestraApp(App[None]):
             return t("ui.error.choose")
         with closing(db.connect()) as conn:
             registry.enable_provider(conn, name, config.providers[name], db.local_now())
+        self.refresh_panes()
         return t("consent.granted", name=name)
 
     def revoke(self, name: str) -> str:
         with closing(db.connect()) as conn:
             removed = consent.revoke(conn, name)
+        self.refresh_panes()
         return t("consent.revoked" if removed else "consent.not_granted", name=name)
 
-    def test_provider(self, name: str, show: Callable[[str], None]) -> None:
-        """One provider's doctor checks in a worker; ``show`` gets the result lines."""
+    def test_provider(self, name: str) -> None:
+        """One provider's doctor checks in a daemon thread; the result goes to the tab."""
         config = self.config()
-        if config is None:
-            show(t("ui.error.choose"))
+        if config is None or name not in config.providers:
+            self.show_test_result(t("ui.error.choose"))
             return
 
         def work() -> None:
-            checks = asyncio.run(doctor.check_one(name, config))
-            report = doctor.DoctorReport(tuple(checks))
-            self.call_from_thread(show, "\n".join(doctor.report_lines(report)))
+            try:
+                checks = asyncio.run(doctor.check_one(name, config))
+                text = "\n".join(doctor.report_lines(doctor.DoctorReport(tuple(checks))))
+            except OrkestraError as exc:
+                text = error_text(exc)
+            try:
+                self.call_from_thread(self.show_test_result, text)
+            except RuntimeError:  # the interface was closed meanwhile
+                return
 
-        self.run_worker(work, thread=True, exclusive=True)
+        self.background(work)
+
+    def show_test_result(self, text: str) -> None:
+        """The tab may have been rebuilt (language change) meanwhile; the current one gets it."""
+        try:
+            self.query_one("#providers-message", Static).update(text)
+        except NoMatches:
+            return
 
     # --- the wizard -------------------------------------------------------------------------
 
@@ -552,31 +618,32 @@ class OrkestraApp(App[None]):
     def _run_wizard(self) -> None:
         prompter = _ThreadPrompter(self)
         try:
-            found = self._found if self._found is not None else detect.detect()
-            current = None if self._force else wizard.current_config(self.config_flag)
-            answers = wizard.run_plain(prompter, found, set_language=i18n.set_language,
-                                       project=True if self._project else None,
-                                       current=current)  # fmt: skip
-            outcome = wizard.save_answers(answers, config_flag=self.config_flag,
-                                          now=db.local_now(),
-                                          fresh=True if self._force else None)  # fmt: skip
-            for line in wizard.outcome_lines(outcome, answers.notes):
-                prompter.say(line)
-            names = wizard.consent_names(answers)
-            agreed = wizard.ask_consents(prompter, outcome.config, names)
-            granted = wizard.record_consents(outcome.config, agreed, db.local_now())
-            waiting = [name for name in names if name not in granted]
-            for line in wizard.consent_lines(granted, waiting):
-                prompter.say(line)
-            if prompter.confirm(t("wizard.ask.doctor"), default=True):
-                report = asyncio.run(doctor.run_doctor(config_flag=self.config_flag))
-                for line in doctor.report_lines(report):
-                    prompter.say(line)
+            wizard.run_and_save(
+                prompter, self._found if self._found is not None else detect.detect(),
+                config_flag=self.config_flag, project=self._project, force=self._force,
+                set_language=i18n.set_language,
+                run_doctor=lambda: doctor.report_lines(
+                    asyncio.run(doctor.run_doctor(config_flag=self.config_flag))
+                ),
+            )  # fmt: skip
             prompter.say(t("ui.wizard.done"))
         except OrkestraError as exc:
-            self.wizard_error = exc.message
-            self.summary.append(exc.message)
-            if self.is_running:
-                self.call_from_thread(self.query_one("#wizard-log", RichLog).write, exc.message)
+            self._wizard_failed(exc.message, exit_code_for(exc))
+        except (OSError, sqlite3.Error, RuntimeError) as exc:
+            # Not an Orkestra error, but still not a success: init must not exit 0.
+            self._wizard_failed(t("errors.internal", detail=exc), int(ExitCode.INTERNAL))
+        except BaseException as exc:
+            self._wizard_failed(t("errors.internal", detail=exc), int(ExitCode.INTERNAL))
+            raise
         finally:
             self.wizard_done = True
+
+    def _wizard_failed(self, message: str, code: int) -> None:
+        self.wizard_error = message
+        self.wizard_exit_code = code
+        self.summary.append(message)
+        if self.is_running:
+            try:
+                self.call_from_thread(self.query_one("#wizard-log", RichLog).write, message)
+            except RuntimeError:  # closed meanwhile; the summary still has the message
+                return

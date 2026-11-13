@@ -718,3 +718,6 @@ Mimari §22 güncellendi (D-069).
 - **Değişen var olan testler:** `CATALOG_LANGUAGES` beş dile genişledi (planın istediği); `test_t_language_without_catalog_uses_english` artık Almanca katalog olduğu için boş bir katalogla aynı davranışı doğruluyor (beklenen değer aynı).
 - **Testler:** 1205 → **1229** (+24).
 Mimari §22 güncellendi (D-070).
+
+## D-071 – Faz 11b kod denetimi düzeltmeleri (2026-11-14, Faz 11b)
+`/code-review` (PR #22): 10 bulgu, hepsi düzeltildi; önce 9 kırmızı test. Bozuk config'te `ui` çökmüyor (boş Select yok, hata gösteriliyor); `config/edits.py`: değer tam tanımlandığı dosyaya yazılır, `None` her tanımlandığı dosyadan siler ve hiçbir yerde yoksa hiçbir şey yazmaz, aynı dosyaya giden değerler tek kayıt (`set_values`); Profiller yalnız değişeni yazar; bir değişiklikten sonra bütün sekmeler yenilenir; test sonucu yeniden kurulan sekmeye gider, kaybolan sekmede çökmez; sihirbaz ve sağlayıcı testi daemon iş parçacığında (Ctrl+Q beklemez); beklenmeyen hata `init`'i 0 ile bitirmez, `exit_code_for` ile doğru kod; sihirbaz akışı tek serviste (`wizard.run_and_save`, CLI ve arayüz ortak). Testler 1229 → 1238.
