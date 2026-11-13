@@ -24,7 +24,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 9b – Skill doğrulama | ✅ | 2026-11-10 | kod denetimi (D-047), elle deneme düzeltmeleri (D-048), 5/5 senaryo (D-049) |
 | 9c – Ucuz modeller için ara/değiştir | ✅ | 2026-11-10 | `edit_format: auto` (küçük dosya `whole`, büyük dosya `replace`), D-051 |
 | 10a – Devir dosyası ve özet | ✅ | 2026-11-12 | `handoff init/update/check/show`, `status` devir satırı, migration 2; Claude denetimi (D-066) |
-| 10b – Devretme (`handoff to`) | ⏳ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); kalan: elle Claude Code → agy senaryosu |
+| 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
 | 11 – Arayüz, sihirbaz, 5 dil | ⏳ | | |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
 | 13 – Benchmark | ⏳ | | |
@@ -62,8 +62,9 @@ Error: The working tree has 1 uncommitted change(s) ... assert 5 == 0           
 
 **Duman testi (gerçek CLI, geçici repo, sahte şef):** alt klasörden `to` (file) özeti okuyor; çocuk `ORKESTRA_CHIEF=envchief`; `update` sonrası `to` başlıyor, gerçek değişiklikte `(a.txt)` ile kod 5; kancalı commit'te "handoff: 5 commit(s) since…" görünüyor; Python kancasında kurulum kod 2 ve commit geçiyor; 10 satırlık özette uyarı kalıyor; CRLF `--set` `\r\r` yok; `## Done` içeren `--set` kod 2.
 
+**Elle senaryo (10b kabul kriteri) ✅:** geçici bir projede ilk şef bir Claude (Sonnet) alt ajanıydı: skill §7'ye göre `handoff init`, goal/status, `mul` + test, done/decisions ("div ValueError('division by zero') fırlatır"), `in_progress`'e somut sıradaki adım (div + iki test), commit. Sonra gerçek `orkestra handoff to agy` (`file` modu, agy 1.5.8). agy `BRIEF.md`'yi okudu, `div`'i karardaki hata tipiyle ve iki testi yazdı, pytest 5/5, devir dosyasını kendisi güncelledi (`[2026-11-13 agy]` maddesi, `chief: agy`; yeni şefin kendi adını alması sayesinde). İzlenmeyen `BRIEF.md` devri engellemedi, iki `handoffs` kaydı doğru. Sınır: test aracında terminal olmadığı için agy etkileşimli değil print modunda başlatıldı (`chiefs.agy.launch`'a `--print` ve yalnız bu oturumluk `--settings` izin listesi: git, orkestra, pytest). `--mode accept-edits` ile agy her kabuk komutunu reddedip boş çıktı (D-048 ile aynı); varsayılan modda izin listesiyle çalıştı. Terminalin etkileşimli devri elle denenmedi.
+
 **Bilinen sorunlar:**
-- Elle senaryo (Claude Code'da yarım iş → kullanıcının terminalinde `orkestra handoff to agy` → agy sıradaki adımla devam ediyor) ⏳ kullanıcı yapacak.
 - Ctrl+C düzeltmesi birim testiyle doğrulandı; gerçek konsolda Ctrl+C elle denenmedi.
 - Bayat kilit temizliğinde iki süreç aynı anda bayat kilidi görürse ikisi de girebilir (yalnız çökmüş kilitten sonra, dar pencere); Windows'ta kilitsiz okuyucu (`show`/`status`) dosyayı açık tutarken `os.replace` `PermissionError` verebilir (dar pencere).
 - Global skill kopyası (`~/.claude/skills/orkestra/`) PR'lar birleşince güncellenecek.
