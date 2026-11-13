@@ -35,6 +35,8 @@ def _git_ok(
     unknown_commit: bool = False,
 ) -> Git:
     def run(args: list[str], cwd: Path) -> tuple[bool, str]:
+        if "--is-inside-work-tree" in args:
+            return True, "true\n"
         if "rev-parse" in args:
             return True, branch + "\n"
         if "status" in args:
@@ -189,7 +191,7 @@ def test_unapplied_runs_and_remaining_budget_are_listed(
     )  # fmt: skip
     assert "20261111-120000-abcd" in text
     assert "changed one file" in text
-    assert "90" in text
+    assert t("handoff.brief.budget", name="local", text="requests 90") in text
 
 
 def test_the_chief_guide_is_included_when_there_is_room(
@@ -223,3 +225,49 @@ def test_the_brief_lists_the_last_five_commit_titles(
     assert t("handoff.brief.commits") in text
     assert "commit number 8" in text
     assert "commit number 1" not in text
+
+
+def test_staleness_distinguishes_no_git_from_an_unknown_commit(tmp_path: Path) -> None:
+    """GLM B4: a missing repository is not the same as a commit that is not in history."""
+    document = model.parse(model.template("demo", "claude", NOW, "abc123"))
+    config = _config()
+
+    def no_git(args: list[str], cwd: Path) -> tuple[bool, str]:
+        return False, "not a git repository"
+
+    state = brief.staleness(document, config, tmp_path, no_git)
+    assert state is not None
+    assert state.no_git is True
+    assert state.stale is False
+    assert state.unknown_commit is False
+    state = brief.staleness(document, config, tmp_path, _git_ok(unknown_commit=True))
+    assert state is not None
+    assert state.no_git is False
+    assert state.unknown_commit is True
+
+
+def test_no_git_means_one_note_and_no_unknown_commit_warning(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    path = _document(tmp_path)
+
+    def no_git(args: list[str], cwd: Path) -> tuple[bool, str]:
+        return False, "not a git repository"
+
+    text = _build(path, _config(), conn, git=no_git)
+    assert text.count(t("handoff.brief.no_git")) == 1
+    assert t("handoff.brief.unknown_commit", commit="abc123") not in text
+
+
+def test_the_brief_survives_every_pressure_at_once(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    """GLM B6: huge sections, 40 dirty files and 50 unapplied runs under a limit of 10."""
+    path = _document(tmp_path, goal="word " * 3000, done=200)
+    status = "".join(f"?? file-{n}.txt\n" for n in range(40))
+    runs = [Unapplied(f"20261111-1200{i:02d}-abcd", "fix", f"changed file {i}") for i in range(50)]
+    text = _build(path, _config(), conn, limit=10, git=_git_ok(status=status), unapplied=runs)
+    lines = text.splitlines()
+    assert 0 < len(lines) <= 10
+    assert lines[0] == t("handoff.brief.goal")
+    assert lines[-1].startswith("... (")

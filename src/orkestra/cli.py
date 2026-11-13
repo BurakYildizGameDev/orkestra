@@ -23,6 +23,7 @@ from orkestra.config import loader
 from orkestra.config.schema import Config, Provider
 from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
 from orkestra.handoff import brief as handoff_brief
+from orkestra.handoff import check as handoff_check_service
 from orkestra.handoff import model as handoff_model
 from orkestra.handoff import store as handoff_store
 from orkestra.i18n import t
@@ -384,7 +385,7 @@ def _echo_batch_applied(report: service.BatchApplied, *, as_json: bool) -> None:
 
 def _handoff_target(ctx: typer.Context) -> tuple[Config, Path]:
     loaded = loader.load_config(ctx.ensure_object(_State).config_path)
-    return loaded.config, Path.cwd() / loaded.config.handoff.file
+    return loaded.config, handoff_store.handoff_path(loaded.config, Path.cwd())
 
 
 def _chief(flag: str | None, config: Config, *, required: bool) -> str:
@@ -837,7 +838,7 @@ def build_app() -> typer.Typer:
         config, path = _handoff_target(ctx)
         handoff_store.init_file(
             path,
-            project=Path.cwd().name,
+            project=handoff_store.project_root(Path.cwd()).name,
             chief=_chief(None, config, required=False),
             at=db.local_now(),
             commit=handoff_brief.head_commit(Path.cwd()),
@@ -903,29 +904,19 @@ def build_app() -> typer.Typer:
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         config, path = _handoff_target(ctx)
-        exists = path.exists()
-        warnings: list[str] = []
-        state: handoff_brief.Staleness | None = None
-        if not exists:
-            warnings.append(t("handoff.check.missing"))
-        else:
-            document = handoff_model.parse(path.read_text(encoding="utf-8"))
-            state = handoff_brief.staleness(document, config, Path.cwd(), handoff_brief.default_git)
-            if state is not None and state.unknown_commit:
-                warnings.append(t("handoff.check.unknown_commit", commit=state.commit))
-            elif state is not None and state.stale and state.count is not None:
-                warnings.append(t("handoff.check.stale", count=state.count))
-        stale = bool(state is not None and state.stale)
+        result = handoff_check_service.run(path, config, Path.cwd())
         if as_json:
-            _echo_json({"exists": exists, "stale": stale, "warnings": warnings})
-        elif warnings:
-            for line in warnings:
+            _echo_json(
+                {"exists": result.exists, "stale": result.stale, "warnings": result.warnings}
+            )
+        elif result.warnings:
+            for line in result.warnings:
                 typer.echo(line)
         else:
             typer.echo(t("handoff.check.ok"))
         if warn_only:
             return
-        if strict and (warnings or not exists):
+        if strict and (result.warnings or not result.exists):
             raise typer.Exit(code=int(ExitCode.TASK_FAILED))
 
     @handoff_app.command("show", help=t("cli.handoff.show.help"))
@@ -947,7 +938,7 @@ def build_app() -> typer.Typer:
             else:
                 typer.echo(result.text)
             return
-        text = path.read_text(encoding="utf-8")
+        text = handoff_store.read(path)
         if as_json:
             _echo_json(handoff_model.as_json(handoff_model.parse(text)))
         else:

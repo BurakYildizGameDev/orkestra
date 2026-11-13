@@ -237,3 +237,64 @@ def test_two_processes_adding_twenty_items_each_keep_all_forty(tmp_path: Path) -
     joined = "\n".join(items)
     assert all(f"p{number}-{index}" in joined for number in (1, 2) for index in range(20))
     assert not store.lock_path(path).exists()
+
+
+def test_update_keeps_a_crlf_file_crlf_through_the_real_read_path(tmp_path: Path) -> None:
+    """GLM B1: the real read path must not translate CRLF away before the parser sees it."""
+    path = tmp_path / "HANDOFF.md"
+    text = model.template("demo", "claude", NOW, None).replace("\n", "\r\n")
+    path.write_bytes(text.encode("utf-8"))
+    store.update(
+        path, config=Config(version=1), section="status", set_text="halfway",
+        chief="claude", now=NOW,
+    )  # fmt: skip
+    raw = path.read_bytes()
+    assert raw.count(b"\r\n") > 0
+    assert raw.count(b"\n") == raw.count(b"\r\n")  # no bare LF anywhere
+    assert b"halfway" in raw
+
+
+def test_project_root_uses_git_and_falls_back_to_cwd(tmp_path: Path) -> None:
+    """GLM B3: the handoff file belongs to the repository root, not to the current folder."""
+    root = tmp_path / "repo"
+
+    def at_root(args: list[str], cwd: Path) -> tuple[bool, str]:
+        return True, str(root) + "\n"
+
+    def no_git(args: list[str], cwd: Path) -> tuple[bool, str]:
+        return False, ""
+
+    assert store.project_root(tmp_path / "sub", at_root) == root
+    assert store.project_root(tmp_path / "sub", no_git) == tmp_path / "sub"
+    target = store.handoff_path(Config(version=1), tmp_path / "sub", at_root)
+    assert target == root / ".orkestra" / "HANDOFF.md"
+
+
+@pytest.mark.parametrize("chief", ["a | b", "a:b", "a\nb"])
+def test_a_chief_that_would_break_the_last_updated_line_is_rejected(
+    tmp_path: Path, chief: str,
+) -> None:  # fmt: skip
+    """GLM B9: '|', ':' and line breaks would corrupt the ``Last updated`` line."""
+    path = tmp_path / "HANDOFF.md"
+    _write(path, model.template("demo", "claude", NOW, None))
+    before = path.read_text(encoding="utf-8")
+    with pytest.raises(UsageError):
+        store.update(path, config=Config(version=1), section="goal", set_text="x",
+                     chief=chief, now=NOW)  # fmt: skip
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_init_rejects_a_chief_that_would_break_the_last_updated_line(tmp_path: Path) -> None:
+    with pytest.raises(UsageError):
+        store.init_file(tmp_path / "HANDOFF.md", project="demo", chief="a | b", at=NOW, commit=None)
+
+
+def test_add_rejects_line_breaks(tmp_path: Path) -> None:
+    """GLM B13: a multi-line --add would be split by the line-counting archive."""
+    path = tmp_path / "HANDOFF.md"
+    _write(path, model.template("demo", "claude", NOW, None))
+    before = path.read_text(encoding="utf-8")
+    with pytest.raises(UsageError):
+        store.update(path, config=Config(version=1), section="done", add="line one\nline two",
+                     chief="claude", now=NOW)  # fmt: skip
+    assert path.read_text(encoding="utf-8") == before

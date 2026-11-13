@@ -12,6 +12,7 @@ import pytest
 
 from orkestra import paths
 from orkestra.cli import app
+from orkestra.handoff import store as handoff_store
 from orkestra.i18n import t
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -234,6 +235,27 @@ def test_check_without_a_file_says_so_and_strict_exits_1_but_warn_only_never_doe
 def test_a_commit_that_is_not_in_history_is_reported_by_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:  # fmt: skip
+    """Inside a repository: a commit that history does not know is an explicit warning.
+
+    Outside a repository the same file must say ``no_git`` instead (GLM B4), which is why
+    this test runs inside a real repository.
+    """
+    repo = _repo(tmp_path, monkeypatch)
+    assert _run(["handoff", "init"], capsys)[0] == 0
+    path = repo / ".orkestra" / "HANDOFF.md"
+    path.write_text(
+        re.sub(r"commit: [0-9a-f]+", "commit: deadbeef", path.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    code, out, _ = _run(["handoff", "check"], capsys)
+    assert code == 0
+    assert t("handoff.check.unknown_commit", commit="deadbeef") in out
+
+
+def test_check_and_status_outside_a_repository_say_no_git_not_unknown_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    """GLM B4: without a repository there is no history to look the commit up in."""
     work = _setup(tmp_path, monkeypatch)
     assert _run(["handoff", "init"], capsys)[0] == 0
     path = work / ".orkestra" / "HANDOFF.md"
@@ -243,7 +265,82 @@ def test_a_commit_that_is_not_in_history_is_reported_by_check(
     )
     code, out, _ = _run(["handoff", "check"], capsys)
     assert code == 0
-    assert t("handoff.check.unknown_commit", commit="deadbeef") in out
+    assert t("handoff.check.no_git") in out
+    assert t("handoff.check.unknown_commit", commit="deadbeef") not in out
+    code, out, _ = _run(["status"], capsys)
+    assert code == 0
+    assert t("status.handoff.no_git") in out
+    assert t("status.handoff.unknown_commit", commit="deadbeef") not in out
+
+
+def test_handoff_commands_from_a_subfolder_use_the_repository_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    """GLM B3: the handoff file belongs to the repository root, not to the current folder."""
+    repo = _repo(tmp_path, monkeypatch)
+    sub = repo / "sub" / "deeper"
+    sub.mkdir(parents=True)
+    monkeypatch.chdir(sub)
+    assert _run(["handoff", "init"], capsys)[0] == 0
+    path = repo / ".orkestra" / "HANDOFF.md"
+    assert path.exists()
+    assert f"# Devir: {repo.name}" in path.read_text(encoding="utf-8")
+    assert not (sub / ".orkestra").exists()
+    code, out, _ = _run(["handoff", "show"], capsys)
+    assert code == 0
+    assert out == path.read_text(encoding="utf-8")
+    code, _, err = _run(
+        ["handoff", "update", "--section", "goal", "--set", "from the subfolder",
+         "--chief", "claude"], capsys,
+    )  # fmt: skip
+    assert code == 0, err
+    assert "from the subfolder" in path.read_text(encoding="utf-8")
+    code, out, _ = _run(["status"], capsys)
+    assert code == 0
+    assert t("status.handoff.line", goal="from the subfolder") in out
+    code, out, _ = _run(["handoff", "check", "--json"], capsys)
+    assert code == 0
+    assert json.loads(out)["exists"] is True
+
+
+def test_a_live_lock_times_out_with_exit_code_5(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    """GLM B7: a lock held by someone else must fail the CLI run with the lock exit code."""
+    work = _setup(tmp_path, monkeypatch)
+    assert _run(["handoff", "init"], capsys)[0] == 0
+    path = work / ".orkestra" / "HANDOFF.md"
+    lock = handoff_store.lock_path(path)
+    descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    os.close(descriptor)
+    monkeypatch.setattr(handoff_store, "LOCK_TIMEOUT_S", 0.2)
+    try:
+        code, _, err = _run(
+            ["handoff", "update", "--section", "goal", "--set", "x", "--chief", "claude"],
+            capsys,
+        )
+    finally:
+        lock.unlink(missing_ok=True)  # a foreign lock is left in place by the timeout
+    assert code == 5
+    assert t("handoff.error.locked", path=lock) in err
+
+
+def test_show_json_reports_a_missing_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    """GLM B8: a file without the marker line is still parsed and reported as such."""
+    work = _setup(tmp_path, monkeypatch)
+    assert _run(["handoff", "init"], capsys)[0] == 0
+    path = work / ".orkestra" / "HANDOFF.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("<!-- orkestra-handoff v1 -->\n", ""),
+        encoding="utf-8",
+    )
+    code, out, _ = _run(["handoff", "show", "--json"], capsys)
+    assert code == 0
+    doc = json.loads(out)
+    assert doc["marker"] is False
+    assert doc["warnings"]
 
 
 def test_status_has_no_handoff_section_without_a_file_and_one_with_it(

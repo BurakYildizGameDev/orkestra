@@ -37,10 +37,11 @@ class Staleness:
     commit: str | None
     count: int | None  # commits after the last update; None when the commit is unknown
     stale: bool
+    no_git: bool = False  # there is no repository to compare against
 
     @property
     def unknown_commit(self) -> bool:
-        return self.commit is not None and self.count is None
+        return self.commit is not None and self.count is None and not self.no_git
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,9 @@ def staleness(document: model.Document, config: Config, cwd: Path, git: Git) -> 
     updated = model.parse_last_updated(document)
     if updated is None or updated.commit is None:
         return None
+    inside, output = git(["rev-parse", "--is-inside-work-tree"], cwd)
+    if not inside or output.strip() != "true":
+        return Staleness(updated.commit, None, False, no_git=True)
     ok, output = git(["rev-list", "--count", f"{updated.commit}..HEAD"], cwd)
     if not ok:
         return Staleness(updated.commit, None, True)
@@ -77,6 +81,26 @@ def staleness(document: model.Document, config: Config, cwd: Path, git: Git) -> 
     except ValueError:
         return Staleness(updated.commit, None, True)
     return Staleness(updated.commit, count, count > config.handoff.stale_after_commits)
+
+
+def warning_lines(state: Staleness | None, keys: Mapping[str, str]) -> list[str]:
+    """The one place that decides what a staleness state warns about (GLM B5)."""
+    if state is None:
+        return []
+    if state.no_git:
+        return [t(keys["no_git"])] if "no_git" in keys else []
+    if state.unknown_commit:
+        return [t(keys["unknown_commit"], commit=state.commit)]
+    if state.stale and state.count is not None:
+        return [t(keys["stale"], count=state.count)]
+    return []
+
+
+BRIEF_WARNING_KEYS: dict[str, str] = {
+    "unknown_commit": "handoff.brief.unknown_commit",
+    "stale": "handoff.brief.stale",
+}
+# ``_git_lines`` already prints the no-git note, so the brief must not repeat it.
 
 
 def head_commit(cwd: Path, git: Git | None = None) -> str | None:
@@ -99,7 +123,7 @@ def build(
 ) -> Brief:
     """Build the brief from the file, git and the database."""
     run_git = default_git if git is None else git
-    document = model.parse(path.read_text(encoding="utf-8"))
+    document = model.parse(path.read_bytes().decode("utf-8"))
     state = staleness(document, config, cwd, run_git)
     lines: list[str] = []
 
@@ -116,11 +140,7 @@ def build(
     lines.extend(_git_lines(cwd, run_git))
     lines.extend(_unapplied_lines(conn, unapplied))
     lines.extend(_budget_lines(config, conn, now, environ))
-    if state is not None:
-        if state.unknown_commit:
-            lines.append(t("handoff.brief.unknown_commit", commit=state.commit))
-        elif state.stale and state.count is not None:
-            lines.append(t("handoff.brief.stale", count=state.count))
+    lines.extend(warning_lines(state, BRIEF_WARNING_KEYS))
     lines.extend(_guide())
 
     redact = Redactor(configured_secrets(config, environ))

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from orkestra.config.schema import Config
-from orkestra.handoff import brief, model
+from orkestra.handoff import brief, model, store
 from orkestra.i18n import t
 from orkestra.providers import registry
 from orkestra.workspace import service
@@ -27,6 +27,11 @@ MAX_LINES = 15
 SHOWN_RUNS = 3  # unapplied runs listed by name
 SHOWN_PROVIDERS = 4  # budget lines before "+N more"
 CHIEF_ENV = "ORKESTRA_CHIEF"
+STATUS_WARNING_KEYS: dict[str, str] = {
+    "no_git": "status.handoff.no_git",
+    "unknown_commit": "status.handoff.unknown_commit",
+    "stale": "status.handoff.stale",
+}
 
 
 @dataclass
@@ -111,10 +116,10 @@ def _profile(ctx: StatusContext) -> Section:
 @section("handoff", order=20)
 def _handoff(ctx: StatusContext) -> Section | None:
     """The handoff file's goal and, when it is old, one warning line; none without the file."""
-    path = Path.cwd() / ctx.config.handoff.file
+    path = store.handoff_path(ctx.config, Path.cwd())
     if not path.exists():
         return None
-    document = model.parse(path.read_text(encoding="utf-8"))
+    document = model.parse(store.read(path))
     goal_text = model.section_text(document, "goal") or ""
     first = next((line.strip() for line in goal_text.splitlines() if line.strip()), "")
     state = brief.staleness(document, ctx.config, Path.cwd(), brief.default_git)
@@ -126,10 +131,7 @@ def _handoff(ctx: StatusContext) -> Section | None:
         "commits_after": state.count if state is not None else None,
     }
     lines = [t("status.handoff.line", goal=" ".join(first.split())[:70] or "-")]
-    if state is not None and state.unknown_commit:
-        lines.append(t("status.handoff.unknown_commit", commit=state.commit))
-    elif state is not None and state.stale and state.count is not None:
-        lines.append(t("status.handoff.stale", count=state.count))
+    lines.extend(brief.warning_lines(state, STATUS_WARNING_KEYS))
     return Section(lines, data)
 
 

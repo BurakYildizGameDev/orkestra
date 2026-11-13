@@ -46,7 +46,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 **Kabul kriterleri:**
 - ✅ Elle düzenlenmiş, bilinmeyen bölümlü dosya ayrıştır→yaz sonrası bozulmuyor (`test_parse_and_render_keep_every_byte_of_a_hand_edited_file`, `test_unknown_sections_survive_an_update_in_their_original_place`).
 - ✅ Kod bloğu içindeki `## ` başlık sayılmıyor (`test_a_heading_inside_a_code_fence_is_not_a_section`).
-- ✅ CRLF okunuyor ve CRLF yazılıyor (`test_crlf_is_read_and_written_back_with_crlf_only`).
+- ✅ CRLF okunuyor ve CRLF yazılıyor (`test_crlf_is_read_and_written_back_with_crlf_only`). *(Not: bu test model düzeyindeydi; gerçek okuma yolu GLM B1'de bozuk çıktı, D-064'te düzeltildi.)*
 - ✅ İşaretçisiz dosya ayrıştırılıyor ve raporlanıyor (`test_a_file_without_the_marker_is_parsed_but_reported`).
 - ✅ Eşzamanlı iki `update` (iki süreç, 20+20 madde) dosyayı bozmuyor, kilit kalmıyor (`test_two_processes_adding_twenty_items_each_keep_all_forty`).
 - ✅ Kilit zaman aşımı ve bayat kilit (`test_a_live_lock_times_out_with_a_clear_error`, `test_a_stale_lock_is_removed_and_the_update_goes_through`).
@@ -73,6 +73,44 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 - Elle devir senaryosu (Claude Code → agy) ⏳ 10b'de.
 
 Testler: 1049 geçti (+61 handoff; önceki 988).
+
+### Kod denetimi düzeltmeleri – Faz 10a (GLM, 2026-11-12/13, D-064)
+GLM denetimi (`GLM_DENETIM_10a.md`): 13 bulgu (B1–B14), "düzeltme gerekli". Düzeltmeden önce her bulgu için kırmızı test yazıldı: **11 kırmızı, 5 yeşil**. Sonra kod yazıldı; hepsi yeşil.
+
+**Kırmızı çıktı alıntıları (B14):**
+```
+B1  tests/unit/test_handoff_store.py:252: AssertionError: assert 0 > 0
+    (update sonrası dosyada CRLF çifti 0 — LF'ye dönmüş)
+B3  AttributeError: module 'orkestra.handoff.store' has no attribute 'project_root'
+B3  tests/integration/test_handoff_cli.py:286: AssertionError: assert False
+    (sub/ altından init çalışınca repo/.orkestra/HANDOFF.md oluşmadı)
+B4  AttributeError: 'Staleness' object has no attribute 'no_git'
+B4  assert "warning: the recorded commit abc123 is not in this repository's history" not in text
+B4  orkestra.errors.TranslationError: missing translation key: handoff.check.no_git
+B9  Failed: DID NOT RAISE UsageError  (×4: "a | b", "a:b", "a\nb", init)
+B13 Failed: DID NOT RAISE UsageError  (çok satırlı --add)
+```
+
+**Düzeltmeler:**
+- ✅ **B1 (kritik):** `store.read` bayt okuyor (`read_bytes().decode`); `update`, `brief.build`, `show`, `status` aynı yolu kullanıyor. Store düzeyinde CRLF gidiş-dönüş testi eklendi; eski model testi gerçek okuma yolunu geçmiyordu.
+- ✅ **B2:** PR #18 gövdesindeki var olmayan 3 test adı gerçek adlarla değiştirildi.
+- ✅ **B3 (kullanıcı kararı):** dosya repo kökünden çözülüyor (`store.project_root` / `store.handoff_path`); git yoksa cwd. Alt klasörden `init/update/show/check/status` testi eklendi; `init` proje adı repo kök adı.
+- ✅ **B4:** `Staleness.no_git`; `rev-parse --is-inside-work-tree` ayrımı; repo dışında `handoff.check.no_git` / `status.handoff.no_git`. Özette çift not yok. Geçmişte olmayan commit testi repo'lu fixture'a taşındı.
+- ✅ **B5:** uyarı kararı tek yerde (`brief.warning_lines`); yeni `handoff/check.py` servisi; `cli.py` yalnız çağırıp basıyor.
+- ✅ **B7:** `lock_timeout_s`/`stale_after_s` None varsayılanı çağrı anında çözülüyor; CLI kilit zaman aşımı → kod 5 testi (<1 sn).
+- ✅ **B9:** şef adında `|`, `:`, satır sonu, boş → kod 2 (`handoff.error.bad_chief`).
+- ✅ **B10:** yerel Mimari §17 numaralı listesi düzeltildi (In progress çıkarıldı, D-063).
+- ✅ **B12 (kullanıcı kararı):** kompakt `status --json` D-063'te kalıyor; değişiklik yok.
+- ✅ **B13 (kullanıcı kararı):** çok satırlı `--add` → kod 2 (`handoff.error.multiline_add`).
+- ✅ **B14:** yukarıdaki kırmızı alıntılar.
+- ✅ **Yeşil çıkan kapsam testleri (davranış zaten doğruydu, test eksikti):** B6 kombine özet stresi, B8 `show --json` `marker: false`, B11 bütçe satırında kesin karşılaştırma. Kod değişmedi; dürüstçe kaydedildi.
+- i18n: 4 yeni anahtar (en + tr).
+
+**Bilinen sorunlar (düzeltme sonrası kalanlar):**
+- B14'ün geriye dönük kısmı: ilk 10a commit'inin kırmızı çıktıları tarihçede yok; bu düzeltme turunun alıntıları yukarıda.
+- Paket verisi `chief_guide.md` bu turda yeniden `uv build --wheel` ile doğrulanmadı (önceki turda doğrulanmıştı; değişiklik bu dosyaya dokunmadı).
+
+Testler: **1063 geçti** (1049 + 14 yeni). ruff, ruff format, pyright temiz. Commit `fix(faz-10a): address GLM review findings`; PR #18 birleştirilmedi.
 
 ### Kod denetimi – Faz 8b (PR #17), 2026-11-11
 `/code-review` 10 bulgu + Claude'un kendi okumasından 7 not. 9 bulgu düzeltildi, 1'i yanlış alarm; 7 notun hepsi düzeltildi (D-062):

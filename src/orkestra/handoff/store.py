@@ -22,7 +22,7 @@ from pathlib import Path
 
 from orkestra.config.schema import Config
 from orkestra.errors import HandoffLocked, UsageError
-from orkestra.handoff import model
+from orkestra.handoff import brief, model
 from orkestra.i18n import t
 from orkestra.security.redact import Redactor, configured_secrets
 
@@ -30,6 +30,7 @@ LOCK_TIMEOUT_S = 10.0
 STALE_LOCK_S = 30.0
 POLL_S = 0.05
 ARCHIVE_SUFFIX = ".archive.md"
+CHIEF_FORBIDDEN = ("|", ":", "\r", "\n")
 
 
 @dataclass(frozen=True)
@@ -48,8 +49,27 @@ def archive_path(path: Path) -> Path:
     return path.with_name(f"{path.stem}{ARCHIVE_SUFFIX}")
 
 
+def read(path: Path) -> str:
+    """Read the file without translating line endings (``read_text`` would turn CRLF into LF)."""
+    return path.read_bytes().decode("utf-8")
+
+
+def project_root(cwd: Path, git: brief.Git | None = None) -> Path:
+    """The repository root, so the handoff file is one file per project (GLM B3)."""
+    run_git = brief.default_git if git is None else git
+    ok, output = run_git(["rev-parse", "--show-toplevel"], cwd)
+    root = Path(output.strip()) if ok and output.strip() else None
+    return root if root is not None else cwd
+
+
+def handoff_path(config: Config, cwd: Path, git: brief.Git | None = None) -> Path:
+    """The configured handoff file, resolved from the repository root."""
+    return project_root(cwd, git) / config.handoff.file
+
+
 def init_file(path: Path, *, project: str, chief: str, at: datetime, commit: str | None) -> Path:
     """Create the template; an existing file is never overwritten."""
+    _validate_chief(chief)
     if path.exists():
         raise UsageError(t("handoff.error.exists", path=path))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -68,22 +88,25 @@ def update(
     set_text: str | None = None,
     commit: str | None = None,
     environ: Mapping[str, str] | None = None,
-    lock_timeout_s: float = LOCK_TIMEOUT_S,
-    stale_after_s: float = STALE_LOCK_S,
+    lock_timeout_s: float | None = None,
+    stale_after_s: float | None = None,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> UpdateResult:
     """Change one section under the lock, then write the file atomically."""
+    timeout_s = LOCK_TIMEOUT_S if lock_timeout_s is None else lock_timeout_s
+    stale_s = STALE_LOCK_S if stale_after_s is None else stale_after_s
     if not path.exists():
         raise UsageError(t("handoff.error.missing", path=path))
+    _validate_chief(chief)
     _validate(section, add=add, set_text=set_text)
     redact = Redactor(configured_secrets(config, environ))
 
     lock = lock_path(path)
-    _acquire(lock, now=now, timeout_s=lock_timeout_s, stale_after_s=stale_after_s,
+    _acquire(lock, now=now, timeout_s=timeout_s, stale_after_s=stale_s,
              clock=clock, sleep=sleep)  # fmt: skip
     try:
-        document = model.parse(path.read_text(encoding="utf-8"))
+        document = model.parse(read(path))
         if add is not None:
             item = redact(add)
             model.add_item(document, section, f"[{now.date().isoformat()} {chief}] {item}")
@@ -101,6 +124,12 @@ def update(
     return UpdateResult(section, "add" if add is not None else "set", last_updated, archived)
 
 
+def _validate_chief(chief: str) -> None:
+    """A chief name goes in ``Last updated``; ``|``, ``:`` or a newline would break that line."""
+    if not chief.strip() or any(character in chief for character in CHIEF_FORBIDDEN):
+        raise UsageError(t("handoff.error.bad_chief"))
+
+
 def _validate(section: str, *, add: str | None, set_text: str | None) -> None:
     if section not in model.SECTION_HEADINGS:
         raise UsageError(
@@ -112,6 +141,8 @@ def _validate(section: str, *, add: str | None, set_text: str | None) -> None:
         )
     if add is not None and set_text is not None:
         raise UsageError(t("handoff.error.add_and_set"))
+    if add is not None and ("\n" in add or "\r" in add):
+        raise UsageError(t("handoff.error.multiline_add"))
     is_list = section in model.LIST_SECTIONS
     if is_list and add is None:
         raise UsageError(t("handoff.error.list_needs_add", section=section))
