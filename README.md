@@ -36,7 +36,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 
 | Feature | Command |
 |---|---|
-| Example config, global or per project | `orkestra init [--project] [--force]` |
+| Setup wizard (detects Ollama, Codex/agy/Claude and API key variables), or the example config | `orkestra init [--plain \| --defaults] [--project] [--force]` |
 | Merged config with its sources, validation with readable errors | `orkestra config show [--json]`, `orkestra config validate` |
 | One question to a worker model, with context files and an optional JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Routing with profiles, privacy and failover; see why each provider was chosen or skipped | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
@@ -82,12 +82,14 @@ The package will be published on PyPI as `orkestra-cli`; the command is `orkestr
 ## Quick start
 
 ```bash
-# 1. Create a config from the example (~/.orkestra/config.yaml)
-uv run orkestra init                 # or: init --project → ./orkestra.yaml
-
-# 2. Edit the config: keep the providers you use, set your model names.
-#    API keys go into environment variables. The config holds only the variable's NAME.
+# 1. API keys go into environment variables; the config holds only the variable's NAME.
 export OPENROUTER_API_KEY="..."      # PowerShell: $env:OPENROUTER_API_KEY="..."
+
+# 2. Set up (~/.orkestra/config.yaml): in a terminal the wizard finds Ollama and its models,
+#    codex/agy/claude and which key variables exist (never their values), then asks
+#    providers, tiers, budgets and consent. Your comments in an existing file are kept.
+uv run orkestra init                 # --plain: the same questions; --project: ./orkestra.yaml
+uv run orkestra init --defaults      # no questions: turns on what it finds, grants no consent
 
 # 3. Check everything and allow the providers you want to use
 uv run orkestra config validate

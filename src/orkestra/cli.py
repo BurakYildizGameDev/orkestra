@@ -21,7 +21,7 @@ from orkestra.cache import responses
 from orkestra.chief import status
 from orkestra.config import loader
 from orkestra.config.schema import Config, Provider
-from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
+from orkestra.errors import ConfigError, ExitCode, OrkestraError, UsageError, exit_code_for
 from orkestra.handoff import brief as handoff_brief
 from orkestra.handoff import check as handoff_check_service
 from orkestra.handoff import launch as handoff_launch
@@ -33,6 +33,7 @@ from orkestra.routing.router import Route, describe_candidates
 from orkestra.security.redact import Redactor, config_for_display, configured_secrets
 from orkestra.state import consent, db, stats
 from orkestra.tasks import batch, runner, spec, templates
+from orkestra.tui import detect, wizard
 from orkestra.workspace import service
 
 
@@ -399,6 +400,122 @@ def _chief(flag: str | None, config: Config, *, required: bool) -> str:
     return config.defaults.chief
 
 
+def _at_terminal() -> bool:
+    """A person at a terminal: bare ``init`` opens the wizard only then (Faz 11a)."""
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+class _TyperPrompter:
+    """The wizard's ``Prompter`` for ``init --plain``: plain questions with ``typer.prompt``."""
+
+    def say(self, text: str) -> None:
+        typer.echo(text)
+
+    def ask(self, text: str, default: str | None = None) -> str:
+        return str(typer.prompt(text, default="" if default is None else default,
+                                show_default=default is not None))  # fmt: skip
+
+    def confirm(self, text: str, default: bool = False) -> bool:
+        hint = t("wizard.yes_no.default_yes" if default else "wizard.yes_no.default_no")
+        while True:
+            raw = str(typer.prompt(f"{text} {hint}", default="", show_default=False))
+            if not raw.strip():
+                return default
+            answer = wizard.yes_no(raw)
+            if answer is not None:
+                return answer
+            typer.echo(t("wizard.error.yes_no"))
+
+
+def _echo_doctor(report: doctor.DoctorReport) -> None:
+    for check in report.checks:
+        label = t(f"doctor.status.{check.status}")
+        typer.echo(f"[{label}] {check.name}: {check.message}")
+        for detail in check.data.get("details", []):
+            typer.echo(f"    - {detail}")
+        if "hint" in check.data:
+            typer.echo(f"    {t('doctor.hint', command=check.data['hint'])}")
+    typer.echo(t("doctor.summary.ok" if report.ok else "doctor.summary.fail"))
+
+
+def _echo_outcome(outcome: wizard.Outcome, notes: list[str]) -> None:
+    typer.echo(t("wizard.saved", path=outcome.path))
+    if outcome.backup is not None:
+        typer.echo(t("wizard.backup", path=outcome.backup))
+    if outcome.gitignore is not None:
+        typer.echo(t("init.gitignore", entry=loader.GITIGNORE_ENTRY, path=outcome.gitignore))
+    for note in notes:
+        typer.echo(note)
+
+
+def _echo_consent(granted: list[str], waiting: list[str]) -> None:
+    if granted:
+        typer.echo(t("wizard.consent.granted", names=", ".join(granted)))
+    if waiting:
+        typer.echo(t("wizard.consent.missing", names=", ".join(waiting)))
+
+
+def _init_defaults(config_flag: Path | None, *, project: bool, force: bool, as_json: bool) -> None:
+    target = loader.init_target(config_flag, project=project)
+    if target.exists() and not force:
+        if as_json:
+            _echo_json({"path": str(target), "written": False, "backup": None,
+                        "providers": [], "consent": [], "notes": []})  # fmt: skip
+        else:
+            typer.echo(t("init.exists", path=target))
+        return
+    answers = wizard.defaults_answers(detect.detect())
+    answers.project = project
+    outcome = wizard.save_answers(answers, config_flag=config_flag, now=db.local_now(),
+                                  fresh=True)  # fmt: skip
+    if as_json:
+        _echo_json(
+            {
+                "path": str(outcome.path),
+                "written": True,
+                "backup": str(outcome.backup) if outcome.backup else None,
+                "providers": outcome.providers,
+                "consent": [],  # --defaults never grants consent (Mimari §22)
+                "notes": answers.notes,
+            }
+        )
+        return
+    _echo_outcome(outcome, answers.notes)
+    _echo_consent([], outcome.providers)
+
+
+def _current_config(config_flag: Path | None) -> Config | None:
+    """The config being edited, for the wizard's defaults; ``None`` when there is none yet."""
+    try:
+        loaded = loader.load_config(config_flag)
+    except ConfigError:
+        return None  # an unreadable config: the wizard starts from what it detects
+    return loaded.config if loaded.sources else None
+
+
+def _init_plain(config_flag: Path | None, *, project: bool, force: bool) -> None:
+    prompter = _TyperPrompter()
+    try:
+        answers = wizard.run_plain(
+            prompter, detect.detect(), set_language=i18n.set_language,
+            project=True if project else None,
+            current=None if force else _current_config(config_flag),
+        )  # fmt: skip
+        outcome = wizard.save_answers(answers, config_flag=config_flag, now=db.local_now(),
+                                      fresh=True if force else None)  # fmt: skip
+        _echo_outcome(outcome, answers.notes)
+        # Consent for the entries exactly as saved: the same settings whose hash is recorded.
+        names = wizard.consent_names(answers)
+        agreed = wizard.ask_consents(prompter, outcome.config, names)
+        granted = wizard.record_consents(outcome.config, agreed, db.local_now())
+        _echo_consent(granted, [name for name in names if name not in granted])
+        if prompter.confirm(t("wizard.ask.doctor"), default=True):
+            _echo_doctor(asyncio.run(doctor.run_doctor(config_flag=config_flag)))
+    except (typer.Abort, EOFError):
+        # No answer to read (closed stdin, or NUL that Windows reports as a terminal).
+        raise UsageError(t("wizard.error.no_input")) from None
+
+
 def build_app() -> typer.Typer:
     """Build the typer app. Help texts are translated here, so set the language first."""
     app = typer.Typer(name="orkestra", help=t("cli.help"), no_args_is_help=True)
@@ -522,10 +639,33 @@ def build_app() -> typer.Typer:
         project: Annotated[
             bool, typer.Option("--project", help=t("cli.init.option.project"))
         ] = False,
+        plain: Annotated[bool, typer.Option("--plain", help=t("cli.init.option.plain"))] = False,
+        defaults: Annotated[
+            bool, typer.Option("--defaults", help=t("cli.init.option.defaults"))
+        ] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         state = ctx.ensure_object(_State)
+        if plain and defaults:
+            raise UsageError(t("wizard.error.plain_and_defaults"))
+        if plain and as_json:
+            raise UsageError(t("wizard.error.plain_json"))
+        if defaults:
+            _init_defaults(state.config_path, project=project, force=force, as_json=as_json)
+            return
+        # A bare ``init`` at a terminal opens the wizard; ``--force`` still means "reset the
+        # file to the example", and without a terminal the example is copied as before.
         target = loader.init_target(state.config_path, project=project)
+        if plain:
+            _init_plain(state.config_path, project=project, force=force)
+            return
+        if not as_json and not force and _at_terminal():
+            if target.exists():  # editing an existing file is "init --plain", never implicit
+                typer.echo(t("init.exists", path=target))
+                typer.echo(t("wizard.hint.edit"))
+                return
+            _init_plain(state.config_path, project=project, force=False)
+            return
         result = loader.init_config(target, force=force, project=project)
         if as_json:
             _echo_json(
@@ -1205,14 +1345,7 @@ def build_app() -> typer.Typer:
         if as_json:
             _echo_json({"ok": report.ok, "checks": [asdict(c) for c in report.checks]})
         else:
-            for check in report.checks:
-                label = t(f"doctor.status.{check.status}")
-                typer.echo(f"[{label}] {check.name}: {check.message}")
-                for detail in check.data.get("details", []):
-                    typer.echo(f"    - {detail}")
-                if "hint" in check.data:
-                    typer.echo(f"    {t('doctor.hint', command=check.data['hint'])}")
-            typer.echo(t("doctor.summary.ok" if report.ok else "doctor.summary.fail"))
+            _echo_doctor(report)
         if not report.ok:
             raise typer.Exit(int(ExitCode.TASK_FAILED))
 

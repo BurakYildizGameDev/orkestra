@@ -36,7 +36,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 
 | Özellik | Komut |
 |---|---|
-| Örnek config (genel veya projeye özel) | `orkestra init [--project] [--force]` |
+| Kurulum sihirbazı (Ollama, Codex/agy/Claude ve API anahtarı değişkenlerini bulur) ya da örnek config | `orkestra init [--plain \| --defaults] [--project] [--force]` |
 | Birleştirilmiş config ve kaynakları, okunur hatalarla doğrulama | `orkestra config show [--json]`, `orkestra config validate` |
 | İşçi modele tek soru; bağlam dosyaları ve isteğe bağlı JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Profil, gizlilik ve yedeğe geçişli yönlendirme; her sağlayıcının neden seçildiğini/elendiğini görme | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
@@ -82,12 +82,15 @@ Paket PyPI'da `orkestra-cli` adıyla yayınlanacak; komutun adı `orkestra`.
 ## Hızlı başlangıç
 
 ```bash
-# 1. Örnekten config oluştur (~/.orkestra/config.yaml)
-uv run orkestra init                 # veya: init --project → ./orkestra.yaml
-
-# 2. Config'i düzenle: kullandığın sağlayıcıları bırak, model adlarını yaz.
-#    API anahtarları ortam değişkenine gider. Config'te sadece değişkenin ADI durur.
+# 1. API anahtarları ortam değişkenine gider; config'te sadece değişkenin ADI durur.
 export OPENROUTER_API_KEY="..."      # PowerShell: $env:OPENROUTER_API_KEY="..."
+
+# 2. Kur (~/.orkestra/config.yaml): terminalde sihirbaz Ollama'yı ve modellerini,
+#    codex/agy/claude'u ve hangi anahtar değişkenlerinin tanımlı olduğunu bulur (değerlerini
+#    asla okumaz), sonra sağlayıcıları, kademeleri, bütçeyi ve onayları sorar. Var olan
+#    dosyadaki yorumların korunur.
+uv run orkestra init                 # --plain: aynı sorular; --project: ./orkestra.yaml
+uv run orkestra init --defaults      # sorusuz: bulduklarını açar, hiçbir onay vermez
 
 # 3. Her şeyi kontrol et ve kullanmak istediğin sağlayıcılara izin ver
 uv run orkestra config validate

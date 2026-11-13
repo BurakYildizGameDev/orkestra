@@ -81,9 +81,9 @@ handoff:
   stale_after_commits: 5          # warn after this many commits without an update
 
 profiles:
-  cheap:     {min_tier: 1, max_tier: 1}
-  balanced:  {min_tier: 1, max_tier: 3}
-  quality:   {min_tier: 2, max_tier: 3}
+  cheap: {min_tier: 1, max_tier: 1}
+  balanced: {min_tier: 1, max_tier: 3}
+  quality: {min_tier: 2, max_tier: 3}
 
 review:                           # orkestra review (pre-review)
   tier: 2
