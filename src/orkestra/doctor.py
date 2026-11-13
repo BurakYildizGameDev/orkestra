@@ -444,3 +444,23 @@ async def run_doctor(
         if tool not in configured_commands:
             checks.append(_check_tool(tool, which, probe, required=False))
     return DoctorReport(tuple(checks))
+
+
+def report_lines(report: DoctorReport) -> list[str]:
+    """``orkestra doctor`` as text lines (the command line and the interface share them)."""
+    lines: list[str] = []
+    for check in report.checks:
+        lines.append(f"[{t(f'doctor.status.{check.status}')}] {check.name}: {check.message}")
+        lines.extend(f"    - {detail}" for detail in check.data.get("details", []))
+        if "hint" in check.data:
+            lines.append(f"    {t('doctor.hint', command=check.data['hint'])}")
+    lines.append(t("doctor.summary.ok" if report.ok else "doctor.summary.fail"))
+    return lines
+
+
+async def check_one(name: str, config: Config, *, warm: bool = False) -> list[Check]:
+    """The doctor checks of one provider (the interface's "test" button)."""
+    return await _check_provider(
+        name, config.providers[name], warm=warm, defaults=config.defaults, environ=os.environ,
+        which=shutil.which, probe=probe_version,
+    )  # fmt: skip

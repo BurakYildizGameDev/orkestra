@@ -9,7 +9,7 @@ from orkestra import i18n
 from orkestra.errors import TranslationError, UsageError
 from orkestra.i18n import t
 
-CATALOG_LANGUAGES = ("en", "tr")  # de, es, fr arrive in Faz 11
+CATALOG_LANGUAGES = i18n.SUPPORTED_LANGUAGES  # all five since Faz 11b
 
 
 def _placeholders(text: str) -> set[str]:
@@ -135,7 +135,10 @@ def test_t_empty_translation_falls_back_to_english(monkeypatch: pytest.MonkeyPat
     assert t("k") == "English"
 
 
-def test_t_language_without_catalog_uses_english() -> None:
+def test_t_language_without_catalog_uses_english(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every supported language has a catalog since Faz 11b, so an empty one stands in."""
+    real = i18n.load_catalog
+    monkeypatch.setattr(i18n, "load_catalog", lambda lang: {} if lang == "de" else real(lang))
     i18n.set_language("de")
     assert t("errors.prefix", message="x") == "Error: x"
 
@@ -219,3 +222,28 @@ def test_bad_catalog_is_translation_error(monkeypatch: pytest.MonkeyPatch, tmp_p
             i18n.load_catalog("en")
     finally:
         i18n.load_catalog.cache_clear()
+
+
+@pytest.mark.parametrize("lang", [lang for lang in i18n.SUPPORTED_LANGUAGES if lang != "en"])
+def test_a_catalog_is_really_translated_not_a_copy_of_english(lang: str) -> None:
+    """Names, paths and placeholders stay the same in every language; prose must not."""
+    en = i18n.load_catalog("en")
+    catalog = i18n.load_catalog(lang)
+    prose = [key for key, text in en.items() if len(text.split()) >= 4]
+    same = [key for key in prose if catalog[key] == en[key]]
+    assert len(same) <= len(prose) // 20, f"{lang}: {len(same)} of {len(prose)} copied: {same[:10]}"
+
+
+@pytest.mark.parametrize("lang", ["de", "es", "fr"])
+def test_lang_option_works_for_the_new_languages(
+    lang: str, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    from orkestra.cli import app
+
+    with pytest.raises(SystemExit) as exc_info:
+        app(["--lang", lang, "--help"])
+    assert exc_info.value.code in (0, None)
+    out = capsys.readouterr().out
+    translated = i18n.t_in(lang, "cli.help")
+    assert translated != i18n.t_in("en", "cli.help")  # not the English fallback
+    assert translated.split()[0] in out

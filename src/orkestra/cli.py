@@ -21,14 +21,14 @@ from orkestra.cache import responses
 from orkestra.chief import status
 from orkestra.config import loader
 from orkestra.config.schema import Config, Provider
-from orkestra.errors import ConfigError, ExitCode, OrkestraError, UsageError, exit_code_for
+from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
 from orkestra.handoff import brief as handoff_brief
 from orkestra.handoff import check as handoff_check_service
 from orkestra.handoff import launch as handoff_launch
 from orkestra.handoff import model as handoff_model
 from orkestra.handoff import store as handoff_store
 from orkestra.i18n import t
-from orkestra.providers import registry
+from orkestra.providers import display, registry
 from orkestra.routing.router import Route, describe_candidates
 from orkestra.security.redact import Redactor, config_for_display, configured_secrets
 from orkestra.state import consent, db, stats
@@ -124,41 +124,6 @@ def _row_json(row: registry.ProviderRow) -> dict[str, Any]:
         "api_key_env": row.key_env,
         "api_key_present": row.key_present,
     }
-
-
-def _row_text(row: registry.ProviderRow) -> str:
-    parts = [
-        row.type,
-        t("providers.enabled") if row.enabled else t("providers.disabled"),
-        t(f"providers.consent.{row.consent}"),
-    ]
-    h = row.health
-    if h.open_until is not None and h.is_open(db.local_now()):
-        parts.append(t("providers.circuit_open", until=h.open_until.strftime("%H:%M")))
-    elif h.consecutive_failures:
-        parts.append(t("providers.failures", count=h.consecutive_failures))
-    if row.key_env:
-        key = "providers.key_present" if row.key_present else "providers.key_missing"
-        parts.append(t(key, var=row.key_env))
-    parts.extend(
-        t("providers.budget_left", limit=s.limit, remaining=_num(s.remaining)) for s in row.limits
-    )
-    return f"{row.name}: " + " | ".join(parts)
-
-
-def _num(value: float) -> str:
-    return str(int(value)) if float(value).is_integer() else f"{value:.4f}"
-
-
-def _budget_text(row: registry.ProviderRow) -> str:
-    if not row.limits:
-        return t(
-            "budget.unlimited", name=row.name, tokens=row.used.tokens, requests=row.used.requests
-        )
-    limits = ", ".join(
-        t("budget.limit", limit=s.limit, used=_num(s.used), value=_num(s.value)) for s in row.limits
-    )
-    return f"{row.name}: {limits}"
 
 
 def _route_json(plan: Route) -> dict[str, Any]:
@@ -413,46 +378,25 @@ class _TyperPrompter:
 
     def ask(self, text: str, default: str | None = None) -> str:
         return str(typer.prompt(text, default="" if default is None else default,
-                                show_default=default is not None))  # fmt: skip
+                                show_default=bool(default)))  # fmt: skip
 
     def confirm(self, text: str, default: bool = False) -> bool:
-        hint = t("wizard.yes_no.default_yes" if default else "wizard.yes_no.default_no")
-        while True:
-            raw = str(typer.prompt(f"{text} {hint}", default="", show_default=False))
-            if not raw.strip():
-                return default
-            answer = wizard.yes_no(raw)
-            if answer is not None:
-                return answer
-            typer.echo(t("wizard.error.yes_no"))
+        return wizard.confirm_by_asking(self.ask, self.say, text, default)
 
 
 def _echo_doctor(report: doctor.DoctorReport) -> None:
-    for check in report.checks:
-        label = t(f"doctor.status.{check.status}")
-        typer.echo(f"[{label}] {check.name}: {check.message}")
-        for detail in check.data.get("details", []):
-            typer.echo(f"    - {detail}")
-        if "hint" in check.data:
-            typer.echo(f"    {t('doctor.hint', command=check.data['hint'])}")
-    typer.echo(t("doctor.summary.ok" if report.ok else "doctor.summary.fail"))
+    for line in doctor.report_lines(report):
+        typer.echo(line)
 
 
 def _echo_outcome(outcome: wizard.Outcome, notes: list[str]) -> None:
-    typer.echo(t("wizard.saved", path=outcome.path))
-    if outcome.backup is not None:
-        typer.echo(t("wizard.backup", path=outcome.backup))
-    if outcome.gitignore is not None:
-        typer.echo(t("init.gitignore", entry=loader.GITIGNORE_ENTRY, path=outcome.gitignore))
-    for note in notes:
-        typer.echo(note)
+    for line in wizard.outcome_lines(outcome, notes):
+        typer.echo(line)
 
 
 def _echo_consent(granted: list[str], waiting: list[str]) -> None:
-    if granted:
-        typer.echo(t("wizard.consent.granted", names=", ".join(granted)))
-    if waiting:
-        typer.echo(t("wizard.consent.missing", names=", ".join(waiting)))
+    for line in wizard.consent_lines(granted, waiting):
+        typer.echo(line)
 
 
 def _init_defaults(config_flag: Path | None, *, project: bool, force: bool, as_json: bool) -> None:
@@ -484,22 +428,13 @@ def _init_defaults(config_flag: Path | None, *, project: bool, force: bool, as_j
     _echo_consent([], outcome.providers)
 
 
-def _current_config(config_flag: Path | None) -> Config | None:
-    """The config being edited, for the wizard's defaults; ``None`` when there is none yet."""
-    try:
-        loaded = loader.load_config(config_flag)
-    except ConfigError:
-        return None  # an unreadable config: the wizard starts from what it detects
-    return loaded.config if loaded.sources else None
-
-
 def _init_plain(config_flag: Path | None, *, project: bool, force: bool) -> None:
     prompter = _TyperPrompter()
     try:
         answers = wizard.run_plain(
             prompter, detect.detect(), set_language=i18n.set_language,
             project=True if project else None,
-            current=None if force else _current_config(config_flag),
+            current=None if force else wizard.current_config(config_flag),
         )  # fmt: skip
         outcome = wizard.save_answers(answers, config_flag=config_flag, now=db.local_now(),
                                       fresh=True if force else None)  # fmt: skip
@@ -514,6 +449,22 @@ def _init_plain(config_flag: Path | None, *, project: bool, force: bool) -> None
     except (typer.Abort, EOFError):
         # No answer to read (closed stdin, or NUL that Windows reports as a terminal).
         raise UsageError(t("wizard.error.no_input")) from None
+
+
+def _init_interactive(config_flag: Path | None, *, project: bool) -> None:
+    """A bare ``init`` at a terminal: the interface's wizard, or plain questions under
+    ``TERM=dumb``. Textual is imported only here and for ``ui`` (every other command stays fast)."""
+    from orkestra.tui import app as tui_app
+
+    if not tui_app.usable_terminal():
+        _init_plain(config_flag, project=project, force=False)
+        return
+    interface = tui_app.OrkestraApp(config_flag=config_flag, mode="wizard", project=project)
+    interface.run()
+    for line in interface.summary:  # the interface is gone; the result stays in the terminal
+        typer.echo(line)
+    if interface.wizard_error is not None:
+        raise typer.Exit(int(ExitCode.USAGE))
 
 
 def build_app() -> typer.Typer:
@@ -549,7 +500,7 @@ def build_app() -> typer.Typer:
         if not rows:
             typer.echo(t("select.no_providers"))
         for row in rows:
-            typer.echo(_row_text(row))
+            typer.echo(display.row_text(row))
 
     @providers_app.command("enable", help=t("cli.providers.enable.help"))
     def providers_enable(
@@ -605,7 +556,7 @@ def build_app() -> typer.Typer:
             return
         typer.echo(t("budget.title", day=now.date().isoformat()))
         for row in rows:
-            typer.echo(_budget_text(row))
+            typer.echo(display.budget_text(row))
 
     @app.callback()
     def main(
@@ -664,7 +615,7 @@ def build_app() -> typer.Typer:
                 typer.echo(t("init.exists", path=target))
                 typer.echo(t("wizard.hint.edit"))
                 return
-            _init_plain(state.config_path, project=project, force=False)
+            _init_interactive(state.config_path, project=project)
             return
         result = loader.init_config(target, force=force, project=project)
         if as_json:
@@ -687,6 +638,14 @@ def build_app() -> typer.Typer:
             typer.echo(t("init.gitignore", entry=loader.GITIGNORE_ENTRY, path=result.gitignore))
         if result.written:
             typer.echo(t("init.next"))
+
+    @app.command("ui", help=t("cli.ui.help"))
+    def ui_command(ctx: typer.Context) -> None:
+        from orkestra.tui import app as tui_app
+
+        if not tui_app.usable_terminal():
+            raise UsageError(t("ui.error.no_terminal"))
+        tui_app.OrkestraApp(config_flag=ctx.ensure_object(_State).config_path, mode="ui").run()
 
     @config_app.command("show", help=t("cli.config.show.help"))
     def config_show(ctx: typer.Context, as_json: Annotated[bool, _json_option()] = False) -> None:

@@ -92,6 +92,10 @@ class TranslationError(InternalError):
     """A broken or incomplete translation catalog (a bug in Orkestra, not user input)."""
 
 
+class WizardCancelled(UsageError):
+    """The user left the setup wizard (Escape); nothing more is written (Faz 11b, code 2)."""
+
+
 class HandoffLocked(OrkestraError):
     """Another process holds the handoff file's lock for too long (Faz 10a)."""
 

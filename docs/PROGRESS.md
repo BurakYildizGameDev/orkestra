@@ -26,12 +26,41 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 10a – Devir dosyası ve özet | ✅ | 2026-11-12 | `handoff init/update/check/show`, `status` devir satırı, migration 2; Claude denetimi (D-066) |
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
-| 11b – Terminal arayüzü, 5 dil | ⏳ | | Textual `ui`, sihirbaz ekranları, de/es/fr |
+| 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070) |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
 | 13 – Benchmark | ⏳ | | |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 11b – Terminal arayüzü, arayüzlü sihirbaz, 5 dil (2026-11-14)
+**Yapılanlar (D-070):**
+- `orkestra ui` (Textual 8): Durum, Sağlayıcılar (aç/kapat, test et), Bütçeler, Profiller, Onaylar, Devir, Ayarlar sekmeleri. Ekranlar yalnız servis çağırır: yeni `config/edits.py` (tek değer, doğru dosya, yorumlar kalır), `providers/display.py` (CLI ile ortak metin), `doctor.check_one`/`report_lines`.
+- Arayüzlü sihirbaz: 11a'nın `wizard.run_plain` akışı bir iş parçacığında, her soru bir ekran; Escape iptal (`WizardCancelled`, kod 2). Terminalde düz `init` (dosya yokken) bunu açar; `TERM=dumb`'da düz sorulara düşer.
+- `de`, `es`, `fr` katalogları Orkestra'nın kendisiyle çevrildi: üç görevlik batch, işçi agy, doğrulayıcı `tests/fixtures/check_catalog.py`; terim sözlüğü `src/orkestra/i18n/locales/README.md`.
+- i18n testleri beş dile genişledi; "İngilizcenin kopyası değil" ve `--lang de/es/fr` testleri.
+- README (en + tr): `orkestra ui` satırı, yol haritasında Faz 11 ✅.
+
+**Kabul kriterleri:**
+- ✅ Textual pilot testi: sihirbazda sadece OpenRouter seçilince config'te Ollama yok, config geçerli, örneğin yorumları duruyor (`test_the_wizard_with_only_openrouter_writes_no_ollama_and_keeps_comments`); arayüzde sağlayıcı kapatınca elle yazılmış yorumlar duruyor (`test_turning_a_provider_off_keeps_the_handwritten_comments`).
+- ✅ Geçersiz değer (negatif bütçe) arayüzde kaydedilmiyor, hata seçili dilde (`test_an_invalid_budget_is_not_saved_and_the_error_is_in_the_chosen_language`).
+- ✅ `init --defaults` onay vermiyor; `providers list` onaysız gösteriyor (11a, `test_init_defaults_turns_on_what_was_found_without_consent`).
+- ✅ Dil ayarlardan değişince arayüz metinleri anında değişiyor (`test_changing_the_language_changes_the_interface_at_once`); `--lang de/es/fr` CLI'de çalışıyor (`test_lang_option_works_for_the_new_languages`).
+- ✅ 5 dilde anahtar kümesi ve yer tutucular aynı (`test_catalog_key_sets_match`, `test_catalog_placeholders_match`, `test_a_catalog_is_really_translated_not_a_copy_of_english`).
+- ✅ `TERM=dumb` (ve terminal yoksa) `ui` anlaşılır hata + `--plain` önerisi (`test_ui_without_a_usable_terminal_says_so_and_suggests_plain`); düz `init` `TERM=dumb`'da düz sorulara düşüyor (`test_a_bare_init_under_term_dumb_asks_plain_questions`).
+- ✅ Algılama anahtar değerini okumuyor (11a).
+
+**Çeviri:** batch 3/3 `ok` (45 dk, agy), `apply --batch --only-ok` ile uygulandı; doğrulayıcı üç dilde `ok`. Ana dili konuşan biri tarafından gözden geçirilmedi.
+
+**Pilot testlerin bulduğu iki hata (düzeltildi):** soru ekranında giriş kutusu odak almıyordu (Enter boşa gidiyordu) ve uygulama kapanınca soruyu bekleyen iş parçacığı asılı kalıp kapanışı kilitliyordu; Ayarlar'da dil kaydedilince arayüzün yeniden kurulumu kendi düğme işleyicisini bekleyip kilitleniyordu.
+
+**Dürüst notlar:**
+- `config/edits.py`'nin testleri koddan önce yazıldı ama kod yazılmadan önce kırmızı koşulmadı. Consent ve `TERM=dumb` testleri ile `doctor.check_one` testi ilk denemede yeşildi (kapsam testleri).
+- Etkileşimli arayüz gerçek bir terminalde elle denenmedi (test aracında terminal yok); bütün arayüz denemeleri Textual pilotuyla.
+- Sağlayıcı "test et" düğmesi gerçek bir sağlayıcıyla denenmedi (testler ağa çıkmaz); kapalı sağlayıcı için `doctor.check_one` testi var.
+- Kuyruk sekmesi ve bildirim ayarı yok (Faz 12).
+
+Testler: **1229 geçti** (1205 + 24). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 11a (PR #21), 2026-11-14
 `/code-review` 10 bulgu; hepsi düzeltildi (D-069). Önce kırmızı testler (19 kırmızı; bir kısmı bu fazın kendi testleriydi: onay sırası ve "tek dönen yedek" kararı değişti).

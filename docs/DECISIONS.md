@@ -701,3 +701,20 @@ Mimari §22 güncellendi (D-068).
 - **`1,²` çökmez:** numaralar yalnız ASCII rakam (`"²".isdigit()` doğru ama `int("²")` hata veriyordu); yeniden sorulur.
 - **i18n:** 2 yeni anahtar (`wizard.detect.embedding`, `wizard.hint.edit`), `cli.init.help` ve `cli.init.option.plain` güncellendi.
 Mimari §22 güncellendi (D-069).
+
+## D-070 – Faz 11b: terminal arayüzü, arayüzlü sihirbaz ve 5 dil (2026-11-14, Faz 11b)
+**Bağlam:** Mimari §22, plan Faz 11 (2/2). 11a'nın servisleri (algılama, `tui/wizard.py`, `config/writer.py`) üzerine arayüz ve çeviriler.
+**Karar:**
+- **Bağımlılık:** `textual>=8.2,<9` (Mimari §1'de var; kurulan 8.2.8). Textual yalnız `orkestra ui` ve terminaldeki düz `init` yolunda içe aktarılır; diğer komutların açılışı yavaşlamaz.
+- **`orkestra ui`:** sekmeler: Durum (`status` raporu), Sağlayıcılar (aç/kapat, "test et" = o sağlayıcının `doctor` denetimleri, `doctor.check_one`), Bütçeler (sınır yaz/boşalt), Profiller (varsayılan profil ve şef), Onaylar (`consent.describe` gösterilir, açık onay/geri alma), Devir (devir dosyası varsa özet), Ayarlar (dil). **Kuyruk sekmesi yok** (Faz 12'nin işi, hazırlık kodu yazılmadı); bildirim ayarı da Faz 12'ye kaldı.
+- **Ekranlarda iş mantığı yok:** tek değer değişikliği yeni `config/edits.py` (değer hangi dosyada tanımlıysa orada, yoksa base config; yorumlar kalır, yazmadan önce doğrulanır, yedek, atomik). Geçersiz değer (negatif bütçe) yazılmaz; hata seçili dilde ekranda.
+- **Metin paylaşımı:** sağlayıcı satırı ve bütçe metni `providers/display.py`'ye (CLI'deki özel fonksiyonlar taşındı); sihirbaz sonuç satırları `wizard.outcome_lines`/`consent_lines`, doctor satırları `doctor.report_lines`; evet/hayır sorusu `wizard.confirm_by_asking`. CLI ve arayüz aynı metni üretir.
+- **Arayüzlü sihirbaz:** 11a'daki `run_plain` akışının kendisi; bir iş parçacığı onu sürer, her soru küçük bir ekran (`QuestionScreen`, giriş kutusu `AUTO_FOCUS` ile odakta; boş cevap varsayılan; Escape iptal → `WizardCancelled`, kod 2). Uygulama kapanırsa bekleyen soru iptal olur, iş parçacığı asılı kalmaz (kapanışta takılma hatası pilot testte bulundu). Sonuç satırları uygulama kapanınca terminale yeniden yazılır.
+- **Düz `init`:** terminalde ve dosya yokken arayüzlü sihirbazı açar; `TERM=dumb` gibi arayüzün çizilemediği bir terminalde düz sorulara (`--plain`) düşer. `orkestra ui` terminal yoksa/`TERM=dumb` ise kod 2 ve `--plain` önerisi.
+- **Dil anında değişir:** Ayarlar'da kaydedilince arayüz tümüyle yeniden kurulur (`recompose`). Yeniden kurulum düğme işleyicisinin dışına (`call_later`) alındı: işleyici kendini silen yeniden kurulumu bekleyince kilitleniyordu (pilot testte bulundu).
+- **Çeviriler (`de`, `es`, `fr`):** Orkestra'nın kendisiyle: üç `edit` görevlik bir batch, işçi `agy`; her görev yalnız kendi katalogunu değiştirebilir, `en.yaml` ve sözlük korumalı; doğrulayıcı `tests/fixtures/check_catalog.py <dil>` (anahtarlar, yer tutucular, boş değer, biçimlenme, İngilizcenin kopyası olmama). Terim sözlüğü ve kurallar `src/orkestra/i18n/locales/README.md`'de. Bundan sonra her yeni anahtar beş dile eklenir (AGENTS.md kuralı).
+- **Testler:** i18n tamlık testleri 5 dile genişledi (`CATALOG_LANGUAGES = SUPPORTED_LANGUAGES`); "katalog İngilizcenin kopyası değil" ve `--lang de/es/fr` testleri eklendi.
+- **Çeviri sonucu:** batch `b-20261114-014020-0888`, 3/3 `ok`, yeniden deneme yok, toplam 45 dk (agy, günlük 10 koşudan 3'ü); `orkestra apply --batch … --only-ok` ile uygulandı. Claude örnek satırları okudu: sözlük terimleri tutarlı, komutlar/yer tutucular/dosya adları yerinde, hitap `du`/`tú`/`tu`, Fransızca noktalama doğru. Ana dili konuşan biri tarafından gözden geçirilmedi.
+- **Değişen var olan testler:** `CATALOG_LANGUAGES` beş dile genişledi (planın istediği); `test_t_language_without_catalog_uses_english` artık Almanca katalog olduğu için boş bir katalogla aynı davranışı doğruluyor (beklenen değer aynı).
+- **Testler:** 1205 → **1229** (+24).
+Mimari §22 güncellendi (D-070).
