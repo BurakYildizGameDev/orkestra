@@ -410,23 +410,27 @@ the decisions, open questions and the traps, plus who updated it and at which co
 (`orkestra handoff init` creates it, `update --section done --add "…"` appends a dated,
 attributed item, `--set` replaces a text section). `orkestra handoff check` warns when the
 file is older than `handoff.stale_after_commits` commits (`--strict` exits 1, `--warn-only`
-never fails). `orkestra handoff show --brief` prints the short brief for the next chief: the
-file's key sections plus the real branch, `git status`, the last commits, unapplied runs and
-the remaining budget, never more than `handoff.brief_max_lines` lines. Text written through
+never fails and prints only warnings). `orkestra handoff show --brief` prints the short brief for the next chief: the
+file's key sections (including `In progress`, the next step) plus the real branch, `git status`, the last commits, unapplied runs and
+the remaining budget, never more than `handoff.brief_max_lines` lines (when it has to cut,
+the staleness warning and the Orkestra guide stay and project lines go first). Text written through
 `update` is redacted, and `Done`/`Decisions` that outgrow `handoff.max_lines` move their
 oldest items to `.orkestra/HANDOFF.archive.md` (appended, never deleted).
 
 `orkestra handoff to <chief>` finally hands over: it builds the brief, writes one `handoffs`
 row (who, to whom, when, at which commit, where the brief was written) and starts the target
-agent in your terminal; Orkestra exits with the agent's own exit code. How the brief arrives is
+agent in your terminal, in the repository root and with `ORKESTRA_CHIEF` set to its name
+(run it yourself, not from inside a chief's command tool: the agent needs a real terminal;
+Ctrl+C then belongs to the agent); Orkestra exits with the agent's own exit code. How the brief arrives is
 `chiefs.<name>.prompt_mode`: `arg` (last argument), `stdin`, or `file`
 (`.orkestra/BRIEF.md` plus one short instruction). A `.cmd`/`.bat` launcher or a brief over
 8000 characters falls back to `file` with a warning. `--print-only` shows exactly what would be
 sent without starting anything or recording a row. With uncommitted changes `to` stops with
-exit code 5 unless you pass `--allow-dirty`; the generated `BRIEF.md` alone never counts as
-dirty. `orkestra handoff install-hook` adds a marked, idempotent block to the repository's
-`pre-commit` hook (it never overwrites the hook and never blocks a commit; in a worktree it
-uses the hooks path git reports).
+exit code 5 and names the files unless you pass `--allow-dirty`; the handoff file, its
+archive and the generated `BRIEF.md` never count as dirty. `orkestra handoff install-hook` adds a marked, idempotent block to the repository's
+`pre-commit` hook right after its shebang, so the reminder is shown on every commit (it never
+overwrites the hook and never blocks a commit; a hook that is not a shell script is left
+alone with a message; in a worktree it uses the hooks path git reports).
 
 **Templates** save writing task files:
 

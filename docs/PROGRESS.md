@@ -23,14 +23,51 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 9a – Skill dosyası | ✅ | 2026-11-10 | `skill/orkestra/SKILL.md`, CLI'ye karşı test (D-046) |
 | 9b – Skill doğrulama | ✅ | 2026-11-10 | kod denetimi (D-047), elle deneme düzeltmeleri (D-048), 5/5 senaryo (D-049) |
 | 9c – Ucuz modeller için ara/değiştir | ✅ | 2026-11-10 | `edit_format: auto` (küçük dosya `whole`, büyük dosya `replace`), D-051 |
-| 10a – Devir dosyası ve özet | ✅ | 2026-11-12 | `handoff init/update/check/show`, `status` devir satırı, migration 2 |
-| 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065) |
+| 10a – Devir dosyası ve özet | ✅ | 2026-11-12 | `handoff init/update/check/show`, `status` devir satırı, migration 2; Claude denetimi (D-066) |
+| 10b – Devretme (`handoff to`) | ⏳ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); kalan: elle Claude Code → agy senaryosu |
 | 11 – Arayüz, sihirbaz, 5 dil | ⏳ | | |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
 | 13 – Benchmark | ⏳ | | |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 10 (Claude, PR #18 + #19), 2026-11-13
+Kullanıcı "Faz 10 full test" istedi. ruff, ruff format, pyright temiz ve 1096 test geçiyordu; ama geçici repoda gerçek CLI + sahte şefle duman testi 10 kod bulgusu ve 1 süreç bulgusu verdi. Hepsi düzeltildi (D-066). Önce kırmızı testler: 47 kırmızı (36 yeni davranış + `Spawn` imzası değişen 11 eski test), 3 yeni test baştan yeşildi (dürüst not: kapalı kod bloğundaki `## `, bölüm değişince yeni arşiv başlığı, kesme sayısı).
+
+**Kırmızı çıktı alıntıları:**
+```
+TypeError: default_spawn() got an unexpected keyword argument 'runner'           (Ctrl+C)
+AttributeError: module 'orkestra.handoff.launch' has no attribute 'HOOK_COMMAND' (kanca susuyor)
+assert 3 == 1  ('## Done (archived)' üç kez)                                    (arşiv başlığı)
+assert "warning: the handoff file is 9 commit(s) old; ..." in [...]              (özet kesmesi)
+Error: The working tree has 1 uncommitted change(s) ... assert 5 == 0            (update → to)
+```
+
+**Düzeltmeler (her biri test adıyla):**
+- ✅ Alt klasörden `file` modu: şef repo kökünde başlıyor (`test_the_chief_starts_in_the_repository_root_from_a_subfolder`, `test_to_from_a_subfolder_in_file_mode_gives_the_chief_the_brief`).
+- ✅ Git kancası hatırlatmayı gösteriyor; `--warn-only` uyarı yoksa sessiz (`test_the_hook_does_not_hide_the_reminder`, `test_check_warn_only_is_silent_when_up_to_date_and_prints_the_warning_when_stale`, gerçek `git commit` ile `test_a_commit_through_the_installed_hook_shows_the_reminder`).
+- ✅ Kabuk olmayan kancaya dokunulmuyor (kod 2), blok shebang'in hemen altına giriyor, CRLF korunuyor (`test_install_hook_refuses_a_hook_that_is_not_a_shell_script[4]`, `test_install_hook_accepts_every_shell_hook[5]`, `test_install_hook_puts_the_block_right_after_the_shebang`, `test_install_hook_keeps_a_crlf_hook_crlf`).
+- ✅ Ctrl+C yeni şefi öldürmüyor (`test_the_windows_launch_ignores_ctrl_c_while_the_child_runs`, `test_the_ctrl_c_handler_comes_back_when_the_child_fails_to_start`).
+- ✅ Yeni şef kendi adını görüyor (`test_the_new_chief_gets_its_own_name_in_orkestra_chief`, `test_the_started_chief_sees_its_own_name`).
+- ✅ Skill §7: `handoff to`'yu şef değil kullanıcı kendi terminalinde çalıştırır; şef yalnız `--print-only`.
+- ✅ "`update` → `to`" artık kod 5 değil; hata dosyaları sayıyor (`test_the_handoff_file_and_its_archive_do_not_make_the_tree_dirty`, `test_to_right_after_a_handoff_update_is_not_blocked`, `test_the_dirty_error_names_the_changed_files`, `test_the_dirty_error_shortens_a_long_file_list`, `test_the_dirty_check_lists_untracked_files_one_by_one`).
+- ✅ `--set` başlık eklemiyor/gizlemiyor, CRLF metin `\r\r\n` üretmiyor (`test_set_text_that_would_change_the_sections_is_refused[2]`, `test_update_that_would_add_a_heading_exits_2`, `test_set_text_with_a_heading_inside_a_closed_fence_is_accepted`, `test_set_text_with_crlf_in_a_crlf_file_has_no_double_carriage_return`).
+- ✅ Özet: In progress geri geldi (kullanıcı kararı, D-063 geri alındı); kesmede eskime uyarısı ve kılavuz kalıyor (`test_in_progress_is_in_the_brief_right_after_status`, `test_a_full_brief_keeps_the_stale_warning_and_the_guide`, `test_a_tiny_limit_still_keeps_the_stale_warning`, `test_the_cut_count_covers_every_line_that_is_not_shown`).
+- ✅ Arşiv tek başlık ve dosyanın satır sonu; saniye hassasiyetinde zaman (`test_moves_in_a_row_write_one_archive_heading`, `test_the_archive_gets_a_new_heading_when_the_section_changes`, `test_the_archive_uses_the_line_ending_of_the_handoff_file`, `test_timestamps_are_written_to_the_second`).
+- ✅ Süreç: 10b tablo satırı "⏳ elle senaryo bekliyor" oldu.
+
+**Değişen var olan testler (bilerek, D-066):** iki kirli ağaç testinin beklenen mesajı `files="a.txt"` aldı; kanca testindeki `startswith(existing)` "blok çıkarılınca eski içerik aynen" oldu (blok artık shebang altında); özet testindeki `"branch:" not in text` dal satırına daraltıldı; `Spawn` sahteleri `cwd, env` parametresi aldı; Unix `execvp` testi `execvpe` + `chdir` oldu.
+
+**Duman testi (gerçek CLI, geçici repo, sahte şef):** alt klasörden `to` (file) özeti okuyor; çocuk `ORKESTRA_CHIEF=envchief`; `update` sonrası `to` başlıyor, gerçek değişiklikte `(a.txt)` ile kod 5; kancalı commit'te "handoff: 5 commit(s) since…" görünüyor; Python kancasında kurulum kod 2 ve commit geçiyor; 10 satırlık özette uyarı kalıyor; CRLF `--set` `\r\r` yok; `## Done` içeren `--set` kod 2.
+
+**Bilinen sorunlar:**
+- Elle senaryo (Claude Code'da yarım iş → kullanıcının terminalinde `orkestra handoff to agy` → agy sıradaki adımla devam ediyor) ⏳ kullanıcı yapacak.
+- Ctrl+C düzeltmesi birim testiyle doğrulandı; gerçek konsolda Ctrl+C elle denenmedi.
+- Bayat kilit temizliğinde iki süreç aynı anda bayat kilidi görürse ikisi de girebilir (yalnız çökmüş kilitten sonra, dar pencere); Windows'ta kilitsiz okuyucu (`show`/`status`) dosyayı açık tutarken `os.replace` `PermissionError` verebilir (dar pencere).
+- Global skill kopyası (`~/.claude/skills/orkestra/`) PR'lar birleşince güncellenecek.
+
+Testler: **1134 geçti** (1096 + 38). ruff, ruff format, pyright temiz.
 
 ### Faz 10b – Devretme (`handoff to`) (2026-11-13)
 **Yapılanlar (D-065):**
@@ -60,7 +97,8 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 **Ertelenenler / bilinen sorunlar:**
 - `.cmd` başlatıcıda arg modu hiç kullanılamıyor (bilinçli: Windows alıntılama riski). Claude bu makinede `.cmd` olduğu için fiilen hep `file`.
 - Kotası dolan şefi otomatik algılama ve gece kuyruğu Faz 12'de.
-- PR yığılmış: `faz-10b` → `faz-10a` (PR #18 birleştirilmedi); GLM denetimi bekliyor.
+- PR yığılmış: `faz-10b` → `faz-10a` (PR #18 birleştirilmedi); 10b GLM denetiminden geçmedi, yerine Claude denetimi yapıldı (yukarıda, D-066).
+- Elle senaryo (Claude Code → `handoff to agy`) bu kayıtta yoktu ama 10b kabul kriteri; ⏳ (D-066).
 
 ### Faz 10a – Devir dosyası ve özet (2026-11-12)
 **Yapılanlar (D-063):**
@@ -97,7 +135,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 **Ertelenenler:** `handoff to <şef>`, `install-hook`, `launch.py`, `handoffs` tablosuna satır yazımı → Faz 10b.
 
 **Bilinen sorunlar:**
-- `show --brief` "In progress" bölümünü özete katmıyor: mevcut 10a testi (`test_a_non_git_directory_gets_a_note_and_does_not_crash`) dosyadaki `branch:` metninin özette geçmemesini bekliyor, Mimari §17 ise In progress'i listeliyor. Test esas alındı (D-063); In progress bilgisi özette yok, devir dosyasında duruyor.
+- `show --brief` "In progress" bölümünü özete katmıyor: mevcut 10a testi (`test_a_non_git_directory_gets_a_note_and_does_not_crash`) dosyadaki `branch:` metninin özette geçmemesini bekliyor, Mimari §17 ise In progress'i listeliyor. Test esas alındı (D-063); In progress bilgisi özette yok, devir dosyasında duruyor. **D-066 ile düzeltildi:** In progress özette, test dal satırına daraltıldı.
 - `status --json` tek satır basıyor (insan çıktısı değişmedi): 15 satır sözünü `--json` çıktısında da korumak için.
 - `Last updated` alanına yazılan zaman, dosyada dakika hassasiyeti varsa dakika olarak yazılıyor (elle düzenlenmiş dosyanın biçimi bozulmasın diye).
 - Elle devir senaryosu (Claude Code → agy) ⏳ 10b'de.

@@ -238,13 +238,16 @@ Projede `.orkestra/HANDOFF.md` varsa (yoksa uzun işlerde `orkestra handoff init
   `git log --oneline` ile gerçek durumu doğrula.
 
 Kotadan dolayı veya kullanıcı istediğinde işi başka bir şefe devret:
-- Önce dosyayı güncelle (`in_progress` + `status`), sonra `orkestra handoff to <şef>` çalıştır.
-  Özet hedef şefe `arg`, `stdin` veya `.orkestra/BRIEF.md` üzerinden gider (`prompt_mode`);
-  komut, özeti hazırlar, `handoffs` kaydını yazar ve hedef ajanı **senin terminalinde** başlatır.
-  Orkestra o andan sonra çalışmaz; `to` komutunun çıkış kodu hedef ajanınkidir.
-- Devretmeden önce ne göndereceğini görmek için `orkestra handoff to <şef> --print-only`
-  (hiçbir şey başlatmaz, kayıt yazmaz). `--allow-dirty` yalnızca kullanıcı bilerek istiyorsa.
-- Commit edilmemiş değişiklik varsa `to` kod 5 ile durur: önce commit et, sonra devret.
+- Önce dosyayı güncelle (`in_progress` + `status`) ve yarım değişiklikleri commit et
+  (devir dosyasının kendisi sayılmaz; başka commit edilmemiş dosya varsa `to` kod 5 ile durur
+  ve dosyaları sayar). `--allow-dirty` yalnızca kullanıcı bilerek istiyorsa.
+- `orkestra handoff to <şef>`'i **sen çalıştırma**: hedef ajanı etkileşimli başlatır ve
+  terminali ona verir, senin komut aracında terminal yoktur (takılır ya da hemen kapanır).
+  Kullanıcıya, bu oturumu kapattıktan sonra kendi terminalinde proje klasöründe
+  `orkestra handoff to <şef>` yazmasını söyle. Özet `arg`, `stdin` veya `.orkestra/BRIEF.md`
+  üzerinden gider (`prompt_mode`); yeni şef repo kökünde ve `ORKESTRA_CHIEF=<şef>` ile başlar.
+- Ne gideceğini göstermek için kendin `orkestra handoff to <şef> --print-only` çalıştırabilirsin
+  (hiçbir şey başlatmaz, kayıt yazmaz).
 - İsteğe bağlı hatırlatıcı: `orkestra handoff install-hook` deponun `pre-commit` kancasına
   işaretli bir blok ekler (var olan kancayı ezmez, commit'i asla engellemez).
 

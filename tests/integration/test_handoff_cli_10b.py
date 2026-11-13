@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import subprocess
@@ -174,7 +175,7 @@ def test_to_on_a_dirty_tree_exits_5_and_allow_dirty_starts(
     monkeypatch.setenv("FAKE_CHIEF_OUT", str(capture))
     code, _, err = _run(["handoff", "to", "fake"], capsys)
     assert code == 5
-    assert t("handoff.error.dirty", count=1) in err
+    assert t("handoff.error.dirty", count=1, files="a.txt") in err
     assert not capture.exists()
     assert _rows() == []
     code, _, err = _run(["handoff", "to", "fake", "--allow-dirty"], capsys)
@@ -234,3 +235,85 @@ def test_install_hook_outside_a_repository_exits_2(
     code, _, err = _run(["handoff", "install-hook"], capsys)
     assert code == 2
     assert t("handoff.error.no_git") in err
+
+
+# --- Claude review of Faz 10 (D-066) -----------------------------------------------------
+
+
+def test_to_from_a_subfolder_in_file_mode_gives_the_chief_the_brief(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    repo = _prepare(tmp_path, monkeypatch, capsys, mode="file")
+    sub = repo / "sub dir"
+    sub.mkdir()
+    monkeypatch.chdir(sub)
+    capture = tmp_path / "captured.txt"
+    monkeypatch.setenv("FAKE_CHIEF_OUT", str(capture))
+    code, brief_text, _ = _run(["handoff", "show", "--brief"], capsys)
+    assert code == 0
+    code, _, err = _run(["handoff", "to", "fake"], capsys)
+    assert code == 0, err
+    assert capture.read_bytes().decode("utf-8") == brief_text.strip()
+
+
+def test_to_right_after_a_handoff_update_is_not_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    """Skill §7: update the file, then hand over; the updated file itself is not "dirty"."""
+    _prepare(tmp_path, monkeypatch, capsys)
+    monkeypatch.setenv("ORKESTRA_CHIEF", "claude")
+    monkeypatch.setenv("FAKE_CHIEF_OUT", str(tmp_path / "captured.txt"))
+    code, _, err = _run(["handoff", "update", "--section", "in_progress", "--set",
+                         "next: write the tests"], capsys)  # fmt: skip
+    assert code == 0, err
+    code, _, err = _run(["handoff", "to", "fake"], capsys)
+    assert code == 0, err
+    assert len(_rows()) == 1
+
+
+def test_the_started_chief_sees_its_own_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    _prepare(tmp_path, monkeypatch, capsys)
+    (paths.orkestra_home() / "config.yaml").write_text(_config("arg", args=[str(FIXTURE), "env"]),
+                                                     encoding="utf-8")  # fmt: skip
+    monkeypatch.setenv("ORKESTRA_CHIEF", "claude")
+    capture = tmp_path / "captured.txt"
+    monkeypatch.setenv("FAKE_CHIEF_OUT", str(capture))
+    code, _, err = _run(["handoff", "to", "fake"], capsys)
+    assert code == 0, err
+    assert capture.read_bytes().decode("utf-8") == "fake"
+
+
+def test_a_commit_through_the_installed_hook_shows_the_reminder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    """End to end: a real ``git commit`` runs the hook and its warning reaches the user."""
+    repo = _prepare(tmp_path, monkeypatch, capsys)
+    config = _config().replace("stale_after_commits: 5", "stale_after_commits: 1")
+    (paths.orkestra_home() / "config.yaml").write_text(config, encoding="utf-8")
+    assert _run(["handoff", "install-hook"], capsys)[0] == 0
+    assert _run(["handoff", "update", "--section", "goal", "--set", "ship",
+                 "--chief", "claude"], capsys)[0] == 0  # records the current HEAD  # fmt: skip
+    monkeypatch.setenv("ORKESTRA_LANG", "en")  # the hook's orkestra is a new process
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    shim = bin_dir / "orkestra"
+    shim.write_bytes(
+        f'#!/bin/sh\nexec "{Path(sys.executable).as_posix()}" -m orkestra "$@"\n'.encode()
+    )
+    shim.chmod(0o755)
+    env_path = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+    monkeypatch.setenv("PATH", env_path)
+    for n in range(3):
+        (repo / f"n{n}.txt").write_text("n\n", encoding="utf-8")
+        _git(repo, "add", f"n{n}.txt")
+        done = subprocess.run(
+            ["git", "-c", "commit.gpgsign=false", "-c", "user.name=t",
+             "-c", "user.email=t@example.invalid", "commit", "-q", "-m", f"n{n}"],
+            cwd=repo, capture_output=True, check=False,
+        )  # fmt: skip
+        assert done.returncode == 0
+    output = (done.stdout + done.stderr).decode("utf-8", errors="replace")
+    # At the third commit HEAD is two commits past the recorded one (threshold 1).
+    assert t("handoff.check.stale", count=2) in output

@@ -187,7 +187,7 @@ def _at_text(document: Document, at: datetime) -> str:
     existing = section_text(document, LAST_UPDATED) or ""
     if _MINUTE_STAMP.search(existing):
         return at.isoformat(timespec="minutes")
-    return at.isoformat()
+    return at.isoformat(timespec="seconds")  # microseconds are noise for a reader (D-066)
 
 
 def set_last_updated(document: Document, chief: str, at: datetime, commit: str | None) -> None:
@@ -259,5 +259,7 @@ def template(project: str, chief: str, at: datetime, commit: str | None) -> str:
     for slug in SECTION_ORDER:
         lines.extend([f"## {SECTION_HEADINGS[slug]}", ""])
     lines.append(f"## {LAST_UPDATED_HEADING}")
-    lines.append(f"chief: {chief} | at: {at.isoformat()} | commit: {commit or 'none'}")
+    lines.append(
+        f"chief: {chief} | at: {at.isoformat(timespec='seconds')} | commit: {commit or 'none'}"
+    )
     return "\n".join(lines) + "\n"

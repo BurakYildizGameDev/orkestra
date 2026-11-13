@@ -913,7 +913,7 @@ def build_app() -> typer.Typer:
         elif result.warnings:
             for line in result.warnings:
                 typer.echo(line)
-        else:
+        elif not warn_only:  # the pre-commit hook says nothing when there is nothing to say
             typer.echo(t("handoff.check.ok"))
         if warn_only:
             return

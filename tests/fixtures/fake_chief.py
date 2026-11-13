@@ -7,6 +7,7 @@ code is ``$FAKE_CHIEF_EXIT`` (default 0). Modes:
 - ``stdin``: writes everything it read from stdin to the capture file.
 - ``file``: copies ``.orkestra/BRIEF.md`` from its working directory to the capture file.
 - ``echo``: prints what it received to stdout (a human smoke test).
+- ``env``: writes ``$ORKESTRA_CHIEF`` (the name it was started as) to the capture file.
 
 It never calls a real model and never touches the network.
 """
@@ -21,7 +22,7 @@ from pathlib import Path
 
 def main() -> int:
     if len(sys.argv) < 2:
-        print("usage: fake_chief.py <arg|stdin|file|echo> [args...]", file=sys.stderr)
+        print("usage: fake_chief.py <arg|stdin|file|env|echo> [args...]", file=sys.stderr)
         return 2
     mode = sys.argv[1]
     out = Path(os.environ["FAKE_CHIEF_OUT"]) if "FAKE_CHIEF_OUT" in os.environ else None
@@ -40,6 +41,11 @@ def main() -> int:
         if out is not None:
             out.write_bytes(text.encode("utf-8"))
         print("read the brief file")
+    elif mode == "env":
+        text = os.environ.get("ORKESTRA_CHIEF", "")
+        if out is not None:
+            out.write_bytes(text.encode("utf-8"))
+        print(text)
     elif mode == "echo":
         print(" ".join(sys.argv[2:]))
     else:

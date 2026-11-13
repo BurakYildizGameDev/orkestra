@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import signal
 import sqlite3
-from collections.abc import Callable, Iterator
+import subprocess
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,7 +22,7 @@ from orkestra.state import db
 
 NOW = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
 Git = Callable[[list[str], Path], tuple[bool, str]]
-Spawn = Callable[[list[str], str | None], int]
+Spawn = Callable[[list[str], str | None, Path, Mapping[str, str]], int]
 
 
 @pytest.fixture
@@ -72,9 +74,14 @@ def _which(path: str = "C:/tools/fakechief.exe") -> Callable[[str], str | None]:
     return lambda command: path
 
 
-def _spawn(recorded: list[tuple[list[str], str | None]], code: int = 0) -> Spawn:
-    def run(argv: list[str], stdin_text: str | None) -> int:
+def _spawn(
+    recorded: list[tuple[list[str], str | None]], code: int = 0,
+    context: list[tuple[Path, Mapping[str, str]]] | None = None,
+) -> Spawn:  # fmt: skip
+    def run(argv: list[str], stdin_text: str | None, cwd: Path, env: Mapping[str, str]) -> int:
         recorded.append((argv, stdin_text))
+        if context is not None:
+            context.append((cwd, env))
         return code
 
     return run
@@ -186,7 +193,9 @@ def test_print_only_does_not_need_the_launcher_and_records_nothing(
 ) -> None:  # fmt: skip
     path = _handoff(tmp_path)
 
-    def must_not_spawn(argv: list[str], stdin_text: str | None) -> int:
+    def must_not_spawn(
+        argv: list[str], stdin_text: str | None, cwd: Path, env: Mapping[str, str]
+    ) -> int:
         raise AssertionError("print-only started the chief")
 
     result = launch.to(
@@ -211,7 +220,7 @@ def test_a_dirty_tree_stops_the_handoff_and_allow_dirty_continues(
             which=_which(), spawn=_spawn(recorded), git=_git(status=" M a.txt\n", root=tmp_path),
         )  # fmt: skip
     assert exc_info.value.exit_code == 5
-    assert exc_info.value.message == t("handoff.error.dirty", count=1)
+    assert exc_info.value.message == t("handoff.error.dirty", count=1, files="a.txt")
     assert recorded == []
     assert _rows(conn) == []
     result = launch.to(
@@ -269,7 +278,7 @@ def test_the_record_is_written_before_the_chief_starts(
     path = _handoff(tmp_path)
     seen: list[int] = []
 
-    def spawn(argv: list[str], stdin_text: str | None) -> int:
+    def spawn(argv: list[str], stdin_text: str | None, cwd: Path, env: Mapping[str, str]) -> int:
         seen.append(len(_rows(conn)))  # the row must already be visible to the new chief
         return 0
 
@@ -290,7 +299,7 @@ def test_before_start_runs_with_the_final_mode_just_before_the_child(
         assert len(_rows(conn)) == 1  # the row exists before the terminal changes hands
         events.append((mode, warnings))
 
-    def spawn(argv: list[str], stdin_text: str | None) -> int:
+    def spawn(argv: list[str], stdin_text: str | None, cwd: Path, env: Mapping[str, str]) -> int:
         events.append(("spawn", []))
         return 0
 
@@ -324,18 +333,149 @@ def test_a_missing_handoff_file_is_a_usage_error(tmp_path: Path, conn: sqlite3.C
     assert exc_info.value.message == t("handoff.error.missing", path=path)
 
 
-def test_the_unix_launch_uses_execvp_with_the_same_arguments() -> None:
-    calls: list[tuple[str, list[str]]] = []
+def test_the_unix_launch_uses_execvp_with_the_same_arguments(tmp_path: Path) -> None:
+    calls: list[tuple[str, list[str], Mapping[str, str]]] = []
+    chdirs: list[Path] = []
 
-    def execvp(program: str, argv: list[str]) -> int:
-        calls.append((program, argv))
+    def execvpe(program: str, argv: list[str], env: Mapping[str, str]) -> int:
+        calls.append((program, argv, env))
         return 0
 
     code = launch.default_spawn(
-        ["C:/tools/fakechief.exe", "arg", "the brief"], None, platform="posix", execvp=execvp
-    )
+        ["C:/tools/fakechief.exe", "arg", "the brief"], None, tmp_path,
+        {"ORKESTRA_CHIEF": "fake"}, platform="posix", execvpe=execvpe, chdir=chdirs.append,
+    )  # fmt: skip
     assert code == 0
-    assert calls == [("C:/tools/fakechief.exe", ["C:/tools/fakechief.exe", "arg", "the brief"])]
+    assert chdirs == [tmp_path]  # the new chief starts in the repository root (D-066)
+    assert calls == [
+        ("C:/tools/fakechief.exe", ["C:/tools/fakechief.exe", "arg", "the brief"],
+         {"ORKESTRA_CHIEF": "fake"}),
+    ]  # fmt: skip
+
+
+def test_the_windows_launch_ignores_ctrl_c_while_the_child_runs(tmp_path: Path) -> None:
+    """Ctrl+C belongs to the new chief; ``subprocess.run`` would kill it on KeyboardInterrupt."""
+    seen: list[object] = []
+    given: list[tuple[Path, Mapping[str, str]]] = []
+
+    def runner(
+        argv: list[str], *, input: bytes | None, check: bool, cwd: Path, env: Mapping[str, str]
+    ) -> subprocess.CompletedProcess[bytes]:
+        seen.append(signal.getsignal(signal.SIGINT))
+        given.append((cwd, env))
+        return subprocess.CompletedProcess(argv, 4)
+
+    before = signal.getsignal(signal.SIGINT)
+    code = launch.default_spawn(
+        ["C:/tools/fakechief.exe"], None, tmp_path, {"ORKESTRA_CHIEF": "fake"},
+        platform="nt", runner=runner,
+    )  # fmt: skip
+    assert code == 4
+    assert seen == [signal.SIG_IGN]
+    assert signal.getsignal(signal.SIGINT) is before
+    assert given == [(tmp_path, {"ORKESTRA_CHIEF": "fake"})]
+
+
+def test_the_ctrl_c_handler_comes_back_when_the_child_fails_to_start(tmp_path: Path) -> None:
+    def runner(
+        argv: list[str], *, input: bytes | None, check: bool, cwd: Path, env: Mapping[str, str]
+    ) -> subprocess.CompletedProcess[bytes]:
+        raise OSError("cannot start")
+
+    before = signal.getsignal(signal.SIGINT)
+    with pytest.raises(OSError):
+        launch.default_spawn(["x"], None, tmp_path, {}, platform="nt", runner=runner)
+    assert signal.getsignal(signal.SIGINT) is before
+
+
+def test_the_chief_starts_in_the_repository_root_from_a_subfolder(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    """``file`` mode tells the chief a path relative to the root, so it must start there."""
+    path = _handoff(tmp_path)
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    context: list[tuple[Path, Mapping[str, str]]] = []
+    launch.to(
+        "fake", _config("file"), conn, NOW, path=path, cwd=sub, from_chief="claude",
+        which=_which(), spawn=_spawn([], context=context), git=_git(root=tmp_path),
+    )  # fmt: skip
+    assert context[0][0] == tmp_path
+    assert (tmp_path / launch.BRIEF_RELATIVE).exists()
+    assert not (sub / launch.BRIEF_RELATIVE).exists()
+
+
+def test_the_new_chief_gets_its_own_name_in_orkestra_chief(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    path = _handoff(tmp_path)
+    context: list[tuple[Path, Mapping[str, str]]] = []
+    launch.to(
+        "fake", _config(), conn, NOW, path=path, cwd=tmp_path, from_chief="claude",
+        which=_which(), spawn=_spawn([], context=context), git=_git(root=tmp_path),
+        environ={"ORKESTRA_CHIEF": "claude", "KEEP_ME": "1"},
+    )  # fmt: skip
+    env = context[0][1]
+    assert env["ORKESTRA_CHIEF"] == "fake"
+    assert env["KEEP_ME"] == "1"
+
+
+def test_the_handoff_file_and_its_archive_do_not_make_the_tree_dirty(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    """The usual flow is ``handoff update`` then ``handoff to``; that must not exit 5."""
+    path = _handoff(tmp_path)
+    recorded: list[tuple[list[str], str | None]] = []
+    status = " M .orkestra/HANDOFF.md\n?? .orkestra/HANDOFF.archive.md\n?? .orkestra/BRIEF.md\n"
+    launch.to(
+        "fake", _config(), conn, NOW, path=path, cwd=tmp_path, from_chief="claude",
+        which=_which(), spawn=_spawn(recorded), git=_git(status=status, root=tmp_path),
+    )  # fmt: skip
+    assert len(recorded) == 1
+
+
+def test_the_dirty_error_names_the_changed_files(tmp_path: Path, conn: sqlite3.Connection) -> None:
+    path = _handoff(tmp_path)
+    status = ' M a.txt\n?? "notes/b c.txt"\n M .orkestra/HANDOFF.md\n'
+    with pytest.raises(HandoffNotClean) as exc_info:
+        launch.to(
+            "fake", _config(), conn, NOW, path=path, cwd=tmp_path, from_chief="claude",
+            which=_which(), spawn=_spawn([]), git=_git(status=status, root=tmp_path),
+        )  # fmt: skip
+    assert exc_info.value.message == t("handoff.error.dirty", count=2, files="a.txt, notes/b c.txt")
+
+
+def test_the_dirty_error_shortens_a_long_file_list(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    path = _handoff(tmp_path)
+    status = "".join(f"?? f{n}.txt\n" for n in range(8))
+    with pytest.raises(HandoffNotClean) as exc_info:
+        launch.to(
+            "fake", _config(), conn, NOW, path=path, cwd=tmp_path, from_chief="claude",
+            which=_which(), spawn=_spawn([]), git=_git(status=status, root=tmp_path),
+        )  # fmt: skip
+    files = t("handoff.error.dirty_more", files="f0.txt, f1.txt, f2.txt, f3.txt, f4.txt", count=3)
+    assert exc_info.value.message == t("handoff.error.dirty", count=8, files=files)
+
+
+def test_the_dirty_check_lists_untracked_files_one_by_one(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    """Without ``--untracked-files=all`` a new ``.orkestra/`` folder is one dirty line."""
+    path = _handoff(tmp_path)
+    calls: list[list[str]] = []
+    inner = _git(root=tmp_path)
+
+    def git(args: list[str], cwd: Path) -> tuple[bool, str]:
+        calls.append(args)
+        return inner(args, cwd)
+
+    launch.to(
+        "fake", _config(), conn, NOW, path=path, cwd=tmp_path, from_chief="claude",
+        which=_which(), spawn=_spawn([]), git=git,
+    )  # fmt: skip
+    assert ["status", "--porcelain", "--untracked-files=all"] in calls
 
 
 # --- install-hook -----------------------------------------------------------------------
@@ -381,7 +521,7 @@ def test_install_hook_appends_to_an_existing_hook_and_keeps_its_content(tmp_path
     text = hook.read_text(encoding="utf-8")
     assert result.created is False
     assert result.updated is True
-    assert text.startswith(existing)  # the old hook is not overwritten
+    assert text.replace(launch.HOOK_BLOCK, "") == existing  # the old hook is not overwritten
     assert launch.HOOK_MARKER_START in text
 
 
@@ -415,3 +555,63 @@ def test_install_hook_prints_a_json_ready_result(tmp_path: Path) -> None:
         "path": str(tmp_path / ".git" / "hooks" / "pre-commit"),
         "created": True,
     }
+
+
+def test_install_hook_puts_the_block_right_after_the_shebang(tmp_path: Path) -> None:
+    """An ``exit`` or ``exec`` at the end of the old hook must not skip the reminder."""
+    hook = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook.parent.mkdir(parents=True)
+    hook.write_text("#!/bin/sh\necho my own check\nexit 1\n", encoding="utf-8")
+    launch.install_hook(tmp_path, git=_hooks_git())
+    assert hook.read_text(encoding="utf-8") == (
+        "#!/bin/sh\n" + launch.HOOK_BLOCK + "echo my own check\nexit 1\n"
+    )
+
+
+def test_install_hook_keeps_a_crlf_hook_crlf(tmp_path: Path) -> None:
+    hook = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook.parent.mkdir(parents=True)
+    hook.write_bytes(b"#!/bin/sh\r\necho mine\r\n")
+    launch.install_hook(tmp_path, git=_hooks_git())
+    raw = hook.read_bytes()
+    assert raw.count(b"\n") == raw.count(b"\r\n")
+    assert raw.startswith(b"#!/bin/sh\r\n# >>> orkestra handoff >>>\r\n")
+    assert raw.endswith(b"echo mine\r\n")
+
+
+@pytest.mark.parametrize(
+    "first_line", ["#!/usr/bin/env python", "#!/usr/bin/node", "#!/usr/bin/env -S python3 -u", ""]
+)
+def test_install_hook_refuses_a_hook_that_is_not_a_shell_script(
+    tmp_path: Path, first_line: str,
+) -> None:  # fmt: skip
+    """Shell lines added to a Python hook are a syntax error, and that blocks every commit."""
+    hook = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook.parent.mkdir(parents=True)
+    hook.write_text(f"{first_line}\nprint('mine')\n", encoding="utf-8")
+    before = hook.read_bytes()
+    with pytest.raises(UsageError) as exc_info:
+        launch.install_hook(tmp_path, git=_hooks_git())
+    assert exc_info.value.message == t(
+        "handoff.error.hook_not_shell", path=hook, command=launch.HOOK_COMMAND
+    )
+    assert hook.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "first_line", ["#!/bin/sh", "#!/bin/bash", "#!/usr/bin/env bash", "#! /bin/sh -e", "#!/bin/zsh"]
+)
+def test_install_hook_accepts_every_shell_hook(tmp_path: Path, first_line: str) -> None:
+    hook = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook.parent.mkdir(parents=True)
+    hook.write_text(f"{first_line}\necho mine\n", encoding="utf-8")
+    result = launch.install_hook(tmp_path, git=_hooks_git())
+    assert result.updated is True
+    assert hook.read_text(encoding="utf-8").startswith(f"{first_line}\n{launch.HOOK_MARKER_START}")
+
+
+def test_the_hook_does_not_hide_the_reminder() -> None:
+    """The hook only reminds; sending the output to /dev/null would make it do nothing."""
+    lines = [line.strip() for line in launch.HOOK_BLOCK.splitlines() if "handoff check" in line]
+    assert lines == [f"{launch.HOOK_COMMAND} || true"]
+    assert launch.HOOK_COMMAND == "orkestra handoff check --warn-only"
