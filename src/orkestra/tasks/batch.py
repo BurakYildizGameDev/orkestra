@@ -368,6 +368,11 @@ def checks_cost(config: Config) -> bool:
     extra preparation of every task."""
     if config.estimate.confirm_above_usd is None:
         return False
+    return may_cost(config)
+
+
+def may_cost(config: Config) -> bool:
+    """Is there an enabled provider that can cost money (``queue run --max-cost-usd``)?"""
     return any(_may_cost(p) for p in config.providers.values())
 
 

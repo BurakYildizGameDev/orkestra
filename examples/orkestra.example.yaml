@@ -99,11 +99,11 @@ routing:
   min_samples: 10
 estimate:
   confirm_above_usd: 0.50         # batch estimate above this asks for confirmation
-notify:
-  desktop: true
+notify:                           # queue run --notify, batch --notify (counts only)
+  desktop: true                   # needs: uv tool install "orkestra-cli[notify]"
   ntfy_topic_env: null            # e.g. ORKESTRA_NTFY_TOPIC (phone notifications)
 queue:
-  default_profile: cheap
+  default_profile: cheap          # queue items added without --profile
 
 security:
   block_secrets_to_remote: true   # never send context with keys/passwords to remote models

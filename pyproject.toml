@@ -19,6 +19,10 @@ dependencies = [
     "textual>=8.2,<9",
 ]
 
+[project.optional-dependencies]
+# Desktop notifications (Faz 12a); without it they are skipped quietly.
+notify = ["desktop-notifier>=6.0"]
+
 [project.scripts]
 orkestra = "orkestra.cli:app"
 

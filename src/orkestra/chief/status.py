@@ -21,6 +21,7 @@ from orkestra.config.schema import Config
 from orkestra.handoff import brief, model, store
 from orkestra.i18n import t
 from orkestra.providers import registry
+from orkestra.queue import store as queue_store
 from orkestra.workspace import service
 
 MAX_LINES = 15
@@ -150,6 +151,19 @@ def _unapplied(ctx: StatusContext) -> Section:
     if len(runs) > SHOWN_RUNS:
         lines.append(t("status.unapplied.more", count=len(runs) - SHOWN_RUNS))
     return Section(lines, data)
+
+
+@section("queue", order=40)
+def _queue(ctx: StatusContext) -> Section | None:
+    """Waiting, running and failed queue items (Faz 12a); no line when there are none."""
+    found = queue_store.counts(ctx.conn)
+    owner = queue_store.lock_owner(ctx.conn)
+    data = {"pending": found["pending"], "running": found["running"], "failed": found["failed"],
+            "runner_pid": owner.pid if owner is not None else None}  # fmt: skip
+    if not (found["pending"] or found["running"] or found["failed"]):
+        return None
+    return Section([t("status.queue.line", pending=found["pending"], running=found["running"],
+                      failed=found["failed"])], data)  # fmt: skip
 
 
 def _limits_text(row: registry.ProviderRow) -> str:

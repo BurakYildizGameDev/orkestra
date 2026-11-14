@@ -58,6 +58,24 @@ def no_real_agents(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(cli_agent, "_which", which)
 
 
+@pytest.fixture(autouse=True)
+def no_real_notifications(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
+    """No test shows a desktop notification or posts to ntfy.sh; what would be sent is kept."""
+    from orkestra.notify import notify
+
+    sent: list[tuple[str, ...]] = []
+
+    def desktop(title: str, message: str) -> None:
+        raise ImportError("desktop_notifier is never used in tests")
+
+    def post(url: str, title: str, message: str) -> None:
+        sent.append((url, title, message))
+
+    monkeypatch.setattr(notify, "desktop_send", desktop)
+    monkeypatch.setattr(notify, "ntfy_post", post)
+    return sent
+
+
 GIT_ENV = {
     "GIT_AUTHOR_NAME": "test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
     "GIT_COMMITTER_NAME": "test", "GIT_COMMITTER_EMAIL": "test@example.invalid",

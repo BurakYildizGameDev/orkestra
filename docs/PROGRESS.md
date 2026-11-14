@@ -27,11 +27,41 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
-| 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
+| 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072) |
+| 12b – Öğrenen yönlendirme, arayüzde kuyruk | ⏳ | | |
 | 13 – Benchmark | ⏳ | | |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 12a – Gece kuyruğu ve bildirimler (2026-11-15)
+**Yapılanlar (D-072):**
+- Migration 0003: `queue` (+ `workdir`, `file_hash`, `note`) ve `queue_lock`.
+- `queue/store.py` (satırlar, kilit, kurtarma), `queue/service.py` (`run_queue`, `--until`, `--max-cost-usd`, gerçek yürütücü `execute_item`: işin klasöründe, o klasörün config'iyle), `queue/display.py` (CLI ve 12b arayüzü için metin/JSON).
+- `orkestra queue add|list|remove|run`, `orkestra notify test`, `batch --notify`.
+- `notify/notify.py`: masaüstü (`orkestra-cli[notify]` ekstrası) + ntfy; metin yalnız sayılar, konu hiçbir yerde yazılmaz.
+- `status`'a kuyruk satırı (bekleyen/çalışan/başarısız; yoksa satır yok).
+- `docs/recipes.md` + `docs/recipes.tr.md` (cron, Windows Görev Zamanlayıcı, uyku uyarısı, ntfy); README (en + tr) "Night queue and notifications" bölümü, yol haritasında 12a ✅.
+- 58 yeni i18n anahtarı beş dilde (de/es/fr'yi Claude çevirdi; sözlüğe `queue`, `notification` eklendi).
+
+**Kabul kriterleri:**
+- ✅ `--until` saati geçince yeni iş başlamıyor, çalışan biter (sahte saat): `test_after_until_no_new_item_starts_but_the_running_one_finishes`; saat hesabı tablo testi `test_until_is_the_next_time_the_clock_shows_that_hour`.
+- ✅ İki `queue run` aynı anda → ikincisi anlaşılır mesajla çıkıyor (kod 5): `test_a_second_queue_run_stops_with_a_clear_message`, CLI'de `test_a_second_queue_run_exits_with_code_5`; gerçek bir alt süreç kilidi tutarken de (`test_an_item_left_running_by_a_killed_process_is_pending_again`).
+- ✅ Ölü PID'li kilit otomatik temizleniyor: `test_a_lock_left_by_a_dead_process_is_cleared`; yeniden kullanılan pid ayırt ediliyor: `test_process_alive_tells_a_reused_pid_from_the_owner`.
+- ✅ Süreç öldürülünce yarım iş sonraki çalıştırmada `pending`: gerçek süreç öldürülerek `test_an_item_left_running_by_a_killed_process_is_pending_again`.
+- ✅ Bildirim metninde kod veya sır yok: `test_queue_run_notify_sends_only_the_counts` (görev isteminde kod + sahte anahtar; ntfy'ye giden başlık/metinde yok, konu çıktıda yok).
+- ✅ `desktop-notifier` kurulu değilken hata vermiyor: `test_the_real_desktop_sender_without_the_package_does_not_raise`; elle: ekstrasız `notify test` "atlandı, kurulu değil", ekstrayla Windows'ta gerçek bildirim "gönderildi".
+- ⏳ 12b: öğrenen yönlendirme tablo testi.
+
+**Elle duman testi (geçici klasör):** `queue add` (Türkçe, profil `cheap (varsayılan)`), `queue list`, `status` kuyruk satırı, `queue remove`, `--until 7:5` → kod 2, sağlayıcısız config'te `queue run` → iş `failed` notuyla, kod 1. Ollama kapalı olduğu için gerçek modelle `queue run` denenmedi (uçtan uca testler sahte Ollama ile).
+
+**Dürüst notlar:**
+- Testler önce yazıldı ve kırmızı koşuldu (import hatası ile); `test_process_alive…` ve `--until` tablo testleri kod yazıldıktan sonra ilk koşuda yeşildi.
+- Windows'ta venv `python.exe`'si gerçek yorumlayıcıyı alt süreç olarak başlatıyor; kesinti testi ilk denemede yalnız üst süreci öldürdüğü için kırmızıydı (kod doğruydu), test süreç ağacını öldürecek şekilde düzeltildi.
+- de/es/fr çevirilerini ana dili konuşan biri gözden geçirmedi.
+- İşin notu çalıştığı andaki dilde saklanıyor.
+
+Testler: **1286 geçti** (1238 + 48). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 11b (PR #22), 2026-11-14
 `/code-review` 10 bulgu; hepsi düzeltildi (D-071). Önce 9 kırmızı test.
