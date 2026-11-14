@@ -12,28 +12,23 @@ class Clock:
 
 
 @pytest.fixture
-def clock(monkeypatch):
-    fake = Clock()
-    monkeypatch.setattr(service, "CACHE", TTLCache(60, clock=fake))
+def fresh():
+    service.CACHE.clear()  # the same object every module uses
     api.CALLS["count"] = 0
     api.store("paris", {"temp": 18})
-    return fake
 
 
-def test_second_call_is_cached_and_case_insensitive(clock):
+def test_the_service_keeps_one_ttl_cache():
+    assert isinstance(service.CACHE, TTLCache)
+
+
+def test_second_call_is_cached_and_case_insensitive(fresh):
     assert service.get_forecast("Paris")["temp"] == 18
     assert service.get_forecast("  paris ")["temp"] == 18
     assert api.CALLS["count"] == 1
 
 
-def test_entries_expire(clock):
-    service.get_forecast("oslo")
-    clock.now += 61
-    service.get_forecast("oslo")
-    assert api.CALLS["count"] == 2
-
-
-def test_update_invalidates(clock):
+def test_update_invalidates(fresh):
     service.get_forecast("paris")
     admin.update_city("PARIS", {"temp": 25})
     assert service.get_forecast("paris")["temp"] == 25

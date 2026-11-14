@@ -802,3 +802,17 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Yer ve araçlar:** `bench/` paket değil (wheel'e girmez), testler `pythonpath = ["."]` ile içe aktarır; pyright `bench`'i denetler, ruff/pyright `bench/tasks`'ı denetlemez (başlangıç kodu bilerek kaba). Geliştirici aracı olduğu için çıktısı yalnız İngilizce (i18n yok).
 - **Görevler** Claude tarafından sıfırdan yazıldı (mevcut setlerden kopya yok); tek seferlik üretici betikler, görev dosyaları yazıldıktan sonra silindi (iki kopya kalmasın).
 - **Testler:** 1346 → 1390 (+44; bench doğrulamaları normal koşuya girdi, ~55 sn ekler).
+
+## D-077 – Faz 13a kod denetimi düzeltmeleri (2026-11-15, Faz 13a)
+`/code-review` (PR #25): 10 bulgu, hepsi düzeltildi; önce 9 kırmızı test (2'si baştan yeşildi, regresyon koruması olarak kaldı).
+- **İstem stdin'den, izinler `--settings` dosyasından:** bu makinede `claude` npm `claude.CMD`; çok satırlı/tırnaklı istem argümanı cmd.exe'de kesilir ve arkadan gelen bayraklar kaybolurdu (bütün A/B koşuları geçersiz olurdu). Artık hiçbir argümanda istem, yeni satır veya tırnak yok; mod B ipucu istemin başına eklenir (`--append-system-prompt` yerine). `--setting-sources project` ile `--settings` dosyasının birlikte çalıştığı 13b'nin ilk gerçek koşusunda doğrulanacak.
+- **Takılan görünür kontrol** (`run_check`) 124 döner; benchmark'ı durdurmaz.
+- **Claude zaman aşımı/çökmesi:** çıkış kodu ve stderr hatada kalır; kullanım yoksa kayıt `claude=None` ve token ortalamalarına **0 olarak girmez** (`runs_without_usage` sayısı).
+- **Görev 10:** mutantlar ve "gerçek kod" koşusu, gizli testin içine gömülü **özgün** `stack.py`'den; işçinin `stack.py`'yi yeniden biçimlendirmesi ya da zayıf testlere uydurması puanı bozmaz.
+- **Görev 07:** listeli frozen dataclass hash'lenemez; istemden "hashing" çıkarıldı.
+- **Görev 20:** gizli test önbellek nesnesini değiştirmiyor (`service.CACHE.clear()`); önbelleği adıyla içe aktaran doğru çözüm de geçiyor. Süre dolması birim testte (enjekte saatle).
+- **Sızıntı koruması tetiklenince** (`LeakError`) koşu hatası sayılmaz: bütün benchmark durur (kod 3).
+- **`--ollama-model-2`** yalnız mod B'de kullanılabilir (C `cheap` = kademe 1); yardım metni, README ve sonuç başlığı bunu söylüyor.
+- **Bench config'i** ruamel (`loader.dump_yaml`) ile yazılıyor; tuhaf model adları (": ", "#") bozmuyor.
+- **`BenchError`** artık `OrkestraError`'dan türüyor (AGENTS.md hata hiyerarşisi kuralı).
+- **Testler:** 1390 → 1400 (+10).

@@ -42,9 +42,11 @@ from contextlib import closing
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from ruamel.yaml import YAML
+
+from orkestra.errors import OrkestraError
 
 BENCH_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BENCH_DIR.parent
@@ -76,7 +78,7 @@ GIT_ENV = {
 }  # fmt: skip
 
 
-class BenchError(Exception):
+class BenchError(OrkestraError):
     """A run could not be carried out (bad output, missing program)."""
 
 
@@ -161,8 +163,13 @@ def run_check(task: Task, workspace: Path) -> tuple[int, str]:
     """The task's visible check (``check:``), as the worker would run it."""
     if not task.check:
         return 0, ""
-    done = subprocess.run(_python(task.check), cwd=workspace, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=EVAL_TIMEOUT_S)  # fmt: skip
+    try:
+        done = subprocess.run(
+            _python(task.check), cwd=workspace, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=EVAL_TIMEOUT_S,
+        )  # fmt: skip
+    except subprocess.TimeoutExpired:  # a hanging worker result must not stop the benchmark
+        return 124, f"visible check timed out after {EVAL_TIMEOUT_S} s"
     return done.returncode, done.stdout + done.stderr
 
 
@@ -272,15 +279,21 @@ class Completed:
     stderr: str
 
 
-Runner = Callable[[Sequence[str], Path, dict[str, str], float], Completed]
+class Runner(Protocol):
+    def __call__(
+        self, args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+        input_text: str | None = None,
+    ) -> Completed: ...  # fmt: skip
 
 
 def subprocess_runner(
-    args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float
-) -> Completed:
+    args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+    input_text: str | None = None,
+) -> Completed:  # fmt: skip
     try:
         done = subprocess.run(list(args), cwd=cwd, env=env, capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", timeout=timeout)  # fmt: skip
+                              encoding="utf-8", errors="replace", timeout=timeout,
+                              input=input_text)  # fmt: skip
     except subprocess.TimeoutExpired:
         return Completed(124, "", f"timed out after {timeout:.0f} s")
     return Completed(done.returncode, done.stdout, done.stderr)
@@ -313,18 +326,29 @@ class Record:
     output_tail: str = field(default="", repr=False)
 
 
-def claude_args(mode: str, prompt: str, settings: Settings) -> list[str]:
-    args = [settings.claude, "-p", prompt, "--output-format", "json",
+def claude_args(mode: str, settings: Settings, settings_file: Path) -> list[str]:
+    """No argument holds the prompt, a newline or a quote: on Windows ``claude`` is an npm
+    ``claude.CMD`` and cmd.exe would cut or mangle them. The prompt goes in on stdin, the tool
+    permissions in a settings file."""
+    args = [settings.claude, "-p", "--output-format", "json",
             "--permission-mode", "acceptEdits", "--setting-sources", "project",
-            "--strict-mcp-config", "--no-session-persistence"]  # fmt: skip
+            "--strict-mcp-config", "--no-session-persistence",
+            "--settings", str(settings_file)]  # fmt: skip
     if settings.claude_model:
         args += ["--model", settings.claude_model]
     if mode == "a":
         args.append("--disable-slash-commands")
-    else:
-        args += ["--append-system-prompt", SKILL_HINT]
+    return args
+
+
+def claude_prompt(mode: str, prompt: str) -> str:
+    return f"{SKILL_HINT}\n\n{prompt}" if mode == "b" else prompt
+
+
+def claude_settings(mode: str, path: Path) -> Path:
     tools = [*CLAUDE_TOOLS, *(ORKESTRA_TOOLS if mode == "b" else ())]
-    return [*args, "--allowedTools", *tools]
+    path.write_text(json.dumps({"permissions": {"allow": tools}}, indent=2), encoding="utf-8")
+    return path
 
 
 def parse_claude(stdout: str) -> dict[str, Any]:
@@ -387,14 +411,11 @@ def run_once(
     error: str | None = None
     try:
         if mode in ("a", "b"):
-            done = runner(
-                claude_args(mode, task.prompt, settings), workspace, env, settings.timeout_s
-            )
-            claude = parse_claude(done.stdout)
-            if done.returncode != 0:
-                error = f"claude exited with {done.returncode}: {done.stderr[-300:]}"
+            claude, error = _run_claude(task, mode, workspace, run_dir, settings, runner, env)
         else:
             error = _run_orkestra(task, workspace, run_dir, settings, runner, env)
+    except LeakError:
+        raise  # never a model failure: the whole benchmark stops
     except BenchError as exc:
         error = str(exc)
     duration = round(time.monotonic() - started, 2)
@@ -406,6 +427,24 @@ def run_once(
         workers=worker_stats(home, started_at), error=error,
         check_passed=(check_code == 0) if task.check else None, output_tail=result.output[-1500:],
     )  # fmt: skip
+
+
+def _run_claude(
+    task: Task, mode: str, workspace: Path, run_dir: Path, settings: Settings, runner: Runner,
+    env: dict[str, str],
+) -> tuple[dict[str, Any] | None, str | None]:  # fmt: skip
+    """Claude's usage and an error; a failed run keeps its exit code and stderr, and its
+    usage only when Claude still printed it (a timeout has none: it is not counted as 0)."""
+    settings_file = claude_settings(mode, run_dir / "claude-settings.json")
+    done = runner(claude_args(mode, settings, settings_file), workspace, env,
+                  settings.timeout_s, input_text=claude_prompt(mode, task.prompt))  # fmt: skip
+    if done.returncode != 0:
+        error = f"claude exited with {done.returncode}: {done.stderr[-300:]}"
+        try:
+            return parse_claude(done.stdout), error
+        except BenchError:
+            return None, error
+    return parse_claude(done.stdout), None
 
 
 def _run_orkestra(
@@ -438,17 +477,19 @@ def _run_orkestra(
 def setup_home(home: Path, settings: Settings) -> None:
     """Orkestra's config and consent for the bench: local Ollama only, the cache off (the same
     task runs several times), adaptive routing off (every repeat routes the same way)."""
-    home.mkdir(parents=True, exist_ok=True)
-    models = f"      - id: {settings.ollama_model}\n        tier: 1\n"
-    if settings.ollama_model_2:
-        models += f"      - id: {settings.ollama_model_2}\n        tier: 2\n"
-    (home / "config.yaml").write_text(
-        "version: 1\nlanguage: en\ncache:\n  enabled: false\nrouting:\n  adaptive: false\n"
-        "notify:\n  desktop: false\nproviders:\n  ollama:\n    type: ollama\n    models:\n"
-        + models, encoding="utf-8",
-    )  # fmt: skip
     from orkestra.config import loader
     from orkestra.state import consent, db
+
+    home.mkdir(parents=True, exist_ok=True)
+    models = [{"id": settings.ollama_model, "tier": 1}]
+    if settings.ollama_model_2:
+        models.append({"id": settings.ollama_model_2, "tier": 2})
+    document = {
+        "version": 1, "language": "en", "cache": {"enabled": False},
+        "routing": {"adaptive": False}, "notify": {"desktop": False},
+        "providers": {"ollama": {"type": "ollama", "models": models}},
+    }  # fmt: skip
+    (home / "config.yaml").write_text(loader.dump_yaml(document), encoding="utf-8")
 
     config = loader.load_config(home / "config.yaml", cwd=home, environ={}).config
     with closing(db.connect(home / "state.db")) as conn:
@@ -456,6 +497,11 @@ def setup_home(home: Path, settings: Settings) -> None:
 
 
 # --- results ----------------------------------------------------------------------------------
+
+
+def _with_usage(records: Iterable[Record]) -> list[Record]:
+    """Runs that reported Claude usage; a timeout or crash has none and is not a zero."""
+    return [r for r in records if r.claude is not None]
 
 
 def _claude_tokens(record: Record) -> int:
@@ -488,12 +534,15 @@ def summarize(records: Sequence[Record]) -> dict[str, dict[str, Any]]:
                                          for n in repeats)}
                 for d in DIFFICULTIES if any(r.difficulty == d for r in mine)
             },
-            "claude_tokens_per_task": (_mean(_claude_tokens(r) for r in mine)
+            "claude_tokens_per_task": (_mean(_claude_tokens(r) for r in _with_usage(mine))
                                        if mode != "c" else None),
-            "claude_cache_read_per_task": _mean((r.claude or {}).get("cache_read_input_tokens", 0)
-                                                for r in mine) if mode != "c" else None,
-            "claude_cost_per_task": _mean((r.claude or {}).get("cost_usd", 0.0) for r in mine)
-                                    if mode != "c" else None,
+            "claude_cache_read_per_task": (
+                _mean((r.claude or {}).get("cache_read_input_tokens", 0) for r in _with_usage(mine))
+                if mode != "c" else None),
+            "claude_cost_per_task": _mean((r.claude or {}).get("cost_usd", 0.0)
+                                          for r in _with_usage(mine)) if mode != "c" else None,
+            "runs_without_usage": (sum(1 for r in mine if r.claude is None)
+                                   if mode != "c" else None),
             "worker_cost_per_task": _mean(r.workers.get("cost_usd", 0.0) for r in mine),
             "worker_runs_per_task": _mean(r.workers.get("runs", 0) for r in mine),
             "savings_estimate_per_task": _mean(r.workers.get("savings_tokens", 0) for r in mine),
@@ -579,7 +628,10 @@ def _parser() -> argparse.ArgumentParser:
         "--work-dir", type=Path, default=Path(tempfile.gettempdir()) / "orkestra-bench"
     )
     parser.add_argument("--ollama-model", default=DEFAULT_OLLAMA_MODEL)
-    parser.add_argument("--ollama-model-2", default=None, help="an optional tier-2 Ollama model")
+    parser.add_argument("--ollama-model-2", default=None,
+                        help="an optional tier-2 Ollama model; only mode B can use it "
+                             "(when Claude asks for tier 2): mode C runs the cheap "
+                             "profile, tier 1")  # fmt: skip
     parser.add_argument("--claude-model", default=None)
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
     parser.add_argument("--dry-run", action="store_true",
@@ -617,7 +669,7 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner = subprocess_runne
                    f"{platform.processor() or platform.machine()}",
         "python": platform.python_version(), "modes": "".join(modes), "repeat": opts.repeat,
         "tasks": len(tasks), "ollama_model": opts.ollama_model,
-        "ollama_model_2": opts.ollama_model_2 or "-",
+        "ollama_model_2 (tier 2, mode B only)": opts.ollama_model_2 or "-",
         "claude": _version([claude, "--version"]) if "a" in modes or "b" in modes else "-",
         "claude_model": opts.claude_model or "default",
         "orkestra": _version([*settings.orkestra, "--version"]),
@@ -626,7 +678,11 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner = subprocess_runne
     for repeat in range(1, opts.repeat + 1):
         for task in tasks:
             for mode in modes:
-                record = run_once(task, mode, repeat, settings, runner=runner, home=home)
+                try:
+                    record = run_once(task, mode, repeat, settings, runner=runner, home=home)
+                except LeakError as exc:
+                    print(f"STOPPED, the leak guard tripped: {exc}", file=sys.stderr)
+                    return 3
                 records.append(record)
                 mark = "PASS" if record.passed else "fail"
                 print(f"[{len(records)}/{total}] {task.id} {mode} #{repeat}: {mark} "

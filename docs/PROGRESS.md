@@ -30,11 +30,24 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable – Genel bakış düzeltmeleri (ek) | ⏳ | | `gc` ile eski `runs`/`usage`/`queue` satırları, `desktop-notifier` üst sınırı, düzenlenebilir kurulum notu, `cli.py`/`runner.py` bölme, `notify.ntfy_url`, `queue remove --finished`, eski dal ve not dosyası temizliği; README güncelleme ve kısaltma (durum kutusu Faz 0–4'te kalmış), "Bilinen sınırlar" bölümü, gerçek modelle/terminalde elle kullanım turu (ayrıntı: yerel YAPILIS_PLANI.md) |
-| 13a – Benchmark aracı ve 20 görev | ✅ | 2026-11-15 | `bench/run_bench.py`, 20 görev (8/8/4) + gizli test + referans çözüm, sızıntı koruması, kuru koşu (D-076) |
+| 13a – Benchmark aracı ve 20 görev | ✅ | 2026-11-15 | `bench/run_bench.py`, 20 görev (8/8/4) + gizli test + referans çözüm, sızıntı koruması, kuru koşu (D-076); kod denetimi (D-077) |
 | 13b – Gerçek benchmark koşusu ve sonuçlar | ⏳ | | kullanıcının Claude kotası + Ollama; `bench/results/`, README tablosu, `bench/README.md` sonuçlar |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 13a (PR #25), 2026-11-15
+`/code-review` 10 bulgu; hepsi düzeltildi (D-077). Önce kırmızı testler.
+- ✅ İstem stdin'den, hiçbir argümanda yeni satır/tırnak yok, izinler `--settings` dosyasında (`test_claude_gets_the_prompt_on_stdin_and_no_argument_holds_a_newline`).
+- ✅ Takılan görünür kontrol benchmark'ı durdurmuyor (`test_a_hanging_visible_check_is_a_failure_not_a_crash`).
+- ✅ Claude zaman aşımı nedeniyle kaydediliyor, 0 token sayılmıyor (`test_a_claude_timeout_keeps_the_reason_and_does_not_count_as_zero_tokens`).
+- ✅ Görev 10 özgün koda karşı puanlıyor (`test_a_reformatted_stack_does_not_break_the_mutation_scoring`, `test_a_stack_changed_to_fit_weak_tests_is_still_caught`; ikisi baştan yeşildi, koruma olarak kaldı).
+- ✅ Görev 07 istemi imkânsızı istemiyor (`test_the_dataclass_task_does_not_ask_for_the_impossible`); görev 20 adıyla içe aktaran çözümü kabul ediyor (`test_a_cache_imported_by_name_also_passes`).
+- ✅ Sızıntı koruması benchmark'ı durduruyor (`test_a_leak_in_mode_c_stops_the_benchmark`).
+- ✅ Bench config'i ruamel ile, tuhaf model adlarıyla geçerli (`test_the_bench_home_config_is_valid_yaml_even_for_odd_model_ids`); `BenchError` hiyerarşide (`test_bench_errors_come_from_the_orkestra_hierarchy`).
+- ✅ `--ollama-model-2` belgesi düzeltildi (yalnız mod B).
+
+Testler: **1400 geçti** (1390 + 10). ruff, ruff format, pyright temiz.
 
 ### Faz 13a – Benchmark aracı ve 20 görev (2026-11-15)
 **Yapılanlar (D-076):**

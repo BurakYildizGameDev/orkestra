@@ -9,12 +9,14 @@ including the bad results.
 | Mode | Who works | How |
 |---|---|---|
 | A – Claude only | Claude Code | `claude -p "<task>" --output-format json`, no skills (`--disable-slash-commands`), no MCP servers (`--strict-mcp-config`) |
-| B – Claude + Orkestra skill | Claude Code as chief, Orkestra workers | the same, with the Orkestra skill in the workspace (`.claude/skills/orkestra/SKILL.md`), permission to run `orkestra`, and a short hint to delegate when it fits |
+| B – Claude + Orkestra skill | Claude Code as chief, Orkestra workers | the same, with the Orkestra skill in the workspace (`.claude/skills/orkestra/SKILL.md`), permission to run `orkestra`, and a short hint to delegate when it fits, put before the task text |
 | C – Orkestra only (cheap) | Orkestra, no chief | `orkestra run <task> --profile cheap --json`; a passing run is applied with `orkestra apply` |
 
 A and B use `--setting-sources project`, so personal settings, hooks and memory do not take
 part, and the same tool permissions: read, edit, write, search, `python`, `pytest`, `git`
-(B also `orkestra`). B and C use an Orkestra home made for the run: local Ollama only, the
+(B also `orkestra`). The task text goes to Claude on **stdin** and the permissions in a
+`--settings` file: on Windows `claude` is an npm `claude.CMD`, and cmd.exe would cut a
+multi-line argument or mangle its quotes. B and C use an Orkestra home made for the run: local Ollama only, the
 answer cache off (the same task runs several times) and adaptive routing off (every repeat
 routes the same way).
 
@@ -64,7 +66,10 @@ uv run python bench/run_bench.py --mode all --repeat 3          # 180 runs
 ```
 
 Options: `--ollama-model` (default `qwen2.5-coder:14b`), `--ollama-model-2` (an optional
-tier-2 model), `--claude-model`, `--timeout` (per run, default 900 s), `--work-dir`, `--out`.
+tier-2 model; only mode B can use it, when Claude asks for tier 2: mode C runs the `cheap`
+profile, tier 1), `--claude-model`, `--timeout` (per run, default 900 s), `--work-dir`,
+`--out`. If the leak guard trips, the whole benchmark stops (exit code 3): it is never counted
+as a model failure.
 
 Modes A and B use your Claude Code quota: a full run is 120 Claude sessions. Ollama must be
 running for B and C. Every run is written to `results/<date>.json` as it ends (a crash keeps
@@ -77,7 +82,8 @@ what was done) and the tables to `results/<date>.md`.
   repeats.
 - **Claude tokens per task:** input + output + cache creation from Claude Code's JSON;
   cache reads are kept apart. The primary measure: on a subscription the dollar figure is not
-  what you pay.
+  what you pay. A run that reported no usage (a timeout, a crash) is left out of the token
+  means, not counted as zero; their number is `runs_without_usage`.
 - **Worker cost, runs, savings estimate:** from Orkestra's own records (`orkestra stats`) in
   the bench home, for the time of each run. The savings estimate (worker output tokens minus
   the envelope the chief read) is compared with the real difference in Claude tokens (A − B),

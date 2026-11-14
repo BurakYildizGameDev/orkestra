@@ -129,17 +129,26 @@ CLAUDE_JSON = {
 class FakeRunner:
     """Plays ``claude`` and ``orkestra``; ``solve`` copies the solution in as a worker would."""
 
-    def __init__(self, task: rb.Task, *, solve: bool = True, claude_json: Any = CLAUDE_JSON):
+    def __init__(
+        self, task: rb.Task, *, solve: bool = True, claude_json: Any = CLAUDE_JSON,
+        claude_exit: int = 0,
+    ) -> None:  # fmt: skip
         self.task = task
         self.solve = solve
         self.claude_json = claude_json
+        self.claude_exit = claude_exit
         self.calls: list[tuple[list[str], Path, dict[str, str]]] = []
+        self.stdin: list[str | None] = []
 
     def __call__(
-        self, args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float
-    ) -> rb.Completed:
+        self, args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+        input_text: str | None = None,
+    ) -> rb.Completed:  # fmt: skip
         self.calls.append((list(args), cwd, dict(env)))
+        self.stdin.append(input_text)
         if Path(args[0]).stem.lower().startswith("claude"):
+            if self.claude_exit:
+                return rb.Completed(self.claude_exit, "", "timed out after 900 s")
             if self.solve:
                 shutil.copytree(self.task.root / "solution", cwd, dirs_exist_ok=True)
             out = (
@@ -265,3 +274,129 @@ def test_dry_run_checks_every_task_and_starts_nothing(
     assert code == 0
     assert f"{len(TASKS)} tasks" in out and f"= {len(TASKS) * 9} runs" in out
     assert "nothing was started" in out
+
+
+# --- code review fixes (PR #25, D-077) ----------------------------------------------------
+
+
+def test_claude_gets_the_prompt_on_stdin_and_no_argument_holds_a_newline(tmp_path: Path) -> None:
+    task = _task("14-bugfix-csv-line")  # its prompt has quotes, a pipe-free "" and newlines
+    for mode in ("a", "b"):
+        runner = FakeRunner(task)
+        rb.run_once(task, mode, 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+        args = runner.calls[0][0]
+        assert all("\n" not in arg and '"' not in arg for arg in args), args
+        assert task.prompt.strip() not in " ".join(args)
+        assert runner.stdin[0] is not None and task.prompt.strip() in runner.stdin[0]
+        settings_file = Path(args[args.index("--settings") + 1])
+        allowed = json.loads(settings_file.read_text(encoding="utf-8"))["permissions"]["allow"]
+        assert ("Bash(orkestra:*)" in allowed) == (mode == "b")
+        if mode == "b":
+            assert runner.stdin[0].startswith(rb.SKILL_HINT)
+        else:
+            assert rb.SKILL_HINT not in runner.stdin[0]
+
+
+def test_a_hanging_visible_check_is_a_failure_not_a_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(rb, "EVAL_TIMEOUT_S", 1)
+    task = rb.Task(id="x", difficulty="easy", category="c", prompt="p", files=("a.py",),
+                   root=tmp_path, check='python -c "import time; time.sleep(30)"')  # fmt: skip
+    code, output = rb.run_check(task, tmp_path)
+    assert code == 124 and "timed out" in output
+
+
+def test_a_claude_timeout_keeps_the_reason_and_does_not_count_as_zero_tokens(
+    tmp_path: Path,
+) -> None:
+    task = _task("01-docstring-geometry")
+    runner = FakeRunner(task, claude_exit=124)
+    record = rb.run_once(task, "a", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    assert not record.passed and record.claude is None
+    assert record.error is not None and "124" in record.error and "timed out" in record.error
+    good = _record("a", 1, "t1", True, tokens=1000)
+    summary = rb.summarize([good, record])["a"]
+    assert summary["claude_tokens_per_task"] == pytest.approx(1100)  # the timeout is left out
+    assert summary["runs_without_usage"] == 1
+
+
+def test_a_reformatted_stack_does_not_break_the_mutation_scoring(tmp_path: Path) -> None:
+    task = _task("10-write-tests-stack")
+    workspace = rb.prepare_workspace(task, tmp_path / "ws")
+    shutil.copytree(task.root / "solution", workspace, dirs_exist_ok=True)
+    stack = workspace / "stack.py"
+    text = stack.read_text(encoding="utf-8")
+    text = text.replace("return self._items.pop()", "return self._items.pop()  # the top")
+    text = text.replace("def push(self, item):", "def push(self, item: object) -> None:")
+    stack.write_text(text, encoding="utf-8")
+    result = rb.evaluate(task, workspace, tmp_path / "eval")
+    assert result.passed, result.output
+
+
+def test_a_stack_changed_to_fit_weak_tests_is_still_caught(tmp_path: Path) -> None:
+    task = _task("10-write-tests-stack")
+    workspace = rb.prepare_workspace(task, tmp_path / "ws")
+    shutil.copytree(task.root / "solution", workspace, dirs_exist_ok=True)
+    stack = workspace / "stack.py"  # the worker "fixes" the code instead of the tests
+    stack.write_text(stack.read_text(encoding="utf-8").replace(
+        "return self._items.pop()", "return self._items.pop(0)"), encoding="utf-8")  # fmt: skip
+    (workspace / "tests" / "test_stack.py").write_text(
+        "from stack import Stack\n\ndef test_len():\n    assert len(Stack()) == 0\n",
+        encoding="utf-8",
+    )
+    assert not rb.evaluate(task, workspace, tmp_path / "eval").passed
+
+
+def test_the_dataclass_task_does_not_ask_for_the_impossible() -> None:
+    assert "hash" not in _task("07-dataclass-point").prompt.lower()
+
+
+def test_a_cache_imported_by_name_also_passes(tmp_path: Path) -> None:
+    task = _task("20-cache-invalidation")
+    workspace = rb.prepare_workspace(task, tmp_path / "ws")
+    shutil.copytree(task.root / "solution", workspace, dirs_exist_ok=True)
+    (workspace / "weather" / "admin.py").write_text(
+        "from weather import api\nfrom weather.service import CACHE, _key\n\n\n"
+        "def update_city(city, data):\n    api.store(_key(city), data)\n"
+        "    CACHE.invalidate(_key(city))\n",
+        encoding="utf-8",
+    )
+    result = rb.evaluate(task, workspace, tmp_path / "eval")
+    assert result.passed, result.output
+
+
+def test_a_leak_in_mode_c_stops_the_benchmark(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task = _task()
+    real = rb.orkestra_task
+
+    def leaky(t: rb.Task) -> dict[str, Any]:
+        document = real(t)
+        document["context"]["globs"] = ["../**/*.py"]
+        return document
+
+    monkeypatch.setattr(rb, "orkestra_task", leaky)
+    with pytest.raises(rb.LeakError):
+        rb.run_once(task, "c", 1, _settings(tmp_path), runner=FakeRunner(task),
+                    home=tmp_path / "home")  # fmt: skip
+
+
+def test_the_bench_home_config_is_valid_yaml_even_for_odd_model_ids(tmp_path: Path) -> None:
+    from orkestra.config import loader
+
+    settings = rb.Settings(out_dir=tmp_path, work_dir=tmp_path, claude="claude",
+                           orkestra=["orkestra"], ollama_model="weird: model #1",
+                           claude_model=None, timeout_s=1, ollama_model_2="second")  # fmt: skip
+    rb.setup_home(tmp_path / "home", settings)
+    config = loader.load_config(tmp_path / "home" / "config.yaml", cwd=tmp_path, environ={}).config
+    models = [(m.id, m.tier) for m in config.providers["ollama"].models]  # type: ignore[union-attr]
+    assert models == [("weird: model #1", 1), ("second", 2)]
+    assert config.cache.enabled is False and config.routing.adaptive is False
+
+
+def test_bench_errors_come_from_the_orkestra_hierarchy() -> None:
+    from orkestra.errors import OrkestraError
+
+    assert issubclass(rb.BenchError, OrkestraError) and issubclass(rb.LeakError, rb.BenchError)
