@@ -26,12 +26,26 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 10a – Devir dosyası ve özet | ✅ | 2026-11-12 | `handoff init/update/check/show`, `status` devir satırı, migration 2; Claude denetimi (D-066) |
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
-| 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070) |
+| 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
 | 12 – Gece vardiyası, bildirim, öğrenen yönlendirme | ⏳ | | |
 | 13 – Benchmark | ⏳ | | |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 11b (PR #22), 2026-11-14
+`/code-review` 10 bulgu; hepsi düzeltildi (D-071). Önce 9 kırmızı test.
+- ✅ Bozuk config'te `ui` çökmüyor, hatayı gösteriyor (`test_ui_opens_with_a_broken_config_and_says_what_is_wrong`).
+- ✅ Sınır boşaltma değeri tanımlandığı dosyadan siliyor, tanımlı değilse hiçbir şey yazmıyor (`test_clearing_a_limit_removes_it_where_it_is_defined`, `test_clearing_a_limit_that_is_not_set_writes_nothing`).
+- ✅ Aynı dosyaya giden değerler tek kayıt (`test_several_values_for_one_file_are_one_save`).
+- ✅ Profiller yalnız değişeni yazıyor (`test_saving_the_profile_only_writes_what_changed`).
+- ✅ Bir sekmedeki değişiklik diğer sekmelerde görünüyor (`test_other_tabs_show_a_change_made_in_one_tab`).
+- ✅ Kaybolan sekmeye gelen test sonucu çökertmiyor (`test_a_test_result_for_a_pane_that_is_gone_is_dropped`).
+- ✅ Sihirbaz daemon iş parçacığında, çıkış onu beklemiyor (`test_the_wizard_runs_in_a_daemon_thread_so_quitting_never_waits_for_it`).
+- ✅ Sihirbazdaki beklenmeyen hata başarı sayılmıyor, doğru çıkış kodu (`test_an_unexpected_failure_in_the_wizard_is_not_reported_as_success`).
+- ✅ Sihirbaz akışı tek serviste (`wizard.run_and_save`, CLI ve arayüz ortak; davranış testleri yukarıda).
+
+Testler: **1238 geçti** (1229 + 9). ruff, ruff format, pyright temiz. CI 9/9 yeşil.
 
 ### Faz 11b – Terminal arayüzü, arayüzlü sihirbaz, 5 dil (2026-11-14)
 **Yapılanlar (D-070):**
