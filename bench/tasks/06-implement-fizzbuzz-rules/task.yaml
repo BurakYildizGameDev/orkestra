@@ -1,0 +1,6 @@
+id: 06-implement-fizzbuzz-rules
+difficulty: easy
+category: implement
+files: [rules.py]
+prompt: |
+  Implement play() in rules.py as its docstring describes.

@@ -1,0 +1,8 @@
+id: 02-typehints-text
+difficulty: easy
+category: type-hints
+files: [textutils.py]
+prompt: |
+  Add complete type hints to every function in textutils.py: every parameter and the return
+  type. Use built-in generics (list[str], dict[str, int]) and `X | None` where a value may be
+  missing. Do not change what the functions do.

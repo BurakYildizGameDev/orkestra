@@ -1,0 +1,9 @@
+id: 10-write-tests-stack
+difficulty: medium
+category: tests
+files: [stack.py]
+allow_new_files: true
+prompt: |
+  Write pytest tests for stack.py in a new file tests/test_stack.py. Cover every method and
+  every error case described in the docstrings, so that a wrong implementation would make at
+  least one test fail. Do not change stack.py.

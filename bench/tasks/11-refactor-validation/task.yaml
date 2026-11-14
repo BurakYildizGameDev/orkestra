@@ -1,0 +1,10 @@
+id: 11-refactor-validation
+difficulty: medium
+category: refactor
+files: [signup.py]
+check: python -m pytest -q tests
+prompt: |
+  register() and update_email() in signup.py repeat the same e-mail validation. Move it into
+  one private helper `_normalize_email(email)` that returns the cleaned address (stripped,
+  lower case) or raises ValueError, and make both functions use it. Behaviour must not
+  change; the tests in tests/ must keep passing.

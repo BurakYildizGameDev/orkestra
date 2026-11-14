@@ -1,0 +1,6 @@
+id: 04-implement-roman
+difficulty: easy
+category: implement
+files: [roman.py]
+prompt: |
+  Implement to_roman() and from_roman() in roman.py as their docstrings describe.

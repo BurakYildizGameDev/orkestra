@@ -1,0 +1,16 @@
+id: 17-registry-shapes
+difficulty: hard
+category: multi-file
+files: [shapes/__init__.py, shapes/circle.py, shapes/square.py]
+allow_new_files: true
+check: python -m pytest -q tests
+prompt: |
+  The shapes package picks a shape with an if/elif chain in shapes/__init__.py. Replace it
+  with a registry:
+  - New module shapes/registry.py with `register(name)` (a decorator that stores an area
+    function under `name`; registering a name twice raises ValueError), `get(name)` (KeyError
+    whose message lists the known names) and `available()` (sorted names).
+  - circle.py and square.py register their area functions with it.
+  - Add shapes/triangle.py with a "triangle" shape (keyword arguments base and height).
+  - shapes.area(name, **kwargs) and shapes.available() use the registry; no if/elif chain.
+  The existing tests must keep passing.

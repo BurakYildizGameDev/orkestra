@@ -45,7 +45,7 @@ module-name = "orkestra"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["docs"]
+extend-exclude = ["docs", "bench/tasks"]  # benchmark fixtures: start code is meant to be rough
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
@@ -53,12 +53,14 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 allowed-confusables = ["ı"]
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "bench"]
+exclude = ["bench/tasks"]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # tests import bench/ (Faz 13)
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = ["live: gerçek servis gerektirir"]

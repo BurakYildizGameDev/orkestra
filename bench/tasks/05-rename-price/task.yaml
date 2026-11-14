@@ -1,0 +1,7 @@
+id: 05-rename-price
+difficulty: easy
+category: rename
+files: [pricing.py, report.py]
+prompt: |
+  Rename the function `fmt` in pricing.py to `format_price` and update every place that uses
+  it (report.py). The old name must not exist any more. Behaviour stays the same.

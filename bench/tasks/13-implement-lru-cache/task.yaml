@@ -1,0 +1,7 @@
+id: 13-implement-lru-cache
+difficulty: medium
+category: implement
+files: [lru.py]
+prompt: |
+  Implement the LRUCache class in lru.py as its docstrings describe. Do not use
+  functools.lru_cache.

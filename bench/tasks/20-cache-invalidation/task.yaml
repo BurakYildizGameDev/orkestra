@@ -1,0 +1,18 @@
+id: 20-cache-invalidation
+difficulty: hard
+category: multi-file
+files: [weather/api.py, weather/service.py, weather/admin.py]
+allow_new_files: true
+check: python -m pytest -q tests
+prompt: |
+  weather.service.get_forecast() calls the slow API every time. Add caching across the
+  weather package:
+  - New module weather/cache.py with class TTLCache(ttl_s, clock=time.monotonic) and methods
+    get(key) (None when missing or older than ttl_s), set(key, value), invalidate(key) and
+    clear().
+  - weather/service.py keeps one module-level cache `CACHE = TTLCache(60)` and get_forecast
+    uses it; city names are case-insensitive and surrounding spaces do not matter
+    ("  Paris" and "paris" are one entry).
+  - weather/admin.py update_city() must invalidate that city's cache entry, so the next
+    get_forecast returns the new data.
+  The existing tests must keep passing.

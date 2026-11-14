@@ -1,0 +1,11 @@
+id: 19-rename-class-deprecated
+difficulty: hard
+category: multi-file
+files: [crm/__init__.py, crm/models.py, crm/store.py, crm/export.py]
+check: python -m pytest -q tests
+prompt: |
+  Rename the class UserRecord to Customer everywhere in the crm package (models, store,
+  export, the package's exports). Old code must keep working for now: importing UserRecord
+  from crm or from crm.models still gives the Customer class but emits a DeprecationWarning
+  that names Customer (use a module-level __getattr__, so the warning comes at import/access
+  time). No other module may use the name UserRecord. The existing tests must keep passing.
