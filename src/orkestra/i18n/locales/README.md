@@ -38,3 +38,5 @@ language allows it (`du`, `tú`, `tu`), as the Turkish catalog does (`sen`).
 | dry run | deneme (`--dry-run`) | Probelauf | simulación | simulation |
 | cache | önbellek | Cache | caché | cache |
 | secret | gizli bilgi | Geheimnis | secreto | secret |
+| queue | kuyruk | Warteschlange | cola | file d'attente |
+| notification | bildirim | Benachrichtigung | notificación | notification |

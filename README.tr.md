@@ -43,12 +43,14 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Profil, gizlilik ve yedeğe geçişli yönlendirme; her sağlayıcının neden seçildiğini/elendiğini görme | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Görev dosyaları (YAML/JSON): cevabı doğrula, geri bildirimle tekrar dene, üst kademeye geç | `orkestra run gorev.yaml [--dry-run] [--json]` |
 | Düzenleme görevleri: işçi kodu yalıtılmış worktree'de değiştirir, karar senin testlerinin | `orkestra run duzenle.yaml`, sonra `show --diff`, `apply` |
-| Batch: bağımlılıklarıyla birçok görev, paralel, her sağlayıcı kendi concurrency sınırında | `orkestra batch tasks.yaml [--parallel N] [--fail-fast] [--json]` |
+| Batch: bağımlılıklarıyla birçok görev, paralel, her sağlayıcı kendi concurrency sınırında | `orkestra batch tasks.yaml [--parallel N] [--fail-fast] [--notify] [--json]` |
 | Batch'ten önce maliyet tahmini (hiçbir şey gönderilmez); pahalı batch önce sorar | `orkestra batch tasks.yaml --estimate [--json]`, `--yes-cost` |
 | Bir batch'in geçen koşularını çalıştıkları sırayla uygula, çakışmada dur | `orkestra apply --batch <batch_id> --only-ok [--json]` |
 | İşçiler nasıl gitti: sağlayıcı ve etiket başına başarı oranı, deneme, token, maliyet, süre | `orkestra stats [--since 7d] [--json]` |
 | İşçi olarak kod ajanları (Codex CLI, Antigravity): worktree'de, süreç ağacı temizliğiyle | `cli_agent` sağlayıcıları |
-| Şef için tek bakışta durum (en fazla 15 satır): uygulanmamış koşular, bugünkü bütçe, duraklatılmış sağlayıcılar | `orkestra status [--json]` |
+| Şef için tek bakışta durum (en fazla 15 satır): uygulanmamış koşular, gece kuyruğu, bugünkü bütçe, duraklatılmış sağlayıcılar | `orkestra status [--json]` |
+| Gece kuyruğu: görev veya batch'leri şimdi ekle, sonra (gece, yerel modellerle) çalıştır; aynı anda tek çalıştırma, belirli saatte veya maliyette durur | `orkestra queue add <dosya> [--profile p]`, `queue list`, `queue remove <id>`, `queue run [--until 07:00] [--max-cost-usd X] [--notify]` |
+| Batch veya kuyruk bitince bildirim: masaüstü (isteğe bağlı ek paket) ve telefon (ntfy), yalnız sayılar | `--notify`, `orkestra notify test` |
 | Görev şablonları (docstring, type-hints, tests, summarize, rename-refactor, translate ya da kendi şablonun): dosya başına bir görev | `orkestra run --template docstring --files "src/*.py" [--param k=v]`, `orkestra templates list\|show` |
 | Aynı `ask` tekrar önbellekten gelir: hiçbir şey gönderilmez, maliyeti yok | `--no-cache`, `orkestra cache clear` |
 | Devir dosyası: sıradaki yapay zekâ şefinin devam etmesi için gerekenler; gerçek git durumu, uygulanmamış koşular ve bütçeyle kısa özet | `orkestra handoff init`, `update --section … --add/--set`, `check`, `show [--brief] [--json]`, `to <şef> [--print-only] [--allow-dirty]`, `install-hook` |
@@ -397,12 +399,40 @@ başına biten koşuları, başarı oranını, ortalama deneme ve süreyi, token
 Koşu cevabı veren sağlayıcıya sayılır; üst kademeye geçen koşu son kullandığı sağlayıcıya.
 Hâlâ `running` görünen koşular ayrıca sayılır.
 
+## Gece kuyruğu ve bildirimler
+
+İşleri gün içinde kuyruğa ekle; bilgisayar boşken (örneğin gece, ücretsiz yerel modellerle)
+çalışsın:
+
+```bash
+orkestra queue add tasks/docstrings.yaml                 # şimdi denetlenir; klasör saklanır
+orkestra queue add tasks/tests-batch.yaml --profile cheap
+orkestra queue run --until 07:00 --notify                # terminali açık bırak
+```
+
+- Kuyruk `state.db`'de durur. İşler sırayla, her biri eklendiği klasörde (o projenin
+  `orkestra.yaml`'ı ile) çalışır. `queue add`'den sonra değişen dosya için uyarı yazılır ve
+  güncel hali çalışır. `--profile` verilmezse iş `queue.default_profile` ile çalışır.
+- Aynı anda tek `queue run` çalışır (ikincisi 5 koduyla çıkar); çöken bir çalıştırmanın
+  bıraktığı kilit temizlenir, `running` bıraktığı işler yeniden kuyruğa girer.
+- `--until SS:DD` o saatten sonra yeni iş başlatmaz; `--max-cost-usd` o kadar harcanınca yeni iş
+  başlatmaz (`0` = yalnız ücretsiz iş). Gece maliyeti onaylayacak kimse yok: onay isteyecek batch
+  atlanır ve kuyrukta kalır (`--max-cost-usd` verilmişse sınır karar verir).
+- Servis değildir: uyuyan bilgisayar hiçbir şey çalıştırmaz. Her gece başlatmak için cron veya
+  Windows Görev Zamanlayıcı: [`docs/recipes.tr.md`](docs/recipes.tr.md).
+- Bildirimler (`queue run --notify`, `batch --notify`) yalnız sayıları içerir ("5 bitti,
+  1 başarısız"), görev metni veya kod asla. Masaüstü bildirimi ek paket ister
+  (`uv tool install "orkestra-cli[notify]"`); yoksa sessizce atlanır. Telefon bildirimi
+  [ntfy](https://ntfy.sh) ile: `notify.ntfy_topic_env`'e konu adını tutan ortam değişkeninin
+  adını yaz. `orkestra notify test` her kanalı dener.
+- Sabah: `orkestra status` → `orkestra review` → `orkestra apply`.
+
 ## Şef araçları
 
 **`orkestra status`** oturuma başlarken tek komut: şef ve profil, doğrulamayı geçip `apply` ya
 da `discard` bekleyen düzenleme koşuları, bugünkü bütçe (sağlayıcı başına) ve duraklatılmış
 sağlayıcılar; en fazla 15 satır (`--json` her şeyi verir). Devir dosyası varsa hedefi de
-gösterir (gece kuyruğu sonraki fazda katılır).
+gösterir; kuyrukta bekleyen, çalışan veya başarısız iş varsa onları da.
 
 **Devir dosyası (`orkestra handoff`).** Şefin kotası dolduğunda iş, sıradaki yapay zekânın
 hafızası yerine `.orkestra/HANDOFF.md` ile devam eder: hedef, durum, bitenler, kararlar, açık
@@ -624,7 +654,8 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 9c | Ucuz modeller için ara/değiştir (SEARCH/REPLACE) düzenlemesi | ✅ |
 | 10 | Şef devri (Claude ↔ Codex ↔ Antigravity) | ✅ |
 | 11 | Terminal arayüzü, kurulum sihirbazı, 5 dil | ✅ |
-| 12 | Gece vardiyası kuyruğu, bildirimler, öğrenen yönlendirme | ⏳ |
+| 12a | Gece kuyruğu ve bildirimler | ✅ |
+| 12b | Öğrenen yönlendirme, terminal arayüzünde kuyruk | ⏳ |
 | 13 | Benchmark (kötü sonuçlarla birlikte) | ⏳ |
 | 14 | Paketleme, dokümantasyon, PyPI yayını | ⏳ |
 

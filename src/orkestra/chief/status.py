@@ -12,7 +12,7 @@ import os
 import sqlite3
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -21,11 +21,13 @@ from orkestra.config.schema import Config
 from orkestra.handoff import brief, model, store
 from orkestra.i18n import t
 from orkestra.providers import registry
+from orkestra.queue import store as queue_store
 from orkestra.workspace import service
 
 MAX_LINES = 15
 SHOWN_RUNS = 3  # unapplied runs listed by name
 SHOWN_PROVIDERS = 4  # budget lines before "+N more"
+QUEUE_FAILED_WINDOW = timedelta(hours=24)  # queue failures older than this are not shown
 CHIEF_ENV = "ORKESTRA_CHIEF"
 STATUS_WARNING_KEYS: dict[str, str] = {
     "no_git": "status.handoff.no_git",
@@ -150,6 +152,20 @@ def _unapplied(ctx: StatusContext) -> Section:
     if len(runs) > SHOWN_RUNS:
         lines.append(t("status.unapplied.more", count=len(runs) - SHOWN_RUNS))
     return Section(lines, data)
+
+
+@section("queue", order=40)
+def _queue(ctx: StatusContext) -> Section | None:
+    """Waiting and running queue items and the failures of the last day (Faz 12a); no line
+    when there are none, so an old failure does not stay on the screen."""
+    found = queue_store.counts(ctx.conn, failed_since=ctx.now - QUEUE_FAILED_WINDOW)
+    owner = queue_store.lock_owner(ctx.conn)
+    data = {"pending": found["pending"], "running": found["running"], "failed": found["failed"],
+            "runner_pid": owner.pid if owner is not None else None}  # fmt: skip
+    if not (found["pending"] or found["running"] or found["failed"]):
+        return None
+    return Section([t("status.queue.line", pending=found["pending"], running=found["running"],
+                      failed=found["failed"])], data)  # fmt: skip
 
 
 def _limits_text(row: registry.ProviderRow) -> str:

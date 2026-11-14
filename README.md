@@ -43,13 +43,15 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | Routing with profiles, privacy and failover; see why each provider was chosen or skipped | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Task files (YAML/JSON): verify the answer, retry with feedback, move up a tier | `orkestra run task.yaml [--dry-run] [--json]` |
 | Edit tasks: a worker changes code in an isolated worktree, your tests decide | `orkestra run edit.yaml`, then `show --diff`, `apply` |
-| Batches: many tasks with dependencies, in parallel, each provider within its concurrency | `orkestra batch tasks.yaml [--parallel N] [--fail-fast] [--json]` |
+| Batches: many tasks with dependencies, in parallel, each provider within its concurrency | `orkestra batch tasks.yaml [--parallel N] [--fail-fast] [--notify] [--json]` |
 | Cost estimate before a batch (nothing is sent); a costly batch asks first | `orkestra batch tasks.yaml --estimate [--json]`, `--yes-cost` |
 | Apply a batch's passing runs in the order they ran, stop at a conflict | `orkestra apply --batch <batch_id> --only-ok [--json]` |
 | How the workers did: success rate, attempts, tokens, cost and time per provider and tag | `orkestra stats [--since 7d] [--json]` |
 | Code agents (Codex CLI, Antigravity) as workers, in the worktree, with process-tree cleanup | `cli_agent` providers |
 | A run's envelope, full output, log or change | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
-| The chief's view at a glance (at most 15 lines): unapplied runs, today's budget, paused providers | `orkestra status [--json]` |
+| The chief's view at a glance (at most 15 lines): unapplied runs, the night queue, today's budget, paused providers | `orkestra status [--json]` |
+| Night queue: add tasks or batches now, run them later (at night on local models), one run at a time, stop at a set hour or cost | `orkestra queue add <file> [--profile p]`, `queue list`, `queue remove <id>`, `queue run [--until 07:00] [--max-cost-usd X] [--notify]` |
+| Notifications when a batch or the queue ends: desktop (optional extra) and phone (ntfy), counts only | `--notify`, `orkestra notify test` |
 | Task templates (docstring, type-hints, tests, summarize, rename-refactor, translate, or your own): one task per file | `orkestra run --template docstring --files "src/*.py" [--param k=v]`, `orkestra templates list\|show` |
 | The same `ask` again comes from the cache: nothing is sent, it costs nothing | `--no-cache`, `orkestra cache clear` |
 | Handoff file: what the next AI chief needs to continue; a short brief with the real git state, unapplied runs and budget | `orkestra handoff init`, `update --section … --add/--set`, `check`, `show [--brief] [--json]`, `to <chief> [--print-only] [--allow-dirty]`, `install-hook` |
@@ -400,12 +402,41 @@ tag: finished runs, success rate, average attempts and time, tokens and cost. A 
 the provider that answered; an escalated run counts for the last provider it used. Runs still
 marked `running` are counted apart.
 
+## Night queue and notifications
+
+Queue work during the day; let it run while the computer is free (for example at night, on
+free local models):
+
+```bash
+orkestra queue add tasks/docstrings.yaml                 # checked now; the folder is kept
+orkestra queue add tasks/tests-batch.yaml --profile cheap
+orkestra queue run --until 07:00 --notify                # leave the terminal open
+```
+
+- The queue lives in `state.db`. Items run one after another, each in the folder it was added
+  from (with that project's `orkestra.yaml`). A file changed after `queue add` is announced and
+  the current version runs. Without `--profile` an item runs on `queue.default_profile`.
+- Only one `queue run` works at a time (a second one exits with code 5); a lock left by a
+  crashed run is cleared, and items it left `running` are queued again.
+- `--until HH:MM` starts no new item after that time; `--max-cost-usd` starts none once that
+  much is spent (`0` means free work only). Nobody is there to confirm a cost at night: a batch
+  that would ask is skipped and stays queued (with `--max-cost-usd`, the cap decides instead).
+- It is not a service: a sleeping computer runs nothing. To start it every night, use cron or
+  Windows Task Scheduler: see [`docs/recipes.md`](docs/recipes.md).
+- Notifications (`queue run --notify`, `batch --notify`) hold only the counts ("5 finished,
+  1 failed"), never task text or code. Desktop notifications need the extra
+  (`uv tool install "orkestra-cli[notify]"`); without it they are skipped quietly. Phone
+  notifications go to [ntfy](https://ntfy.sh): set `notify.ntfy_topic_env` to the name of an
+  environment variable that holds the topic. `orkestra notify test` tries every channel.
+- In the morning: `orkestra status` → `orkestra review` → `orkestra apply`.
+
 ## Chief tools
 
 **`orkestra status`** is the one command to start a session with: the chief and profile, the
 edit runs that passed and wait for `apply` or `discard`, today's budget per provider and the
 paused providers, in at most 15 lines (`--json` has everything). It also shows the handoff
-file's goal when the project has one (the night queue joins in a later phase).
+file's goal when the project has one, and the night queue's waiting, running and failed
+items when there are any.
 
 **Handoff file (`orkestra handoff`).** When a chief's quota runs out, the work continues in
 `.orkestra/HANDOFF.md` instead of the next AI's memory: the goal, the status, what is done,
@@ -625,7 +656,8 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 9c | SEARCH/REPLACE edits for cheap models (`edit_format: auto`) | ✅ |
 | 10 | Chief handoff (Claude ↔ Codex ↔ Antigravity) | ✅ |
 | 11 | Terminal UI, setup wizard, 5 languages | ✅ |
-| 12 | Night shift queue, notifications, adaptive routing | ⏳ |
+| 12a | Night queue and notifications | ✅ |
+| 12b | Adaptive routing, queue in the terminal interface | ⏳ |
 | 13 | Benchmark (with the bad results too) | ⏳ |
 | 14 | Packaging, docs, PyPI release | ⏳ |
 

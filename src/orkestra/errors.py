@@ -112,6 +112,12 @@ class HandoffNotClean(OrkestraError):
     exit_code = ExitCode.CONFLICT
 
 
+class QueueBusy(OrkestraError):
+    """Another ``queue run`` is working on the queue (Faz 12a); exit code 5, like a lock."""
+
+    exit_code = ExitCode.CONFLICT
+
+
 class ProviderError(OrkestraError):
     """Base class for errors raised by provider adapters.
 

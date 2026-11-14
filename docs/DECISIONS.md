@@ -721,3 +721,39 @@ Mimari §22 güncellendi (D-070).
 
 ## D-071 – Faz 11b kod denetimi düzeltmeleri (2026-11-14, Faz 11b)
 `/code-review` (PR #22): 10 bulgu, hepsi düzeltildi; önce 9 kırmızı test. Bozuk config'te `ui` çökmüyor (boş Select yok, hata gösteriliyor); `config/edits.py`: değer tam tanımlandığı dosyaya yazılır, `None` her tanımlandığı dosyadan siler ve hiçbir yerde yoksa hiçbir şey yazmaz, aynı dosyaya giden değerler tek kayıt (`set_values`); Profiller yalnız değişeni yazar; bir değişiklikten sonra bütün sekmeler yenilenir; test sonucu yeniden kurulan sekmeye gider, kaybolan sekmede çökmez; sihirbaz ve sağlayıcı testi daemon iş parçacığında (Ctrl+Q beklemez); beklenmeyen hata `init`'i 0 ile bitirmez, `exit_code_for` ile doğru kod; sihirbaz akışı tek serviste (`wizard.run_and_save`, CLI ve arayüz ortak). Testler 1229 → 1238.
+
+## D-072 – Faz 12a: gece kuyruğu ve bildirimler (2026-11-15, Faz 12a)
+**Bağlam:** Mimari §6, §21; plan Faz 12 (1/2). Faz 12 ikiye bölündü: 12a kuyruk + bildirim, 12b öğrenen yönlendirme + arayüzde Kuyruk sekmesi + skill (yerel YAPILIS_PLANI.md).
+**Karar:**
+- **Migration 0003 (`queue`, `queue_lock`).** Mimari §6'daki `queue` tablosuna üç sütun eklendi: `workdir` (işin eklendiği klasör), `file_hash` (§21 hash'i kaydetmeyi istiyor ama tabloda sütunu yoktu) ve `note` (başarısızlık/atlama nedeni). Kilit için ayrı tek satırlık `queue_lock` tablosu (pid + süreç başlama zamanı + başlangıç).
+- **İş eklendiği klasörde çalışır.** Görev yolları ve proje config'i (`orkestra.yaml`) çalışma dizinine göre çözülüyor; cron/Görev Zamanlayıcı başka klasörde başlatır. `queue run` her iş için `contextlib.chdir(workdir)` içinde config'i yeniden yükler ve `run`/`batch` ile aynı servisleri çağırır (`runner.run_task`, `batch.run_batch`). Alt süreç yerine süreç içi: kesinti/kurtarma ve testler basit, bütçe/rezervasyon aynı. Klasör yoksa iş `failed` (not ile).
+- **Kilit:** `BEGIN IMMEDIATE` içinde okunur; sahibi yaşıyorsa `QueueBusy` (yeni hata, kod 5, `HandoffLocked` gibi). "Yaşıyor" = pid var **ve** süreç başlama zamanı kayıtla aynı (±1 sn): pid yeniden kullanılmışsa kilit ölü sayılır. `AccessDenied` yaşıyor sayılır. Kilit `finally` ile bırakılır (Ctrl+C dahil).
+- **Kesinti:** kilidi alan çalıştırma önce `running` → `pending` yapar (kilit tek sahipli olduğu için `running` kalan her iş öksüzdür).
+- **`--until HH:MM`:** başlangıçtan sonraki ilk o saat (22:00'de `08:00` = ertesi sabah; tam o saatte başlatılırsa ertesi gün). Her yeni işten önce bakılır, çalışan iş kesilmez. Saat enjekte edilebilir (`now`).
+- **`--max-cost-usd`:** her yeni işten önce harcanan ≥ sınır ise durur. Ücretli sağlayıcı varsa iş başlamadan tahmin edilir (`batch.estimate_batch`, fiyatlar tazelenir); tahmin kalan tutarı aşıyor veya fiyatı bilinmeyen ücretli model varsa iş **atlanır**. Çalışan iş sınırı aşabilir (sağlayıcı bütçeleri asıl korumadır).
+- **Gece maliyet onayı yok:** `--max-cost-usd` verilmemişse `estimate.confirm_above_usd`'yi aşacak iş atlanır. **Atlanan iş `pending` kalır** (notuyla), bir sonraki çalıştırmada yeniden denenir; aynı çalıştırmada sıradaki işe geçilir. Döngü `id > son_id` ile ilerler, çalışırken eklenen iş de alınır.
+- **Profil:** `--profile` verilmeyen iş `queue.default_profile` ile çalışır, ama bu profil *varsayılan* gibi davranır (config kopyasında `defaults.profile` değişir): yüksek kademe isteyen görev açık `--profile` gibi kullanım hatası vermez (router.tier_range). `queue add --profile` bilinmeyen profili reddeder.
+- **Bozuk iş diğerlerini durdurmaz:** beklenmeyen hata işi `failed` yapar (not: hata metni); `KeyboardInterrupt` döngüyü durdurur, iş `running` kalır ve sonraki çalıştırmada kurtarılır. Çıkış kodu: başarısız iş varsa 1, yoksa 0; kilit doluysa 5; `--until` hatalıysa 2.
+- **Bildirim (`notify/notify.py`):** masaüstü `desktop-notifier` (`orkestra-cli[notify]` ekstrası, `importlib` ile tembel yükleme; yoksa `skipped`), ntfy `https://ntfy.sh/<konu>` httpx POST, konu `notify.ntfy_topic_env`'deki değişkenden; konu yalnız `[A-Za-z0-9_-]{1,64}` (URL'ye başka yol/sorgu eklenemez). Metin yalnız sayılar (`notify.counts`); konu hiçbir çıktıya yazılmaz. Hiçbir kanal hatası komutu düşürmez. `queue run --notify` sonunda sayıları, beklenmeyen hatada kısa "kuyruk hata yüzünden durdu" gönderir (kilit doluyken, kullanım hatasında ve Ctrl+C'de göndermez). `batch --notify` aynı metin. `notify test`: her kanal için satır; hiçbiri gönderilmezse kod 1.
+- **`status`:** `queue` bölümü (order 40): bekleyen/çalışan/başarısız sayısı; hepsi sıfırsa satır yok.
+- **Bağımlılık:** `desktop-notifier>=6.0` yalnız `notify` ekstrasında (Mimari §1'de var; kilitlenen 6.2.0, API'si elle denendi).
+- **Testler gerçek bildirim göndermez:** conftest `no_real_notifications` masaüstünü kapatır, ntfy'ye gidecekleri kaydeder.
+- **Değişen var olan testler:** `test_state.py`'deki şema sürümü beklentileri 2 → 3 (yeni migration; plan gereği), `examples/orkestra.example.yaml` örnek config yorumlarıyla eşitlendi.
+- **Bilinen sınır:** işin notu çalıştığı andaki dilde saklanır (hata metinleri çevrilmiş üretiliyor); başka dilde `queue list` notu o dilde gösterir. Bitmiş işler `queue remove` ile çıkarılana kadar listede kalır.
+- **Testler:** 1238 → 1286 (+48).
+Mimari §6 ve §21 güncellendi (D-072).
+
+## D-073 – Faz 12a kod denetimi düzeltmeleri (2026-11-15, Faz 12a)
+`/code-review` (PR #23): 10 bulgu, hepsi düzeltildi; önce 14 kırmızı test.
+- **ntfy başlığı** HTTP başlığı yerine ntfy'nin `?title=` sorgu parametresinde: başlık ASCII olmak zorundaydı, "Orkestra kuyruğu" `UnicodeEncodeError` veriyordu (Türkçe arayüzde telefon bildirimi hiç gitmiyordu).
+- **Göreli `--config`/`ORKESTRA_CONFIG`** `queue run` başında mutlak yola çevrilir (`service.absolute_config_flag`); işler kendi klasöründe çalıştığı için göreli yol başka yeri gösteriyordu. Varsayılan genel dosya `None` kalır (yoksa varsayılanlar).
+- **`mark_running` yalnız `pending` işi alır**; okunduktan sonra `queue remove` edilen iş çalışmaz (döngü atlar).
+- **Sahipsiz `running` iş çıkarılabilir:** kilidin canlı sahibi yoksa (Ctrl+C/çökme) `queue remove` izin verir. Var olan `test_remove_hides_a_pending_item_but_never_a_running_one` artık canlı kilit tutarak reddi doğruluyor (davranış bilerek değişti).
+- **`--max-cost-usd 0`** = yalnız ücretsiz iş: sınır 0 iken harcanan > 0 olunca durur (önce hiç iş başlamıyordu).
+- **`--until` DST'de kaymaz:** duvar saatinde hesaplanır, sonra kendi UTC ofsetiyle yerelleştirilir (`localize`, testte DST'li sahte saat dilimi; Windows'ta tzdata yok).
+- **Tek görev maliyet onayı beklemez:** `orkestra run` hiç sormadığı için kuyruktaki tek görev de sormaz; onay kapısı yalnız batch için (`cost_skip(confirm=)`). D-072'deki "sınır yoksa onay isteyecek iş atlanır" kuralı yalnız batch'e daraltıldı. Atlanan iş sayısı bildirime de girdi (`notify.counts_skipped`, 5 dil).
+- **`psutil.AccessDenied` artık "bizim koşucumuz değil":** kendi sürecimizin başlama zamanı her zaman okunur; okunamıyorsa başka kullanıcının/sistemin süreci, kilit ölü sayılır (D-072'deki "yaşıyor sayılır" geri alındı; aksi halde yeniden kullanılan pid kuyruğu kalıcı kilitliyordu).
+- **`status` kuyruk satırı** yalnız son 24 saatin başarısızlarını sayar (`counts(failed_since=)`); eski bir başarısızlık satırı sonsuza dek tutmuyor. `queue list` hepsini göstermeye devam eder.
+- **`mark_finished`** yanlış durumda `InternalError` (çıplak `ValueError` değil).
+- **Testler:** 1286 → 1300 (+14).
+Mimari §21 notu güncellendi (D-073).
