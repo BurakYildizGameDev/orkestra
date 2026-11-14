@@ -16,6 +16,7 @@ dependencies = [
     "psutil>=5.9",
     "jsonschema>=4.22",
     "pathspec>=0.12",
+    "textual>=8.2,<9",
 ]
 
 [project.scripts]

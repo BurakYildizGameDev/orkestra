@@ -43,6 +43,7 @@ from orkestra.config.schema import (
     OpenAICompatProvider,
     Provider,
 )
+from orkestra.errors import ConfigError
 from orkestra.i18n import SUPPORTED_LANGUAGES, t
 from orkestra.providers import registry
 from orkestra.state import consent, db
@@ -76,6 +77,21 @@ def yes_no(raw: str) -> bool | None:
     if word in NO_WORDS:
         return False
     return None
+
+
+def confirm_by_asking(
+    ask: Callable[[str, str | None], str], say: Callable[[str], None], text: str, default: bool
+) -> bool:
+    """A yes/no question asked as text, so every supported language's words work."""
+    hint = t("wizard.yes_no.default_yes" if default else "wizard.yes_no.default_no")
+    while True:
+        raw = ask(f"{text} {hint}", "")
+        if not raw.strip():
+            return default
+        answer = yes_no(raw)
+        if answer is not None:
+            return answer
+        say(t("wizard.error.yes_no"))
 
 
 class Prompter(Protocol):
@@ -549,3 +565,62 @@ def save_answers(
             gitignore = root / ".gitignore"
     return Outcome(target, result.config, result.backup, gitignore,
                    [pick.name for pick in answers.providers])  # fmt: skip
+
+
+def outcome_lines(outcome: Outcome, notes: Iterable[str]) -> list[str]:
+    """What the user is told after saving (``init`` and the interface say the same)."""
+    lines = [t("wizard.saved", path=outcome.path)]
+    if outcome.backup is not None:
+        lines.append(t("wizard.backup", path=outcome.backup))
+    if outcome.gitignore is not None:
+        lines.append(t("init.gitignore", entry=loader.GITIGNORE_ENTRY, path=outcome.gitignore))
+    lines.extend(notes)
+    return lines
+
+
+def consent_lines(granted: Iterable[str], waiting: Iterable[str]) -> list[str]:
+    lines: list[str] = []
+    if granted := list(granted):
+        lines.append(t("wizard.consent.granted", names=", ".join(granted)))
+    if waiting := list(waiting):
+        lines.append(t("wizard.consent.missing", names=", ".join(waiting)))
+    return lines
+
+
+def current_config(config_flag: Path | None) -> Config | None:
+    """The config being edited, for the wizard's defaults; ``None`` when there is none yet."""
+    try:
+        loaded = loader.load_config(config_flag)
+    except ConfigError:
+        return None  # an unreadable config: the wizard starts from what it detects
+    return loaded.config if loaded.sources else None
+
+
+def run_and_save(
+    ask: Prompter,
+    found: detect.Detection,
+    *,
+    config_flag: Path | None,
+    project: bool,
+    force: bool,
+    set_language: Callable[[str], None],
+    run_doctor: Callable[[], list[str]],
+) -> Outcome:
+    """The whole wizard, the same for ``init --plain`` and the interface: ask, save, consent
+    for the saved entries, optionally ``doctor``. Everything is told through ``ask.say``."""
+    answers = run_plain(ask, found, set_language=set_language,
+                        project=True if project else None,
+                        current=None if force else current_config(config_flag))  # fmt: skip
+    outcome = save_answers(answers, config_flag=config_flag, now=db.local_now(),
+                           fresh=True if force else None)  # fmt: skip
+    for line in outcome_lines(outcome, answers.notes):
+        ask.say(line)
+    names = consent_names(answers)
+    granted = record_consents(outcome.config, ask_consents(ask, outcome.config, names),
+                              db.local_now())  # fmt: skip
+    for line in consent_lines(granted, [name for name in names if name not in granted]):
+        ask.say(line)
+    if ask.confirm(t("wizard.ask.doctor"), default=True):
+        for line in run_doctor():
+            ask.say(line)
+    return outcome

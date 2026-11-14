@@ -37,6 +37,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Özellik | Komut |
 |---|---|
 | Kurulum sihirbazı (Ollama, Codex/agy/Claude ve API anahtarı değişkenlerini bulur) ya da örnek config | `orkestra init [--plain \| --defaults] [--project] [--force]` |
+| Terminal arayüzü: durum, sağlayıcılar (aç/kapat, test), bütçeler, profiller, onaylar, devir özeti, dil; Türkçe, İngilizce, Almanca, İspanyolca ya da Fransızca | `orkestra ui` |
 | Birleştirilmiş config ve kaynakları, okunur hatalarla doğrulama | `orkestra config show [--json]`, `orkestra config validate` |
 | İşçi modele tek soru; bağlam dosyaları ve isteğe bağlı JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Profil, gizlilik ve yedeğe geçişli yönlendirme; her sağlayıcının neden seçildiğini/elendiğini görme | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
@@ -622,7 +623,7 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 9b | Claude skill: denetim ve elle senaryolar | ✅ |
 | 9c | Ucuz modeller için ara/değiştir (SEARCH/REPLACE) düzenlemesi | ✅ |
 | 10 | Şef devri (Claude ↔ Codex ↔ Antigravity) | ✅ |
-| 11 | Terminal arayüzü, kurulum sihirbazı, 5 dil | ⏳ |
+| 11 | Terminal arayüzü, kurulum sihirbazı, 5 dil | ✅ |
 | 12 | Gece vardiyası kuyruğu, bildirimler, öğrenen yönlendirme | ⏳ |
 | 13 | Benchmark (kötü sonuçlarla birlikte) | ⏳ |
 | 14 | Paketleme, dokümantasyon, PyPI yayını | ⏳ |
