@@ -1389,8 +1389,8 @@ def _add_queue_commands(app: typer.Typer) -> None:
         ] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
-        config_path = ctx.ensure_object(_State).config_path
-        config = loader.load_config(config_path).config
+        config = loader.load_config(ctx.ensure_object(_State).config_path).config
+        config_path = queue_service.absolute_config_flag(ctx.ensure_object(_State).config_path)
 
         def execute(
             item: queue_store.QueueItem, remaining: float | None

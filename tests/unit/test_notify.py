@@ -7,12 +7,14 @@ from typing import Any
 
 import httpx
 import pytest
+import respx
 
 from orkestra.config.schema import NotifyCfg
 from orkestra.i18n import t
 from orkestra.notify import notify
 
 REAL_DESKTOP_SEND = notify.desktop_send  # captured before conftest swaps it out
+REAL_NTFY_POST = notify.ntfy_post
 
 
 class Recorder:
@@ -133,3 +135,19 @@ def test_lines_name_the_variable_not_the_topic() -> None:
     ]
     text = "\n".join(notify.delivery_lines(deliveries, NotifyCfg(ntfy_topic_env="ORK_TOPIC")))
     assert "ORK_TOPIC" in text and "orkestra-cli[notify]" in text
+
+
+def test_the_real_ntfy_post_sends_a_title_with_non_ascii_letters() -> None:
+    with respx.mock(assert_all_called=True) as mock:
+        route = mock.post("https://ntfy.sh/my-topic").mock(return_value=httpx.Response(200))
+        REAL_NTFY_POST("https://ntfy.sh/my-topic", "Orkestra kuyruğu", "2 bitti, 0 başarısız")
+    request = route.calls.last.request
+    assert request.url.params["title"] == "Orkestra kuyruğu"
+    assert request.content.decode("utf-8") == "2 bitti, 0 başarısız"
+
+
+def test_skipped_items_are_counted_in_the_message() -> None:
+    assert notify.counts_text(3, 1, skipped=2) == t(
+        "notify.counts_skipped", finished=3, failed=1, skipped=2
+    )
+    assert notify.counts_text(3, 1, skipped=0) == t("notify.counts", finished=3, failed=1)

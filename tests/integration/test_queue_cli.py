@@ -306,3 +306,38 @@ def test_queue_add_refuses_an_unknown_profile_and_a_broken_file(
     assert code == 2
     code, out, _ = _run(["queue", "list"], capsys)
     assert t("queue.empty") in out
+
+
+def test_a_relative_config_path_still_works_for_items_added_elsewhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    work = _setup(tmp_path, monkeypatch)
+    night = (tmp_path / "orkestra-home" / "config.yaml").read_text(encoding="utf-8")
+    (work / "night.yaml").write_text(night, encoding="utf-8")
+    (tmp_path / "orkestra-home" / "config.yaml").unlink()  # only ./night.yaml has providers
+    project = work / "proj"
+    project.mkdir()
+    _task(project, "hi.json", "say hi")
+    monkeypatch.chdir(project)
+    code, _, err = _run(["--config", "../night.yaml", "queue", "add", "hi.json"], capsys)
+    assert code == 0, err
+    monkeypatch.chdir(work)
+    code, out, err = _run(["--config", "night.yaml", "queue", "run", "--json"], capsys)
+    assert code == 0, err + out
+    assert json.loads(out)["done"] == [1]
+
+
+def test_status_leaves_out_an_old_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    from datetime import timedelta
+
+    work = _setup(tmp_path, monkeypatch)
+    _task(work, "hi.json", "hi")
+    with closing(db.connect()) as conn:
+        item = store.add(conn, Path("hi.json"), now=db.local_now())
+        store.mark_running(conn, item.id, db.local_now())
+        store.mark_finished(conn, item.id, "failed", db.local_now() - timedelta(days=3))
+    code, out, _ = _run(["status"], capsys)
+    assert code == 0 and "queue:" not in out

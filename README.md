@@ -419,8 +419,8 @@ orkestra queue run --until 07:00 --notify                # leave the terminal op
 - Only one `queue run` works at a time (a second one exits with code 5); a lock left by a
   crashed run is cleared, and items it left `running` are queued again.
 - `--until HH:MM` starts no new item after that time; `--max-cost-usd` starts none once that
-  much is spent. Nobody is there to confirm a cost at night: an item that would ask is skipped
-  and stays queued (with `--max-cost-usd`, the cap decides instead).
+  much is spent (`0` means free work only). Nobody is there to confirm a cost at night: a batch
+  that would ask is skipped and stays queued (with `--max-cost-usd`, the cap decides instead).
 - It is not a service: a sleeping computer runs nothing. To start it every night, use cron or
   Windows Task Scheduler: see [`docs/recipes.md`](docs/recipes.md).
 - Notifications (`queue run --notify`, `batch --notify`) hold only the counts ("5 finished,

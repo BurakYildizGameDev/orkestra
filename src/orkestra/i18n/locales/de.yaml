@@ -674,6 +674,7 @@ queue.note.no_workdir: "der Ordner, aus dem es eingereiht wurde, existiert nicht
 queue.note.batch: "{ok}/{total} Aufgaben ok"
 status.queue.line: "Warteschlange: {pending} wartend, {running} laufend, {failed} fehlgeschlagen (orkestra queue list)"
 notify.counts: "{finished} fertig, {failed} fehlgeschlagen"
+notify.counts_skipped: "{finished} fertig, {failed} fehlgeschlagen, {skipped} übersprungen"
 notify.title.queue: "Orkestra-Warteschlange"
 notify.title.batch: "Orkestra-Batch"
 notify.title.test: "Orkestra-Test"

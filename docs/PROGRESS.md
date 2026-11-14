@@ -27,12 +27,27 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
-| 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072) |
+| 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ⏳ | | |
 | 13 – Benchmark | ⏳ | | |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 12a (PR #23), 2026-11-15
+`/code-review` 10 bulgu; hepsi düzeltildi (D-073). Önce 14 kırmızı test (bir eski test, bilerek değişen davranış için güncellendi).
+- ✅ Türkçe başlıklı ntfy bildirimi gidiyor (`test_the_real_ntfy_post_sends_a_title_with_non_ascii_letters`, respx ile gerçek `ntfy_post`).
+- ✅ Göreli `--config` başka klasörde eklenen işte çalışıyor (`test_a_relative_config_path_still_works_for_items_added_elsewhere`).
+- ✅ Okunduktan sonra çıkarılan iş çalışmıyor (`test_mark_running_only_takes_a_pending_item`, `test_an_item_removed_after_it_was_fetched_does_not_run`).
+- ✅ Sahipsiz `running` iş çıkarılabiliyor, canlı koşucunun işi çıkarılamıyor (`test_a_running_item_without_a_live_runner_can_be_removed`).
+- ✅ `--max-cost-usd 0` ücretsiz işleri çalıştırıyor, harcama olunca duruyor (`test_max_cost_zero_still_runs_free_items`, `test_max_cost_zero_stops_after_anything_is_spent`).
+- ✅ `--until` DST değişiminde duvar saatinde (`test_until_keeps_the_wall_clock_across_a_dst_change`).
+- ✅ Tek görev maliyet onayı beklemiyor, batch bekliyor (`test_only_a_batch_waits_for_cost_confirmation_a_single_task_never`); atlananlar bildirimde (`test_skipped_items_are_counted_in_the_message`).
+- ✅ `AccessDenied` kilidi tutmuyor (`test_access_denied_is_not_our_runner`).
+- ✅ `status` eski başarısızlığı göstermiyor (`test_failed_items_count_only_when_they_are_recent`, `test_status_leaves_out_an_old_failure`).
+- ✅ `mark_finished` yanlış durumda `InternalError` (`test_a_wrong_finished_status_is_an_internal_error`).
+
+Testler: **1300 geçti** (1286 + 14). ruff, ruff format, pyright temiz.
 
 ### Faz 12a – Gece kuyruğu ve bildirimler (2026-11-15)
 **Yapılanlar (D-072):**

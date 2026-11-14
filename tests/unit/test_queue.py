@@ -8,7 +8,7 @@ import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import closing
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 
 import psutil
@@ -96,8 +96,9 @@ def test_remove_hides_a_pending_item_but_never_a_running_one(
     store.remove(conn, first.id)
     assert [item.id for item in store.items(conn)] == [second.id]
     store.mark_running(conn, second.id, START)
-    with pytest.raises(UsageError):
-        store.remove(conn, second.id)
+    store.acquire_lock(conn, START, owner=(4242, 1.0), alive=lambda pid, created: True)
+    with pytest.raises(UsageError):  # a live queue run owns it
+        store.remove(conn, second.id, alive=lambda pid, created: True)
     with pytest.raises(UsageError):
         store.remove(conn, 999)
     with pytest.raises(UsageError):
@@ -349,3 +350,162 @@ def test_an_item_without_a_profile_runs_on_the_queue_default_profile() -> None:
     plain = service.item_config(config, None)
     assert plain.defaults.profile == "cheap"  # gives way like a default when a task needs more
     assert service.item_config(config, "quality") is config  # --profile goes through RunOptions
+
+
+# --- code review fixes (PR #23, D-073) ------------------------------------------------
+
+
+def test_mark_running_only_takes_a_pending_item(
+    conn: db.sqlite3.Connection, tmp_path: Path
+) -> None:
+    item = store.add(conn, _task(tmp_path), now=START)
+    store.remove(conn, item.id)
+    assert store.mark_running(conn, item.id, START) is False
+    assert store.get(conn, item.id).status == "removed"
+
+
+def test_an_item_removed_after_it_was_fetched_does_not_run(
+    conn: db.sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = store.add(conn, _task(tmp_path, "one.yaml"), now=START)
+    second = store.add(conn, _task(tmp_path, "two.yaml"), now=START)
+    real_next = store.next_pending
+
+    def racing_next(connection: db.sqlite3.Connection, after_id: int) -> store.QueueItem | None:
+        found = real_next(connection, after_id)
+        if found is not None and found.id == first.id:
+            store.remove(connection, first.id)  # `queue remove` lands right after the read
+        return found
+
+    monkeypatch.setattr(store, "next_pending", racing_next)
+    seen: list[int] = []
+
+    def execute(item: store.QueueItem, remaining: float | None) -> service.ItemResult:
+        seen.append(item.id)
+        return service.ItemResult("done")
+
+    report = service.run_queue(conn, now=Clock(), execute=execute)
+    assert seen == [second.id] and report.done == [second.id]
+    assert store.get(conn, first.id).status == "removed"
+
+
+def test_a_running_item_without_a_live_runner_can_be_removed(
+    conn: db.sqlite3.Connection, tmp_path: Path
+) -> None:
+    item = store.add(conn, _task(tmp_path), now=START)
+    store.mark_running(conn, item.id, START)  # Ctrl+C left it running; no lock
+    store.remove(conn, item.id)
+    assert store.items(conn) == []
+    other = store.add(conn, _task(tmp_path, "two.yaml"), now=START)
+    store.mark_running(conn, other.id, START)
+    store.acquire_lock(conn, START, owner=(4242, 1.0), alive=lambda pid, created: True)
+    with pytest.raises(UsageError):
+        store.remove(conn, other.id, alive=lambda pid, created: True)
+    store.remove(conn, other.id, alive=lambda pid, created: False)  # the owner is gone
+    assert store.items(conn) == []
+
+
+def test_max_cost_zero_still_runs_free_items(conn: db.sqlite3.Connection, tmp_path: Path) -> None:
+    items = [store.add(conn, _task(tmp_path, f"t{n}.yaml"), now=START) for n in range(2)]
+    seen: list[float | None] = []
+
+    def execute(item: store.QueueItem, remaining: float | None) -> service.ItemResult:
+        seen.append(remaining)
+        return service.ItemResult("done", cost_usd=0.0)
+
+    report = service.run_queue(conn, now=Clock(), max_cost_usd=0.0, execute=execute)
+    assert report.done == [i.id for i in items] and report.stopped is None
+    assert seen == [0.0, 0.0]
+
+
+def test_max_cost_zero_stops_after_anything_is_spent(
+    conn: db.sqlite3.Connection, tmp_path: Path
+) -> None:
+    for n in range(2):
+        store.add(conn, _task(tmp_path, f"t{n}.yaml"), now=START)
+    report = service.run_queue(
+        conn, now=Clock(), max_cost_usd=0.0,
+        execute=lambda i, r: service.ItemResult("done", cost_usd=0.01),
+    )  # fmt: skip
+    assert len(report.done) == 1 and report.stopped == "cost"
+
+
+class _Berlin(tzinfo):
+    """+02:00 until 2026-10-25 01:00 UTC, +01:00 after (no tzdata on Windows)."""
+
+    CHANGE = datetime(2026, 10, 25, 1, 0)
+
+    def utcoffset(self, dt: datetime | None) -> timedelta:
+        assert dt is not None
+        local = dt.replace(tzinfo=None)
+        return (
+            timedelta(hours=2) if local < self.CHANGE + timedelta(hours=2) else timedelta(hours=1)
+        )
+
+    def dst(self, dt: datetime | None) -> timedelta:
+        return timedelta(0)
+
+    def tzname(self, dt: datetime | None) -> str:
+        return "Berlin"
+
+
+def test_until_keeps_the_wall_clock_across_a_dst_change() -> None:
+    berlin = _Berlin()
+    now = datetime(2026, 10, 24, 22, 0, tzinfo=berlin)
+    stop = service.deadline("06:00", now, localize=lambda naive: naive.replace(tzinfo=berlin))
+    assert stop.replace(tzinfo=None) == datetime(2026, 10, 25, 6, 0)
+    assert stop.utcoffset() == timedelta(hours=1)  # 06:00 on the clock, after the change
+    assert stop.astimezone(UTC) - now.astimezone(UTC) == timedelta(hours=9)
+
+
+def test_only_a_batch_waits_for_cost_confirmation_a_single_task_never(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from orkestra.config.schema import Config
+    from orkestra.envelope import BatchEstimate
+    from orkestra.tasks import batch, runner
+
+    async def estimate(*args: object, **kwargs: object) -> BatchEstimate:
+        return BatchEstimate(needs_confirmation=True)
+
+    monkeypatch.setattr(batch, "checks_cost", lambda config: True)
+    monkeypatch.setattr(batch, "estimate_batch", estimate)
+    from orkestra.tasks.spec import parse_task
+
+    config = Config.model_validate({"version": 1})
+    one = batch.from_tasks([parse_task({"id": "a", "kind": "ask", "prompt": "x"}, source="t")], "t")
+    options = runner.RunOptions()
+    assert service.cost_skip(one, config, options, None, confirm=False) is None
+    assert service.cost_skip(one, config, options, None, confirm=True) is not None
+
+
+def test_access_denied_is_not_our_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    def denied(pid: int) -> object:
+        raise psutil.AccessDenied(pid)
+
+    monkeypatch.setattr(store.psutil, "Process", denied)
+    assert store.process_alive(4242, 1.0) is False  # our own runner is always readable
+
+
+def test_failed_items_count_only_when_they_are_recent(
+    conn: db.sqlite3.Connection, tmp_path: Path
+) -> None:
+    old = store.add(conn, _task(tmp_path, "old.yaml"), now=START)
+    store.mark_running(conn, old.id, START)
+    store.mark_finished(conn, old.id, "failed", START - timedelta(days=3))
+    assert store.counts(conn, failed_since=START - timedelta(hours=24))["failed"] == 0
+    fresh = store.add(conn, _task(tmp_path, "new.yaml"), now=START)
+    store.mark_running(conn, fresh.id, START)
+    store.mark_finished(conn, fresh.id, "failed", START - timedelta(hours=1))
+    assert store.counts(conn, failed_since=START - timedelta(hours=24))["failed"] == 1
+    assert store.counts(conn)["failed"] == 2
+
+
+def test_a_wrong_finished_status_is_an_internal_error(
+    conn: db.sqlite3.Connection, tmp_path: Path
+) -> None:
+    from orkestra.errors import InternalError
+
+    item = store.add(conn, _task(tmp_path), now=START)
+    with pytest.raises(InternalError):
+        store.mark_finished(conn, item.id, "pending", START)

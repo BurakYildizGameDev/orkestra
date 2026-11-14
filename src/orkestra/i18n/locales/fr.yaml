@@ -674,6 +674,7 @@ queue.note.no_workdir: "le dossier d'où il a été ajouté n'existe plus : {pat
 queue.note.batch: "{ok}/{total} tâches réussies"
 status.queue.line: "file : {pending} en attente, {running} en cours, {failed} échoués (orkestra queue list)"
 notify.counts: "{finished} terminés, {failed} échoués"
+notify.counts_skipped: "{finished} terminés, {failed} échoués, {skipped} ignorés"
 notify.title.queue: "File Orkestra"
 notify.title.batch: "Lot Orkestra"
 notify.title.test: "Test Orkestra"

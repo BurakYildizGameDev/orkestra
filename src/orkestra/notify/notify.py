@@ -42,7 +42,9 @@ class Delivery:
     reason: str | None = None  # not_installed | topic_unset | topic_invalid | error text
 
 
-def counts_text(finished: int, failed: int) -> str:
+def counts_text(finished: int, failed: int, *, skipped: int = 0) -> str:
+    if skipped:
+        return t("notify.counts_skipped", finished=finished, failed=failed, skipped=skipped)
     return t("notify.counts", finished=finished, failed=failed)
 
 
@@ -58,8 +60,10 @@ def desktop_send(title: str, message: str) -> None:
 
 
 def ntfy_post(url: str, title: str, message: str) -> None:
+    """The title goes in ntfy's ``title`` query parameter: an HTTP header is ASCII only, and
+    the translated titles are not ("Orkestra kuyruğu")."""
     response = httpx.post(
-        url, content=message.encode("utf-8"), headers={"Title": title}, timeout=TIMEOUT_S
+        url, params={"title": title}, content=message.encode("utf-8"), timeout=TIMEOUT_S
     )
     response.raise_for_status()
 

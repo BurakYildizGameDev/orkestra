@@ -416,8 +416,8 @@ orkestra queue run --until 07:00 --notify                # terminali açık bır
 - Aynı anda tek `queue run` çalışır (ikincisi 5 koduyla çıkar); çöken bir çalıştırmanın
   bıraktığı kilit temizlenir, `running` bıraktığı işler yeniden kuyruğa girer.
 - `--until SS:DD` o saatten sonra yeni iş başlatmaz; `--max-cost-usd` o kadar harcanınca yeni iş
-  başlatmaz. Gece maliyeti onaylayacak kimse yok: onay isteyecek iş atlanır ve kuyrukta kalır
-  (`--max-cost-usd` verilmişse sınır karar verir).
+  başlatmaz (`0` = yalnız ücretsiz iş). Gece maliyeti onaylayacak kimse yok: onay isteyecek batch
+  atlanır ve kuyrukta kalır (`--max-cost-usd` verilmişse sınır karar verir).
 - Servis değildir: uyuyan bilgisayar hiçbir şey çalıştırmaz. Her gece başlatmak için cron veya
   Windows Görev Zamanlayıcı: [`docs/recipes.tr.md`](docs/recipes.tr.md).
 - Bildirimler (`queue run --notify`, `batch --notify`) yalnız sayıları içerir ("5 bitti,

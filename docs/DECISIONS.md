@@ -742,3 +742,18 @@ Mimari §22 güncellendi (D-070).
 - **Bilinen sınır:** işin notu çalıştığı andaki dilde saklanır (hata metinleri çevrilmiş üretiliyor); başka dilde `queue list` notu o dilde gösterir. Bitmiş işler `queue remove` ile çıkarılana kadar listede kalır.
 - **Testler:** 1238 → 1286 (+48).
 Mimari §6 ve §21 güncellendi (D-072).
+
+## D-073 – Faz 12a kod denetimi düzeltmeleri (2026-11-15, Faz 12a)
+`/code-review` (PR #23): 10 bulgu, hepsi düzeltildi; önce 14 kırmızı test.
+- **ntfy başlığı** HTTP başlığı yerine ntfy'nin `?title=` sorgu parametresinde: başlık ASCII olmak zorundaydı, "Orkestra kuyruğu" `UnicodeEncodeError` veriyordu (Türkçe arayüzde telefon bildirimi hiç gitmiyordu).
+- **Göreli `--config`/`ORKESTRA_CONFIG`** `queue run` başında mutlak yola çevrilir (`service.absolute_config_flag`); işler kendi klasöründe çalıştığı için göreli yol başka yeri gösteriyordu. Varsayılan genel dosya `None` kalır (yoksa varsayılanlar).
+- **`mark_running` yalnız `pending` işi alır**; okunduktan sonra `queue remove` edilen iş çalışmaz (döngü atlar).
+- **Sahipsiz `running` iş çıkarılabilir:** kilidin canlı sahibi yoksa (Ctrl+C/çökme) `queue remove` izin verir. Var olan `test_remove_hides_a_pending_item_but_never_a_running_one` artık canlı kilit tutarak reddi doğruluyor (davranış bilerek değişti).
+- **`--max-cost-usd 0`** = yalnız ücretsiz iş: sınır 0 iken harcanan > 0 olunca durur (önce hiç iş başlamıyordu).
+- **`--until` DST'de kaymaz:** duvar saatinde hesaplanır, sonra kendi UTC ofsetiyle yerelleştirilir (`localize`, testte DST'li sahte saat dilimi; Windows'ta tzdata yok).
+- **Tek görev maliyet onayı beklemez:** `orkestra run` hiç sormadığı için kuyruktaki tek görev de sormaz; onay kapısı yalnız batch için (`cost_skip(confirm=)`). D-072'deki "sınır yoksa onay isteyecek iş atlanır" kuralı yalnız batch'e daraltıldı. Atlanan iş sayısı bildirime de girdi (`notify.counts_skipped`, 5 dil).
+- **`psutil.AccessDenied` artık "bizim koşucumuz değil":** kendi sürecimizin başlama zamanı her zaman okunur; okunamıyorsa başka kullanıcının/sistemin süreci, kilit ölü sayılır (D-072'deki "yaşıyor sayılır" geri alındı; aksi halde yeniden kullanılan pid kuyruğu kalıcı kilitliyordu).
+- **`status` kuyruk satırı** yalnız son 24 saatin başarısızlarını sayar (`counts(failed_since=)`); eski bir başarısızlık satırı sonsuza dek tutmuyor. `queue list` hepsini göstermeye devam eder.
+- **`mark_finished`** yanlış durumda `InternalError` (çıplak `ValueError` değil).
+- **Testler:** 1286 → 1300 (+14).
+Mimari §21 notu güncellendi (D-073).

@@ -674,6 +674,7 @@ queue.note.no_workdir: "la carpeta desde la que se añadió ya no existe: {path}
 queue.note.batch: "{ok}/{total} tareas correctas"
 status.queue.line: "cola: {pending} pendientes, {running} en ejecución, {failed} fallidos (orkestra queue list)"
 notify.counts: "{finished} terminados, {failed} fallidos"
+notify.counts_skipped: "{finished} terminados, {failed} fallidos, {skipped} omitidos"
 notify.title.queue: "Cola de Orkestra"
 notify.title.batch: "Lote de Orkestra"
 notify.title.test: "Prueba de Orkestra"

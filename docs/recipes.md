@@ -29,8 +29,9 @@ orkestra queue run --until 07:00 --notify
 
 - `--until 07:00`: no new item starts after 07:00; the one running finishes.
 - `--max-cost-usd 0.50`: no new item starts once 0.50 USD is spent, and an item estimated to
-  go over what is left is skipped. Without it, an item that would ask for cost confirmation
-  is skipped (nobody is there to answer) and stays in the queue.
+  go over what is left is skipped. `--max-cost-usd 0` runs free work only. Without the flag, a
+  batch that would ask for cost confirmation is skipped (nobody is there to answer) and stays
+  in the queue; a single task never asks, as with `orkestra run`.
 - `--notify`: one notification at the end with the counts only ("5 finished, 1 failed").
 - Only one `queue run` works at a time; a second one exits with code 5. A lock left behind by
   a crashed run is cleared automatically.

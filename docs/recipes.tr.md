@@ -29,8 +29,9 @@ orkestra queue run --until 07:00 --notify
 
 - `--until 07:00`: 07:00'dan sonra yeni iş başlamaz; çalışan iş biter.
 - `--max-cost-usd 0.50`: 0.50 USD harcanınca yeni iş başlamaz; tahmini kalan tutarı aşan iş
-  atlanır. Bu bayrak yoksa maliyet onayı isteyecek iş atlanır (cevap verecek kimse yok) ve
-  kuyrukta kalır.
+  atlanır. `--max-cost-usd 0` yalnız ücretsiz işleri çalıştırır. Bayrak yoksa maliyet onayı
+  isteyecek batch atlanır (cevap verecek kimse yok) ve kuyrukta kalır; tek görev
+  `orkestra run`'daki gibi hiç sormaz.
 - `--notify`: sonunda yalnız sayıları içeren tek bildirim ("5 bitti, 1 başarısız").
 - Aynı anda yalnız bir `queue run` çalışır; ikincisi 5 koduyla çıkar. Çöken bir çalıştırmanın
   bıraktığı kilit kendiliğinden temizlenir.

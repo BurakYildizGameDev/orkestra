@@ -15,7 +15,7 @@ import asyncio
 import contextlib
 import re
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -67,13 +67,30 @@ class QueueReport:
         return 1 if self.failed else 0
 
 
-def deadline(until: str, now: datetime) -> datetime:
-    """The next moment the clock shows ``HH:MM`` (tomorrow when it is that time or later)."""
+def _local(naive: datetime) -> datetime:
+    return naive.astimezone()
+
+
+def deadline(
+    until: str, now: datetime, *, localize: Callable[[datetime], datetime] = _local
+) -> datetime:
+    """The next moment the clock shows ``HH:MM`` (tomorrow when it is that time or later).
+
+    Counted on the wall clock and given its own UTC offset, so a DST change in the night
+    does not move the stop by an hour."""
     match = _HHMM.match(until.strip())
     if match is None:
         raise UsageError(t("queue.error.until", value=until))
-    moment = now.replace(hour=int(match[1]), minute=int(match[2]), second=0, microsecond=0)
-    return moment if moment > now else moment + timedelta(days=1)
+    wall = now.replace(tzinfo=None)
+    moment = wall.replace(hour=int(match[1]), minute=int(match[2]), second=0, microsecond=0)
+    if moment <= wall:
+        moment += timedelta(days=1)
+    return localize(moment)
+
+
+def spent_up(spent: float, limit: float) -> bool:
+    """``--max-cost-usd 0`` means free work only: it stops once anything was spent."""
+    return spent > limit if limit == 0 else spent >= limit
 
 
 def run_queue(
@@ -100,11 +117,12 @@ def run_queue(
             if stop_at is not None and now() >= stop_at:
                 report.stopped = "until"
                 break
-            if max_cost_usd is not None and report.spent_usd >= max_cost_usd:
+            if max_cost_usd is not None and spent_up(report.spent_usd, max_cost_usd):
                 report.stopped = "cost"
                 break
             remaining = None if max_cost_usd is None else max_cost_usd - report.spent_usd
-            store.mark_running(conn, item.id, now())
+            if not store.mark_running(conn, item.id, now()):
+                continue  # removed after it was read
             result = _run_one(execute, item, remaining)
             _record(conn, item, result, now())
             report.spent_usd += result.cost_usd
@@ -137,7 +155,7 @@ def run_with_notify(
     deliveries = notify.send(
         config.notify,
         t("notify.title.queue"),
-        notify.counts_text(report.finished, len(report.failed)),
+        notify.counts_text(report.finished, len(report.failed), skipped=len(report.skipped)),
     )
     return report, deliveries
 
@@ -176,12 +194,27 @@ def item_config(config: Config, profile: str | None) -> Config:
     return config.model_copy(update={"defaults": defaults})
 
 
-def _cost_skip(
-    batch_spec: batch.BatchSpec, config: Config, options: runner.RunOptions, remaining: float | None
+def absolute_config_flag(
+    config_flag: Path | None, environ: Mapping[str, str] | None = None
+) -> Path | None:
+    """``--config``/``ORKESTRA_CONFIG`` as an absolute path: items run in their own folder,
+    where a relative path would point somewhere else (the default global file stays None)."""
+    base, kind = loader.base_config_target(config_flag, environ)
+    return None if kind == "global" else base.resolve()
+
+
+def cost_skip(
+    batch_spec: batch.BatchSpec,
+    config: Config,
+    options: runner.RunOptions,
+    remaining: float | None,
+    *,
+    confirm: bool,
 ) -> str | None:
-    """Nobody is there to confirm a cost at night: an item that would ask is skipped; with
-    ``--max-cost-usd`` the cap replaces the question."""
-    if remaining is None and not batch.checks_cost(config):
+    """Why the item must wait, or None. With ``--max-cost-usd`` the cap decides. Without it,
+    only a batch asks for confirmation (as ``orkestra batch`` does; ``orkestra run`` never
+    asks), and nobody is there at night to answer, so such a batch waits."""
+    if remaining is None and not (confirm and batch.checks_cost(config)):
         return None
     if remaining is not None and not batch.may_cost(config):
         return None
@@ -225,7 +258,7 @@ def _execute_task(
     path: Path, config: Config, options: runner.RunOptions, remaining: float | None
 ) -> ItemResult:
     task = spec.load_task(path)
-    skip = _cost_skip(batch.from_tasks([task], str(path)), config, options, remaining)
+    skip = cost_skip(batch.from_tasks([task], str(path)), config, options, remaining, confirm=False)
     if skip is not None:
         return ItemResult("skipped", note=skip)
     outcome = asyncio.run(runner.run_task(task, config, options))
@@ -242,7 +275,7 @@ def _execute_batch(
     path: Path, config: Config, options: runner.RunOptions, remaining: float | None
 ) -> ItemResult:
     batch_spec = batch.load_batch(path)
-    skip = _cost_skip(batch_spec, config, options, remaining)
+    skip = cost_skip(batch_spec, config, options, remaining, confirm=True)
     if skip is not None:
         return ItemResult("skipped", note=skip)
     plan = batch.plan_batch(batch_spec, cwd=Path.cwd(), ignore_file=config.security.ignore_file)

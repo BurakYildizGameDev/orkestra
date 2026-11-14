@@ -22,7 +22,7 @@ from typing import Literal
 
 import psutil
 
-from orkestra.errors import QueueBusy, UsageError
+from orkestra.errors import InternalError, QueueBusy, UsageError
 from orkestra.i18n import t
 from orkestra.state.db import transaction
 from orkestra.tasks import batch, spec
@@ -131,23 +131,32 @@ def items(conn: sqlite3.Connection) -> list[QueueItem]:
     return [_item(row) for row in rows]
 
 
-def remove(conn: sqlite3.Connection, item_id: int) -> QueueItem:
-    """Hide an item from the queue; a running one is left alone (its run owns it)."""
+def remove(conn: sqlite3.Connection, item_id: int, *, alive: Alive | None = None) -> QueueItem:
+    """Hide an item from the queue. A running one is left alone while a live ``queue run``
+    owns it; one that Ctrl+C or a crash left ``running`` can be removed."""
     item = get(conn, item_id)
     if item.status == "removed":
         raise UsageError(t("queue.error.unknown", id=item_id))
-    if item.status == "running":
+    owner = lock_owner(conn)
+    is_alive = alive or process_alive
+    if item.status == "running" and owner is not None and is_alive(owner.pid, owner.created):
         raise UsageError(t("queue.error.remove_running", id=item_id))
     with transaction(conn):
         conn.execute("UPDATE queue SET status = 'removed' WHERE id = ?", (item_id,))
     return get(conn, item_id)
 
 
-def counts(conn: sqlite3.Connection) -> dict[str, int]:
+def counts(conn: sqlite3.Connection, *, failed_since: datetime | None = None) -> dict[str, int]:
+    """Items per status; ``failed_since`` counts only failures that ended after it."""
     found: dict[str, int] = dict.fromkeys(("pending", "running", "failed", "done"), 0)
     for row in conn.execute("SELECT status, COUNT(*) FROM queue GROUP BY status"):
         if row[0] in found:
             found[row[0]] = int(row[1])
+    if failed_since is not None:
+        ended = conn.execute("SELECT finished_at FROM queue WHERE status = 'failed'").fetchall()
+        found["failed"] = sum(
+            1 for (at,) in ended if at and datetime.fromisoformat(at) >= failed_since
+        )
     return found
 
 
@@ -168,12 +177,15 @@ def recover(conn: sqlite3.Connection) -> int:
     return cursor.rowcount
 
 
-def mark_running(conn: sqlite3.Connection, item_id: int, now: datetime) -> None:
+def mark_running(conn: sqlite3.Connection, item_id: int, now: datetime) -> bool:
+    """Take a pending item; ``False`` when it was removed after it was read."""
     with transaction(conn):
-        conn.execute(
-            "UPDATE queue SET status = 'running', started_at = ?, note = NULL WHERE id = ?",
+        cursor = conn.execute(
+            "UPDATE queue SET status = 'running', started_at = ?, note = NULL "
+            "WHERE id = ? AND status = 'pending'",
             (now.isoformat(), item_id),
         )
+    return cursor.rowcount == 1
 
 
 def mark_finished(
@@ -186,7 +198,7 @@ def mark_finished(
     note: str | None = None,
 ) -> None:
     if status not in FINISHED:
-        raise ValueError(f"not a finished status: {status}")
+        raise InternalError(f"not a finished status: {status}")
     with transaction(conn):
         conn.execute(
             "UPDATE queue SET status = ?, finished_at = ?, result_ref = ?, note = ? WHERE id = ?",
@@ -215,8 +227,8 @@ def process_alive(pid: int, created: float | None) -> bool:
         return abs(process.create_time() - created) <= _CREATE_TIME_SLACK_S
     except psutil.NoSuchProcess:
         return False
-    except psutil.AccessDenied:  # it exists; we just may not look at it
-        return True
+    except psutil.AccessDenied:  # another user's or a system process: never our runner
+        return False
     except (psutil.Error, OverflowError, ValueError):
         return False
 
