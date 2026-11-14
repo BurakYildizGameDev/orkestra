@@ -28,11 +28,54 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
-| 12b – Öğrenen yönlendirme, arayüzde kuyruk | ⏳ | | |
+| 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
+| düzeltme-fable – Genel bakış düzeltmeleri (ek) | ⏳ | | `gc` ile eski `runs`/`usage`/`queue` satırları, `desktop-notifier` üst sınırı, düzenlenebilir kurulum notu, `cli.py`/`runner.py` bölme, `notify.ntfy_url`, `queue remove --finished`, eski dal ve not dosyası temizliği (ayrıntı: yerel YAPILIS_PLANI.md) |
 | 13 – Benchmark | ⏳ | | |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 12b (PR #24), 2026-11-15
+`/code-review` 10 bulgu; hepsi düzeltildi (D-075). Önce 14 kırmızı test; D-074'teki şema kuralı geri alındı (4 desen testi kaldırıldı).
+- ✅ Cevap verip yerini başka modele bırakan model başarısız sayılıyor, cevapsız istek sayılmıyor (`test_a_model_that_answered_but_was_replaced_counts_as_a_failure`).
+- ✅ `error` koşuları sayılmıyor (`test_error_runs_say_nothing_about_a_model`).
+- ✅ Eski config'teki konu yükleniyor, `notify` kullanmıyor/göstermiyor, arayüzden silinebiliyor (`test_an_old_config_with_a_topic_in_ntfy_topic_env_still_loads`, `test_a_value_that_is_not_a_variable_name_is_never_used_or_shown`, `test_an_old_topic_in_the_config_can_be_cleared_from_settings`).
+- ✅ Kilitli veritabanı Kuyruk sekmesini çökertmiyor (`test_a_locked_state_database_does_not_crash_the_queue_tab`).
+- ✅ Açıkça seçilen ajan modeli ve config dışı model skorlanıyor (`test_an_explicitly_chosen_model_shows_its_history`).
+- ✅ `load_outcomes` en fazla iki sorgu (`test_load_outcomes_uses_a_fixed_number_of_queries`).
+- ✅ `stats` yardımcıları ortak (davranış testleri: `test_stats.py` değişmeden geçiyor).
+- ✅ Bildirim ayarı tek kayıt (`test_none_in_set_values_removes_the_key_in_the_same_save`).
+- ✅ Deneme bildirimi hatası ekranda (`test_a_failing_notification_test_reports_the_error`).
+- ✅ Kuyruktan çıkarma onay istiyor (`test_the_queue_tab_lists_the_items_and_removes_one`: "hayır" bırakır, "evet" çıkarır).
+
+Testler: **1346 geçti** (1337 + 9). ruff, ruff format, pyright temiz.
+
+### Faz 12b – Öğrenen yönlendirme, arayüzde kuyruk (2026-11-15)
+**Yapılanlar (D-074):**
+- `routing/adaptive.py`: son 30 günün koşularından (provider, model, etiket) başarı skoru, Laplace düzeltmeli, `min_samples` altı nötr 0.5.
+- Router: `Snapshot.scores`, `Candidate.score`; sıra kademe → skor → priority → config sırası; `take_snapshot(tags=)` görevin etiketleriyle.
+- `--dry-run`: metinde skor/örnek sayısı, JSON'da `score`, `score_samples`, `score_used`.
+- Arayüz: Kuyruk sekmesi (liste, yenile, çıkar), Ayarlar'da bildirim (masaüstü, ntfy değişken adı, deneme gönder).
+- Şema: `notify.ntfy_topic_env` değişken adı olmak zorunda (kod denetiminde geri alındı, D-075).
+- Skill: gece kuyruğu ve öğrenen yönlendirme notları (263 → 267 satır).
+- README (en + tr): öğrenen yönlendirme satırı, arayüz satırı, yol haritasında 12b ✅. 17 yeni i18n anahtarı beş dilde (Claude çevirdi).
+
+**Kabul kriterleri:**
+- ✅ `min_samples` altında sıralama değişmiyor (`test_adaptive_order[below min_samples nothing moves]`).
+- ✅ Üstünde aynı kademede başarı oranı yüksek model öne geçiyor (`…[above min_samples the better model of the tier goes first]`).
+- ✅ Kademeler arası sıra asla değişmiyor (`…[the tier order never changes]`); tablo tabanlı test (9 satır) + skor tablosu (8 satır).
+- ✅ `--dry-run` skor ve örnek sayısını gösteriyor (`test_dry_run_puts_the_better_model_first_and_shows_why`).
+- ✅ Arayüzde Kuyruk ekranı dolu (`test_the_queue_tab_lists_the_items_and_removes_one`), bildirim ayarı kaydediliyor ve yorumlar duruyor (`test_notification_settings_are_saved_and_comments_kept`).
+
+**Elle duman testi:** geçici config'le (`adaptive: true`, `min_samples: 2`) `--lang tr run t.yaml --dry-run` adaylarda nötr skor satırını gösterdi; Türkçe metindeki ek ("0'i") düzeltildi.
+
+**Dürüst notlar:**
+- Testler önce yazıldı ve kırmızı koşuldu; `test_load_outcomes…` ilk koşuda testin kendi sıralama anahtarı yüzünden kırmızıydı (kod doğruydu), düzeltildi.
+- Arayüz gerçek terminalde elle denenmedi (Textual pilotu ile).
+- Gerçek koşu geçmişiyle (gerçek modeller) öğrenen yönlendirme denenmedi; testler sahte koşu kayıtlarıyla.
+- de/es/fr çevirilerini ana dili konuşan biri gözden geçirmedi.
+
+Testler: **1337 geçti** (1300 + 37). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 12a (PR #23), 2026-11-15
 `/code-review` 10 bulgu; hepsi düzeltildi (D-073). Önce 14 kırmızı test (bir eski test, bilerek değişen davranış için güncellendi).

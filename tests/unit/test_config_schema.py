@@ -293,3 +293,13 @@ def test_empty_values_that_later_code_needs_are_rejected(
 def test_partial_price_is_rejected() -> None:
     errors = _errors({"version": 1, "providers": {"r": _openrouter(price_per_mtok={"input": 0.3})}})
     assert any("price_per_mtok" in e and "input and output" in e for e in errors)
+
+
+def test_an_old_config_with_a_topic_in_ntfy_topic_env_still_loads() -> None:
+    config = Config.model_validate({"version": 1, "notify": {"ntfy_topic_env": "my-topic"}})
+    assert config.notify.ntfy_topic_env == "my-topic"  # notify refuses to use it (D-075)
+
+
+def test_ntfy_topic_env_accepts_a_variable_name() -> None:
+    config = Config.model_validate({"version": 1, "notify": {"ntfy_topic_env": "ORK_TOPIC_2"}})
+    assert config.notify.ntfy_topic_env == "ORK_TOPIC_2"

@@ -373,3 +373,170 @@ def test_the_wizard_runs_in_a_daemon_thread_so_quitting_never_waits_for_it(
     thread = app.background(lambda: None)
     thread.join(5)
     assert thread.daemon is True
+
+
+# --- Faz 12b: the queue tab and the notification settings -----------------------------------
+
+
+def _queue(tmp_path: Path, *names: str) -> list[int]:
+    from contextlib import closing
+
+    from orkestra.queue import store
+    from orkestra.state import db
+
+    ids: list[int] = []
+    with closing(db.connect()) as conn:
+        for name in names:
+            task = tmp_path / name
+            task.write_text("id: t\nkind: ask\nprompt: hi\n", encoding="utf-8")
+            ids.append(store.add(conn, task, now=db.local_now()).id)
+    return ids
+
+
+async def test_the_queue_tab_lists_the_items_and_removes_one(base: Path, tmp_path: Path) -> None:
+    ids = _queue(tmp_path, "night-docs.yaml", "night-tests.yaml")
+    app = OrkestraApp(config_flag=base, mode="ui")
+    async with app.run_test(size=(140, 45)) as pilot:
+        app.query_one(TabbedContent).active = "queue"
+        await pilot.pause()
+        table = app.query_one("#queue-table", DataTable)
+        assert table.row_count == 2
+        first = [str(cell) for cell in table.get_row_at(0)]
+        assert f"#{ids[0]}" in first and "night-docs.yaml" in first
+        assert t("queue.status.pending") in first
+        table.move_cursor(row=0)
+        await pilot.click("#queue-remove")
+        await pilot.pause()
+        await pilot.click("#confirm-no")  # asked first; "no" keeps it
+        await pilot.pause()
+        assert table.row_count == 2
+        await pilot.click("#queue-remove")
+        await pilot.pause()
+        await pilot.click("#confirm-yes")
+        await pilot.pause()
+        message = str(app.query_one("#queue-message", Static).render())
+        assert table.row_count == 1
+        status_text = str(app.query_one("#status-text", Static).render())
+    assert message == t("queue.removed", id=ids[0])
+    assert t("status.queue.line", pending=1, running=0, failed=0) in status_text
+
+
+async def test_an_empty_queue_says_so(base: Path) -> None:
+    app = OrkestraApp(config_flag=base, mode="ui")
+    async with app.run_test(size=(140, 45)) as pilot:
+        app.query_one(TabbedContent).active = "queue"
+        await pilot.pause()
+        assert app.query_one("#queue-table", DataTable).row_count == 0
+        await pilot.click("#queue-remove")
+        await pilot.pause()
+        message = str(app.query_one("#queue-message", Static).render())
+    assert message == t("ui.error.choose")
+
+
+async def test_notification_settings_are_saved_and_comments_kept(base: Path) -> None:
+    app = OrkestraApp(config_flag=base, mode="ui")
+    async with app.run_test(size=(140, 45)) as pilot:
+        app.query_one(TabbedContent).active = "settings"
+        await pilot.pause()
+        app.query_one("#settings-desktop", Select).value = "off"
+        app.query_one("#settings-ntfy", Input).value = "ORKESTRA_NTFY_TOPIC"
+        await pilot.click("#settings-notify-save")
+        await pilot.pause()
+    config = loader.load_config(base).config
+    assert config.notify.desktop is False
+    assert config.notify.ntfy_topic_env == "ORKESTRA_NTFY_TOPIC"
+    assert "# keep it English" in base.read_text(encoding="utf-8")
+
+
+async def test_a_topic_typed_where_the_variable_name_goes_is_refused(base: Path) -> None:
+    before = base.read_bytes()
+    app = OrkestraApp(config_flag=base, mode="ui")
+    async with app.run_test(size=(140, 45)) as pilot:
+        app.query_one(TabbedContent).active = "settings"
+        await pilot.pause()
+        app.query_one("#settings-ntfy", Input).value = "my-secret-topic-123"
+        await pilot.click("#settings-notify-save")
+        await pilot.pause()
+        message = str(app.query_one("#settings-notify-message", Static).render())
+    assert base.read_bytes() == before
+    assert "ntfy_topic_env" in message
+
+
+async def test_the_notification_test_button_reports_every_channel(
+    base: Path, monkeypatch: pytest.MonkeyPatch, no_real_notifications: list[tuple[str, ...]]
+) -> None:
+    monkeypatch.setenv("ORK_UI_TOPIC", "ui-topic")
+    text = (
+        base.read_text(encoding="utf-8")
+        + "notify:\n  desktop: true\n  ntfy_topic_env: ORK_UI_TOPIC\n"
+    )
+    base.write_text(text, encoding="utf-8")
+    app = OrkestraApp(config_flag=base, mode="ui")
+    async with app.run_test(size=(140, 45)) as pilot:
+        app.query_one(TabbedContent).active = "settings"
+        await pilot.pause()
+        await pilot.click("#settings-notify-test")
+        for _ in range(100):
+            await pilot.pause(0.02)
+            message = str(app.query_one("#settings-notify-message", Static).render())
+            if t("notify.state.sent") in message:
+                break
+    assert t("notify.state.sent") in message and "orkestra-cli[notify]" in message
+    assert no_real_notifications[-1][2] == t("notify.test.message")
+    assert "ui-topic" not in message
+
+
+# --- code review fixes (PR #24, D-075) ----------------------------------------------------
+
+
+async def test_a_locked_state_database_does_not_crash_the_queue_tab(
+    base: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+
+    def locked(self: OrkestraApp) -> list[object]:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(OrkestraApp, "queue_items", locked)
+    app = OrkestraApp(config_flag=base, mode="ui")
+    async with app.run_test(size=(140, 45)) as pilot:
+        app.query_one(TabbedContent).active = "queue"
+        await pilot.pause()
+        message = str(app.query_one("#queue-message", Static).render())
+    assert "database is locked" in message
+
+
+async def test_a_failing_notification_test_reports_the_error(
+    base: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from orkestra.notify import notify
+
+    def broken(*args: object, **kwargs: object) -> list[object]:
+        raise RuntimeError("no bus")
+
+    monkeypatch.setattr(notify, "send", broken)
+    app = OrkestraApp(config_flag=base, mode="ui")
+    async with app.run_test(size=(140, 45)) as pilot:
+        app.query_one(TabbedContent).active = "settings"
+        await pilot.pause()
+        await pilot.click("#settings-notify-test")
+        for _ in range(100):
+            await pilot.pause(0.02)
+            message = str(app.query_one("#settings-notify-message", Static).render())
+            if "no bus" in message:
+                break
+    assert "no bus" in message
+
+
+async def test_an_old_topic_in_the_config_can_be_cleared_from_settings(base: Path) -> None:
+    base.write_text(base.read_text(encoding="utf-8") + "notify:\n  ntfy_topic_env: my-topic\n",
+                    encoding="utf-8")  # fmt: skip
+    app = OrkestraApp(config_flag=base, mode="ui")
+    async with app.run_test(size=(140, 45)) as pilot:
+        app.query_one(TabbedContent).active = "settings"
+        await pilot.pause()
+        app.query_one("#settings-ntfy", Input).value = ""
+        await pilot.click("#settings-notify-save")
+        await pilot.pause()
+    assert loader.load_config(base).config.notify.ntfy_topic_env is None
+    assert "# keep it English" in base.read_text(encoding="utf-8")

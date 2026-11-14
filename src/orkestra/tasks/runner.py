@@ -450,7 +450,7 @@ async def _route(
     extra = (needs.provider, needs.model) if needs.provider and needs.model else None
     snapshot = take_snapshot(
         conn, prep.config, moment, environ=prep.env, price_cache=cache,
-        names=scope(needs, prep.config), extra_model=extra,
+        names=scope(needs, prep.config), extra_model=extra, tags=prep.task.tags,
     )  # fmt: skip
     return route(needs, prep.config, snapshot, profile=profile)
 

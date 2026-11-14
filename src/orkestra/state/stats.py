@@ -34,7 +34,7 @@ _SINCE = re.compile(r"(\d+)([dhm])")
 _UNITS = {"d": "days", "h": "hours", "m": "minutes"}
 MAX_SINCE = timedelta(days=36500)  # far enough back; more would overflow the dates
 # UTC offsets of stored times differ by at most a day: SQL narrows with this margin.
-_OFFSET_MARGIN = timedelta(days=2)
+OFFSET_MARGIN = timedelta(days=2)
 
 
 def parse_since(text: str) -> timedelta:
@@ -124,7 +124,7 @@ class _Run:
         return self.tags or (None,)
 
 
-def _tags(raw: str | None) -> tuple[str, ...]:
+def parse_tags(raw: str | None) -> tuple[str, ...]:
     try:
         value = json.loads(raw) if raw else []
     except ValueError:
@@ -132,7 +132,7 @@ def _tags(raw: str | None) -> tuple[str, ...]:
     return tuple(str(tag) for tag in value) if isinstance(value, list) else ()
 
 
-def _started(raw: str | None) -> datetime | None:
+def parse_started(raw: str | None) -> datetime | None:
     try:
         return datetime.fromisoformat(raw) if raw else None
     except ValueError:
@@ -146,15 +146,17 @@ def _runs(conn: sqlite3.Connection, since: datetime) -> list[_Run]:
         "SELECT run_id, status, provider, attempts, duration_s, tags, started_at, "
         "worker_output_tokens, envelope_chars FROM runs "
         "WHERE started_at >= ?",
-        ((since - _OFFSET_MARGIN).isoformat(),),
+        ((since - OFFSET_MARGIN).isoformat(),),
     ).fetchall()
     chosen = [
-        (started, r) for r in rows if (started := _started(r["started_at"])) and started >= since
+        (started, r)
+        for r in rows
+        if (started := parse_started(r["started_at"])) and started >= since
     ]
     chosen.sort(key=lambda pair: (pair[0], pair[1]["run_id"]))
     return [
         _Run(r["run_id"], r["status"] or "running", r["provider"], r["attempts"],
-             r["duration_s"], _tags(r["tags"]), r["worker_output_tokens"],
+             r["duration_s"], parse_tags(r["tags"]), r["worker_output_tokens"],
              r["envelope_chars"])
         for _, r in chosen
     ]  # fmt: skip
@@ -170,7 +172,7 @@ def _usage(
         "SELECT run_id, provider, prompt_tokens, completion_tokens, cost_usd, estimated "
         "FROM usage WHERE kind = 'actual' AND run_id IN "
         "(SELECT run_id FROM runs WHERE started_at >= ?) ORDER BY id",
-        ((since - _OFFSET_MARGIN).isoformat(),),
+        ((since - OFFSET_MARGIN).isoformat(),),
     ).fetchall()
     return [
         (r["run_id"], r["provider"],

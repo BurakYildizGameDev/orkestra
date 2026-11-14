@@ -198,7 +198,9 @@ class EstimateCfg(_Model):
 
 class NotifyCfg(_Model):
     desktop: bool = True
-    ntfy_topic_env: str | None = None  # name of the environment variable, not the topic
+    # The *name* of the environment variable, not the topic. A value that is not a variable
+    # name is refused by notify (never used or shown) and by the interface (D-075).
+    ntfy_topic_env: str | None = None
 
 
 class QueueCfg(_Model):
