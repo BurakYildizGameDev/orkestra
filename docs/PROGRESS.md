@@ -28,11 +28,38 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
-| 12b – Öğrenen yönlendirme, arayüzde kuyruk | ⏳ | | |
+| 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074) |
 | 13 – Benchmark | ⏳ | | |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 12b – Öğrenen yönlendirme, arayüzde kuyruk (2026-11-15)
+**Yapılanlar (D-074):**
+- `routing/adaptive.py`: son 30 günün koşularından (provider, model, etiket) başarı skoru, Laplace düzeltmeli, `min_samples` altı nötr 0.5.
+- Router: `Snapshot.scores`, `Candidate.score`; sıra kademe → skor → priority → config sırası; `take_snapshot(tags=)` görevin etiketleriyle.
+- `--dry-run`: metinde skor/örnek sayısı, JSON'da `score`, `score_samples`, `score_used`.
+- Arayüz: Kuyruk sekmesi (liste, yenile, çıkar), Ayarlar'da bildirim (masaüstü, ntfy değişken adı, deneme gönder).
+- Şema: `notify.ntfy_topic_env` değişken adı olmak zorunda.
+- Skill: gece kuyruğu ve öğrenen yönlendirme notları (263 → 267 satır).
+- README (en + tr): öğrenen yönlendirme satırı, arayüz satırı, yol haritasında 12b ✅. 17 yeni i18n anahtarı beş dilde (Claude çevirdi).
+
+**Kabul kriterleri:**
+- ✅ `min_samples` altında sıralama değişmiyor (`test_adaptive_order[below min_samples nothing moves]`).
+- ✅ Üstünde aynı kademede başarı oranı yüksek model öne geçiyor (`…[above min_samples the better model of the tier goes first]`).
+- ✅ Kademeler arası sıra asla değişmiyor (`…[the tier order never changes]`); tablo tabanlı test (9 satır) + skor tablosu (8 satır).
+- ✅ `--dry-run` skor ve örnek sayısını gösteriyor (`test_dry_run_puts_the_better_model_first_and_shows_why`).
+- ✅ Arayüzde Kuyruk ekranı dolu (`test_the_queue_tab_lists_the_items_and_removes_one`), bildirim ayarı kaydediliyor ve yorumlar duruyor (`test_notification_settings_are_saved_and_comments_kept`).
+
+**Elle duman testi:** geçici config'le (`adaptive: true`, `min_samples: 2`) `--lang tr run t.yaml --dry-run` adaylarda nötr skor satırını gösterdi; Türkçe metindeki ek ("0'i") düzeltildi.
+
+**Dürüst notlar:**
+- Testler önce yazıldı ve kırmızı koşuldu; `test_load_outcomes…` ilk koşuda testin kendi sıralama anahtarı yüzünden kırmızıydı (kod doğruydu), düzeltildi.
+- Arayüz gerçek terminalde elle denenmedi (Textual pilotu ile).
+- Gerçek koşu geçmişiyle (gerçek modeller) öğrenen yönlendirme denenmedi; testler sahte koşu kayıtlarıyla.
+- de/es/fr çevirilerini ana dili konuşan biri gözden geçirmedi.
+
+Testler: **1337 geçti** (1300 + 37). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 12a (PR #23), 2026-11-15
 `/code-review` 10 bulgu; hepsi düzeltildi (D-073). Önce 14 kırmızı test (bir eski test, bilerek değişen davranış için güncellendi).

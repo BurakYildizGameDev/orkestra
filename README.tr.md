@@ -37,10 +37,11 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Özellik | Komut |
 |---|---|
 | Kurulum sihirbazı (Ollama, Codex/agy/Claude ve API anahtarı değişkenlerini bulur) ya da örnek config | `orkestra init [--plain \| --defaults] [--project] [--force]` |
-| Terminal arayüzü: durum, sağlayıcılar (aç/kapat, test), bütçeler, profiller, onaylar, devir özeti, dil; Türkçe, İngilizce, Almanca, İspanyolca ya da Fransızca | `orkestra ui` |
+| Terminal arayüzü: durum, sağlayıcılar (aç/kapat, test), bütçeler, profiller, onaylar, gece kuyruğu, devir özeti, dil ve bildirimler; Türkçe, İngilizce, Almanca, İspanyolca ya da Fransızca | `orkestra ui` |
 | Birleştirilmiş config ve kaynakları, okunur hatalarla doğrulama | `orkestra config show [--json]`, `orkestra config validate` |
 | İşçi modele tek soru; bağlam dosyaları ve isteğe bağlı JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Profil, gizlilik ve yedeğe geçişli yönlendirme; her sağlayıcının neden seçildiğini/elendiğini görme | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
+| Öğrenen yönlendirme: aynı kademede, aynı etiketli görevlerde en başarılı model öne geçer (`min_samples` koşudan sonra); `--dry-run` skoru gösterir | `routing.adaptive: true` |
 | Görev dosyaları (YAML/JSON): cevabı doğrula, geri bildirimle tekrar dene, üst kademeye geç | `orkestra run gorev.yaml [--dry-run] [--json]` |
 | Düzenleme görevleri: işçi kodu yalıtılmış worktree'de değiştirir, karar senin testlerinin | `orkestra run duzenle.yaml`, sonra `show --diff`, `apply` |
 | Batch: bağımlılıklarıyla birçok görev, paralel, her sağlayıcı kendi concurrency sınırında | `orkestra batch tasks.yaml [--parallel N] [--fail-fast] [--notify] [--json]` |
@@ -655,7 +656,7 @@ için bu belge sonuç zarfıdır. Cevabın tamamı istek, yanıt ve görevle bir
 | 10 | Şef devri (Claude ↔ Codex ↔ Antigravity) | ✅ |
 | 11 | Terminal arayüzü, kurulum sihirbazı, 5 dil | ✅ |
 | 12a | Gece kuyruğu ve bildirimler | ✅ |
-| 12b | Öğrenen yönlendirme, terminal arayüzünde kuyruk | ⏳ |
+| 12b | Öğrenen yönlendirme, terminal arayüzünde kuyruk | ✅ |
 | 13 | Benchmark (kötü sonuçlarla birlikte) | ⏳ |
 | 14 | Paketleme, dokümantasyon, PyPI yayını | ⏳ |
 

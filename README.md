@@ -37,10 +37,11 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | Feature | Command |
 |---|---|
 | Setup wizard (detects Ollama, Codex/agy/Claude and API key variables), or the example config | `orkestra init [--plain \| --defaults] [--project] [--force]` |
-| Terminal interface: status, providers (on/off, test), budgets, profiles, consent, handoff brief, language; in English, Turkish, German, Spanish or French | `orkestra ui` |
+| Terminal interface: status, providers (on/off, test), budgets, profiles, consent, night queue, handoff brief, language and notifications; in English, Turkish, German, Spanish or French | `orkestra ui` |
 | Merged config with its sources, validation with readable errors | `orkestra config show [--json]`, `orkestra config validate` |
 | One question to a worker model, with context files and an optional JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Routing with profiles, privacy and failover; see why each provider was chosen or skipped | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
+| Adaptive routing: inside a tier, the model that did best on tasks with the same tag goes first (after `min_samples` runs); `--dry-run` shows the score | `routing.adaptive: true` |
 | Task files (YAML/JSON): verify the answer, retry with feedback, move up a tier | `orkestra run task.yaml [--dry-run] [--json]` |
 | Edit tasks: a worker changes code in an isolated worktree, your tests decide | `orkestra run edit.yaml`, then `show --diff`, `apply` |
 | Batches: many tasks with dependencies, in parallel, each provider within its concurrency | `orkestra batch tasks.yaml [--parallel N] [--fail-fast] [--notify] [--json]` |
@@ -657,7 +658,7 @@ With `--json`, stdout contains exactly one JSON document and everything else goe
 | 10 | Chief handoff (Claude ↔ Codex ↔ Antigravity) | ✅ |
 | 11 | Terminal UI, setup wizard, 5 languages | ✅ |
 | 12a | Night queue and notifications | ✅ |
-| 12b | Adaptive routing, queue in the terminal interface | ⏳ |
+| 12b | Adaptive routing, queue in the terminal interface | ✅ |
 | 13 | Benchmark (with the bad results too) | ⏳ |
 | 14 | Packaging, docs, PyPI release | ⏳ |
 

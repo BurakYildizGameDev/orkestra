@@ -4,9 +4,11 @@
 the state, so it can be tested without a database or network. ``take_snapshot()`` reads the
 state. Every candidate that is left out gets a reason; ``--dry-run`` prints them.
 
-Order: tier ascending → priority descending → the order in the config (providers as written,
-then their models as listed). The user states a preference by writing it first; ``priority``
-overrides that. Budgets only filter, they do not reorder (D-031). Adaptive scoring: Faz 12.
+Order: tier ascending → (``routing.adaptive``) success score descending → priority
+descending → the order in the config (providers as written, then their models as listed). The
+user states a preference by writing it first; ``priority`` overrides that. Budgets only
+filter, they do not reorder (D-031). The score (``adaptive.py``, Faz 12b) only orders inside
+a tier; below ``min_samples`` it is neutral.
 """
 
 from __future__ import annotations
@@ -34,6 +36,8 @@ from orkestra.providers import cli_agent, pricing
 from orkestra.providers.base import estimate_tokens
 from orkestra.providers.pricing import Price
 from orkestra.providers.registry import ChatConfig, key_present
+from orkestra.routing import adaptive
+from orkestra.routing.adaptive import Score, ScoreKey
 from orkestra.state import budget, consent, health
 
 CONTEXT_FILL = 0.8  # the estimated prompt may use at most 80% of the context window
@@ -88,6 +92,7 @@ class Snapshot:
     now: datetime
     providers: Mapping[str, ProviderState] = field(default_factory=dict)
     prices: Mapping[tuple[str, str], Price | None] = field(default_factory=dict)
+    scores: Mapping[ScoreKey, Score] = field(default_factory=dict)  # routing.adaptive only
 
 
 @dataclass(frozen=True)
@@ -99,6 +104,7 @@ class Candidate:
     price: Price | None
     order: tuple[int, int] = (0, 0)  # position in the config: (provider, model)
     edit_format: EditFormat | None = None  # how an API worker answers an edit task (Faz 9c)
+    score: Score | None = None  # routing.adaptive: success score and sample count (Faz 12b)
 
     @property
     def tier(self) -> int:
@@ -367,8 +373,19 @@ def route(
             edit_format = _edit_format(needs, model, config) if needs.kind == "edit" else None
             candidates.append(Candidate(name, cfg, model, ratio, price, position, edit_format))
 
-    candidates.sort(key=lambda c: (c.tier, -c.model.priority, c.order))
+    if config.routing.adaptive:
+        neutral = Score(adaptive.NEUTRAL, 0, 0, config.routing.min_samples, scored=False)
+        candidates = [
+            replace(c, score=snapshot.scores.get((c.provider, c.model.id), neutral))
+            for c in candidates
+        ]
+    candidates.sort(key=_order_key)
     return Route(profile_name, (low, high), tokens, tuple(candidates), tuple(eliminated))
+
+
+def _order_key(c: Candidate) -> tuple[int, float, int, tuple[int, int]]:
+    """Tier first, always; the score only reorders inside a tier."""
+    return (c.tier, -(c.score.value if c.score is not None else 0.0), -c.model.priority, c.order)
 
 
 def take_snapshot(
@@ -380,13 +397,15 @@ def take_snapshot(
     price_cache: Mapping[str, Any] | None = None,
     names: Sequence[str] | None = None,
     extra_model: tuple[str, str] | None = None,
+    tags: Sequence[str] = (),
 ) -> Snapshot:
     """State for the providers in ``names`` (default: all) that ``route()`` will look at.
 
     Disabled providers are left out before any state is needed; code agents have no prices.
     The price lookup in past usage (an SQL query per model) only runs where a ``daily_usd``
     limit needs it. ``extra_model`` (provider, model id) prices an explicitly chosen model
-    that the config does not list.
+    that the config does not list. With ``routing.adaptive`` the success scores of the last
+    30 days for the task's ``tags`` are read too.
     """
     env = os.environ if environ is None else environ
     cache = price_cache or {}
@@ -416,7 +435,11 @@ def take_snapshot(
             prices[(name, model.id)] = pricing.resolve(
                 name, cfg, model, conn=conn, cache=cache, history=history
             )
-    return Snapshot(now, states, prices)
+    scores: dict[ScoreKey, Score] = {}
+    if config.routing.adaptive:
+        outcomes = adaptive.load_outcomes(conn, now)
+        scores = adaptive.scores(config, outcomes, tags, list(states))
+    return Snapshot(now, states, prices, scores)
 
 
 def describe_candidates(candidates: Sequence[Candidate]) -> list[dict[str, Any]]:
@@ -431,6 +454,9 @@ def describe_candidates(candidates: Sequence[Candidate]) -> list[dict[str, Any]]
             "price_source": c.price.source if c.price else None,
             "local": c.config.local,
             "edit_format": c.edit_format,
+            "score": round(c.score.value, 4) if c.score is not None else None,
+            "score_samples": c.score.samples if c.score is not None else None,
+            "score_used": c.score.scored if c.score is not None else None,
         }
         for c in candidates
     ]

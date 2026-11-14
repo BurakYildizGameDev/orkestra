@@ -86,6 +86,8 @@ Düşük kademeden başla; Orkestra başarısızlıkta önce aynı modelle geri 
 
 İşçiler MCP araçlarını kullanamaz. Unity projesinde (`Assets/` ve `ProjectSettings/` var) sahne, prefab ve editör işleri Unity MCP ile şefte kalır; işçilere sadece dosya tabanlı işler (C# betikleri, testler, belgeler) ver. agy bağlanmayan bir MCP sunucusunu beklerse Orkestra onu `mcp_wait_s` (varsayılan 60 sn) sonra durdurup sıradaki sağlayıcıya geçer; hata mesajında sunucunun adı yazar, kullanıcıya ilet (çözüm makinedeki MCP ayarında, Orkestra'da değil).
 
+Config'te `routing.adaptive: true` ise Orkestra aynı kademedeki modelleri son 30 günün başarı oranına göre sıralar (kademe sırası değişmez); bunun için görevlere tutarlı `tags` ver (`docstring`, `tests` …). `--dry-run --json` her adayın `score` ve `score_samples` alanlarını gösterir; `min_samples` dolmadan skor nötrdür.
+
 Gizli bilgi içeren dosyalarda işi yerel modelle sınırla: görev dosyasında `privacy: local_only`, `ask` için `--local-only`. Orkestra gizli bilgi bulduğu bağlamı uzak sağlayıcıya göndermez (çıkış kodu 3); `--allow-secrets` bayrağını kullanıcı açıkça izin vermeden **asla** kullanma, bunun yerine `local_only` öner.
 
 ## 4. Görev yazma
@@ -203,6 +205,8 @@ orkestra show <run_id> --output   # ask cevabının tamamı
 orkestra show <run_id> --log      # koşunun kaydı (neden başarısız oldu?)
 orkestra show <run_id> --json     # zarfı tekrar al
 ```
+
+**Gece kuyruğu.** Kullanıcı işi sonraya (ör. geceye, yerel modellere) bırakmak isterse görev veya batch dosyasını kuyruğa ekle: `orkestra queue add .orkestra/tasks/batch.yaml --json` (dosya şimdi denetlenir). Kuyruğu sen çalıştırma (saatler sürebilir): kullanıcıya `orkestra queue run --until 07:00 --notify` komutunu ve zamanlama için `docs/recipes.md`'yi öner. Sonra `orkestra queue list --json` her işin `status` ve `result_ref` (koşu için `run_id`, batch için `batch_id`) alanlarını verir; sonuçları 6. bölümdeki gibi denetle.
 
 ## 6. Denetim (atlanamaz)
 

@@ -66,6 +66,18 @@ def list_lines(items: list[store.QueueItem], config: Config | None) -> list[str]
     ]
 
 
+def row_cells(item: store.QueueItem, config: Config | None) -> tuple[str, ...]:
+    """One row of the interface's queue table (Faz 12b)."""
+    return (
+        f"#{item.id}",
+        t(f"queue.status.{item.status}"),
+        t(f"queue.kind.{item.kind}"),
+        profile_text(item, config),
+        item.name,
+        _extra(item.result_ref, item.note).strip(),
+    )
+
+
 def result_line(item: store.QueueItem, result: ItemResult) -> str:
     return t(
         "queue.item.line",

@@ -163,6 +163,7 @@ def _route_text(plan: Route) -> str:
                     where=t("route.dry.local") if c.config.local else t("route.dry.remote"),
                 )
                 + (t("route.dry.edit_format", format=c.edit_format) if c.edit_format else "")
+                + display.score_text(c.score)
             )
     else:
         lines.append(t("route.dry.none"))

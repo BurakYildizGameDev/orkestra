@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from orkestra.i18n import t
 from orkestra.providers import registry
+from orkestra.routing.adaptive import Score
 from orkestra.state import db
 
 
@@ -44,3 +45,12 @@ def budget_text(row: registry.ProviderRow) -> str:
         for s in row.limits
     )
     return f"{row.name}: {limits}"
+
+
+def score_text(score: Score | None) -> str:
+    """``--dry-run``: the adaptive score and how many runs it rests on (Faz 12b)."""
+    if score is None:
+        return ""
+    if score.scored:
+        return t("route.dry.score", score=f"{score.value:.2f}", ok=score.ok, samples=score.samples)
+    return t("route.dry.score_neutral", samples=score.samples, needed=score.needed)

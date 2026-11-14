@@ -757,3 +757,19 @@ Mimari §6 ve §21 güncellendi (D-072).
 - **`mark_finished`** yanlış durumda `InternalError` (çıplak `ValueError` değil).
 - **Testler:** 1286 → 1300 (+14).
 Mimari §21 notu güncellendi (D-073).
+
+## D-074 – Faz 12b: öğrenen yönlendirme, arayüzde kuyruk ve bildirim ayarı (2026-11-15, Faz 12b)
+**Bağlam:** Mimari §7, §20, §22; plan Faz 12 (2/2).
+**Karar:**
+- **`routing/adaptive.py` saf fonksiyonlar:** `laplace`, `score_for`, `scores`; veritabanına yalnız `load_outcomes` dokunur. Kaynak: son 30 günün bitmiş koşuları (`ok`, `failed`, `escalate`, `error`). Koşu, son sonucu veren (provider, model) için sayılır; olmayanlar (`escalate`, cevaptan önce düşen) son yerleşmiş isteğin sağlayıcısına (`usage`), `orkestra stats` gibi. Hiç istek göndermeyen koşu sayılmaz.
+- **Grup:** (provider, model, etiket); etiketsiz görev etiketsiz koşuları kullanır. **Birden çok etiketli görev:** etiketlerinden herhangi birini taşıyan koşular, her koşu bir kez (aynı koşu iki etiket grubunda iki kez sayılmasın). Tek etiketli görevde Mimari'deki grupla aynı.
+- **Kod ajanları** yalnız sağlayıcı adıyla eşleşir (modeli koşudan koşuya değişebilir); aday kimliği router'daki gibi `model or kind`.
+- **Sıralama:** kademe ↑ → skor ↓ → `priority` ↓ → config sırası (Mimari §7 adım 4 ile aynı; skor priority'den önce). `min_samples` altı nötr 0.5: skoru 0.5'in altında olan model, hiç denenmemiş modelin arkasına düşer. Kademe asla değişmez (tablo testi).
+- **`take_snapshot(tags=)`:** skorlar yalnız `routing.adaptive: true` iken okunur (bir sorgu + sağlayıcısız koşu başına bir `usage` sorgusu). Şefin model sorgusu (`chief/call.py`) etiket vermez, etiketsiz grubu kullanır.
+- **`--dry-run`:** her adayda `score` (≈ başarı oranı), `score_samples`, `score_used` (JSON); metinde "skor 0.80 (3/3 başarılı)" veya "skor nötr (koşu 0/10, henüz az)". Adaptive kapalıyken bu alanlar `null`, sıra eskisi gibi.
+- **Arayüz Kuyruk sekmesi:** liste (no, durum, tür, profil, dosya, sonuç), Yenile, Çıkar (`queue_store.remove`, sahipsiz `running` dahil). **Arayüzden `queue run` yok:** saatler sürebilir ve terminal/zamanlayıcıda çalışmalı; sekme komutu gösterir.
+- **Ayarlar'da bildirim:** masaüstü açık/kapalı, ntfy değişken adı (boş = kaldır), "Deneme gönder" (arka plan iş parçacığında `notify.send`, kanal satırları). İki değer tek kayıtta yazılır: hatalı ad varsa hiçbir şey yazılmaz.
+- **Şema:** `notify.ntfy_topic_env` artık ortam değişkeni adı olmalı (`^[A-Za-z_][A-Za-z0-9_]*$`). Arayüzde bu kutuya konunun kendisi yazılırsa config dosyasına (gizli sayılması gereken) konu girerdi. Bu değeri ad olmayan eski bir config artık doğrulamadan geçmez (bilerek: o değer zaten sızıntıydı).
+- **Skill:** gece kuyruğu paragrafı (kuyruğu şef çalıştırmaz, kullanıcıya komutu ve `docs/recipes.md`'yi önerir; sonuçlar `queue list --json` → `result_ref`) ve öğrenen yönlendirme notu (tutarlı `tags`, `--dry-run --json` skoru).
+- **Testler:** 1300 → 1337 (+37).
+Mimari §20 ve §22 güncellendi (D-074).

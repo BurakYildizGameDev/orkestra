@@ -13,6 +13,7 @@ again in the new language at once.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import queue
 import sqlite3
@@ -54,7 +55,10 @@ from orkestra.errors import (
 from orkestra.handoff import brief as handoff_brief
 from orkestra.handoff import store as handoff_store
 from orkestra.i18n import t
+from orkestra.notify import notify
 from orkestra.providers import display, registry
+from orkestra.queue import display as queue_display
+from orkestra.queue import store as queue_store
 from orkestra.state import consent, db
 from orkestra.tui import detect, wizard
 
@@ -62,7 +66,7 @@ Mode = Literal["ui", "wizard"]
 BUDGET_FIELDS = ("daily_tokens", "daily_usd", "daily_requests", "daily_runs")
 INTEGER_FIELDS = frozenset({"daily_tokens", "daily_requests", "daily_runs"})
 ANSWER_POLL_S = 0.2  # how often a waiting question checks that the app still runs
-TABS = ("status", "providers", "budgets", "profiles", "consent", "handoff", "settings")
+TABS = ("status", "providers", "budgets", "profiles", "consent", "queue", "handoff", "settings")
 
 
 def usable_terminal(
@@ -375,6 +379,44 @@ class ConsentPane(_Pane):
         self.orkestra.push_screen(ConfirmScreen(lines), answered)
 
 
+class QueuePane(_Pane):
+    """The night queue (Faz 12b): what waits, runs, ended; an item can be removed. The queue
+    itself runs from a terminal or the scheduler (``orkestra queue run``)."""
+
+    def compose(self) -> ComposeResult:
+        yield DataTable(id="queue-table", cursor_type="row")
+        with Horizontal():
+            yield Button(t("ui.button.refresh"), id="queue-refresh")
+            yield Button(t("ui.button.remove"), id="queue-remove")
+        yield Static(t("ui.queue.hint"), markup=False)
+        yield Static("", id="queue-message", markup=False)
+
+    def reload(self) -> None:
+        table = self.query_one("#queue-table", DataTable)
+        table.clear(columns=True)
+        table.add_columns(*(t(f"ui.queue.column.{name}") for name in
+                            ("id", "status", "kind", "profile", "file", "result")))  # fmt: skip
+        items = self.orkestra.queue_items()
+        self.ids = [item.id for item in items]
+        config = self.orkestra.config()
+        for item in items:
+            table.add_row(*queue_display.row_cells(item, config))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id not in ("queue-refresh", "queue-remove"):
+            return
+        event.stop()
+        if event.button.id == "queue-refresh":
+            self.reload()
+            return
+        table = self.query_one("#queue-table", DataTable)
+        ids: list[int] = getattr(self, "ids", [])
+        if not 0 <= table.cursor_row < len(ids):
+            self.message("queue-message", t("ui.error.choose"))
+            return
+        self.message("queue-message", self.orkestra.remove_queue_item(ids[table.cursor_row]))
+
+
 class HandoffPane(_Pane):
     def compose(self) -> ComposeResult:
         yield Static("", id="handoff-text", markup=False)
@@ -399,8 +441,31 @@ class SettingsPane(_Pane):
                      value=config.language if config is not None else "auto")  # fmt: skip
         yield Button(t("ui.button.save"), id="settings-save")
         yield Static("", id="settings-message", markup=False)
+        yield Static(t("ui.settings.notify"), markup=False)
+        desktop = config is None or config.notify.desktop
+        yield Select([(t("ui.settings.desktop_on"), "on"), (t("ui.settings.desktop_off"), "off")],
+                     id="settings-desktop", allow_blank=False,
+                     value="on" if desktop else "off")  # fmt: skip
+        yield Input(value=(config.notify.ntfy_topic_env or "") if config is not None else "",
+                    placeholder=t("ui.settings.ntfy_placeholder"), id="settings-ntfy")  # fmt: skip
+        with Horizontal():
+            yield Button(t("ui.button.save"), id="settings-notify-save")
+            yield Button(t("ui.button.notify_test"), id="settings-notify-test")
+        yield Static("", id="settings-notify-message", markup=False)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "settings-notify-save":
+            event.stop()
+            desktop = self.query_one("#settings-desktop", Select).value == "on"
+            variable = self.query_one("#settings-ntfy", Input).value.strip() or None
+            text = self.orkestra.save_notify(desktop, variable)
+            self.message("settings-notify-message", text)
+            return
+        if event.button.id == "settings-notify-test":
+            event.stop()
+            self.message("settings-notify-message", t("ui.notify.sending"))
+            self.orkestra.test_notify()
+            return
         if event.button.id != "settings-save":
             return
         event.stop()
@@ -459,8 +524,8 @@ class OrkestraApp(App[None]):
         titles = {name: t(f"ui.tab.{name}") for name in TABS}
         panes: dict[str, Callable[[], _Pane]] = {
             "status": StatusPane, "providers": ProvidersPane, "budgets": BudgetsPane,
-            "profiles": ProfilesPane, "consent": ConsentPane, "handoff": HandoffPane,
-            "settings": SettingsPane,
+            "profiles": ProfilesPane, "consent": ConsentPane, "queue": QueuePane,
+            "handoff": HandoffPane, "settings": SettingsPane,
         }  # fmt: skip
         with TabbedContent(initial="status"):
             for name in TABS:
@@ -560,6 +625,56 @@ class OrkestraApp(App[None]):
             return error_text(exc)
         self.refresh_panes()
         return "\n".join(t("ui.saved", path=result.path) for result in results)
+
+    def queue_items(self) -> list[queue_store.QueueItem]:
+        with closing(db.connect()) as conn:
+            return queue_store.items(conn)
+
+    def remove_queue_item(self, item_id: int) -> str:
+        try:
+            with closing(db.connect()) as conn:
+                queue_store.remove(conn, item_id)
+        except OrkestraError as exc:
+            return error_text(exc)
+        self.refresh_panes()
+        return t("queue.removed", id=item_id)
+
+    def save_notify(self, desktop: bool, variable: str | None) -> str:
+        """``notify.desktop`` and ``notify.ntfy_topic_env``; an empty name clears it. Both
+        values are checked together, so a wrong name writes nothing at all."""
+        changes: list[tuple[tuple[str, ...], Any]] = [(("notify", "desktop"), desktop)]
+        if variable is not None:
+            changes.append((("notify", "ntfy_topic_env"), variable))
+        try:
+            results = edits.set_values(changes, config_flag=self.config_flag)
+            if variable is None:
+                config = self.config()
+                if config is not None and config.notify.ntfy_topic_env is not None:
+                    results.append(edits.set_value(("notify", "ntfy_topic_env"), None,
+                                                   config_flag=self.config_flag))  # fmt: skip
+        except OrkestraError as exc:
+            return error_text(exc)
+        self.refresh_panes()
+        return "\n".join(dict.fromkeys(t("ui.saved", path=r.path) for r in results))
+
+    def test_notify(self) -> None:
+        """``notify test`` from Settings, in the background (ntfy may be slow)."""
+        config = self.config()
+        if config is None:
+            self.show_notify_result(self.config_problem())
+            return
+
+        def work() -> None:
+            deliveries = notify.send(config.notify, t("notify.title.test"),
+                                     t("notify.test.message"))  # fmt: skip
+            lines = notify.delivery_lines(deliveries, config.notify) or [t("notify.test.none")]
+            self.call_from_thread(self.show_notify_result, "\n".join(lines))
+
+        self.background(work)
+
+    def show_notify_result(self, text: str) -> None:
+        with contextlib.suppress(NoMatches):  # Settings was rebuilt meanwhile
+            self.query_one("#settings-notify-message", Static).update(text)
 
     def consent_description(self, name: str) -> list[str]:
         config = self.config()
