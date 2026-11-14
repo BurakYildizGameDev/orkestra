@@ -71,7 +71,8 @@ def set_values(
     config_flag: Path | None,
     cwd: Path | None = None,
 ) -> list[writer.SaveResult]:
-    """Set several values; the ones for the same file are one save (one backup)."""
+    """Set several values; the ones for the same file are one save (one backup). ``None``
+    removes the key from the file that defines it, in that same save (nothing when absent)."""
     groups: dict[Path, tuple[Path | None, list[tuple[KeyPath, Any]]]] = {}
     for key_path, value in changes:
         path, base = target_for(key_path, config_flag=config_flag, cwd=cwd)
@@ -80,6 +81,9 @@ def set_values(
     for path, (base, values) in groups.items():
         document = writer.load_document(path)
         for key_path, value in values:
+            if value is None:
+                _delete(document, key_path)
+                continue
             parent = document
             for key in key_path[:-1]:
                 child = parent.get(key)
@@ -89,6 +93,14 @@ def set_values(
             parent[key_path[-1]] = value
         results.append(writer.save(path, document, base=base))
     return results
+
+
+def _delete(document: CommentedMap, key_path: KeyPath) -> None:
+    parent: Any = document
+    for key in key_path[:-1]:
+        parent = parent.get(key) if isinstance(parent, Mapping) else None
+    if isinstance(parent, CommentedMap) and key_path[-1] in parent:
+        del parent[key_path[-1]]
 
 
 def set_value(

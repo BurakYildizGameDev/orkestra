@@ -151,3 +151,27 @@ def test_several_values_for_one_file_are_one_save(base: Path, tmp_path: Path) ->
     assert results[0].config.defaults.profile == "cheap"
     assert results[0].config.defaults.max_retries == 1
     assert sorted(p.name for p in base.parent.iterdir()) == ["config.yaml", "config.yaml.bak"]
+
+
+def test_none_in_set_values_removes_the_key_in_the_same_save(
+    base: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from orkestra.config import writer
+
+    base.write_text(base.read_text(encoding="utf-8") + "notify:\n  ntfy_topic_env: ORK_T\n",
+                    encoding="utf-8")  # fmt: skip
+    saves: list[Path] = []
+    real_save = writer.save
+
+    def counting(path: Path, *args: object, **kwargs: object) -> writer.SaveResult:
+        saves.append(path)
+        return real_save(path, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(writer, "save", counting)
+    edits.set_values([(("notify", "desktop"), False), (("notify", "ntfy_topic_env"), None)],
+                     config_flag=base)  # fmt: skip
+    config = loader.load_config(base).config
+    assert config.notify.desktop is False and config.notify.ntfy_topic_env is None
+    assert saves == [base]
+    edits.set_values([(("routing", "min_samples"), None)], config_flag=base)  # absent: no-op
+    assert "routing" not in base.read_text(encoding="utf-8")

@@ -28,6 +28,7 @@ NTFY_URL = "https://ntfy.sh/{topic}"
 TIMEOUT_S = 10.0
 EXTRA = "orkestra-cli[notify]"
 _TOPIC = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_VARIABLE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 Channel = Literal["desktop", "ntfy"]
 State = Literal["sent", "skipped", "failed"]
@@ -39,7 +40,11 @@ Poster = Callable[[str, str, str], Any]  # url, title, message
 class Delivery:
     channel: Channel
     state: State
-    reason: str | None = None  # not_installed | topic_unset | topic_invalid | error text
+    reason: str | None = None  # not_installed | topic_unset | topic_invalid | env_invalid | …
+
+
+def is_variable_name(value: str) -> bool:
+    return bool(_VARIABLE.match(value))
 
 
 def counts_text(finished: int, failed: int, *, skipped: int = 0) -> str:
@@ -84,7 +89,10 @@ def send(
     deliveries: list[Delivery] = []
     if config.desktop:
         deliveries.append(_send_desktop(desktop, title, message))
-    if config.ntfy_topic_env:
+    if config.ntfy_topic_env and not is_variable_name(config.ntfy_topic_env):
+        # Probably the topic itself, typed where the variable's name goes: never use or show it.
+        deliveries.append(Delivery("ntfy", "failed", "env_invalid"))
+    elif config.ntfy_topic_env:
         deliveries.append(
             _send_ntfy(post, env.get(config.ntfy_topic_env, "").strip(), title, message)
         )
@@ -121,6 +129,8 @@ def delivery_lines(deliveries: list[Delivery], config: NotifyCfg) -> list[str]:
             text = t("notify.state.not_installed", extra=EXTRA)
         elif item.reason == "topic_unset":
             text = t("notify.state.topic_unset", env=config.ntfy_topic_env or "-")
+        elif item.reason == "env_invalid":
+            text = t("notify.state.env_invalid")
         elif item.reason == "topic_invalid":
             text = t("notify.state.topic_invalid", env=config.ntfy_topic_env or "-")
         elif item.state == "sent":

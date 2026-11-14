@@ -391,12 +391,22 @@ class QueuePane(_Pane):
         yield Static(t("ui.queue.hint"), markup=False)
         yield Static("", id="queue-message", markup=False)
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.ids: list[int] = []  # queue item ids, in table order
+
     def reload(self) -> None:
         table = self.query_one("#queue-table", DataTable)
         table.clear(columns=True)
         table.add_columns(*(t(f"ui.queue.column.{name}") for name in
                             ("id", "status", "kind", "profile", "file", "result")))  # fmt: skip
-        items = self.orkestra.queue_items()
+        self.ids = []
+        try:
+            items = self.orkestra.queue_items()
+        except (OrkestraError, sqlite3.Error) as exc:  # a locked state.db must not crash the app
+            self.message("queue-message", error_text(exc) if isinstance(exc, OrkestraError)
+                         else t("errors.internal", detail=exc))  # fmt: skip
+            return
         self.ids = [item.id for item in items]
         config = self.orkestra.config()
         for item in items:
@@ -410,11 +420,18 @@ class QueuePane(_Pane):
             self.reload()
             return
         table = self.query_one("#queue-table", DataTable)
-        ids: list[int] = getattr(self, "ids", [])
-        if not 0 <= table.cursor_row < len(ids):
+        if not 0 <= table.cursor_row < len(self.ids):
             self.message("queue-message", t("ui.error.choose"))
             return
-        self.message("queue-message", self.orkestra.remove_queue_item(ids[table.cursor_row]))
+        item_id = self.ids[table.cursor_row]
+        name = str(table.get_row_at(table.cursor_row)[4])
+
+        def answered(agreed: bool | None) -> None:
+            if agreed:
+                self.message("queue-message", self.orkestra.remove_queue_item(item_id))
+
+        self.orkestra.push_screen(ConfirmScreen([t("ui.queue.confirm_remove", id=item_id,
+                                                   name=name)]), answered)  # fmt: skip
 
 
 class HandoffPane(_Pane):
@@ -640,18 +657,15 @@ class OrkestraApp(App[None]):
         return t("queue.removed", id=item_id)
 
     def save_notify(self, desktop: bool, variable: str | None) -> str:
-        """``notify.desktop`` and ``notify.ntfy_topic_env``; an empty name clears it. Both
-        values are checked together, so a wrong name writes nothing at all."""
-        changes: list[tuple[tuple[str, ...], Any]] = [(("notify", "desktop"), desktop)]
-        if variable is not None:
-            changes.append((("notify", "ntfy_topic_env"), variable))
+        """``notify.desktop`` and ``notify.ntfy_topic_env`` in one save; an empty name clears
+        it. A value that is not a variable name (probably the topic) is never written."""
+        if variable is not None and not notify.is_variable_name(variable):
+            return t("ui.error.ntfy_env")
+        changes: list[tuple[tuple[str, ...], Any]] = [
+            (("notify", "desktop"), desktop), (("notify", "ntfy_topic_env"), variable),
+        ]  # fmt: skip
         try:
             results = edits.set_values(changes, config_flag=self.config_flag)
-            if variable is None:
-                config = self.config()
-                if config is not None and config.notify.ntfy_topic_env is not None:
-                    results.append(edits.set_value(("notify", "ntfy_topic_env"), None,
-                                                   config_flag=self.config_flag))  # fmt: skip
         except OrkestraError as exc:
             return error_text(exc)
         self.refresh_panes()
@@ -665,10 +679,14 @@ class OrkestraApp(App[None]):
             return
 
         def work() -> None:
-            deliveries = notify.send(config.notify, t("notify.title.test"),
-                                     t("notify.test.message"))  # fmt: skip
-            lines = notify.delivery_lines(deliveries, config.notify) or [t("notify.test.none")]
-            self.call_from_thread(self.show_notify_result, "\n".join(lines))
+            try:
+                deliveries = notify.send(config.notify, t("notify.title.test"),
+                                         t("notify.test.message"))  # fmt: skip
+                lines = notify.delivery_lines(deliveries, config.notify)
+                text = "\n".join(lines or [t("notify.test.none")])
+            except Exception as exc:  # a dead thread would leave "Sending..." forever
+                text = t("errors.internal", detail=f"{type(exc).__name__}: {exc}")
+            self.call_from_thread(self.show_notify_result, text)
 
         self.background(work)
 

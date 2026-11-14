@@ -196,13 +196,11 @@ class EstimateCfg(_Model):
     confirm_above_usd: NonNegFloat | None = 0.50
 
 
-# A variable *name*: a topic pasted here by mistake would be kept in the config file (D-074).
-EnvVarName = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")]
-
-
 class NotifyCfg(_Model):
     desktop: bool = True
-    ntfy_topic_env: EnvVarName | None = None  # name of the environment variable, not the topic
+    # The *name* of the environment variable, not the topic. A value that is not a variable
+    # name is refused by notify (never used or shown) and by the interface (D-075).
+    ntfy_topic_env: str | None = None
 
 
 class QueueCfg(_Model):

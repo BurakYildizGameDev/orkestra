@@ -376,11 +376,17 @@ def route(
     if config.routing.adaptive:
         neutral = Score(adaptive.NEUTRAL, 0, 0, config.routing.min_samples, scored=False)
         candidates = [
-            replace(c, score=snapshot.scores.get((c.provider, c.model.id), neutral))
-            for c in candidates
+            replace(c, score=snapshot.scores.get(_score_key(c), neutral)) for c in candidates
         ]
     candidates.sort(key=_order_key)
     return Route(profile_name, (low, high), tokens, tuple(candidates), tuple(eliminated))
+
+
+def _score_key(c: Candidate) -> ScoreKey:
+    """A code agent's history is kept under its config id, whatever model the task names."""
+    if isinstance(c.config, CliAgentProvider):
+        return (c.provider, adaptive.agent_model_id(c.config))
+    return (c.provider, c.model.id)
 
 
 def _order_key(c: Candidate) -> tuple[int, float, int, tuple[int, int]]:
@@ -438,7 +444,7 @@ def take_snapshot(
     scores: dict[ScoreKey, Score] = {}
     if config.routing.adaptive:
         outcomes = adaptive.load_outcomes(conn, now)
-        scores = adaptive.scores(config, outcomes, tags, list(states))
+        scores = adaptive.scores(config, outcomes, tags, list(states), extra=extra_model)
     return Snapshot(now, states, prices, scores)
 
 

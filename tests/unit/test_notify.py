@@ -151,3 +151,14 @@ def test_skipped_items_are_counted_in_the_message() -> None:
         "notify.counts_skipped", finished=3, failed=1, skipped=2
     )
     assert notify.counts_text(3, 1, skipped=0) == t("notify.counts", finished=3, failed=1)
+
+
+@pytest.mark.parametrize("value", ["my-topic", "has space", "1STARTS", "a.b"])
+def test_a_value_that_is_not_a_variable_name_is_never_used_or_shown(value: str) -> None:
+    post = Recorder()
+    cfg = NotifyCfg(desktop=False, ntfy_topic_env=value)
+    deliveries = notify.send(cfg, "T", "m", environ={value: "topic"}, post=post)
+    assert _states(deliveries) == {"ntfy": "failed"} and deliveries[0].reason == "env_invalid"
+    assert post.calls == []
+    assert value not in "\n".join(notify.delivery_lines(deliveries, cfg))
+    assert not notify.is_variable_name(value) and notify.is_variable_name("ORK_TOPIC_2")

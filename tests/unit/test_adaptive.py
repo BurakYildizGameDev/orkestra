@@ -106,10 +106,7 @@ def test_load_outcomes_reads_the_last_30_days_of_finished_runs(conn: sqlite3.Con
     _run(conn, "r3", NOW - timedelta(days=31), "ok", provider="p", model="m")  # too old
     _run(conn, "r4", NOW - timedelta(hours=1), "running")  # not finished
     _run(conn, "r5", NOW - timedelta(days=3), "escalate")  # no final provider: from usage
-    conn.execute(
-        "INSERT INTO usage (run_id, provider, model, day, kind, created_at) "
-        "VALUES ('r5', 'q', 'n', '2026-11-12', 'actual', '2026-11-12T10:00:00+03:00')"
-    )
+    _usage(conn, "r5", "q", "n", completion=12)
     _run(conn, "r6", NOW - timedelta(days=4), "error")  # sent nothing: no provider at all
     got = sorted(adaptive.load_outcomes(conn, NOW), key=lambda o: (o.provider, o.model, o.ok))
     assert got == [
@@ -204,3 +201,67 @@ def test_candidates_carry_their_score_for_dry_run() -> None:
     assert by_label["local/a"] == Score(0.5, 0, 0, 10, scored=False)
     plain = Snapshot(NOW, {"local": ProviderState(consent="granted")})
     assert all(c.score is None for c in route(TaskNeeds(), _config(False), plain).candidates)
+
+
+# --- code review fixes (PR #24, D-075) ----------------------------------------------------
+
+
+def _usage(
+    conn: sqlite3.Connection, run_id: str, provider: str, model: str, completion: int
+) -> None:
+    conn.execute(
+        "INSERT INTO usage (run_id, provider, model, day, completion_tokens, kind, created_at) "
+        "VALUES (?, ?, ?, '2026-11-14', ?, 'actual', '2026-11-14T10:00:00+03:00')",
+        (run_id, provider, model, completion),
+    )
+
+
+def test_a_model_that_answered_but_was_replaced_counts_as_a_failure(
+    conn: sqlite3.Connection,
+) -> None:
+    _run(conn, "r1", NOW - timedelta(days=1), "ok", provider="p", model="b", tags=["t"])
+    _usage(conn, "r1", "p", "a", completion=40)  # tier 1 answered, failed verification
+    _usage(conn, "r1", "p", "a", completion=35)  # its retry too
+    _usage(conn, "r1", "q", "x", completion=0)  # an offline provider: no answer, not counted
+    _usage(conn, "r1", "p", "b", completion=50)  # the final answer
+    got = sorted(adaptive.load_outcomes(conn, NOW), key=lambda o: (o.provider, o.model))
+    assert got == [Outcome("p", "a", ("t",), False), Outcome("p", "b", ("t",), True)]
+
+
+def test_error_runs_say_nothing_about_a_model(conn: sqlite3.Connection) -> None:
+    _run(conn, "r1", NOW - timedelta(days=1), "error", provider="p", model="m")
+    _usage(conn, "r1", "p", "m", completion=40)  # answered, then Ctrl+C or a disk error
+    _run(conn, "r2", NOW - timedelta(days=1), "error")
+    _usage(conn, "r2", "p", "m", completion=40)
+    assert adaptive.load_outcomes(conn, NOW) == []
+
+
+def test_load_outcomes_uses_a_fixed_number_of_queries(conn: sqlite3.Connection) -> None:
+    for n in range(20):
+        _run(conn, f"r{n}", NOW - timedelta(hours=n + 1), "escalate")
+        _usage(conn, f"r{n}", "p", "m", completion=10)
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    try:
+        assert len(adaptive.load_outcomes(conn, NOW)) == 20
+    finally:
+        conn.set_trace_callback(None)
+    assert len([s for s in statements if s.lstrip().upper().startswith("SELECT")]) <= 2
+
+
+def test_an_explicitly_chosen_model_shows_its_history() -> None:
+    agents = Config.model_validate({
+        "version": 1, "providers": {"codex": {"type": "cli_agent", "command": "codex"}},
+        "routing": {"adaptive": True, "min_samples": 2},
+    })  # fmt: skip
+    runs = _runs("codex", "gpt-5-codex", 2, 0)
+    snapshot = Snapshot(NOW, {"codex": ProviderState(consent="granted")},
+                        scores=adaptive.scores(agents, runs, ()))  # fmt: skip
+    needs = TaskNeeds(provider="codex", model="gpt-5-codex", tier=3)
+    [candidate] = route(needs, agents, snapshot).candidates
+    assert candidate.score is not None and candidate.score.samples == 2
+    config = _config()
+    extra = adaptive.scores(
+        config, _runs("local", "unlisted", 10, 0), (), extra=("local", "unlisted")
+    )
+    assert extra[("local", "unlisted")].samples == 10

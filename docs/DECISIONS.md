@@ -773,3 +773,18 @@ Mimari §21 notu güncellendi (D-073).
 - **Skill:** gece kuyruğu paragrafı (kuyruğu şef çalıştırmaz, kullanıcıya komutu ve `docs/recipes.md`'yi önerir; sonuçlar `queue list --json` → `result_ref`) ve öğrenen yönlendirme notu (tutarlı `tags`, `--dry-run --json` skoru).
 - **Testler:** 1300 → 1337 (+37).
 Mimari §20 ve §22 güncellendi (D-074).
+
+## D-075 – Faz 12b kod denetimi düzeltmeleri (2026-11-15, Faz 12b)
+`/code-review` (PR #24): 10 bulgu, hepsi düzeltildi; önce 14 kırmızı test.
+- **Değiştirilen model artık sayılıyor:** bir koşuda cevap verip (`usage`'da completion token > 0) yerini başka modele bırakan her model (aynı modelle tekrar değil; başka modele tekrar, yedeğe geçiş, üst kademe) o koşu için bir kez **başarısız** sayılır. Önce yalnız son sonucu veren model sayılıyordu: kademe 1'de hep doğrulamayı geçemeyen model hiç veri almıyor, sonsuza dek nötr kalıp önde deneniyordu. Cevap alınamayan istek (çevrimdışı, reddedilen) sayılmaz. Son modeli olmayan koşu, son cevap veren modele başarısızlık. Bu, `orkestra stats`'ın sayımından bilerek farklı (stats koşu başına tek sağlayıcı).
+- **`error` koşuları sayılmaz** (Ctrl+C, disk/worktree hatası, bütün sağlayıcılar çevrimdışı): model kalitesi hakkında bilgi değil; bir akşamlık kesinti iyi bir modeli 30 gün geriye atıyordu.
+- **Şema geri gevşetildi:** D-074'teki `ntfy_topic_env` deseni, bu alanda konu yazan eski config'i tümüyle doğrulamadan düşürüyor ve arayüz bunu düzeltemiyordu. Artık düz `str`; ad olmayan değeri `notify` hiç kullanmaz ve göstermez (`env_invalid`, "konuyu değil değişkenin adını yaz"), arayüz kaydetmez (`ui.error.ntfy_env`). Arayüzde kutu boşaltılıp kaydedilince eski değer silinir.
+- **Kuyruk sekmesi çökmüyor:** kilitli `state.db` (`sqlite3.Error`) veya `OrkestraError` sekmede mesaj olur; açılış ve başka sekmedeki kayıt (`refresh_panes`) uygulamayı düşürmez.
+- **Açıkça seçilen modelin geçmişi görünüyor:** kod ajanı skoru her zaman config kimliğiyle (`model or kind`) aranır; config'te olmayan API modeli (`extra_model`) de skorlanır.
+- **Tek sorgu:** cevap veren istekler pencere için tek `usage` sorgusuyla okunur (önce koşu başına bir sorgu). `load_outcomes` en fazla iki SELECT (test). Batch'te görev başına okuma kaldı (iki sorgu; önbellek gerekmedi).
+- **Ortak yardımcılar:** `stats.parse_tags`, `stats.parse_started`, `stats.OFFSET_MARGIN` açıldı, `adaptive` bunları kullanır (kopya yok).
+- **Bildirim ayarı tek kayıt:** `edits.set_values` içinde `None` aynı kayıtta anahtarı siler (yoksa hiçbir şey); masaüstü + değişken adı tek yedek, tek yazma.
+- **Deneme bildirimi iş parçacığı** hatayı yakalar ve ekranda gösterir ("Gönderiliyor..." sonsuza dek kalmaz).
+- **Kuyruktan çıkarma onay ister** (`ConfirmScreen`); `ids` panelde tanımlı.
+- **Testler:** 1337 → 1346 (+13 yeni, şema desen testlerinin 4'ü kaldırıldı: karar geri alındı).
+Mimari §20 ve §22 notları güncellendi (D-075).

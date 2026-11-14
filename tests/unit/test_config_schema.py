@@ -295,10 +295,9 @@ def test_partial_price_is_rejected() -> None:
     assert any("price_per_mtok" in e and "input and output" in e for e in errors)
 
 
-@pytest.mark.parametrize("value", ["my-topic", "has space", "1STARTS_WITH_DIGIT", "a.b"])
-def test_ntfy_topic_env_must_be_a_variable_name(value: str) -> None:
-    with pytest.raises(ValidationError):
-        Config.model_validate({"version": 1, "notify": {"ntfy_topic_env": value}})
+def test_an_old_config_with_a_topic_in_ntfy_topic_env_still_loads() -> None:
+    config = Config.model_validate({"version": 1, "notify": {"ntfy_topic_env": "my-topic"}})
+    assert config.notify.ntfy_topic_env == "my-topic"  # notify refuses to use it (D-075)
 
 
 def test_ntfy_topic_env_accepts_a_variable_name() -> None:
