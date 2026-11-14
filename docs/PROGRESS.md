@@ -29,6 +29,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
+| düzeltme-fable – Genel bakış düzeltmeleri (ek) | ⏳ | | `gc` ile eski `runs`/`usage`/`queue` satırları, `desktop-notifier` üst sınırı, düzenlenebilir kurulum notu, `cli.py`/`runner.py` bölme, `notify.ntfy_url`, `queue remove --finished`, eski dal ve not dosyası temizliği (ayrıntı: yerel YAPILIS_PLANI.md) |
 | 13 – Benchmark | ⏳ | | |
 | 14 – Yayın | ⏳ | | |
 
