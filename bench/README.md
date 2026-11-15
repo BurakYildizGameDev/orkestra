@@ -11,10 +11,16 @@ including the bad results.
 | A – Claude only | Claude Code | `claude -p "<task>" --output-format json`, no skills (`--disable-slash-commands`), no MCP servers (`--strict-mcp-config`) |
 | B – Claude + Orkestra skill | Claude Code as chief, Orkestra workers | the same, with the Orkestra skill in the workspace (`.claude/skills/orkestra/SKILL.md`), permission to run `orkestra`, and a short hint to delegate when it fits, put before the task text |
 | C – Orkestra only (cheap) | Orkestra, no chief | `orkestra run <task> --profile cheap --json`; a passing run is applied with `orkestra apply` |
+| D – Claude + Orkestra, delegation asked | Claude Code as chief, Orkestra workers | like B, but the hint asks Claude to hand the work to an Orkestra worker and do it itself only when Orkestra cannot; not part of `--mode all`: choose it with `--mode d` or a list such as `--mode a,d` |
 
-A and B use `--setting-sources project`, so personal settings, hooks and memory do not take
-part, and the same tool permissions: read, edit, write, search, `python`, `pytest`, `git`
-(B also `orkestra`). The task text goes to Claude on **stdin** and the permissions in a
+A, B and D use `--setting-sources project`, so personal settings, hooks and memory do not
+take part, and the same tool permissions: read, edit, write, search, `python`, `pytest`, `git`
+(B and D also `orkestra`), in both the Bash and the PowerShell tool, plus read-only commands under
+the names people type (`cd`, `ls`, `dir`, `cat`, `type`, `pwd`, `Get-Content`,
+`Get-ChildItem`, `Select-String`, `Set-Location`, `Get-Location`): on Windows Claude Code uses
+both shells, and every refused call costs turns. Nothing that can write a file through a
+redirect (`echo`, `Write-Output`) is allowed. Each results file records the list it was
+measured with (`meta.claude_tools`). The task text goes to Claude on **stdin** and the permissions in a
 `--settings` file: on Windows `claude` is an npm `claude.CMD`, and cmd.exe would cut a
 multi-line argument or mangle its quotes. B and C use an Orkestra home made for the run: local Ollama only, the
 answer cache off (the same task runs several times) and adaptive routing off (every repeat
@@ -66,7 +72,7 @@ uv run python bench/run_bench.py --mode all --repeat 3          # 180 runs
 ```
 
 Options: `--ollama-model` (default `qwen2.5-coder:14b`), `--ollama-model-2` (an optional
-tier-2 model; only mode B can use it, when Claude asks for tier 2: mode C runs the `cheap`
+tier-2 model; only modes B and D can use it, when Claude asks for tier 2: mode C runs the `cheap`
 profile, tier 1), `--claude-model`, `--timeout` (per run, default 900 s), `--work-dir`,
 `--out`. If the leak guard trips, the whole benchmark stops (exit code 3): it is never counted
 as a model failure.

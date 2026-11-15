@@ -21,7 +21,21 @@
         "runs": 2
       }
     ],
-    "repeat": 1
+    "repeat": 1,
+    "claude_tools": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(python:*)",
+      "Bash(pytest:*)",
+      "Bash(git:*)"
+    ],
+    "orkestra_tools": [
+      "Bash(orkestra:*)"
+    ],
+    "note": "measured with the Bash-only tool list (before D-082/D-083)"
   },
   "summary": {
     "b": {
