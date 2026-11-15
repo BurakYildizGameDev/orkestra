@@ -32,12 +32,33 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | düzeltme-fable – Genel bakış düzeltmeleri (ek) | ⏳ | | `gc` ile eski `runs`/`usage`/`queue` satırları, `desktop-notifier` üst sınırı, düzenlenebilir kurulum notu, `cli.py`/`runner.py` bölme, `notify.ntfy_url`, `queue remove --finished`, eski dal ve not dosyası temizliği; README güncelleme ve kısaltma (durum kutusu Faz 0–4'te kalmış), "Bilinen sınırlar" bölümü, gerçek modelle/terminalde elle kullanım turu (ayrıntı: yerel YAPILIS_PLANI.md) |
 | 13a – Benchmark aracı ve 20 görev | ✅ | 2026-11-15 | `bench/run_bench.py`, 20 görev (8/8/4) + gizli test + referans çözüm, sızıntı koruması, kuru koşu (D-076); kod denetimi (D-077) |
 | 13b – Kota korumaları (limit algılama, `--resume`, `--max-claude-runs`) | ✅ | 2026-11-15 | kod; kota harcamaz (D-078); kod denetimi (D-079) |
-| 13c – Deneme ve ölçüm (2 görev, 4 Claude oturumu) | ⏳ | | kullanıcıyla, Ollama açık |
+| 13c – Deneme ve ölçüm (2 görev, 4 Claude oturumu) | ✅ | 2026-11-15 | 6/6 geçti; B delege etmedi; `/usage` payı kullanıcıdan bekleniyor (D-080) |
 | 13d – İlk tam tur (`--repeat 1`, 40 Claude oturumu) | ⏳ | | pencerelere bölünebilir; ara tablo |
 | 13e – 2. ve 3. turlar, sonuçlar, README tablosu | ⏳ | | `--resume`, 80 Claude oturumu |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13c – İlk gerçek deneme ve ölçüm (2026-11-15)
+**Ne koşuldu:** 01 (kolay) ve 09 (orta) × A, B, C × 1 tekrar; Claude Code 2.1.325 (varsayılan model), Ollama `qwen2.5-coder:14b`, Windows 11. Sonuçlar `bench/results/trial/` (3 dosya, kişisel yol temizlendi).
+
+| Mod | Geçen | Süre / görev | Claude token / görev | Claude API karşılığı / görev | İşçi |
+|---|---|---|---|---|---|
+| A – yalnız Claude | 2/2 | 18–23 sn | ~7.200 (+ ~70–110 bin önbellekten okuma) | $0.085–0.097 | – |
+| B – Claude + skill | 2/2 | 18–19 sn | ~9.900 | $0.112–0.115 | 0 koşu (delege etmedi) |
+| C – yalnız Orkestra | 2/2 | 11–74 sn | – | – | 1 koşu, ~800–1.000 token, $0 |
+
+**Kabul kriterleri:**
+- ✅ `--settings` izinleri `--setting-sources project` ile çalışıyor (`permission_denials` 0, Claude testleri çalıştırdı).
+- ✅ İstem stdin'den gidiyor; `claude.CMD` sorunu yok.
+- ✅ Mod B skill'i yüklüyor (dolaylı kanıt: önbelleğe yazılan +~2,8 bin token; skill dosyası çalışma dizininde). Claude bu iki küçük görevde delege etmedi.
+- ⏳ Oturum başına limit payı: kullanıcının `/usage` farkı bekleniyor.
+
+**Denemenin gösterdiği ve düzeltilenler (testleriyle):** `permission_denials` kayıtta ve raporda (`test_denied_tools_are_counted_and_the_raw_output_is_kept`, `test_the_markdown_reports_denied_tools`); ham Claude çıktısı iş klasöründe; değerlendirmede asyncio eklentisi kapalı (`test_the_evaluation_turns_the_asyncio_plugin_off`); kayıtlarda kişisel yol yok (`test_records_never_hold_personal_paths`; ilk deneme dosyasında venv yolu vardı).
+
+**Bulgu ve açık karar:** küçük görevlerde skill delege ettirmiyor, B ~%23 pahalı. Tam koşudan önce kullanıcıya soruldu: B'yi olduğu gibi mi ölçelim, "mümkünse orkestra kullan" diyen ek bir mod da mı ekleyelim?
+
+Testler: **1430 geçti** (1425 + 5). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 13b (PR #26), 2026-11-15
 `/code-review` 10 bulgu; hepsi düzeltildi (D-079). Önce 15 kırmızı test.

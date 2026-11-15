@@ -1,0 +1,102 @@
+{
+  "meta": {
+    "date": "2026-11-15T03:47+03:00",
+    "machine": "Windows 11, Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "python": "3.12.13",
+    "modes": "c",
+    "task_ids": [
+      "01-docstring-geometry",
+      "09-bugfix-inventory"
+    ],
+    "tasks": 2,
+    "ollama_model": "qwen2.5-coder:14b",
+    "ollama_model_2": null,
+    "claude_model": null,
+    "timeout_s": 900,
+    "windows": [
+      {
+        "date": "2026-11-15T03:47+03:00",
+        "claude": "-",
+        "orkestra": "orkestra 0.0.1",
+        "runs": 2
+      }
+    ],
+    "repeat": 1
+  },
+  "summary": {
+    "c": {
+      "label": "C - Orkestra only (cheap)",
+      "tasks": 2,
+      "repeats": 1,
+      "complete_repeats": 1,
+      "partial_runs": 0,
+      "passed": {
+        "mean": 2.0,
+        "min": 2,
+        "max": 2
+      },
+      "by_difficulty": {
+        "easy": {
+          "tasks": 1,
+          "passed_mean": 1.0
+        },
+        "medium": {
+          "tasks": 1,
+          "passed_mean": 1.0
+        }
+      },
+      "claude_tokens_per_task": null,
+      "claude_cache_read_per_task": null,
+      "claude_cost_per_task": null,
+      "runs_without_usage": null,
+      "permission_denials": null,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 1.0,
+      "savings_estimate_per_task": 112.5,
+      "duration_per_task_s": 42.65,
+      "errors": 0
+    }
+  },
+  "records": [
+    {
+      "task": "01-docstring-geometry",
+      "difficulty": "easy",
+      "mode": "c",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 74.19,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 501,
+        "completion_tokens": 545,
+        "savings_tokens": 225
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.01s\n"
+    },
+    {
+      "task": "09-bugfix-inventory",
+      "difficulty": "medium",
+      "mode": "c",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 11.11,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 558,
+        "completion_tokens": 268,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.01s\n"
+    }
+  ]
+}

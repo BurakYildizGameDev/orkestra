@@ -451,9 +451,21 @@ def run_once(
     return Record(
         task=task.id, difficulty=task.difficulty, mode=mode, repeat=repeat,
         passed=result.passed, duration_s=duration, claude=claude,
-        workers=worker_stats(home, started_at), error=error,
-        check_passed=(check_code == 0) if task.check else None, output_tail=result.output[-1500:],
+        workers=worker_stats(home, started_at),
+        error=None if error is None else scrub(error, settings.work_dir),
+        check_passed=(check_code == 0) if task.check else None,
+        output_tail=scrub(result.output[-1500:], settings.work_dir),
     )  # fmt: skip
+
+
+def scrub(text: str, work_dir: Path) -> str:
+    """Results are published: no personal paths (work folder, repository, home, temp)."""
+    places = [(work_dir, "<work>"), (REPO_ROOT, "<repo>"),
+              (Path(tempfile.gettempdir()), "<tmp>"), (Path.home(), "~")]  # fmt: skip
+    for place, label in places:
+        for form in {str(place), str(place.resolve()), place.as_posix()}:
+            text = text.replace(form, label)
+    return text
 
 
 def _run_claude(

@@ -1,0 +1,116 @@
+{
+  "meta": {
+    "date": "2026-11-15T03:41+03:00",
+    "machine": "Windows 11, Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "python": "3.12.13",
+    "modes": "a",
+    "task_ids": [
+      "01-docstring-geometry",
+      "09-bugfix-inventory"
+    ],
+    "tasks": 2,
+    "ollama_model": "qwen2.5-coder:14b",
+    "ollama_model_2": null,
+    "claude_model": null,
+    "timeout_s": 900,
+    "windows": [
+      {
+        "date": "2026-11-15T03:41+03:00",
+        "claude": "2.1.325 (Claude Code)",
+        "orkestra": "orkestra 0.0.1",
+        "runs": 2
+      }
+    ],
+    "repeat": 1
+  },
+  "summary": {
+    "a": {
+      "label": "A - Claude only",
+      "tasks": 2,
+      "repeats": 1,
+      "complete_repeats": 1,
+      "partial_runs": 0,
+      "passed": {
+        "mean": 2.0,
+        "min": 2,
+        "max": 2
+      },
+      "by_difficulty": {
+        "easy": {
+          "tasks": 1,
+          "passed_mean": 1.0
+        },
+        "medium": {
+          "tasks": 1,
+          "passed_mean": 1.0
+        }
+      },
+      "claude_tokens_per_task": 7218.5,
+      "claude_cache_read_per_task": 89378.0,
+      "claude_cost_per_task": 0.091,
+      "runs_without_usage": 0,
+      "permission_denials": 0,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 0.0,
+      "savings_estimate_per_task": 0.0,
+      "duration_per_task_s": 20.635,
+      "errors": 0
+    }
+  },
+  "records": [
+    {
+      "task": "01-docstring-geometry",
+      "difficulty": "easy",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 18.38,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1263,
+        "cache_read_input_tokens": 69729,
+        "cache_creation_input_tokens": 5730,
+        "cost_usd": 0.0850778,
+        "turns": 4
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.03s\n<repo>\\.venv\\Lib\\site-packages\\pytest_asyncio\\plugin.py:300: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the \"fixture\" caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to \"function\" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: \"function\", \"class\", \"module\", \"package\", \"session\"\n\n  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))\n"
+    },
+    {
+      "task": "09-bugfix-inventory",
+      "difficulty": "medium",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 22.89,
+      "claude": {
+        "input_tokens": 12,
+        "output_tokens": 1310,
+        "cache_read_input_tokens": 109027,
+        "cache_creation_input_tokens": 6114,
+        "cost_usd": 0.09696540000000001,
+        "turns": 7
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.02s\n<repo>\\.venv\\Lib\\site-packages\\pytest_asyncio\\plugin.py:300: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the \"fixture\" caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to \"function\" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: \"function\", \"class\", \"module\", \"package\", \"session\"\n\n  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))\n"
+    }
+  ]
+}

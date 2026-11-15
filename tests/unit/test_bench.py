@@ -5,7 +5,9 @@ Nothing here starts Claude, Orkestra or a model: a fake runner plays them.
 
 from __future__ import annotations
 
+import dataclasses
 import json
+import os
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
@@ -707,3 +709,18 @@ def test_the_evaluation_turns_the_asyncio_plugin_off(tmp_path: Path) -> None:
     shutil.copytree(task.root / "solution", solved, dirs_exist_ok=True)
     result = rb.evaluate(task, solved, tmp_path / "eval")
     assert result.passed and "PytestDeprecationWarning" not in result.output
+
+
+def test_records_never_hold_personal_paths(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    home = str(Path.home())
+
+    def runner(args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+               input_text: str | None = None) -> rb.Completed:  # fmt: skip
+        return rb.Completed(1, "", f"Traceback: {home}{os.sep}x.py and {cwd}{os.sep}y.py")
+
+    record = rb.run_once(task, "a", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    text = json.dumps(dataclasses.asdict(record))
+    assert home not in text and home.replace("\\", "\\\\") not in text
+    assert str(tmp_path) not in text and str(tmp_path).replace("\\", "\\\\") not in text
+    assert "~" in (record.error or "") or "<work>" in (record.error or "")

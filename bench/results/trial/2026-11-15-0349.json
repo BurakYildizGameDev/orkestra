@@ -1,0 +1,118 @@
+{
+  "meta": {
+    "date": "2026-11-15T03:49+03:00",
+    "machine": "Windows 11, Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "python": "3.12.13",
+    "modes": "b",
+    "task_ids": [
+      "01-docstring-geometry",
+      "09-bugfix-inventory"
+    ],
+    "tasks": 2,
+    "ollama_model": "qwen2.5-coder:14b",
+    "ollama_model_2": null,
+    "claude_model": null,
+    "timeout_s": 900,
+    "windows": [
+      {
+        "date": "2026-11-15T03:49+03:00",
+        "claude": "2.1.325 (Claude Code)",
+        "orkestra": "orkestra 0.0.1",
+        "runs": 2
+      }
+    ],
+    "repeat": 1
+  },
+  "summary": {
+    "b": {
+      "label": "B - Claude + Orkestra skill",
+      "tasks": 2,
+      "repeats": 1,
+      "complete_repeats": 1,
+      "partial_runs": 0,
+      "passed": {
+        "mean": 2.0,
+        "min": 2,
+        "max": 2
+      },
+      "by_difficulty": {
+        "easy": {
+          "tasks": 1,
+          "passed_mean": 1.0
+        },
+        "medium": {
+          "tasks": 1,
+          "passed_mean": 1.0
+        }
+      },
+      "claude_tokens_per_task": 9915.0,
+      "claude_cache_read_per_task": 91573.5,
+      "claude_cost_per_task": 0.113,
+      "runs_without_usage": 0,
+      "permission_denials": 0,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 0.0,
+      "savings_estimate_per_task": 0.0,
+      "duration_per_task_s": 18.375,
+      "errors": 0
+    }
+  },
+  "records": [
+    {
+      "task": "01-docstring-geometry",
+      "difficulty": "easy",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 18.11,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1392,
+        "cache_read_input_tokens": 80211,
+        "cache_creation_input_tokens": 8499,
+        "cost_usd": 0.11190620000000001,
+        "turns": 4,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.03s\n"
+    },
+    {
+      "task": "09-bugfix-inventory",
+      "difficulty": "medium",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 18.64,
+      "claude": {
+        "input_tokens": 10,
+        "output_tokens": 1227,
+        "cache_read_input_tokens": 102936,
+        "cache_creation_input_tokens": 8694,
+        "cost_usd": 0.11471920000000002,
+        "turns": 6,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.03s\n"
+    }
+  ]
+}
