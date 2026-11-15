@@ -33,11 +33,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13a – Benchmark aracı ve 20 görev | ✅ | 2026-11-15 | `bench/run_bench.py`, 20 görev (8/8/4) + gizli test + referans çözüm, sızıntı koruması, kuru koşu (D-076); kod denetimi (D-077) |
 | 13b – Kota korumaları (limit algılama, `--resume`, `--max-claude-runs`) | ✅ | 2026-11-15 | kod; kota harcamaz (D-078); kod denetimi (D-079) |
 | 13c – Deneme ve ölçüm (2 görev, 4 Claude oturumu) | ✅ | 2026-11-15 | 6/6 geçti; B delege etmedi; `/usage` payı kullanıcıdan bekleniyor (D-080); kod denetimi (D-081) |
-| 13d – İlk tam tur (`--repeat 1`, 40 Claude oturumu) | ⏳ | | hazırlık bitti: mod D + Windows izinleri (D-082); tam tur kullanıcının `/usage` bilgisiyle |
+| 13d – İlk tam tur (`--repeat 1`, 40 Claude oturumu) | ⏳ | | hazırlık bitti: mod D + Windows izinleri (D-082), kod denetimi (D-083); tam tur kullanıcının `/usage` bilgisiyle |
 | 13e – 2. ve 3. turlar, sonuçlar, README tablosu | ⏳ | | `--resume`, 80 Claude oturumu |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 13d hazırlığı (PR #28), 2026-11-15
+`/code-review` 9 bulgu; hepsi düzeltildi (D-083). Önce 7 kırmızı test.
+- ✅ A ve D aynı koşuda, raporda A − D (`test_a_mode_list_runs_a_and_d_together_and_reports_the_difference`); bilinmeyen mod kod 2 (`test_an_unknown_mode_in_a_list_is_a_usage_error`).
+- ✅ PowerShell kısaltmaları izinli, dosya yazabilen komut yok (`test_powershell_aliases_are_allowed_and_nothing_that_writes_files`).
+- ✅ Sonuçta izin listesi (`test_the_results_say_which_tool_list_was_used`); deneme dosyalarına eski liste notu eklendi.
+- ✅ Mesaj/yardım D'yi anıyor (`test_a_missing_claude_names_every_mode_that_needs_it`, `test_help_says_b_and_d_can_use_the_second_model`); modlar tek yerde (`test_every_mode_is_described_in_one_place`).
+
+Testler: **1448 geçti** (1441 + 7). ruff, ruff format, pyright temiz.
 
 ### Faz 13d (hazırlık) – Mod D ve Windows araç izinleri (2026-11-15)
 **Yapılanlar (D-082):**

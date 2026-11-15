@@ -856,3 +856,62 @@ def test_powershell_and_read_only_commands_are_allowed_like_their_bash_forms(
         for tool in expected:
             assert tool in allowed, (mode, tool)
         assert ("PowerShell(orkestra:*)" in allowed) == (mode in ("b", "d"))
+
+
+# --- code review fixes (PR #28, D-083) ----------------------------------------------------
+
+
+def test_a_mode_list_runs_a_and_d_together_and_reports_the_difference(tmp_path: Path) -> None:
+    argv = ["--mode", "a,d", "--tasks", "01", "--repeat", "1", "--out", str(tmp_path / "out"),
+            "--work-dir", str(tmp_path / "work")]  # fmt: skip
+    assert rb.main(argv, runner=ManyTasks(), which=lambda name: name) == 0
+    data = _saved(tmp_path)
+    assert [r["mode"] for r in data["records"]] == ["a", "d"]
+    [md] = (tmp_path / "out").glob("*.md")
+    assert "(A - D)" in md.read_text(encoding="utf-8")
+
+
+def test_an_unknown_mode_in_a_list_is_a_usage_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert rb.main(["--mode", "a,x", "--dry-run", "--work-dir", str(tmp_path)]) == 2
+    assert "x" in capsys.readouterr().err
+
+
+def test_powershell_aliases_are_allowed_and_nothing_that_writes_files(tmp_path: Path) -> None:
+    required = {f"Bash({c}:*)" for c in ("python", "pytest", "git", "cd", "ls", "cat", "pwd")}
+    required |= {f"PowerShell({c}:*)" for c in (
+        "python", "pytest", "git", "cd", "ls", "dir", "cat", "type", "pwd", "Get-Content",
+        "Get-ChildItem", "Select-String", "Set-Location", "Get-Location")}  # fmt: skip
+    for mode in ("a", "b", "d"):
+        allowed = set(json.loads(rb.claude_settings(mode, tmp_path / f"{mode}.json")
+                                 .read_text(encoding="utf-8"))["permissions"]["allow"])  # fmt: skip
+        assert required <= allowed, (mode, sorted(required - allowed))
+        assert not {"Bash(echo:*)", "PowerShell(echo:*)", "PowerShell(Write-Output:*)"} & allowed
+
+
+def test_the_results_say_which_tool_list_was_used(tmp_path: Path) -> None:
+    assert _main(tmp_path, ManyTasks()) == 0
+    meta = _saved(tmp_path)["meta"]
+    assert meta["claude_tools"] == list(rb.CLAUDE_TOOLS)
+    assert meta["orkestra_tools"] == list(rb.ORKESTRA_TOOLS)
+
+
+def test_a_missing_claude_names_every_mode_that_needs_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    argv = ["--mode", "d", "--tasks", "01", "--repeat", "1", "--work-dir", str(tmp_path)]
+    assert rb.main(argv, runner=ManyTasks(), which=lambda name: None) == 2
+    assert "a, b, d" in capsys.readouterr().err
+
+
+def test_help_says_b_and_d_can_use_the_second_model() -> None:
+    assert "B and D" in rb._parser().format_help().replace("\n", " ").replace("  ", " ")
+
+
+def test_every_mode_is_described_in_one_place() -> None:
+    for key, mode in rb.MODES.items():
+        assert mode.label.startswith(key.upper() + " - ")
+        assert (mode.hint is not None) <= mode.skill  # a hint about the skill needs the skill
+        assert not (mode.skill and not mode.chief)
+    assert rb.PLANNED_MODES == ("a", "b", "c") and rb.CHIEF_MODES == ("a", "b", "d")
