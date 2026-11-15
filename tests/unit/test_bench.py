@@ -5,7 +5,9 @@ Nothing here starts Claude, Orkestra or a model: a fake runner plays them.
 
 from __future__ import annotations
 
+import dataclasses
 import json
+import os
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
@@ -184,7 +186,7 @@ def test_mode_a_runs_claude_without_skills_or_mcp_and_records_tokens(tmp_path: P
     assert record.passed and record.mode == "a" and record.repeat == 1
     assert record.claude == {"input_tokens": 1200, "output_tokens": 800,
                              "cache_read_input_tokens": 5000, "cache_creation_input_tokens": 300,
-                             "cost_usd": 0.0421, "turns": 4}  # fmt: skip
+                             "cost_usd": 0.0421, "turns": 4, "permission_denials": 0}  # fmt: skip
 
 
 def test_mode_b_gives_claude_the_skill_and_the_bench_orkestra_home(tmp_path: Path) -> None:
@@ -675,3 +677,125 @@ def test_the_report_header_is_readable(tmp_path: Path) -> None:
     header = md.read_text(encoding="utf-8").split("|", 1)[0]
     assert "None" not in header and "['01-a'" not in header
     assert "claude_model: default" in header and "tasks: 01-a, 02-b" in header
+
+
+# --- Faz 13c: what the first real run showed (D-080) ---------------------------------------
+
+
+def test_denied_tools_are_counted_and_the_raw_output_is_kept(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    denied = {**CLAUDE_JSON, "permission_denials": [{"tool_name": "Bash"}, {"tool_name": "Bash"}]}
+    runner = FakeRunner(task, claude_json=denied)
+    record = rb.run_once(task, "a", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    assert record.claude is not None and record.claude["permission_denials"] == 2
+    raw = tmp_path / "work" / "01-docstring-geometry-a-1" / "claude-output.json"
+    assert (
+        json.loads(raw.read_text(encoding="utf-8"))["permission_denials"][0]["tool_name"] == "Bash"
+    )
+
+
+def test_the_markdown_reports_denied_tools() -> None:
+    record = _record("a", 1, "t1", True)
+    assert record.claude is not None
+    record.claude["permission_denials"] = 3
+    summary = rb.summarize([record])
+    assert summary["a"]["permission_denials"] == 3
+    assert "denied" in rb.markdown(summary, [record]).lower()
+
+
+def test_the_evaluation_has_no_asyncio_warning(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    solved = rb.prepare_workspace(task, tmp_path / "ws")
+    shutil.copytree(task.root / "solution", solved, dirs_exist_ok=True)
+    result = rb.evaluate(task, solved, tmp_path / "eval")
+    assert result.passed and "PytestDeprecationWarning" not in result.output
+
+
+def test_records_never_hold_personal_paths(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    home = str(Path.home())
+
+    def runner(args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+               input_text: str | None = None) -> rb.Completed:  # fmt: skip
+        return rb.Completed(1, "", f"Traceback: {home}{os.sep}x.py and {cwd}{os.sep}y.py")
+
+    record = rb.run_once(task, "a", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    text = json.dumps(dataclasses.asdict(record))
+    assert home not in text and home.replace("\\", "\\\\") not in text
+    assert str(tmp_path) not in text and str(tmp_path).replace("\\", "\\\\") not in text
+    assert "~" in (record.error or "") or "<work>" in (record.error or "")
+
+
+# --- code review fixes (PR #27, D-081) ----------------------------------------------------
+
+FAKE_HOME = Path("C:/Users/Someone") if os.name == "nt" else Path("/home/someone")
+
+
+def _scrubber() -> rb.Scrubber:
+    return rb.Scrubber([(FAKE_HOME, "~")])
+
+
+def test_a_cut_never_leaves_part_of_a_personal_path() -> None:
+    text = "start " + str(FAKE_HOME / "proj" / "x.py") + " end"
+    for cut in range(1, len(text)):
+        tail = rb.clean_tail(text, cut, _scrubber())
+        assert "omeone" not in tail and "Someone" not in tail, (cut, tail)
+
+
+def test_quoted_lowercase_and_posix_forms_are_scrubbed() -> None:
+    raw = str(FAKE_HOME / "x")
+    forms = [raw, raw.replace("\\", "\\\\"), raw.lower(), raw.upper(), FAKE_HOME.as_posix() + "/x"]
+    for form in forms:
+        assert "omeone" not in _scrubber()(f"error: {form!s} and {form!r}").lower(), form
+
+
+def test_a_sibling_folder_is_not_mangled() -> None:
+    sibling = str(FAKE_HOME) + "2" + os.sep + "x"
+    assert _scrubber()(sibling) == sibling
+
+
+def test_a_relative_work_dir_never_replaces_ordinary_text(tmp_path: Path) -> None:
+    scrubber = rb.Scrubber.for_run(Path("."))
+    assert scrubber("5 passed in 0.03s") == "5 passed in 0.03s"
+
+
+def test_written_results_are_scrubbed_even_for_resumed_records(tmp_path: Path) -> None:
+    home = str(Path.home())
+    record = _record("a", 1, "t1", False)
+    record.output_tail = f"Traceback: {home}{os.sep}x.py"
+    record.error = f"failed in {home!r}"
+    json_path, md_path = rb.write_results([record], tmp_path, stamp="s", meta={"m": home})
+    for path in (json_path, md_path):
+        text = path.read_text(encoding="utf-8")
+        assert home not in text and home.replace("\\", "\\\\") not in text
+
+
+def test_denials_that_were_never_measured_are_unknown_not_zero() -> None:
+    old = _record("a", 1, "t1", True)  # a record from before permission_denials existed
+    assert old.claude is not None and "permission_denials" not in old.claude
+    assert rb.summarize([old])["a"]["permission_denials"] is None
+
+
+def test_a_retried_run_does_not_keep_an_old_stderr_file(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    stale = tmp_path / "work" / "01-docstring-geometry-a-1" / "claude-stderr.txt"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("usage limit reached", encoding="utf-8")
+    rb.run_once(task, "a", 1, _settings(tmp_path), runner=FakeRunner(task), home=tmp_path / "home")
+    assert not stale.exists()
+
+
+def test_async_hidden_tests_still_run(tmp_path: Path) -> None:
+    root = tmp_path / "task"
+    (root / "project").mkdir(parents=True)
+    (root / "project" / "mod.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (root / "hidden").mkdir()
+    (root / "hidden" / "test_async_hidden.py").write_text(
+        "import pytest\nimport mod\n\n\n@pytest.mark.asyncio\nasync def test_it():\n"
+        "    assert mod.VALUE == 1\n", encoding="utf-8")  # fmt: skip
+    task = rb.Task(id="async", difficulty="easy", category="c", prompt="p", files=("mod.py",),
+                   root=root)  # fmt: skip
+    workspace = rb.prepare_workspace(task, tmp_path / "ws")
+    result = rb.evaluate(task, workspace, tmp_path / "eval")
+    assert result.passed, result.output
+    assert "PytestDeprecationWarning" not in result.output

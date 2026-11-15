@@ -204,9 +204,13 @@ def evaluate(task: Task, workspace: Path, eval_dir: Path) -> Evaluation:
     shutil.copytree(workspace, eval_dir, ignore=shutil.ignore_patterns(".git", "__pycache__"))
     hidden = eval_dir / "_hidden_tests"
     shutil.copytree(task.root / "hidden", hidden)
-    (eval_dir / "_bench_pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    # The loop scope silences pytest-asyncio's warning without turning async tests off.
+    (eval_dir / "_bench_pytest.ini").write_text(
+        "[pytest]\nasyncio_default_fixture_loop_scope = function\n", encoding="utf-8"
+    )
     args = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-            "-c", "_bench_pytest.ini", "--rootdir", ".", "_hidden_tests"]  # fmt: skip
+            "-c", "_bench_pytest.ini", "--rootdir", ".",
+            "_hidden_tests"]  # fmt: skip
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     try:
         done = subprocess.run(
@@ -394,6 +398,8 @@ def parse_claude(stdout: str) -> dict[str, Any]:
         "cache_creation_input_tokens": int(usage.get("cache_creation_input_tokens") or 0),
         "cost_usd": float(data.get("total_cost_usd") or 0.0),
         "turns": int(data.get("num_turns") or 0),
+        # Tools Claude asked for and was refused: shows that the --settings permissions work.
+        "permission_denials": len(data.get("permission_denials") or []),
     }
 
 
@@ -448,9 +454,61 @@ def run_once(
     return Record(
         task=task.id, difficulty=task.difficulty, mode=mode, repeat=repeat,
         passed=result.passed, duration_s=duration, claude=claude,
-        workers=worker_stats(home, started_at), error=error,
-        check_passed=(check_code == 0) if task.check else None, output_tail=result.output[-1500:],
+        workers=worker_stats(home, started_at),
+        error=None if error is None else Scrubber.for_run(settings.work_dir)(error),
+        check_passed=(check_code == 0) if task.check else None,
+        output_tail=clean_tail(result.output, 1500, Scrubber.for_run(settings.work_dir)),
     )  # fmt: skip
+
+
+class Scrubber:
+    """Results are published, so no personal path may be in them (AGENTS.md).
+
+    Each place becomes one case-insensitive pattern whose parts may be joined by any run of
+    slashes or backslashes (``C:\\Users\\x``, a repr's doubled backslashes, JSON's escaped
+    ones, ``c:/users/x``); a place only matches as a whole folder (``...\\x2`` is someone
+    else's). Longest first, compiled once per run.
+    """
+
+    def __init__(self, places: Iterable[tuple[Path, str]]) -> None:
+        compiled: list[tuple[int, re.Pattern[str], str]] = []
+        for place, label in places:
+            text = str(place)
+            parts = [part for part in re.split(r"[\\/]+", text) if part]
+            if len(parts) < 2:  # "/" or "C:" alone would eat ordinary text
+                continue
+            pattern = r"[\\/]+".join(re.escape(part) for part in parts)
+            if text[:1] in ("/", "\\"):
+                pattern = r"[\\/]+" + pattern
+            compiled.append((len(text), re.compile(pattern + r"(?![\w.-])", re.IGNORECASE), label))
+        self._patterns = [(rx, label) for _, rx, label in sorted(compiled, key=lambda c: -c[0])]
+
+    @classmethod
+    def for_run(cls, work_dir: Path | None) -> Scrubber:
+        places = [(REPO_ROOT, "<repo>"), (Path(tempfile.gettempdir()).resolve(), "<tmp>"),
+                  (Path.home(), "~")]  # fmt: skip
+        if work_dir is not None:
+            places.insert(0, (work_dir.resolve(), "<work>"))
+        return cls(places)
+
+    def __call__(self, text: str) -> str:
+        for pattern, label in self._patterns:
+            text = pattern.sub(lambda _match, label=label: label, text)
+        return text
+
+
+def clean_tail(text: str, limit: int, scrubber: Scrubber) -> str:
+    """Scrub first, then cut: a cut through a path would leave a part no pattern matches."""
+    return scrubber(text)[-limit:]
+
+
+_DEFAULT_SCRUBBER: list[Scrubber] = []
+
+
+def default_scrubber() -> Scrubber:
+    if not _DEFAULT_SCRUBBER:
+        _DEFAULT_SCRUBBER.append(Scrubber.for_run(None))
+    return _DEFAULT_SCRUBBER[0]
 
 
 def _run_claude(
@@ -462,10 +520,17 @@ def _run_claude(
     settings_file = claude_settings(mode, run_dir / "claude-settings.json")
     done = runner(claude_args(mode, settings, settings_file), workspace, env,
                   settings.timeout_s, input_text=claude_prompt(mode, task.prompt))  # fmt: skip
+    (run_dir / "claude-output.json").write_text(done.stdout, encoding="utf-8")  # for debugging
+    stderr_file = run_dir / "claude-stderr.txt"
+    if done.stderr:
+        stderr_file.write_text(done.stderr, encoding="utf-8")
+    else:  # a retried run must not keep an older attempt's message
+        stderr_file.unlink(missing_ok=True)
     if _limit_reached(done):
         raise UsageLimitReached(f"{task.id} {mode}: {_limit_text(done)[:200]}")
     if done.returncode != 0:
-        error = f"claude exited with {done.returncode}: {done.stderr[-300:]}"
+        tail = clean_tail(done.stderr, 300, default_scrubber())
+        error = f"claude exited with {done.returncode}: {tail}"
         try:
             return parse_claude(done.stdout), error
         except BenchError:
@@ -501,14 +566,15 @@ def _run_orkestra(
     try:
         envelope = json.loads(done.stdout)
     except ValueError as exc:
-        raise BenchError(f"orkestra output is not JSON (exit {done.returncode}): "
-                         f"{done.stderr[-300:]}") from exc  # fmt: skip
+        tail = clean_tail(done.stderr, 300, default_scrubber())
+        raise BenchError(f"orkestra output is not JSON (exit {done.returncode}): {tail}") from exc
     if envelope.get("status") != "ok":
         return f"orkestra run ended {envelope.get('status')} (exit {done.returncode})"
     applied = runner([*settings.orkestra, "apply", str(envelope["run_id"]), "--json"],
                      workspace, env, settings.timeout_s)  # fmt: skip
     if applied.returncode != 0:
-        return f"orkestra apply failed (exit {applied.returncode}): {applied.stderr[-300:]}"
+        tail = clean_tail(applied.stderr, 300, default_scrubber())
+        return f"orkestra apply failed (exit {applied.returncode}): {tail}"
     return None
 
 
@@ -543,6 +609,12 @@ def setup_home(home: Path, settings: Settings) -> None:
 def _with_usage(records: Iterable[Record]) -> list[Record]:
     """Runs that reported Claude usage; a timeout or crash has none and is not a zero."""
     return [r for r in records if r.claude is not None]
+
+
+def _denials(records: Sequence[Record]) -> int | None:
+    """Denied tool calls; None when no run measured them (records from before Faz 13c)."""
+    measured = [r for r in _with_usage(records) if "permission_denials" in (r.claude or {})]
+    return sum((r.claude or {})["permission_denials"] for r in measured) if measured else None
 
 
 def _claude_tokens(record: Record) -> int:
@@ -589,6 +661,7 @@ def summarize(records: Sequence[Record]) -> dict[str, dict[str, Any]]:
                                           for r in _with_usage(mine)) if mode != "c" else None,
             "runs_without_usage": (sum(1 for r in mine if r.claude is None)
                                    if mode != "c" else None),
+            "permission_denials": _denials(mine) if mode != "c" else None,
             "worker_cost_per_task": _mean(r.workers.get("cost_usd", 0.0) for r in mine),
             "worker_runs_per_task": _mean(r.workers.get("runs", 0) for r in mine),
             "savings_estimate_per_task": _mean(r.workers.get("savings_tokens", 0) for r in mine),
@@ -629,6 +702,10 @@ def markdown(summary: Mapping[str, Mapping[str, Any]], records: Sequence[Record]
         lines += ["", f"Claude tokens saved per task (A - B): {saved:,.0f}",
                   f"Orkestra's own estimate in B (`stats` savings) per task: "
                   f"{summary['b']['savings_estimate_per_task']:,.0f}"]  # fmt: skip
+    denied = {m: s["permission_denials"] for m, s in summary.items() if s.get("permission_denials")}
+    if denied:
+        lines += ["", "Denied tool calls (permission): "
+                  + ", ".join(f"{m.upper()} {n}" for m, n in denied.items())]  # fmt: skip
     errors = [r for r in records if r.error]
     if errors:
         lines += ["", f"Runs with an error: {len(errors)} (see the JSON file)."]
@@ -642,9 +719,10 @@ def write_results(
     summary = summarize(records)
     document = json.dumps({"meta": dict(meta), "summary": summary,
                            "records": [asdict(r) for r in records]}, indent=2)  # fmt: skip
-    json_path = _write_atomic(out_dir / f"{stamp}.json", document)
+    clean = default_scrubber()  # every field and every record, resumed ones too
+    json_path = _write_atomic(out_dir / f"{stamp}.json", clean(document))
     header = f"# Benchmark {stamp}\n\n" + "".join(_meta_lines(meta)) + "\n"
-    md_path = _write_atomic(out_dir / f"{stamp}.md", header + markdown(summary, records))
+    md_path = _write_atomic(out_dir / f"{stamp}.md", clean(header + markdown(summary, records)))
     return json_path, md_path
 
 
