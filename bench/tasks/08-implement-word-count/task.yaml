@@ -1,0 +1,6 @@
+id: 08-implement-word-count
+difficulty: easy
+category: implement
+files: [words.py]
+prompt: |
+  Implement top_words() in words.py as its docstring describes.

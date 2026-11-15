@@ -1,0 +1,16 @@
+id: 18-bank-transfer
+difficulty: hard
+category: multi-file
+files: [bank/accounts.py, bank/ledger.py, bank/errors.py, bank/service.py]
+check: python -m pytest -q tests
+prompt: |
+  bank.service.transfer() is not safe. Make it so, across the bank package:
+  - bank/errors.py: add InsufficientFunds (a subclass of ValueError).
+  - Account.withdraw() raises InsufficientFunds when the balance is too low (balance
+    unchanged).
+  - transfer(source, target, amount): amount must be positive (ValueError); if anything fails
+    after the money left `source` (for example the target account is frozen and deposit()
+    raises AccountFrozen), the money goes back to `source` and the error is raised again;
+    a successful transfer adds exactly one entry (source.number, target.number, amount) to
+    the ledger it is given, a failed one adds none.
+  The existing tests must keep passing.

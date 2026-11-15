@@ -788,3 +788,31 @@ Mimari §20 ve §22 güncellendi (D-074).
 - **Kuyruktan çıkarma onay ister** (`ConfirmScreen`); `ids` panelde tanımlı.
 - **Testler:** 1337 → 1346 (+13 yeni, şema desen testlerinin 4'ü kaldırıldı: karar geri alındı).
 Mimari §20 ve §22 notları güncellendi (D-075).
+
+## D-076 – Faz 13a: benchmark aracı ve 20 görev (2026-11-15, Faz 13a)
+**Bağlam:** plan Faz 13. Faz 13 ikiye bölündü: **13a** araç + görevler (masrafsız), **13b** gerçek koşu (180 koşu, 120'si Claude oturumu; kullanıcının kotasıyla, Ollama açıkken) + sonuçlar + README tablosu.
+**Karar:**
+- **Görev biçimi** `bench/tasks/<id>/`: `task.yaml` (id, difficulty, category, prompt, files, isteğe bağlı `check`, `allow_new_files`), `project/` (başlangıç), `hidden/` (gizli testler), `solution/` (referans çözüm). Plan "küçük proje + gizli testler + açıklama" diyordu; **referans çözüm eklendi**: test takımı her görevde gizli testlerin başlangıçta *kaldığını* ve çözümde *geçtiğini* doğrular (görev zaten çözülmüş ya da çözülemez değil). Görünür `check` hem başlangıçta hem çözümde geçer.
+- **Test yazma görevi** (10) mutasyonla değerlendirilir: gizli test, işçinin yazdığı testleri gerçek koda (geçmeli) ve 7 bozuk sürüme (her biri kalmalı) karşı koşar.
+- **Sızıntı koruması:** çalışma dizini yalnız `project/` (git deposu); koşu başlamadan `check_no_leak` dizinde gizli test (ad veya içerik) / çözüm dosyası ya da istemde gizli testten bir satır görürse durdurur; mod C'de `check_orkestra_task` bağlam yolu/glob'u dizinden çıkabiliyorsa durdurur. Gizli testler yalnız koşudan sonra ayrı bir değerlendirme kopyasına konur. Sınır: A/B'de Claude Code mutlak yolla depo dosyalarını okuyabilir (belgede).
+- **Modlar:** A `--disable-slash-commands --strict-mcp-config`; B skill'i çalışma dizinine proje skill'i olarak koyar ve `Bash(orkestra:*)` izni + kısa ipucu ekler; ikisi de `--setting-sources project --no-session-persistence --permission-mode acceptEdits` ve aynı araç izinleri (read/edit/write/glob/grep, python, pytest, git). C: `orkestra run --profile cheap --json` (+ `ok` ise `apply`). Kurulu `claude` 2.1.325'in `--help`'iyle doğrulandı.
+- **Bench Orkestra evi:** koşu başına ayrı `ORKESTRA_HOME` (yalnız yerel Ollama, `cache.enabled: false`: aynı görev tekrarlanıyor; `routing.adaptive: false`: tekrarlar aynı yoldan; masaüstü bildirimi kapalı), onay programla verilir.
+- **Ölçüler:** gizli testler (geçti/kaldı; tekrarlar arası ortalama, min, max), Claude token'ı (input + output + cache creation; cache read ayrı; birincil ölçü), Claude maliyeti, işçi maliyeti/koşu sayısı ve `stats` tasarruf tahmini (koşu süresi penceresinde) — B'deki tahmin gerçek A − B farkıyla karşılaştırılır.
+- **Sonuç dosyaları** her koşudan sonra yazılır (çökme yapılanı korur): `bench/results/<tarih>.json` + `.md`.
+- **Yer ve araçlar:** `bench/` paket değil (wheel'e girmez), testler `pythonpath = ["."]` ile içe aktarır; pyright `bench`'i denetler, ruff/pyright `bench/tasks`'ı denetlemez (başlangıç kodu bilerek kaba). Geliştirici aracı olduğu için çıktısı yalnız İngilizce (i18n yok).
+- **Görevler** Claude tarafından sıfırdan yazıldı (mevcut setlerden kopya yok); tek seferlik üretici betikler, görev dosyaları yazıldıktan sonra silindi (iki kopya kalmasın).
+- **Testler:** 1346 → 1390 (+44; bench doğrulamaları normal koşuya girdi, ~55 sn ekler).
+
+## D-077 – Faz 13a kod denetimi düzeltmeleri (2026-11-15, Faz 13a)
+`/code-review` (PR #25): 10 bulgu, hepsi düzeltildi; önce 9 kırmızı test (2'si baştan yeşildi, regresyon koruması olarak kaldı).
+- **İstem stdin'den, izinler `--settings` dosyasından:** bu makinede `claude` npm `claude.CMD`; çok satırlı/tırnaklı istem argümanı cmd.exe'de kesilir ve arkadan gelen bayraklar kaybolurdu (bütün A/B koşuları geçersiz olurdu). Artık hiçbir argümanda istem, yeni satır veya tırnak yok; mod B ipucu istemin başına eklenir (`--append-system-prompt` yerine). `--setting-sources project` ile `--settings` dosyasının birlikte çalıştığı 13b'nin ilk gerçek koşusunda doğrulanacak.
+- **Takılan görünür kontrol** (`run_check`) 124 döner; benchmark'ı durdurmaz.
+- **Claude zaman aşımı/çökmesi:** çıkış kodu ve stderr hatada kalır; kullanım yoksa kayıt `claude=None` ve token ortalamalarına **0 olarak girmez** (`runs_without_usage` sayısı).
+- **Görev 10:** mutantlar ve "gerçek kod" koşusu, gizli testin içine gömülü **özgün** `stack.py`'den; işçinin `stack.py`'yi yeniden biçimlendirmesi ya da zayıf testlere uydurması puanı bozmaz.
+- **Görev 07:** listeli frozen dataclass hash'lenemez; istemden "hashing" çıkarıldı.
+- **Görev 20:** gizli test önbellek nesnesini değiştirmiyor (`service.CACHE.clear()`); önbelleği adıyla içe aktaran doğru çözüm de geçiyor. Süre dolması birim testte (enjekte saatle).
+- **Sızıntı koruması tetiklenince** (`LeakError`) koşu hatası sayılmaz: bütün benchmark durur (kod 3).
+- **`--ollama-model-2`** yalnız mod B'de kullanılabilir (C `cheap` = kademe 1); yardım metni, README ve sonuç başlığı bunu söylüyor.
+- **Bench config'i** ruamel (`loader.dump_yaml`) ile yazılıyor; tuhaf model adları (": ", "#") bozmuyor.
+- **`BenchError`** artık `OrkestraError`'dan türüyor (AGENTS.md hata hiyerarşisi kuralı).
+- **Testler:** 1390 → 1400 (+10).

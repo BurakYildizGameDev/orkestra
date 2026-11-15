@@ -29,11 +29,46 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
-| düzeltme-fable – Genel bakış düzeltmeleri (ek) | ⏳ | | `gc` ile eski `runs`/`usage`/`queue` satırları, `desktop-notifier` üst sınırı, düzenlenebilir kurulum notu, `cli.py`/`runner.py` bölme, `notify.ntfy_url`, `queue remove --finished`, eski dal ve not dosyası temizliği (ayrıntı: yerel YAPILIS_PLANI.md) |
-| 13 – Benchmark | ⏳ | | |
+| düzeltme-fable – Genel bakış düzeltmeleri (ek) | ⏳ | | `gc` ile eski `runs`/`usage`/`queue` satırları, `desktop-notifier` üst sınırı, düzenlenebilir kurulum notu, `cli.py`/`runner.py` bölme, `notify.ntfy_url`, `queue remove --finished`, eski dal ve not dosyası temizliği; README güncelleme ve kısaltma (durum kutusu Faz 0–4'te kalmış), "Bilinen sınırlar" bölümü, gerçek modelle/terminalde elle kullanım turu (ayrıntı: yerel YAPILIS_PLANI.md) |
+| 13a – Benchmark aracı ve 20 görev | ✅ | 2026-11-15 | `bench/run_bench.py`, 20 görev (8/8/4) + gizli test + referans çözüm, sızıntı koruması, kuru koşu (D-076); kod denetimi (D-077) |
+| 13b – Gerçek benchmark koşusu ve sonuçlar | ⏳ | | kullanıcının Claude kotası + Ollama; `bench/results/`, README tablosu, `bench/README.md` sonuçlar |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 13a (PR #25), 2026-11-15
+`/code-review` 10 bulgu; hepsi düzeltildi (D-077). Önce kırmızı testler.
+- ✅ İstem stdin'den, hiçbir argümanda yeni satır/tırnak yok, izinler `--settings` dosyasında (`test_claude_gets_the_prompt_on_stdin_and_no_argument_holds_a_newline`).
+- ✅ Takılan görünür kontrol benchmark'ı durdurmuyor (`test_a_hanging_visible_check_is_a_failure_not_a_crash`).
+- ✅ Claude zaman aşımı nedeniyle kaydediliyor, 0 token sayılmıyor (`test_a_claude_timeout_keeps_the_reason_and_does_not_count_as_zero_tokens`).
+- ✅ Görev 10 özgün koda karşı puanlıyor (`test_a_reformatted_stack_does_not_break_the_mutation_scoring`, `test_a_stack_changed_to_fit_weak_tests_is_still_caught`; ikisi baştan yeşildi, koruma olarak kaldı).
+- ✅ Görev 07 istemi imkânsızı istemiyor (`test_the_dataclass_task_does_not_ask_for_the_impossible`); görev 20 adıyla içe aktaran çözümü kabul ediyor (`test_a_cache_imported_by_name_also_passes`).
+- ✅ Sızıntı koruması benchmark'ı durduruyor (`test_a_leak_in_mode_c_stops_the_benchmark`).
+- ✅ Bench config'i ruamel ile, tuhaf model adlarıyla geçerli (`test_the_bench_home_config_is_valid_yaml_even_for_odd_model_ids`); `BenchError` hiyerarşide (`test_bench_errors_come_from_the_orkestra_hierarchy`).
+- ✅ `--ollama-model-2` belgesi düzeltildi (yalnız mod B).
+
+Testler: **1400 geçti** (1390 + 10). ruff, ruff format, pyright temiz.
+
+### Faz 13a – Benchmark aracı ve 20 görev (2026-11-15)
+**Yapılanlar (D-076):**
+- `bench/run_bench.py`: modlar A (yalnız Claude), B (Claude + Orkestra skill), C (yalnız Orkestra, `cheap`); her koşu yeni bir git çalışma dizininde; gizli testler koşudan sonra ayrı kopyada; sonuçlar `bench/results/<tarih>.json` + `.md` (ortalama/min/max, zorluk tablosu, A − B Claude token farkı ve `stats` tahmini); `--dry-run`.
+- 20 görev (8 kolay, 8 orta, 4 zor), her birinde `project/`, `hidden/`, `solution/`; test yazma görevi 7 mutantla değerlendiriliyor.
+- Sızıntı koruması: `check_no_leak` (dosya adı/içerik, istemde gizli test satırı), `check_orkestra_task` (bağlam yolları/glob'lar).
+- `bench/README.md`: yöntem, modlar, ölçüler, sınırlar (sonuçlar 13b'de).
+
+**Kabul kriterleri (13a'ya düşenler):**
+- ✅ Tek komut: `uv run python bench/run_bench.py --mode all --repeat 3` (kuru koşu "20 tasks x 3 modes x 3 repeats = 180 runs", hiçbir şey başlatmadı); sonuç dosyası üretimi sahte koşturucuyla test edildi (`test_write_results_names_the_files_by_date`, `test_the_markdown_table_…`).
+- ✅ Gizli testler işçiye bağlam olarak gönderilmez ve bench kodu bunu denetler (`test_a_hidden_test_in_the_workspace_stops_the_run`, `test_the_solution_in_the_workspace_stops_the_run`, `test_a_prompt_quoting_a_hidden_test_stops_the_run`, `test_an_orkestra_task_never_points_at_hidden_files`).
+- ✅ Her görev geçerli: gizli testler başlangıçta kalıyor, çözümde geçiyor; görünür kontrol ikisinde de geçiyor (20 + 6 parametreli test).
+- ⏳ 13b: gerçek koşu, `bench/results/`, README tablosu (kötü sonuçlar dahil).
+
+**Dürüst notlar:**
+- Plandaki "önce 2 görevle uçtan uca" **gerçek** ajanlarla yapılmadı: Ollama kapalıydı, Claude modları kullanıcının kotasını harcar (13b'de önce 2 görevle başlanacak). Uçtan uca akış sahte koşturucuyla test edildi.
+- Testler koddan önce yazıldı ve kırmızı koşuldu (modül yoktu). Markdown testinin beklentisi binlik ayırıcı yüzünden düzeltildi (kod doğruydu).
+- Ruff bir ara görev dosyalarını biçimlendirdi; `bench/tasks` lint dışına alındı, görev doğrulamaları sonra yeniden geçti.
+- Görevleri tek kişi (Claude) yazdı: zorluk dereceleri öznel; 13b sonuçlarına göre gözden geçirilebilir.
+
+Testler: **1390 geçti** (1346 + 44). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 12b (PR #24), 2026-11-15
 `/code-review` 10 bulgu; hepsi düzeltildi (D-075). Önce 14 kırmızı test; D-074'teki şema kuralı geri alındı (4 desen testi kaldırıldı).

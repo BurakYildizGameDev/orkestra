@@ -1,0 +1,10 @@
+id: 15-feature-cli-options
+difficulty: medium
+category: feature
+files: [sorter.py]
+check: python -m pytest -q tests
+prompt: |
+  Add two options to the command line tool in sorter.py:
+  --reverse sorts in descending order, and --unique drops repeated lines (the first one
+  stays). They can be combined. main(argv) must keep returning the exit code and printing one
+  line per item; the existing tests must keep passing.

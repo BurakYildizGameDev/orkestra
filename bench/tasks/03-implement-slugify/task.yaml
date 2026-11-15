@@ -1,0 +1,7 @@
+id: 03-implement-slugify
+difficulty: easy
+category: implement
+files: [slug.py]
+prompt: |
+  Implement slugify() in slug.py as its docstring describes. Only the standard library may
+  be used.

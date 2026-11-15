@@ -1,0 +1,13 @@
+id: 09-bugfix-inventory
+difficulty: medium
+category: bugfix
+files: [inventory.py]
+check: python -m pytest -q tests
+prompt: |
+  inventory.py has two bugs. Fix them without changing the public interface:
+  1. Inventory.remove() lets the stock go below zero. Removing more than is in stock must
+     raise ValueError and leave the stock unchanged; removing an unknown item must raise
+     KeyError.
+  2. Inventory.total_value() returns long floats such as 0.30000000000000004. It must
+     return the value rounded to 2 decimals.
+  The existing tests in tests/ must keep passing.

@@ -1,0 +1,9 @@
+id: 07-dataclass-point
+difficulty: easy
+category: type-hints
+files: [models.py]
+prompt: |
+  Turn the class Product in models.py into a frozen dataclass with type hints
+  (name: str, price: float, tags: list of str defaulting to an empty list for each instance).
+  Keep the price_with_vat() method and the validation in __post_init__ (price must not be
+  negative). Equality and repr come from the dataclass.

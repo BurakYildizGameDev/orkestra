@@ -1,0 +1,10 @@
+id: 14-bugfix-csv-line
+difficulty: medium
+category: bugfix
+files: [csvline.py]
+check: python -m pytest -q tests
+prompt: |
+  parse_line() in csvline.py splits on every comma, so quoted fields break. Fix it without the
+  csv module: a field may be wrapped in double quotes; inside quotes a comma is text and two
+  double quotes ("") are one double quote; spaces around unquoted fields are kept as they are.
+  An unclosed quote raises ValueError. The existing tests must keep passing.

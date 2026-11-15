@@ -1,0 +1,9 @@
+id: 16-bugfix-flatten
+difficulty: medium
+category: bugfix
+files: [nested.py]
+prompt: |
+  flatten() in nested.py never ends for strings and ignores the depth argument. Fix it:
+  strings and bytes are single items (not iterated); any other iterable (list, tuple,
+  generator, set) is opened; ``depth`` limits how many levels are opened (None: all levels,
+  0: nothing opened). It returns a list. Dictionaries are single items.

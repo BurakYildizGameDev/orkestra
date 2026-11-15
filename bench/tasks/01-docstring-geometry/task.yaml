@@ -1,0 +1,8 @@
+id: 01-docstring-geometry
+difficulty: easy
+category: docstring
+files: [geometry.py]
+prompt: |
+  Add a Google-style docstring to every public function in geometry.py. Each docstring
+  starts with a one-line summary, has an "Args:" section that names every parameter and a
+  "Returns:" section. Do not change what the functions do.
