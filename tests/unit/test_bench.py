@@ -400,3 +400,148 @@ def test_bench_errors_come_from_the_orkestra_hierarchy() -> None:
     from orkestra.errors import OrkestraError
 
     assert issubclass(rb.BenchError, OrkestraError) and issubclass(rb.LeakError, rb.BenchError)
+
+
+# --- quota guards (Faz 13b, D-078) ------------------------------------------------------------
+
+LIMIT_JSON = {"type": "result", "subtype": "success", "is_error": True, "num_turns": 1,
+              "result": "Claude AI usage limit reached|1763215200", "usage": {}}  # fmt: skip
+
+
+def test_a_usage_limit_stops_the_run_and_is_not_recorded(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    runner = FakeRunner(task, solve=False, claude_json=LIMIT_JSON)
+    with pytest.raises(rb.UsageLimitReached):
+        rb.run_once(task, "a", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+
+
+LIMIT_TEXTS = [
+    "5-hour limit reached - resets 3pm",
+    "API Error: 429 rate_limit_error",
+    "Overloaded (529)",
+]
+
+
+@pytest.mark.parametrize("stderr", LIMIT_TEXTS)
+def test_a_limit_in_stderr_of_a_failed_run_is_a_limit_too(tmp_path: Path, stderr: str) -> None:
+    task = _task("01-docstring-geometry")
+
+    def runner(args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+               input_text: str | None = None) -> rb.Completed:  # fmt: skip
+        return rb.Completed(1, "", stderr)
+
+    with pytest.raises(rb.UsageLimitReached):
+        rb.run_once(task, "a", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+
+
+def test_the_same_words_in_a_good_answer_are_not_a_limit(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    answer = {**CLAUDE_JSON, "result": "Done. I also noted that the API has a rate limit."}
+    runner = FakeRunner(task, claude_json=answer)
+    record = rb.run_once(task, "a", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    assert record.passed and record.error is None
+
+
+class ManyTasks:
+    """Plays claude/orkestra for every task: the run folder's name says which task it is."""
+
+    def __init__(self, limit_after: int | None = None) -> None:
+        self.claude_runs = 0
+        self.limit_after = limit_after
+        self.keys: list[str] = []
+
+    def _task(self, cwd: Path) -> rb.Task:
+        return next(t for t in TASKS if cwd.parent.name.startswith(t.id + "-"))
+
+    def __call__(self, args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+                 input_text: str | None = None) -> rb.Completed:  # fmt: skip
+        if "--version" in args:
+            return rb.Completed(0, "9.9.9 (fake)", "")
+        if Path(args[0]).stem.lower().startswith("claude"):
+            if self.limit_after is not None and self.claude_runs >= self.limit_after:
+                return rb.Completed(1, json.dumps(LIMIT_JSON), "")
+            self.claude_runs += 1
+            self.keys.append(cwd.parent.name)
+            shutil.copytree(self._task(cwd).root / "solution", cwd, dirs_exist_ok=True)
+            return rb.Completed(0, json.dumps(CLAUDE_JSON), "")
+        if "run" in args:
+            self.keys.append(cwd.parent.name)
+            return rb.Completed(0, json.dumps({"run_id": "r-1", "status": "ok"}), "")
+        if "apply" in args:
+            shutil.copytree(self._task(cwd).root / "solution", cwd, dirs_exist_ok=True)
+            return rb.Completed(0, "{}", "")
+        return rb.Completed(0, "{}", "")
+
+
+def _main(tmp_path: Path, runner: ManyTasks, *extra: str) -> int:
+    argv = ["--mode", "all", "--tasks", "01,09", "--repeat", "1", "--out", str(tmp_path / "out"),
+            "--work-dir", str(tmp_path / "work"), *extra]  # fmt: skip
+    return rb.main(argv, runner=runner, which=lambda name: name)
+
+
+def _saved(tmp_path: Path) -> dict[str, Any]:
+    [path] = (tmp_path / "out").glob("*.json")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_main_stops_at_the_limit_keeps_what_was_done_and_says_how_to_resume(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = _main(tmp_path, ManyTasks(limit_after=2))
+    out = capsys.readouterr()
+    assert code == 4
+    done = [(r["task"], r["mode"]) for r in _saved(tmp_path)["records"]]
+    assert done == [("01-docstring-geometry", "a"), ("01-docstring-geometry", "b"),
+                    ("01-docstring-geometry", "c")]  # the limit came at 09's mode a  # fmt: skip
+    assert "--resume" in out.out + out.err
+
+
+def test_resume_runs_only_what_is_left_into_the_same_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _main(tmp_path, ManyTasks(limit_after=2)) == 4
+    [first] = (tmp_path / "out").glob("*.json")
+    runner = ManyTasks()
+    code = rb.main(["--resume", str(first), "--work-dir", str(tmp_path / "work")],
+                   runner=runner, which=lambda name: name)  # fmt: skip
+    assert code == 0
+    assert sorted(runner.keys) == ["09-bugfix-inventory-a-1", "09-bugfix-inventory-b-1",
+                                   "09-bugfix-inventory-c-1"]  # fmt: skip
+    data = _saved(tmp_path)  # still one file
+    keys = [(r["task"], r["mode"], r["repeat"]) for r in data["records"]]
+    assert len(keys) == 6 and len(set(keys)) == 6
+    assert all(r["passed"] for r in data["records"])
+    assert data["meta"]["repeat"] == 1 and data["meta"]["tasks"] == 2
+
+
+def test_resume_can_add_repeats(tmp_path: Path) -> None:
+    assert _main(tmp_path, ManyTasks()) == 0
+    [first] = (tmp_path / "out").glob("*.json")
+    runner = ManyTasks()
+    assert rb.main(["--resume", str(first), "--repeat", "2", "--work-dir", str(tmp_path / "work")],
+                   runner=runner, which=lambda name: name) == 0  # fmt: skip
+    assert all(key.endswith("-2") for key in runner.keys) and len(runner.keys) == 6
+    data = _saved(tmp_path)
+    assert len(data["records"]) == 12 and data["meta"]["repeat"] == 2
+
+
+def test_max_claude_runs_stops_before_the_next_claude_session(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner = ManyTasks()
+    code = _main(tmp_path, runner, "--max-claude-runs", "3")
+    out = capsys.readouterr().out
+    assert code == 0 and runner.claude_runs == 3
+    modes = [(r["task"][:2], r["mode"]) for r in _saved(tmp_path)["records"]]
+    assert modes == [("01", "a"), ("01", "b"), ("01", "c"), ("09", "a")]
+    assert "--resume" in out
+
+
+def test_resume_refuses_another_task_set(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _main(tmp_path, ManyTasks()) == 0
+    [first] = (tmp_path / "out").glob("*.json")
+    code = rb.main(["--resume", str(first), "--tasks", "01", "--work-dir", str(tmp_path / "work")],
+                   runner=ManyTasks(), which=lambda name: name)  # fmt: skip
+    assert code == 2 and "--tasks" in capsys.readouterr().err

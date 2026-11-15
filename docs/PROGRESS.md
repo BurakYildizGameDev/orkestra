@@ -31,10 +31,29 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable – Genel bakış düzeltmeleri (ek) | ⏳ | | `gc` ile eski `runs`/`usage`/`queue` satırları, `desktop-notifier` üst sınırı, düzenlenebilir kurulum notu, `cli.py`/`runner.py` bölme, `notify.ntfy_url`, `queue remove --finished`, eski dal ve not dosyası temizliği; README güncelleme ve kısaltma (durum kutusu Faz 0–4'te kalmış), "Bilinen sınırlar" bölümü, gerçek modelle/terminalde elle kullanım turu (ayrıntı: yerel YAPILIS_PLANI.md) |
 | 13a – Benchmark aracı ve 20 görev | ✅ | 2026-11-15 | `bench/run_bench.py`, 20 görev (8/8/4) + gizli test + referans çözüm, sızıntı koruması, kuru koşu (D-076); kod denetimi (D-077) |
-| 13b – Gerçek benchmark koşusu ve sonuçlar | ⏳ | | kullanıcının Claude kotası + Ollama; `bench/results/`, README tablosu, `bench/README.md` sonuçlar |
+| 13b – Kota korumaları (limit algılama, `--resume`, `--max-claude-runs`) | ✅ | 2026-11-15 | kod; kota harcamaz (D-078) |
+| 13c – Deneme ve ölçüm (2 görev, 4 Claude oturumu) | ⏳ | | kullanıcıyla, Ollama açık |
+| 13d – İlk tam tur (`--repeat 1`, 40 Claude oturumu) | ⏳ | | pencerelere bölünebilir; ara tablo |
+| 13e – 2. ve 3. turlar, sonuçlar, README tablosu | ⏳ | | `--resume`, 80 Claude oturumu |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13b – Kota korumaları (2026-11-15)
+**Yapılanlar (D-078):**
+- Claude kullanım limiti / 429 / aşırı yük algılama: koşu kaydedilmez, benchmark kod 4 ile durur, devam komutunu yazar.
+- `--resume <sonuç.json>`: bitmiş koşuları atlar, aynı dosyaya ekler; `--repeat` ile tur eklenebilir; farklı görev/mod kümesi reddedilir.
+- `--max-claude-runs N`: bir çağrıda en fazla N Claude oturumu.
+- `bench/README.md`: koşuyu pencerelere bölme örnekleri.
+
+**Kabul kriterleri:**
+- ✅ Limit dolunca koşu başarısız sayılmıyor, benchmark duruyor (`test_a_usage_limit_stops_the_run_and_is_not_recorded`, `test_a_limit_in_stderr_of_a_failed_run_is_a_limit_too`, `test_main_stops_at_the_limit_keeps_what_was_done_and_says_how_to_resume`); başarılı cevapta aynı kelimeler limit değil (`test_the_same_words_in_a_good_answer_are_not_a_limit`).
+- ✅ Kaldığı yerden devam, aynı dosya, tekrar yok (`test_resume_runs_only_what_is_left_into_the_same_file`, `test_resume_can_add_repeats`, `test_resume_refuses_another_task_set`).
+- ✅ Oturum sınırı (`test_max_claude_runs_stops_before_the_next_claude_session`).
+
+**Dürüst notlar:** limit mesajlarının metni Claude Code sürümüne göre değişebilir; desen birkaç bilinen biçimi tanır, gerçek metin 13c'de görülecek. Testler koddan önce yazıldı ve kırmızı koşuldu (1'i baştan yeşil, koruma).
+
+Testler: **1410 geçti** (1400 + 10). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 13a (PR #25), 2026-11-15
 `/code-review` 10 bulgu; hepsi düzeltildi (D-077). Önce kırmızı testler.
@@ -54,13 +73,13 @@ Testler: **1400 geçti** (1390 + 10). ruff, ruff format, pyright temiz.
 - `bench/run_bench.py`: modlar A (yalnız Claude), B (Claude + Orkestra skill), C (yalnız Orkestra, `cheap`); her koşu yeni bir git çalışma dizininde; gizli testler koşudan sonra ayrı kopyada; sonuçlar `bench/results/<tarih>.json` + `.md` (ortalama/min/max, zorluk tablosu, A − B Claude token farkı ve `stats` tahmini); `--dry-run`.
 - 20 görev (8 kolay, 8 orta, 4 zor), her birinde `project/`, `hidden/`, `solution/`; test yazma görevi 7 mutantla değerlendiriliyor.
 - Sızıntı koruması: `check_no_leak` (dosya adı/içerik, istemde gizli test satırı), `check_orkestra_task` (bağlam yolları/glob'lar).
-- `bench/README.md`: yöntem, modlar, ölçüler, sınırlar (sonuçlar 13b'de).
+- `bench/README.md`: yöntem, modlar, ölçüler, sınırlar (sonuçlar 13e'de).
 
 **Kabul kriterleri (13a'ya düşenler):**
 - ✅ Tek komut: `uv run python bench/run_bench.py --mode all --repeat 3` (kuru koşu "20 tasks x 3 modes x 3 repeats = 180 runs", hiçbir şey başlatmadı); sonuç dosyası üretimi sahte koşturucuyla test edildi (`test_write_results_names_the_files_by_date`, `test_the_markdown_table_…`).
 - ✅ Gizli testler işçiye bağlam olarak gönderilmez ve bench kodu bunu denetler (`test_a_hidden_test_in_the_workspace_stops_the_run`, `test_the_solution_in_the_workspace_stops_the_run`, `test_a_prompt_quoting_a_hidden_test_stops_the_run`, `test_an_orkestra_task_never_points_at_hidden_files`).
 - ✅ Her görev geçerli: gizli testler başlangıçta kalıyor, çözümde geçiyor; görünür kontrol ikisinde de geçiyor (20 + 6 parametreli test).
-- ⏳ 13b: gerçek koşu, `bench/results/`, README tablosu (kötü sonuçlar dahil).
+- ⏳ 13c–13e: gerçek koşu, `bench/results/`, README tablosu (kötü sonuçlar dahil).
 
 **Dürüst notlar:**
 - Plandaki "önce 2 görevle uçtan uca" **gerçek** ajanlarla yapılmadı: Ollama kapalıydı, Claude modları kullanıcının kotasını harcar (13b'de önce 2 görevle başlanacak). Uçtan uca akış sahte koşturucuyla test edildi.

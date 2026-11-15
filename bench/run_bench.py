@@ -30,6 +30,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shlex
 import shutil
 import statistics
@@ -84,6 +85,19 @@ class BenchError(OrkestraError):
 
 class LeakError(BenchError):
     """A hidden test or the solution would reach the worker: the run must not start."""
+
+
+class UsageLimitReached(BenchError):
+    """Claude's usage limit (or an overload) stopped a run: it is not a model failure, so the
+    benchmark stops and is resumed later (``--resume``)."""
+
+
+# Only looked for when the run failed (non-zero exit or ``is_error``): a good answer may well
+# mention a rate limit.
+LIMIT_PATTERN = re.compile(
+    r"usage limit|limit reached|rate[ _-]?limit|too many requests|\b429\b|overloaded|\b529\b",
+    re.IGNORECASE,
+)
 
 
 # --- tasks ------------------------------------------------------------------------------------
@@ -414,7 +428,7 @@ def run_once(
             claude, error = _run_claude(task, mode, workspace, run_dir, settings, runner, env)
         else:
             error = _run_orkestra(task, workspace, run_dir, settings, runner, env)
-    except LeakError:
+    except (LeakError, UsageLimitReached):
         raise  # never a model failure: the whole benchmark stops
     except BenchError as exc:
         error = str(exc)
@@ -438,6 +452,10 @@ def _run_claude(
     settings_file = claude_settings(mode, run_dir / "claude-settings.json")
     done = runner(claude_args(mode, settings, settings_file), workspace, env,
                   settings.timeout_s, input_text=claude_prompt(mode, task.prompt))  # fmt: skip
+    if (done.returncode != 0 or _is_error(done.stdout)) and LIMIT_PATTERN.search(
+        done.stdout + "\n" + done.stderr
+    ):
+        raise UsageLimitReached(f"{task.id} {mode}: {(done.stdout + done.stderr).strip()[:200]}")
     if done.returncode != 0:
         error = f"claude exited with {done.returncode}: {done.stderr[-300:]}"
         try:
@@ -445,6 +463,14 @@ def _run_claude(
         except BenchError:
             return None, error
     return parse_claude(done.stdout), None
+
+
+def _is_error(stdout: str) -> bool:
+    try:
+        data = json.loads(stdout)
+    except ValueError:
+        return False
+    return isinstance(data, dict) and bool(data.get("is_error"))
 
 
 def _run_orkestra(
@@ -605,23 +631,19 @@ def write_results(
 # --- command line -----------------------------------------------------------------------------
 
 
-def _version(args: Sequence[str]) -> str:
+def _version(args: Sequence[str], runner: Runner) -> str:
     try:
-        done = subprocess.run(list(args), capture_output=True, text=True, timeout=60,
-                              encoding="utf-8", errors="replace")  # fmt: skip
-    except (OSError, subprocess.TimeoutExpired):
+        done = runner(list(args), Path.cwd(), dict(os.environ), 60)
+    except OSError:
         return "unknown"
-    return (
-        (done.stdout or done.stderr).strip().splitlines()[0]
-        if (done.stdout or done.stderr)
-        else "unknown"
-    )
+    text = (done.stdout or done.stderr).strip()
+    return text.splitlines()[0] if text else "unknown"
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Orkestra benchmark (Faz 13).")
-    parser.add_argument("--mode", choices=[*MODES, "all"], default="all")
-    parser.add_argument("--repeat", type=int, default=3)
+    parser.add_argument("--mode", choices=[*MODES, "all"], default=None, help="default all")
+    parser.add_argument("--repeat", type=int, default=None, help="default 3")
     parser.add_argument("--tasks", default="", help="comma-separated id prefixes (default: all)")
     parser.add_argument("--out", type=Path, default=RESULTS_DIR)
     parser.add_argument(
@@ -634,62 +656,145 @@ def _parser() -> argparse.ArgumentParser:
                              "profile, tier 1")  # fmt: skip
     parser.add_argument("--claude-model", default=None)
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
+    parser.add_argument(
+        "--resume",
+        type=Path,
+        default=None,
+        help="a results JSON file: skip its finished runs, append to it",
+    )
+    parser.add_argument("--max-claude-runs", type=int, default=None,
+                        help="start at most this many Claude sessions in this call")  # fmt: skip
     parser.add_argument("--dry-run", action="store_true",
                         help="check every task and the leak guard; start nothing")  # fmt: skip
     return parser
 
 
-def main(argv: Sequence[str] | None = None, *, runner: Runner = subprocess_runner) -> int:
+@dataclass
+class Plan:
+    """What to run: from the command line, or from the results file being resumed."""
+
+    modes: list[str]
+    tasks: list[Task]
+    repeat: int
+    out: Path
+    stamp: str
+    meta: dict[str, Any]
+    records: list[Record]
+
+
+def _plan(opts: argparse.Namespace) -> Plan:
+    if opts.resume is None:
+        modes = list(MODES) if opts.mode in (None, "all") else [opts.mode]
+        tasks = load_tasks(TASKS_DIR, [p for p in opts.tasks.split(",") if p])
+        stamp = datetime.now().strftime("%Y-%m-%d-%H%M")
+        return Plan(modes, tasks, opts.repeat or 3, opts.out, stamp, {}, [])
+    data = json.loads(opts.resume.read_text(encoding="utf-8"))
+    meta = dict(data["meta"])
+    ids = list(meta["task_ids"])
+    if opts.tasks and [t.id for t in load_tasks(TASKS_DIR, opts.tasks.split(","))] != ids:
+        raise BenchError(f"--tasks differs from the resumed run ({', '.join(ids)})")
+    if opts.mode not in (None, "all" if meta["modes"] == "".join(MODES) else meta["modes"]):
+        raise BenchError(f"--mode differs from the resumed run ({meta['modes']})")
+    tasks = [t for t in load_tasks(TASKS_DIR) if t.id in ids]
+    records = [Record(**r) for r in data["records"]]
+    repeat = max(opts.repeat or 0, int(meta["repeat"]))
+    return Plan(list(meta["modes"]), tasks, repeat, opts.resume.parent, opts.resume.stem, meta,
+                records)  # fmt: skip
+
+
+def _stop(records: Sequence[Record], plan: Plan, reason: str) -> Path:
+    json_path, _ = write_results(records, plan.out, stamp=plan.stamp, meta=plan.meta)
+    print(f"{reason}\nresume with: uv run python bench/run_bench.py --resume {json_path}")
+    return json_path
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    runner: Runner = subprocess_runner,
+    which: Callable[[str], str | None] = shutil.which,
+) -> int:
     opts = _parser().parse_args(argv)
-    modes = list(MODES) if opts.mode == "all" else [opts.mode]
-    tasks = load_tasks(TASKS_DIR, [p for p in opts.tasks.split(",") if p])
-    total = len(tasks) * len(modes) * opts.repeat
-    print(f"{len(tasks)} tasks x {len(modes)} modes x {opts.repeat} repeats = {total} runs")
+    try:
+        plan = _plan(opts)
+    except BenchError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    done = {(r.task, r.mode, r.repeat) for r in plan.records}
+    total = len(plan.tasks) * len(plan.modes) * plan.repeat
+    print(f"{len(plan.tasks)} tasks x {len(plan.modes)} modes x {plan.repeat} repeats = "
+          f"{total} runs ({total - len(done)} to go)")  # fmt: skip
     if opts.dry_run:
-        for task in tasks:
+        for task in plan.tasks:
             workspace = prepare_workspace(task, opts.work_dir / "dry-run" / task.id)
             check_no_leak(task, workspace, prompt=task.prompt)
             check_orkestra_task(task, workspace, orkestra_task(task))
         print("dry run: every task is ready, nothing leaks; nothing was started")
         return 0
-    claude = shutil.which("claude") or "claude"
-    if any(m in ("a", "b") for m in modes) and shutil.which("claude") is None:
+    uses_claude = any(m in ("a", "b") for m in plan.modes)
+    claude = which("claude")
+    if uses_claude and claude is None:
         print("claude is not on PATH (needed for modes a and b)", file=sys.stderr)
         return 2
-    settings = Settings(out_dir=opts.out, work_dir=opts.work_dir, claude=claude,
-                        orkestra=[sys.executable, "-m", "orkestra"],
-                        ollama_model=opts.ollama_model, ollama_model_2=opts.ollama_model_2,
-                        claude_model=opts.claude_model, timeout_s=opts.timeout)  # fmt: skip
-    stamp = datetime.now().strftime("%Y-%m-%d-%H%M")
-    home = opts.work_dir / f"home-{stamp}"
+    meta = plan.meta
+    settings = Settings(
+        out_dir=plan.out, work_dir=opts.work_dir, claude=claude or "claude",
+        orkestra=[sys.executable, "-m", "orkestra"],
+        ollama_model=meta.get("ollama_model", opts.ollama_model),
+        ollama_model_2=meta.get("ollama_model_2", opts.ollama_model_2),
+        claude_model=meta.get("claude_model", opts.claude_model), timeout_s=opts.timeout,
+    )  # fmt: skip
+    home = opts.work_dir / f"home-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}"
     setup_home(home, settings)
-    meta = {
-        "date": datetime.now().astimezone().isoformat(timespec="minutes"),
-        "machine": f"{platform.system()} {platform.release()}, "
-                   f"{platform.processor() or platform.machine()}",
-        "python": platform.python_version(), "modes": "".join(modes), "repeat": opts.repeat,
-        "tasks": len(tasks), "ollama_model": opts.ollama_model,
-        "ollama_model_2 (tier 2, mode B only)": opts.ollama_model_2 or "-",
-        "claude": _version([claude, "--version"]) if "a" in modes or "b" in modes else "-",
-        "claude_model": opts.claude_model or "default",
-        "orkestra": _version([*settings.orkestra, "--version"]),
-    }  # fmt: skip
-    records: list[Record] = []
-    for repeat in range(1, opts.repeat + 1):
-        for task in tasks:
-            for mode in modes:
+    if not meta:
+        meta.update({
+            "date": datetime.now().astimezone().isoformat(timespec="minutes"),
+            "machine": f"{platform.system()} {platform.release()}, "
+                       f"{platform.processor() or platform.machine()}",
+            "python": platform.python_version(),
+            "claude": _version([settings.claude, "--version"], runner) if uses_claude else "-",
+            "orkestra": _version([*settings.orkestra, "--version"], runner),
+            "modes": "".join(plan.modes), "task_ids": [t.id for t in plan.tasks],
+            "tasks": len(plan.tasks), "ollama_model": settings.ollama_model,
+            "ollama_model_2": settings.ollama_model_2, "claude_model": settings.claude_model,
+        })  # fmt: skip
+    meta["repeat"] = plan.repeat
+    records = list(plan.records)
+    claude_runs = 0
+    for repeat in range(1, plan.repeat + 1):
+        for task in plan.tasks:
+            for mode in plan.modes:
+                if (task.id, mode, repeat) in done:
+                    continue
+                is_claude = mode in ("a", "b")
+                if (
+                    is_claude
+                    and opts.max_claude_runs is not None
+                    and claude_runs >= opts.max_claude_runs
+                ):
+                    _stop(
+                        records,
+                        plan,
+                        f"stopped after {claude_runs} Claude sessions (--max-claude-runs)",
+                    )
+                    return 0
                 try:
                     record = run_once(task, mode, repeat, settings, runner=runner, home=home)
                 except LeakError as exc:
                     print(f"STOPPED, the leak guard tripped: {exc}", file=sys.stderr)
                     return 3
+                except UsageLimitReached as exc:
+                    print(f"STOPPED, Claude's usage limit: {exc}", file=sys.stderr)
+                    _stop(records, plan, "this run is not recorded; wait for the limit to reset")
+                    return 4
+                claude_runs += is_claude
                 records.append(record)
                 mark = "PASS" if record.passed else "fail"
                 print(f"[{len(records)}/{total}] {task.id} {mode} #{repeat}: {mark} "
                       f"({record.duration_s:.0f} s){' - ' + record.error if record.error else ''}",
                       flush=True)  # fmt: skip
-                write_results(records, opts.out, stamp=stamp, meta=meta)  # survives a crash
-    json_path, md_path = write_results(records, opts.out, stamp=stamp, meta=meta)
+                write_results(records, plan.out, stamp=plan.stamp, meta=meta)  # survives a crash
+    json_path, md_path = write_results(records, plan.out, stamp=plan.stamp, meta=meta)
     print(f"results: {json_path}\n         {md_path}")
     return 0
 

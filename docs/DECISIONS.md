@@ -816,3 +816,13 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Bench config'i** ruamel (`loader.dump_yaml`) ile yazılıyor; tuhaf model adları (": ", "#") bozmuyor.
 - **`BenchError`** artık `OrkestraError`'dan türüyor (AGENTS.md hata hiyerarşisi kuralı).
 - **Testler:** 1390 → 1400 (+10).
+
+## D-078 – Faz 13b: kota korumaları (2026-11-15, Faz 13b)
+**Bağlam:** kullanıcının 5 saatlik Claude limiti 120 oturuma yetmez; limit koşu ortasında dolarsa araç bunu "görev başarısız" sayar ve sonuçları bozardı. Kullanıcı Faz 13'ün kalanını 13b (korumalar) / 13c (deneme ve ölçüm) / 13d (ilk tur) / 13e (2.–3. tur ve sonuçlar) olarak böldürdü.
+**Karar:**
+- **Limit algılama:** koşu başarısızsa (çıkış kodu ≠ 0 veya JSON `is_error`) ve çıktıda kullanım limiti / 429 / aşırı yük (529) izi varsa `UsageLimitReached`: koşu kaydedilmez, sonuç dosyası yazılır, benchmark kod 4 ile durur ve devam komutunu yazar. Başarılı bir cevapta aynı kelimeler limit sayılmaz (yalnız başarısız koşuda bakılır). Aşırı yük de durdurur: geçici ama sonuçları "başarısız" diye bozmasın.
+- **`--resume <dosya>`:** bitmiş (görev, mod, tekrar) koşuları atlar, aynı dosyaya ekler; görevler, modlar ve modeller dosyanın `meta`'sından gelir (`task_ids`, `modes`, `ollama_model`, `ollama_model_2`, `claude_model`; makinece okunur alanlar). Farklı `--tasks`/`--mode` kod 2; `--repeat` büyüyebilir (yeni turlar eklenir).
+- **`--max-claude-runs N`:** bu çağrıda en fazla N Claude oturumu; sınıra gelince bir sonraki Claude koşusundan önce temiz durur (kod 0) ve devam komutunu yazar. Mod C koşuları sayılmaz.
+- Sürüm sorguları (`claude --version`, `orkestra --version`) da koşturucu üzerinden: testler gerçek program başlatmaz; `which` enjekte edilebilir.
+- Her çağrı kendi bench evini kurar (işçi istatistikleri koşu süresi penceresinde okunduğu için devam eden koşuyu etkilemez).
+- **Testler:** 1400 → 1410 (+10; 1'i baştan yeşil: başarılı cevaptaki "rate limit" kelimesi).
