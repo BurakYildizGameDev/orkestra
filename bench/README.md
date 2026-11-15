@@ -83,8 +83,12 @@ uv run python bench/run_bench.py --resume bench/results/<date>.json --repeat 3  
 - `--max-claude-runs N` starts at most N Claude sessions in this call, then stops cleanly.
 - When Claude's usage limit (or an overload) stops a session, the benchmark stops with exit
   code 4 and that run is **not** recorded as a failure; resume after the limit resets.
-- `--resume <file>` skips the runs already in that file and appends to it (the same tasks,
-  modes and models; `--repeat` may grow).
+- `--resume <file>` skips the runs already in that file and appends to it. Tasks, modes,
+  models and the timeout come from the file; giving a different one is refused, `--repeat`
+  may grow. The Claude Code and Orkestra versions are recorded per window (an update between
+  windows is printed and kept in the report header).
+- A repeat cut short by a stop is not scored (it would look like a low score); the table
+  says how many runs were left out as partial.
 
 Ollama must be running for B and C. Every run is written to `results/<date>.json` as it ends
 (a crash keeps what was done) and the tables to `results/<date>.md`.

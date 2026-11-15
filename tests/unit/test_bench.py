@@ -545,3 +545,133 @@ def test_resume_refuses_another_task_set(
     code = rb.main(["--resume", str(first), "--tasks", "01", "--work-dir", str(tmp_path / "work")],
                    runner=ManyTasks(), which=lambda name: name)  # fmt: skip
     assert code == 2 and "--tasks" in capsys.readouterr().err
+
+
+# --- code review fixes (PR #26, D-079) ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr"),
+    [
+        (json.dumps({**CLAUDE_JSON, "is_error": True, "subtype": "error_max_turns",
+                     "usage": {"output_tokens": 529, "cache_creation_input_tokens": 429}}), ""),
+        (json.dumps({**CLAUDE_JSON, "is_error": True, "result": "The context limit reached."}), ""),
+        ("", "Error: tool failed after 429 ms"),
+    ],
+)  # fmt: skip
+def test_numbers_and_other_limits_in_a_failure_are_not_a_usage_limit(
+    tmp_path: Path, stdout: str, stderr: str
+) -> None:
+    task = _task("01-docstring-geometry")
+
+    def runner(args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+               input_text: str | None = None) -> rb.Completed:  # fmt: skip
+        return rb.Completed(1, stdout, stderr)
+
+    record = rb.run_once(task, "a", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    assert not record.passed and record.error  # a recorded failure, not a stop
+
+
+def test_a_limit_in_the_event_list_form_is_seen(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    events = [{"type": "system"}, LIMIT_JSON]
+    with pytest.raises(rb.UsageLimitReached):
+        rb.run_once(task, "a", 1, _settings(tmp_path),
+                    runner=FakeRunner(task, solve=False, claude_json=json.dumps(events)),
+                    home=tmp_path / "home")  # fmt: skip
+
+
+def test_a_limit_message_as_a_normal_result_is_still_a_limit(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    quiet = {**LIMIT_JSON, "is_error": False}  # exit 0, is_error false, the text says it
+    with pytest.raises(rb.UsageLimitReached):
+        rb.run_once(task, "a", 1, _settings(tmp_path),
+                    runner=FakeRunner(task, solve=False, claude_json=quiet),
+                    home=tmp_path / "home")  # fmt: skip
+
+
+def test_results_are_written_atomically(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    rb.write_results([_record("a", 1, "t1", True)], tmp_path, stamp="s", meta={})
+    before = (tmp_path / "s.json").read_text(encoding="utf-8")
+
+    def broken_dumps(*args: object, **kwargs: object) -> str:
+        raise KeyboardInterrupt  # Ctrl+C while writing
+
+    monkeypatch.setattr(rb.json, "dumps", broken_dumps)
+    with pytest.raises(KeyboardInterrupt):
+        rb.write_results([_record("a", 1, "t1", True), _record("a", 1, "t2", False)], tmp_path,
+                         stamp="s", meta={})  # fmt: skip
+    assert (tmp_path / "s.json").read_text(encoding="utf-8") == before
+
+
+@pytest.mark.parametrize("content", [None, "not json", json.dumps({"meta": {}, "records": []})])
+def test_a_file_that_cannot_be_resumed_is_a_clear_usage_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], content: str | None
+) -> None:
+    path = tmp_path / "old.json"
+    if content is not None:
+        path.write_text(content, encoding="utf-8")
+    code = rb.main(["--resume", str(path), "--work-dir", str(tmp_path / "work")],
+                   runner=ManyTasks(), which=lambda name: name)  # fmt: skip
+    assert code == 2 and "resume" in capsys.readouterr().err.lower()
+
+
+def test_version_of_a_failing_or_hanging_program_is_unknown() -> None:
+    def hanging(args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+                input_text: str | None = None) -> rb.Completed:  # fmt: skip
+        return rb.Completed(124, "", "timed out after 60 s")
+
+    assert rb._version(["claude", "--version"], hanging) == "unknown"
+
+
+def test_resume_refuses_another_model_or_timeout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _main(tmp_path, ManyTasks()) == 0
+    [first] = (tmp_path / "out").glob("*.json")
+    for extra in (["--claude-model", "opus"], ["--ollama-model", "other"], ["--timeout", "5"]):
+        code = rb.main(["--resume", str(first), "--work-dir", str(tmp_path / "work"), *extra],
+                       runner=ManyTasks(), which=lambda name: name)  # fmt: skip
+        assert code == 2, extra
+        assert extra[0] in capsys.readouterr().err
+
+
+def test_resume_notes_a_new_claude_version_per_window(tmp_path: Path) -> None:
+    assert _main(tmp_path, ManyTasks(limit_after=2)) == 4
+    [first] = (tmp_path / "out").glob("*.json")
+
+    class Updated(ManyTasks):
+        def __call__(self, args: Sequence[str], *rest: Any, **kw: Any) -> rb.Completed:
+            if "--version" in args:
+                return rb.Completed(0, "10.0.0 (fake)", "")
+            return super().__call__(args, *rest, **kw)
+
+    assert rb.main(["--resume", str(first), "--work-dir", str(tmp_path / "work")],
+                   runner=Updated(), which=lambda name: name) == 0  # fmt: skip
+    windows = _saved(tmp_path)["meta"]["windows"]
+    assert [w["claude"] for w in windows] == ["9.9.9 (fake)", "10.0.0 (fake)"]
+
+
+def test_a_trailing_comma_in_tasks_matches_the_resumed_set(tmp_path: Path) -> None:
+    assert _main(tmp_path, ManyTasks(limit_after=2)) == 4
+    [first] = (tmp_path / "out").glob("*.json")
+    argv = ["--resume", str(first), "--tasks", "01,09,", "--work-dir", str(tmp_path / "work")]
+    assert rb.main(argv, runner=ManyTasks(), which=lambda n: n) == 0
+
+
+def test_an_unfinished_repeat_is_not_scored_as_low() -> None:
+    records = [_record("a", 1, "t1", True), _record("a", 1, "t2", True),
+               _record("a", 2, "t1", True)]  # repeat 2 stopped halfway  # fmt: skip
+    summary = rb.summarize(records)["a"]
+    assert summary["passed"] == {"mean": 2.0, "min": 2, "max": 2}
+    assert summary["complete_repeats"] == 1 and summary["partial_runs"] == 1
+    assert "partial" in rb.markdown(rb.summarize(records), records).lower()
+
+
+def test_the_report_header_is_readable(tmp_path: Path) -> None:
+    meta = {"task_ids": ["01-a", "02-b"], "claude_model": None, "ollama_model_2": None,
+            "windows": [{"date": "d", "claude": "1", "orkestra": "2", "runs": 3}]}  # fmt: skip
+    _, md = rb.write_results([_record("a", 1, "t1", True)], tmp_path, stamp="s", meta=meta)
+    header = md.read_text(encoding="utf-8").split("|", 1)[0]
+    assert "None" not in header and "['01-a'" not in header
+    assert "claude_model: default" in header and "tasks: 01-a, 02-b" in header

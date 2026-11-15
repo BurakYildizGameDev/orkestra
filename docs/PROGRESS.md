@@ -31,13 +31,23 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable – Genel bakış düzeltmeleri (ek) | ⏳ | | `gc` ile eski `runs`/`usage`/`queue` satırları, `desktop-notifier` üst sınırı, düzenlenebilir kurulum notu, `cli.py`/`runner.py` bölme, `notify.ntfy_url`, `queue remove --finished`, eski dal ve not dosyası temizliği; README güncelleme ve kısaltma (durum kutusu Faz 0–4'te kalmış), "Bilinen sınırlar" bölümü, gerçek modelle/terminalde elle kullanım turu (ayrıntı: yerel YAPILIS_PLANI.md) |
 | 13a – Benchmark aracı ve 20 görev | ✅ | 2026-11-15 | `bench/run_bench.py`, 20 görev (8/8/4) + gizli test + referans çözüm, sızıntı koruması, kuru koşu (D-076); kod denetimi (D-077) |
-| 13b – Kota korumaları (limit algılama, `--resume`, `--max-claude-runs`) | ✅ | 2026-11-15 | kod; kota harcamaz (D-078) |
+| 13b – Kota korumaları (limit algılama, `--resume`, `--max-claude-runs`) | ✅ | 2026-11-15 | kod; kota harcamaz (D-078); kod denetimi (D-079) |
 | 13c – Deneme ve ölçüm (2 görev, 4 Claude oturumu) | ⏳ | | kullanıcıyla, Ollama açık |
 | 13d – İlk tam tur (`--repeat 1`, 40 Claude oturumu) | ⏳ | | pencerelere bölünebilir; ara tablo |
 | 13e – 2. ve 3. turlar, sonuçlar, README tablosu | ⏳ | | `--resume`, 80 Claude oturumu |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 13b (PR #26), 2026-11-15
+`/code-review` 10 bulgu; hepsi düzeltildi (D-079). Önce 15 kırmızı test.
+- ✅ Sayılar ve "context limit" limit sayılmıyor (`test_numbers_and_other_limits_in_a_failure_are_not_a_usage_limit`); olay listesi ve normal sonuç olarak gelen limit görülüyor (`test_a_limit_in_the_event_list_form_is_seen`, `test_a_limit_message_as_a_normal_result_is_still_a_limit`).
+- ✅ Atomik yazma (`test_results_are_written_atomically`); devam edilemeyen dosya kod 2 (`test_a_file_that_cannot_be_resumed_is_a_clear_usage_error`).
+- ✅ `--version` hatası "unknown" (`test_version_of_a_failing_or_hanging_program_is_unknown`).
+- ✅ Devamda farklı model/zaman aşımı reddi, pencere başına sürüm (`test_resume_refuses_another_model_or_timeout`, `test_resume_notes_a_new_claude_version_per_window`); sondaki virgül (`test_a_trailing_comma_in_tasks_matches_the_resumed_set`).
+- ✅ Yarım tur puanlanmıyor (`test_an_unfinished_repeat_is_not_scored_as_low`); okunur başlık (`test_the_report_header_is_readable`).
+
+Testler: **1425 geçti** (1410 + 15). ruff, ruff format, pyright temiz.
 
 ### Faz 13b – Kota korumaları (2026-11-15)
 **Yapılanlar (D-078):**

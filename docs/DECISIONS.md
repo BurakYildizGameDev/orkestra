@@ -826,3 +826,16 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - Sürüm sorguları (`claude --version`, `orkestra --version`) da koşturucu üzerinden: testler gerçek program başlatmaz; `which` enjekte edilebilir.
 - Her çağrı kendi bench evini kurar (işçi istatistikleri koşu süresi penceresinde okunduğu için devam eden koşuyu etkilemez).
 - **Testler:** 1400 → 1410 (+10; 1'i baştan yeşil: başarılı cevaptaki "rate limit" kelimesi).
+
+## D-079 – Faz 13b kod denetimi düzeltmeleri (2026-11-15, Faz 13b)
+`/code-review` (PR #26): 10 bulgu, hepsi düzeltildi; önce 15 kırmızı test.
+- **Limit deseni yalnız sonuç metninde ve stderr'de** aranır (JSON'daki kullanım sayıları değil: `"output_tokens": 529` benchmark'ı durdurup her `--resume`'u aynı yerde kilitliyordu) ve özel ifadelerle (`usage limit`, `5-hour/weekly limit`, `limit reached … reset`, `rate_limit_error`, `overloaded`, `API Error: 429/529`); "context limit reached" model hatasıdır.
+- **Olay listesi biçimi** ve **normal sonuç olarak gelen limit mesajı** (çıkış 0, `is_error` false, kısa metin) da limit sayılır; sonuç olayı tek yardımcıdan (`result_event`).
+- **Sonuç dosyaları atomik** (geçici dosya + `os.replace`): bütün pencereler tek dosyada, kesilen yazma hepsini kaybettirmesin.
+- **Devam edilemeyen dosya** (yok, JSON değil, 13a biçimi) kod 2 ve açık mesaj.
+- **`--version` başarısız/zaman aşımı** → "unknown" (stderr sürüm yazılmaz).
+- **Devamda farklı model/zaman aşımı** (`--ollama-model`, `--ollama-model-2`, `--claude-model`, `--timeout`) reddedilir; varsayılanları açıkça verilmemiş sayılır. **Sürümler pencere başına** `meta.windows`'ta (tarih, claude, orkestra, koşu sayısı); değişirse uyarı.
+- `--tasks` sonundaki virgül boş önek üretmiyor.
+- **Yarım kalan tur puanlanmaz** (`complete_repeats`, `partial_runs`; tabloda "partial").
+- Rapor başlığı okunur: `None` yerine `-`/`default`, görev listesi virgüllü, pencereler satır satır.
+- **Testler:** 1410 → 1425 (+15).
