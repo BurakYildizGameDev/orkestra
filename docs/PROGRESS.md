@@ -58,7 +58,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 **Bulgu ve açık karar:** küçük görevlerde skill delege ettirmiyor, B ~%23 pahalı. Tam koşudan önce kullanıcıya soruldu: B'yi olduğu gibi mi ölçelim, "mümkünse orkestra kullan" diyen ek bir mod da mı ekleyelim?
 
-Testler: **1430 geçti** (1425 + 5). ruff, ruff format, pyright temiz.
+Testler: **1429 geçti** (1425 + 4). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 13b (PR #26), 2026-11-15
 `/code-review` 10 bulgu; hepsi düzeltildi (D-079). Önce 15 kırmızı test.
