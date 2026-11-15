@@ -184,7 +184,7 @@ def test_mode_a_runs_claude_without_skills_or_mcp_and_records_tokens(tmp_path: P
     assert record.passed and record.mode == "a" and record.repeat == 1
     assert record.claude == {"input_tokens": 1200, "output_tokens": 800,
                              "cache_read_input_tokens": 5000, "cache_creation_input_tokens": 300,
-                             "cost_usd": 0.0421, "turns": 4}  # fmt: skip
+                             "cost_usd": 0.0421, "turns": 4, "permission_denials": 0}  # fmt: skip
 
 
 def test_mode_b_gives_claude_the_skill_and_the_bench_orkestra_home(tmp_path: Path) -> None:
@@ -675,3 +675,35 @@ def test_the_report_header_is_readable(tmp_path: Path) -> None:
     header = md.read_text(encoding="utf-8").split("|", 1)[0]
     assert "None" not in header and "['01-a'" not in header
     assert "claude_model: default" in header and "tasks: 01-a, 02-b" in header
+
+
+# --- Faz 13c: what the first real run showed (D-080) ---------------------------------------
+
+
+def test_denied_tools_are_counted_and_the_raw_output_is_kept(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    denied = {**CLAUDE_JSON, "permission_denials": [{"tool_name": "Bash"}, {"tool_name": "Bash"}]}
+    runner = FakeRunner(task, claude_json=denied)
+    record = rb.run_once(task, "a", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    assert record.claude is not None and record.claude["permission_denials"] == 2
+    raw = tmp_path / "work" / "01-docstring-geometry-a-1" / "claude-output.json"
+    assert (
+        json.loads(raw.read_text(encoding="utf-8"))["permission_denials"][0]["tool_name"] == "Bash"
+    )
+
+
+def test_the_markdown_reports_denied_tools() -> None:
+    record = _record("a", 1, "t1", True)
+    assert record.claude is not None
+    record.claude["permission_denials"] = 3
+    summary = rb.summarize([record])
+    assert summary["a"]["permission_denials"] == 3
+    assert "denied" in rb.markdown(summary, [record]).lower()
+
+
+def test_the_evaluation_turns_the_asyncio_plugin_off(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    solved = rb.prepare_workspace(task, tmp_path / "ws")
+    shutil.copytree(task.root / "solution", solved, dirs_exist_ok=True)
+    result = rb.evaluate(task, solved, tmp_path / "eval")
+    assert result.passed and "PytestDeprecationWarning" not in result.output

@@ -206,7 +206,8 @@ def evaluate(task: Task, workspace: Path, eval_dir: Path) -> Evaluation:
     shutil.copytree(task.root / "hidden", hidden)
     (eval_dir / "_bench_pytest.ini").write_text("[pytest]\n", encoding="utf-8")
     args = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-            "-c", "_bench_pytest.ini", "--rootdir", ".", "_hidden_tests"]  # fmt: skip
+            "-p", "no:asyncio", "-c", "_bench_pytest.ini", "--rootdir", ".",
+            "_hidden_tests"]  # fmt: skip
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     try:
         done = subprocess.run(
@@ -394,6 +395,8 @@ def parse_claude(stdout: str) -> dict[str, Any]:
         "cache_creation_input_tokens": int(usage.get("cache_creation_input_tokens") or 0),
         "cost_usd": float(data.get("total_cost_usd") or 0.0),
         "turns": int(data.get("num_turns") or 0),
+        # Tools Claude asked for and was refused: shows that the --settings permissions work.
+        "permission_denials": len(data.get("permission_denials") or []),
     }
 
 
@@ -462,6 +465,9 @@ def _run_claude(
     settings_file = claude_settings(mode, run_dir / "claude-settings.json")
     done = runner(claude_args(mode, settings, settings_file), workspace, env,
                   settings.timeout_s, input_text=claude_prompt(mode, task.prompt))  # fmt: skip
+    (run_dir / "claude-output.json").write_text(done.stdout, encoding="utf-8")  # for debugging
+    if done.stderr:
+        (run_dir / "claude-stderr.txt").write_text(done.stderr, encoding="utf-8")
     if _limit_reached(done):
         raise UsageLimitReached(f"{task.id} {mode}: {_limit_text(done)[:200]}")
     if done.returncode != 0:
@@ -589,6 +595,8 @@ def summarize(records: Sequence[Record]) -> dict[str, dict[str, Any]]:
                                           for r in _with_usage(mine)) if mode != "c" else None,
             "runs_without_usage": (sum(1 for r in mine if r.claude is None)
                                    if mode != "c" else None),
+            "permission_denials": (sum((r.claude or {}).get("permission_denials", 0)
+                                       for r in _with_usage(mine)) if mode != "c" else None),
             "worker_cost_per_task": _mean(r.workers.get("cost_usd", 0.0) for r in mine),
             "worker_runs_per_task": _mean(r.workers.get("runs", 0) for r in mine),
             "savings_estimate_per_task": _mean(r.workers.get("savings_tokens", 0) for r in mine),
@@ -629,6 +637,10 @@ def markdown(summary: Mapping[str, Mapping[str, Any]], records: Sequence[Record]
         lines += ["", f"Claude tokens saved per task (A - B): {saved:,.0f}",
                   f"Orkestra's own estimate in B (`stats` savings) per task: "
                   f"{summary['b']['savings_estimate_per_task']:,.0f}"]  # fmt: skip
+    denied = {m: s["permission_denials"] for m, s in summary.items() if s.get("permission_denials")}
+    if denied:
+        lines += ["", "Denied tool calls (permission): "
+                  + ", ".join(f"{m.upper()} {n}" for m, n in denied.items())]  # fmt: skip
     errors = [r for r in records if r.error]
     if errors:
         lines += ["", f"Runs with an error: {len(errors)} (see the JSON file)."]
