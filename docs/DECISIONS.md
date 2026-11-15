@@ -859,3 +859,11 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Eski `claude-stderr.txt`** yeniden denenen koşuda silinir (devam sonrası yanlış ipucu vermesin).
 - **pytest-asyncio uyarısı** eklentiyi kapatarak değil, değerlendirme ini'sine `asyncio_default_fixture_loop_scope = function` yazarak susturulur: ileride async gizli test de çalışır.
 - **Testler:** 1429 → 1437 (+8).
+
+## D-082 – Faz 13d hazırlığı: mod D (devretme istenir) ve Windows araç izinleri (2026-11-15, Faz 13d)
+**Bağlam:** 13c'de mod B küçük görevlerde hiç devretmedi. Kullanıcı devretmenin kendisinin de ölçülmesini istedi ("mod B'yi de yap").
+**Karar:**
+- **Mod D – Claude + Orkestra, devretme istenir:** B gibi (skill + `orkestra` izni) ama ipucu "işi Orkestra işçisine ver, yalnız Orkestra yapamazsa (işçi yok ya da iki kez başarısız) kendin yap" der. `--mode all` planın üç modu (A, B, C) olarak kalır; D `--mode d` ile ayrıca seçilir. Rapor A − D Claude token farkını ve D'deki `stats` tahminini de verir.
+- **Gerçek deneme (01, 09; `bench/results/trial/2026-11-15-0418.*`):** 2/2 geçti; Claude **gerçekten devretti** (görev başına 1 işçi koşusu, yerel 14b ilk denemede, $0), sonucu kendi yazdığı denetimle doğruladı ve uyguladı. Ama Claude'un harcaması arttı: görev başına ~26,5 bin Claude token'ı (A: ~7,2 bin; ~3,7 kat), 14–16 tur, 53–68 sn (A: 18–23 sn), API karşılığı $0.31–0.33 (A: $0.09). **Küçük görevlerde devretmek şefe kazandırmıyor, pahalıya geliyor** (görev dosyası, denetim betiği, sonucu okuma ek iş). Kazancın hangi görev büyüklüğünde başladığını tam koşu gösterecek.
+- **Windows araç izinleri:** D'de 6 araç çağrısı reddedildi: Claude Windows'ta komutları PowerShell aracıyla ve `cd … && …` gibi zincirlerle çalıştırıyor, izin listesinde yalnız Bash kalıpları vardı. Her ret tur ve token harcatıyor (yukarıdaki maliyetin bir kısmı). Artık bütün Claude modları aynı komutları (python, pytest, git; B/D'de orkestra) **iki kabukta** ve birkaç salt okunur komutu (`cd`, `ls`, `cat`, `echo`, `pwd`; `Get-Content`, `Get-ChildItem`, `Select-String`, `Set-Location`, `Write-Output`) kullanabilir. 13c'nin A/B denemeleri eski listeyle koşuldu (karşılaştırmada not).
+- **Testler:** 1437 → 1441 (+4).

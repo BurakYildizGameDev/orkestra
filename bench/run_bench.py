@@ -59,19 +59,39 @@ MODES: dict[str, str] = {
     "a": "A - Claude only",
     "b": "B - Claude + Orkestra skill",
     "c": "C - Orkestra only (cheap)",
+    "d": "D - Claude + Orkestra, delegation asked",
 }
+PLANNED_MODES: tuple[str, ...] = ("a", "b", "c")  # --mode all; D is chosen on its own (D-082)
+CHIEF_MODES = ("a", "b", "d")  # modes that start Claude
+SKILL_MODES = ("b", "d")  # modes that get the skill and may run orkestra
 DIFFICULTIES = ("easy", "medium", "hard")
 DEFAULT_OLLAMA_MODEL = "qwen2.5-coder:14b"
 DEFAULT_TIMEOUT_S = 900
 EVAL_TIMEOUT_S = 300
 LEAK_LINE_CHARS = 30  # a hidden-test line this long quoted in a prompt is a leak
-CLAUDE_TOOLS = ("Read", "Edit", "Write", "Glob", "Grep", "Bash(python:*)", "Bash(pytest:*)",
-                "Bash(git:*)")  # fmt: skip
-ORKESTRA_TOOLS = ("Bash(orkestra:*)",)
+# On Windows Claude Code also runs commands through its PowerShell tool and chains them
+# ("cd x && python ..."); every refusal costs turns, so the same commands are allowed in both
+# shells, plus a few read-only ones (D-082). Every Claude mode gets the same list.
+_COMMANDS = ("python", "pytest", "git")
+_READ_ONLY_BASH = ("cd", "ls", "cat", "echo", "pwd")
+_READ_ONLY_POWERSHELL = ("Get-Content", "Get-ChildItem", "Select-String", "Set-Location",
+                         "Write-Output")  # fmt: skip
+CLAUDE_TOOLS = (
+    "Read", "Edit", "Write", "Glob", "Grep",
+    *(f"Bash({c}:*)" for c in (*_COMMANDS, *_READ_ONLY_BASH)),
+    *(f"PowerShell({c}:*)" for c in (*_COMMANDS, *_READ_ONLY_POWERSHELL)),
+)  # fmt: skip
+ORKESTRA_TOOLS = ("Bash(orkestra:*)", "PowerShell(orkestra:*)")
 SKILL_HINT = (
     "The Orkestra skill is available in this project. When a part of this task suits a cheap "
     "worker (bulky, easy to check), delegate it with orkestra as the skill describes, review "
     "the result and apply it; do the rest yourself."
+)
+DELEGATE_HINT = (
+    "Use the Orkestra skill for this task: hand the work to an Orkestra worker with "
+    "`orkestra run` as the skill describes (lowest tier first), review the result and apply "
+    "it. Do the work yourself only when Orkestra cannot do it (no worker available, or the "
+    "worker failed twice)."
 )
 GIT_ENV = {
     "GIT_AUTHOR_NAME": "bench", "GIT_AUTHOR_EMAIL": "bench@example.invalid",
@@ -363,11 +383,12 @@ def claude_args(mode: str, settings: Settings, settings_file: Path) -> list[str]
 
 
 def claude_prompt(mode: str, prompt: str) -> str:
-    return f"{SKILL_HINT}\n\n{prompt}" if mode == "b" else prompt
+    hint = {"b": SKILL_HINT, "d": DELEGATE_HINT}.get(mode)
+    return f"{hint}\n\n{prompt}" if hint else prompt
 
 
 def claude_settings(mode: str, path: Path) -> Path:
-    tools = [*CLAUDE_TOOLS, *(ORKESTRA_TOOLS if mode == "b" else ())]
+    tools = [*CLAUDE_TOOLS, *(ORKESTRA_TOOLS if mode in SKILL_MODES else ())]
     path.write_text(json.dumps({"permissions": {"allow": tools}}, indent=2), encoding="utf-8")
     return path
 
@@ -431,7 +452,7 @@ def run_once(
     task: Task, mode: str, repeat: int, settings: Settings, *, runner: Runner, home: Path
 ) -> Record:
     run_dir = settings.work_dir / f"{task.id}-{mode}-{repeat}"
-    extra = {".claude/skills/orkestra/SKILL.md": SKILL_FILE} if mode == "b" else None
+    extra = {".claude/skills/orkestra/SKILL.md": SKILL_FILE} if mode in SKILL_MODES else None
     workspace = prepare_workspace(task, run_dir / "ws", extra)
     check_no_leak(task, workspace, prompt=task.prompt)
     env = _env(home)
@@ -440,7 +461,7 @@ def run_once(
     claude: dict[str, Any] | None = None
     error: str | None = None
     try:
-        if mode in ("a", "b"):
+        if mode in CHIEF_MODES:
             claude, error = _run_claude(task, mode, workspace, run_dir, settings, runner, env)
         else:
             error = _run_orkestra(task, workspace, run_dir, settings, runner, env)
@@ -653,15 +674,16 @@ def summarize(records: Sequence[Record]) -> dict[str, dict[str, Any]]:
                 for d in DIFFICULTIES if any(r.difficulty == d for r in mine)
             },
             "claude_tokens_per_task": (_mean(_claude_tokens(r) for r in _with_usage(mine))
-                                       if mode != "c" else None),
+                                       if mode in CHIEF_MODES else None),
             "claude_cache_read_per_task": (
                 _mean((r.claude or {}).get("cache_read_input_tokens", 0) for r in _with_usage(mine))
-                if mode != "c" else None),
-            "claude_cost_per_task": _mean((r.claude or {}).get("cost_usd", 0.0)
-                                          for r in _with_usage(mine)) if mode != "c" else None,
+                if mode in CHIEF_MODES else None),
+            "claude_cost_per_task": (
+                _mean((r.claude or {}).get("cost_usd", 0.0) for r in _with_usage(mine))
+                if mode in CHIEF_MODES else None),
             "runs_without_usage": (sum(1 for r in mine if r.claude is None)
-                                   if mode != "c" else None),
-            "permission_denials": _denials(mine) if mode != "c" else None,
+                                   if mode in CHIEF_MODES else None),
+            "permission_denials": _denials(mine) if mode in CHIEF_MODES else None,
             "worker_cost_per_task": _mean(r.workers.get("cost_usd", 0.0) for r in mine),
             "worker_runs_per_task": _mean(r.workers.get("runs", 0) for r in mine),
             "savings_estimate_per_task": _mean(r.workers.get("savings_tokens", 0) for r in mine),
@@ -697,11 +719,14 @@ def markdown(summary: Mapping[str, Mapping[str, Any]], records: Sequence[Record]
         cells = [f"{s['by_difficulty'][d]['passed_mean']:g}/{s['by_difficulty'][d]['tasks']}"
                  if d in s["by_difficulty"] else "-" for d in DIFFICULTIES]  # fmt: skip
         lines.append(f"| {s['label']} | " + " | ".join(cells) + " |")
-    if "a" in summary and "b" in summary:
-        saved = summary["a"]["claude_tokens_per_task"] - summary["b"]["claude_tokens_per_task"]
-        lines += ["", f"Claude tokens saved per task (A - B): {saved:,.0f}",
-                  f"Orkestra's own estimate in B (`stats` savings) per task: "
-                  f"{summary['b']['savings_estimate_per_task']:,.0f}"]  # fmt: skip
+    for other in SKILL_MODES:
+        if "a" in summary and other in summary:
+            saved = (summary["a"]["claude_tokens_per_task"]
+                     - summary[other]["claude_tokens_per_task"])  # fmt: skip
+            name = other.upper()
+            lines += ["", f"Claude tokens saved per task (A - {name}): {saved:,.0f}",
+                      f"Orkestra's own estimate in {name} (`stats` savings) per task: "
+                      f"{summary[other]['savings_estimate_per_task']:,.0f}"]  # fmt: skip
     denied = {m: s["permission_denials"] for m, s in summary.items() if s.get("permission_denials")}
     if denied:
         lines += ["", "Denied tool calls (permission): "
@@ -766,7 +791,9 @@ def _version(args: Sequence[str], runner: Runner) -> str:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Orkestra benchmark (Faz 13).")
-    parser.add_argument("--mode", choices=[*MODES, "all"], default=None, help="default all")
+    parser.add_argument("--mode", choices=[*MODES, "all"], default=None,
+                        help="default all = a, b, c; d (delegation asked) only on its "
+                             "own")  # fmt: skip
     parser.add_argument("--repeat", type=int, default=None, help="default 3")
     parser.add_argument("--tasks", default="", help="comma-separated id prefixes (default: all)")
     parser.add_argument("--out", type=Path, default=RESULTS_DIR)
@@ -809,7 +836,7 @@ class Plan:
 
 def _plan(opts: argparse.Namespace) -> Plan:
     if opts.resume is None:
-        modes = list(MODES) if opts.mode in (None, "all") else [opts.mode]
+        modes = list(PLANNED_MODES) if opts.mode in (None, "all") else [opts.mode]
         tasks = load_tasks(TASKS_DIR, [p for p in opts.tasks.split(",") if p])
         stamp = datetime.now().strftime("%Y-%m-%d-%H%M")
         return Plan(modes, tasks, opts.repeat or 3, opts.out, stamp, {}, [])
@@ -830,7 +857,7 @@ def _plan(opts: argparse.Namespace) -> Plan:
                              ("--timeout", "timeout_s", opts.timeout)):  # fmt: skip
         if value is not None and value != meta.get(key):
             raise BenchError(f"{flag} differs from the resumed run ({meta.get(key)})")
-    if opts.mode not in (None, "all" if meta["modes"] == "".join(MODES) else meta["modes"]):
+    if opts.mode not in (None, "all" if meta["modes"] == "".join(PLANNED_MODES) else meta["modes"]):
         raise BenchError(f"--mode differs from the resumed run ({meta['modes']})")
     tasks = [t for t in load_tasks(TASKS_DIR) if t.id in ids]
     records = [Record(**r) for r in stored_records]
@@ -868,7 +895,7 @@ def main(
             check_orkestra_task(task, workspace, orkestra_task(task))
         print("dry run: every task is ready, nothing leaks; nothing was started")
         return 0
-    uses_claude = any(m in ("a", "b") for m in plan.modes)
+    uses_claude = any(m in CHIEF_MODES for m in plan.modes)
     claude = which("claude")
     if uses_claude and claude is None:
         print("claude is not on PATH (needed for modes a and b)", file=sys.stderr)
@@ -914,7 +941,7 @@ def main(
             for mode in plan.modes:
                 if (task.id, mode, repeat) in done:
                     continue
-                is_claude = mode in ("a", "b")
+                is_claude = mode in CHIEF_MODES
                 if (
                     is_claude
                     and opts.max_claude_runs is not None
