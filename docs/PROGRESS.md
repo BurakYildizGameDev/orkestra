@@ -32,12 +32,21 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | düzeltme-fable – Genel bakış düzeltmeleri (ek) | ⏳ | | `gc` ile eski `runs`/`usage`/`queue` satırları, `desktop-notifier` üst sınırı, düzenlenebilir kurulum notu, `cli.py`/`runner.py` bölme, `notify.ntfy_url`, `queue remove --finished`, eski dal ve not dosyası temizliği; README güncelleme ve kısaltma (durum kutusu Faz 0–4'te kalmış), "Bilinen sınırlar" bölümü, gerçek modelle/terminalde elle kullanım turu (ayrıntı: yerel YAPILIS_PLANI.md) |
 | 13a – Benchmark aracı ve 20 görev | ✅ | 2026-11-15 | `bench/run_bench.py`, 20 görev (8/8/4) + gizli test + referans çözüm, sızıntı koruması, kuru koşu (D-076); kod denetimi (D-077) |
 | 13b – Kota korumaları (limit algılama, `--resume`, `--max-claude-runs`) | ✅ | 2026-11-15 | kod; kota harcamaz (D-078); kod denetimi (D-079) |
-| 13c – Deneme ve ölçüm (2 görev, 4 Claude oturumu) | ✅ | 2026-11-15 | 6/6 geçti; B delege etmedi; `/usage` payı kullanıcıdan bekleniyor (D-080) |
+| 13c – Deneme ve ölçüm (2 görev, 4 Claude oturumu) | ✅ | 2026-11-15 | 6/6 geçti; B delege etmedi; `/usage` payı kullanıcıdan bekleniyor (D-080); kod denetimi (D-081) |
 | 13d – İlk tam tur (`--repeat 1`, 40 Claude oturumu) | ⏳ | | pencerelere bölünebilir; ara tablo |
 | 13e – 2. ve 3. turlar, sonuçlar, README tablosu | ⏳ | | `--resume`, 80 Claude oturumu |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 13c (PR #27), 2026-11-15
+`/code-review` 10 bulgu; hepsi düzeltildi (D-081). Önce 8 kırmızı test.
+- ✅ Kesim yol parçası bırakmıyor (`test_a_cut_never_leaves_part_of_a_personal_path`); tırnaklı/çift ters eğik çizgili/küçük-büyük harf/posix biçimler temizleniyor (`test_quoted_lowercase_and_posix_forms_are_scrubbed`); kardeş klasör bozulmuyor (`test_a_sibling_folder_is_not_mangled`); göreli iş klasörü sıradan metni bozmuyor (`test_a_relative_work_dir_never_replaces_ordinary_text`).
+- ✅ Yazılan dosyalar devam eden kayıtlar dahil temiz (`test_written_results_are_scrubbed_even_for_resumed_records`).
+- ✅ Ölçülmemiş ret sayısı None (`test_denials_that_were_never_measured_are_unknown_not_zero`); eski stderr dosyası siliniyor (`test_a_retried_run_does_not_keep_an_old_stderr_file`); async gizli testler çalışıyor (`test_async_hidden_tests_still_run`).
+- ✅ Belgedeki "izin reddi 0" kanıtı yalnız mod B'ye dayandırıldı (A'da ölçülmemişti).
+
+Testler: **1437 geçti** (1429 + 8). ruff, ruff format, pyright temiz.
 
 ### Faz 13c – İlk gerçek deneme ve ölçüm (2026-11-15)
 **Ne koşuldu:** 01 (kolay) ve 09 (orta) × A, B, C × 1 tekrar; Claude Code 2.1.325 (varsayılan model), Ollama `qwen2.5-coder:14b`, Windows 11. Sonuçlar `bench/results/trial/` (3 dosya, kişisel yol temizlendi).
@@ -49,7 +58,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | C – yalnız Orkestra | 2/2 | 11–74 sn | – | – | 1 koşu, ~800–1.000 token, $0 |
 
 **Kabul kriterleri:**
-- ✅ `--settings` izinleri `--setting-sources project` ile çalışıyor (`permission_denials` 0, Claude testleri çalıştırdı).
+- ✅ `--settings` izinleri `--setting-sources project` ile çalışıyor (mod B'de ölçülen `permission_denials` 0; mod A'da Claude görünür testleri çalıştırdı, ret sayısı orada ölçülmedi).
 - ✅ İstem stdin'den gidiyor; `claude.CMD` sorunu yok.
 - ✅ Mod B skill'i yüklüyor (dolaylı kanıt: önbelleğe yazılan +~2,8 bin token; skill dosyası çalışma dizininde). Claude bu iki küçük görevde delege etmedi.
 - ⏳ Oturum başına limit payı: kullanıcının `/usage` farkı bekleniyor.

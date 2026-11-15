@@ -49,7 +49,7 @@
       "claude_cache_read_per_task": 89378.0,
       "claude_cost_per_task": 0.091,
       "runs_without_usage": 0,
-      "permission_denials": 0,
+      "permission_denials": null,
       "worker_cost_per_task": 0.0,
       "worker_runs_per_task": 0.0,
       "savings_estimate_per_task": 0.0,

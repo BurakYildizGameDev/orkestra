@@ -844,8 +844,18 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 **Bağlam:** 2 görev (01 kolay, 09 orta) × 3 mod × 1 tekrar, gerçek Claude Code 2.1.325 ve Ollama `qwen2.5-coder:14b`; sonuçlar `bench/results/trial/`.
 **Sonuç:**
 - 6/6 geçti. A: 18 / 23 sn, 4 / 7 tur, oturum başına ~75–115 bin token (çoğu önbellekten okuma), Claude token'ı (girdi+çıktı+önbelleğe yazma) ~7,2 bin/görev, API karşılığı $0.085–0.097. B: 18 / 19 sn, ~9,9 bin/görev, $0.112–0.115, **Claude hiç delege etmedi** (işçi koşusu 0). C: 74 / 11 sn, işçi ~800–1.000 token, $0.
-- **Benchmark Windows'ta gerçekten çalışıyor:** istem stdin'den gidiyor (`claude.CMD` sorunu yok), Claude dosya düzenleyip testleri çalıştırabiliyor (`permission_denials` 0: `--settings` izinleri `--setting-sources project` ile birlikte okunuyor), mod B'nin önbelleğe yazdığı fazladan ~2,8 bin token skill açıklaması + ipucunun boyutuna uyuyor (skill'in yüklendiğine dolaylı kanıt).
+- **Benchmark Windows'ta gerçekten çalışıyor:** istem stdin'den gidiyor (`claude.CMD` sorunu yok), Claude dosya düzenleyip testleri çalıştırabiliyor (mod B'de ölçülen `permission_denials` 0: `--settings` izinleri `--setting-sources project` ile birlikte okunuyor; mod A denemesi bu alan eklenmeden önce koşuldu, orada ölçülmedi — D-081), mod B'nin önbelleğe yazdığı fazladan ~2,8 bin token skill açıklaması + ipucunun boyutuna uyuyor (skill'in yüklendiğine dolaylı kanıt).
 - **İlk bulgu (dürüst):** küçük tek dosyalı görevlerde skill Claude'a iş devrettirmiyor; B, A'dan ~%23 pahalı (skill metni). 20 görevin çoğu küçük olduğu için tam koşuda B'nin A'ya yakın ya da biraz pahalı çıkması beklenir. Kullanıcıya soruldu: B'yi olduğu gibi (skill'in doğal kullanımı) ölçmek ve/veya "uygunsa değil, mümkünse orkestra kullan" diyen ek bir mod eklemek (karar 13d'den önce).
 **Koddaki değişiklikler (denemenin gösterdikleri):** reddedilen araç izinleri (`permission_denials`) kayıtta ve raporda; her koşunun ham Claude çıktısı `claude-output.json` (iş klasöründe, repoda değil); değerlendirmede pytest-asyncio eklentisi kapalı (uyarı gürültüsü); **kayıtlarda kişisel yol yok** (`scrub`: iş klasörü, repo, geçici klasör, ev dizini yer tutucuya) — ilk deneme dosyasında venv yolu vardı, temizlendi.
 - **Testler:** 1425 → 1429 (+4).
 - **Açık:** kullanıcının `/usage` farkı (4 Claude oturumunun 5 saatlik limitten payı) — gelince 13d'nin pencere planı ona göre.
+
+## D-081 – Faz 13c kod denetimi düzeltmeleri (2026-11-15, Faz 13c)
+`/code-review` (PR #27): 10 bulgu, hepsi düzeltildi; önce 8 kırmızı test.
+- **Yol temizleyici yeniden yazıldı (`Scrubber`):** her yer (iş klasörü, repo, geçici klasör, ev dizini) parçaları **herhangi bir eğik çizgi dizisiyle** birleşen, büyük/küçük harf duyarsız tek desen (tek/çift ters eğik çizgi, JSON'daki kaçışlı biçim, `c:/users/...`); yalnız tam klasör eşleşir (`...\\x2` başkasının); en uzun önce; çalıştırma başına bir kez derlenir. Göreli `--work-dir` mutlak yola çevrilir (`.` sıradan metni bozmaz).
+- **Önce temizle, sonra kes** (`clean_tail`): kesilen bir yolun kalan parçası artık sızmıyor; stderr kuyrukları da (`claude`, `orkestra run/apply`).
+- **Yazılan her dosya bütünüyle temizlenir** (`write_results`): `--resume` ile geri yazılan eski kayıtlar ve meta dahil.
+- **Ölçülmemiş `permission_denials` bilinmiyor (None), 0 değil:** 13c'nin mod A deneme dosyası bu alandan önce yazıldı; D-080/PROGRESS'teki kanıt yalnız mod B'ye dayandırıldı.
+- **Eski `claude-stderr.txt`** yeniden denenen koşuda silinir (devam sonrası yanlış ipucu vermesin).
+- **pytest-asyncio uyarısı** eklentiyi kapatarak değil, değerlendirme ini'sine `asyncio_default_fixture_loop_scope = function` yazarak susturulur: ileride async gizli test de çalışır.
+- **Testler:** 1429 → 1437 (+8).
