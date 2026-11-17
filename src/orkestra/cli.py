@@ -19,6 +19,7 @@ import typer
 from orkestra import __version__, doctor, envelope, i18n
 from orkestra.cache import responses
 from orkestra.chief import status
+from orkestra.chief import tokens as token_map
 from orkestra.config import loader
 from orkestra.config.schema import Config, Provider
 from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
@@ -931,6 +932,34 @@ def build_app() -> typer.Typer:
             _echo_json(stats.to_dict(report))
         else:
             typer.echo(stats.render(report))
+
+    @app.command("tokens", help=t("cli.tokens.help"))
+    def tokens_command(
+        ctx: typer.Context,
+        session: Annotated[
+            str | None, typer.Option("--session", help=t("cli.tokens.option.session"))
+        ] = None,
+        since: Annotated[
+            str | None,
+            typer.Option("--since", metavar="DURATION", help=t("cli.tokens.option.since")),
+        ] = None,
+        project: Annotated[
+            Path | None, typer.Option("--project", help=t("cli.tokens.option.project"))
+        ] = None,
+        top: Annotated[
+            int | None, typer.Option("--top", min=1, help=t("cli.tokens.option.top"))
+        ] = None,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        start = db.local_now() - stats.parse_since(since) if since else None
+        report = token_map.collect(
+            project=(project or Path.cwd()).resolve(), session=session, since=start, top=top,
+            config_flag=ctx.ensure_object(_State).config_path,
+        )  # fmt: skip
+        if as_json:
+            _echo_json(token_map.to_dict(report))
+        else:
+            typer.echo(token_map.render(report))
 
     @app.command("status", help=t("cli.status.help"))
     def status_command(

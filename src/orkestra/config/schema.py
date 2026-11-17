@@ -209,6 +209,22 @@ class QueueCfg(_Model):
     default_profile: str = "cheap"
 
 
+class TokenWeights(_Model):
+    """``orkestra tokens`` (Faz 13h): what one token of each kind costs, relative to an input
+    token (Anthropic's API prices). A subscription's limit may weigh them differently, so the
+    report shows raw tokens too."""
+
+    input: NonNegFloat = 1.0
+    output: NonNegFloat = 5.0
+    cache_write: NonNegFloat = 1.25
+    cache_read: NonNegFloat = 0.1
+
+
+class TokensCfg(_Model):
+    weights: TokenWeights = Field(default_factory=TokenWeights)
+    top: PosInt = 10
+
+
 def default_profiles() -> dict[str, Profile]:
     return {
         "cheap": Profile(min_tier=1, max_tier=1),
@@ -240,6 +256,7 @@ class Config(_Model):
     estimate: EstimateCfg = Field(default_factory=EstimateCfg)
     notify: NotifyCfg = Field(default_factory=NotifyCfg)
     queue: QueueCfg = Field(default_factory=QueueCfg)
+    tokens: TokensCfg = Field(default_factory=TokensCfg)
     security: Security = Field(default_factory=Security)
 
     @field_validator("providers")

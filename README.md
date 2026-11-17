@@ -49,6 +49,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | Cost estimate before a batch (nothing is sent); a costly batch asks first | `orkestra batch tasks.yaml --estimate [--json]`, `--yes-cost` |
 | Apply a batch's passing runs in the order they ran, stop at a conflict | `orkestra apply --batch <batch_id> --only-ok [--json]` |
 | How the workers did: success rate, attempts, tokens, cost and time per provider and tag | `orkestra stats [--since 7d] [--json]` |
+| Where Claude Code's tokens go: costly tool calls, shares by kind, context growth, cache misses (reads its transcripts, uses no quota) | `orkestra tokens [--session id \| --since 7d] [--project p] [--top n] [--json]` |
 | Code agents (Codex CLI, Antigravity) as workers, in the worktree, with process-tree cleanup | `cli_agent` providers |
 | A run's envelope, full output, log or change | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | The chief's view at a glance (at most 15 lines): unapplied runs, the night queue, today's budget, paused providers | `orkestra status [--json]` |
@@ -540,6 +541,61 @@ asked. `edit` tasks and code agents' answers are never cached. `--no-cache` (on 
 **Savings (estimated).** `orkestra stats` also shows how many tokens the workers wrote and how
 many came back to the chief in envelopes, for the runs that passed. The chief's own use
 cannot be measured, so the line is always marked as an estimate.
+
+## Where do Claude's tokens go?
+
+`orkestra tokens` reads Claude Code's own session transcripts
+(`~/.claude/projects/<project>/*.jsonl`, or under `$CLAUDE_CONFIG_DIR`) and shows what a
+session spent and why. It sends nothing and uses no quota.
+
+```bash
+orkestra tokens                      # the latest session of this project
+orkestra tokens --since 7d --top 10  # every session of the last week
+orkestra tokens --session 1f49 --json
+orkestra tokens --project ../other-repo
+```
+
+What a tool call costs is more than its size: its result is written to the prompt cache once
+and then **read again with every later request** until the session ends or is compacted. A
+300-line file read early in a 300-request session is paid for 300 times. The report shows:
+
+- the measured totals (input, cache write, cache read, output) and a weighted sum with API
+  prices relative to an input token (output ×5, cache write ×1.25, cache read ×0.1; set in
+  `tokens.weights`, since a subscription may weigh them differently);
+- where the weighted tokens go: reading, command output, writing, agents, Claude's own
+  replies read again, your later messages and reminders, Claude's output, the fixed start
+  (system prompt, tools, CLAUDE.md) read with every request, cache misses (the context
+  written again after a pause or a model change), and the rest;
+- the costliest tool calls with "as 10 lines it would cost …";
+- how the context grows per request, subagents (counted apart) and compactions.
+
+Tool call sizes are estimated (4 characters ≈ 1 token) and then scaled per session so that
+they add up to the new context Claude Code measured; the factor is printed. Labels show
+files relative to the project and commands with the project as `.` and home as `~`.
+
+Example, this repository's own 12 sessions of building Orkestra (Claude Code 2.1.312–2.1.325,
+2,793 requests):
+
+```
+where the weighted tokens go:
+  command output (Bash, PowerShell): 23%
+  your later messages and reminders: 21%
+  writing (Edit, Write): 16%
+  Claude's output (text, thinking, tool calls): 14%
+  Claude's replies and tool calls, read again later: 12%
+  fixed start (system prompt, tools, CLAUDE.md, memory), read again by every request: 11%
+  reading (Read, Grep, Glob, web): 8%
+  cache misses (context written again after a pause or model change): 1%
+
+costliest tool calls (size × requests it stayed in the context):
+  Read YAPILIS_PLANI.md: ~23,027 tokens, 650 lines, read again 269×, weighted 648,210
+    as 10 lines: 9,972 (saves 638,238)
+context per request (newest session): 47,252 → 174,632 → 247,227 → 332,261 → 405,278
+```
+
+So about 85% of the cost is context being read again, not Claude's writing: big command
+outputs and file reads early in a long session are the levers, which is what the next phases
+(a context filter and shorter sessions) go after.
 
 ## Worktrees: isolated changes
 
