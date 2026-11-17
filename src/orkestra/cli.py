@@ -18,6 +18,7 @@ import typer
 
 from orkestra import __version__, doctor, envelope, i18n
 from orkestra.cache import responses
+from orkestra.chief import execute as executor
 from orkestra.chief import status
 from orkestra.chief import tokens as token_map
 from orkestra.config import loader
@@ -932,6 +933,34 @@ def build_app() -> typer.Typer:
             _echo_json(stats.to_dict(report))
         else:
             typer.echo(stats.render(report))
+
+    @app.command(
+        "exec", help=t("cli.exec.help"),
+        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    )  # fmt: skip
+    def exec_command(
+        ctx: typer.Context,
+        command: Annotated[list[str], typer.Argument(metavar="-- COMMAND...")],
+        max_lines: Annotated[
+            int | None, typer.Option("--max-lines", min=1, help=t("cli.exec.option.max_lines"))
+        ] = None,
+        no_model: Annotated[
+            bool, typer.Option("--no-model", help=t("cli.exec.option.no_model"))
+        ] = False,
+        timeout: Annotated[
+            float | None, typer.Option("--timeout", min=1, help=t("cli.exec.option.timeout"))
+        ] = None,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        result = executor.execute(
+            command, cwd=Path.cwd(), config=executor.load(ctx.ensure_object(_State).config_path),
+            max_lines=max_lines, use_model=False if no_model else None, timeout_s=timeout,
+        )  # fmt: skip
+        if as_json:
+            _echo_json(executor.to_dict(result))
+        else:
+            typer.echo(executor.render(result))
+        raise typer.Exit(result.exit_code)
 
     @app.command("tokens", help=t("cli.tokens.help"))
     def tokens_command(

@@ -928,3 +928,14 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - Temizlik: bir isteğin mesaj ve ekleri tek öğe; `Call.raw()` kullanılmayan parametresiz; "10 satır olsaydı" yalnız sonucu küçültür (Edit/Write'ın gönderdiği girdi kalır).
 - Gerçek raporda atanamayan pay %0'a indi; README örneği yenilendi (yeniden okuma ~%85).
 - **Testler:** 1514 → 1524 (+10).
+
+## D-088 – Faz 13i ikiye bölündü; 13i-a: `orkestra exec` (2026-11-17, Faz 13i-a)
+**Bağlam:** 13h, maliyetin ~%85'inin bağlamın yeniden okunması olduğunu, en büyük payın komut çıktısında (%23) olduğunu gösterdi. 13i'nin planı (exec + read + find + proje fihristi) tek PR için büyük; önceki fazlardaki gibi bölündü: **13i-a** `exec`, kural tabanlı ayrıştırıcılar, model özeti ve skill kuralı; **13i-b** `read`, `find` ve proje fihristi.
+**Karar:**
+- **`orkestra exec [--max-lines n] [--no-model] [--timeout s] [--json] -- <komut>`** (`chief/execute.py`): kabuksuz (AGENTS kuralı; program `shutil.which` ile, Windows'ta `.cmd` de), stdout ve stderr birlikte, zaman aşımında süreç ağacı durdurulur. Tam çıktı anahtarlar maskelenerek `runs/<id>/output.log` + `exec.json` (koşu kimliği biçimi aynı, `gc` temizler; `runs` tablosuna satır yazılmaz). **Çıkış kodu komutun kendi kodu** (Claude başarısızlığı görür); program yok 127, zaman aşımı 124 — kabukların kodları.
+- **Kural önce, model sonra** (`chief/outparse.py`): pytest (her `FAILED`/`ERROR` satırı, hata bölümündeki son `dosya:satır: Hata` ile; başarısız test adları **hiç kesilmez**), ruff (concise, tam biçim, `format --check`), pyright, derleyiciler/tip denetleyiciler (`dosya:satır: error`, tsc, rust `-->`). Diğer bulgular 30'da kesilir, kalanı sayılır. Yollar çalışılan klasöre göre. Örnek çıktılar gerçek araçlardan (`tests/fixtures/outputs`, yollar `/work/proj`).
+- **Bilinmeyen uzun çıktı** `exec.tier`'deki (varsayılan 1) bir **sohbet modeline** özetletilir (son 400 satır / 40 bin karakter; sistem istemi: en çok 12 satır, her hata `dosya:satır` ile, adlar aynen, tavsiye ve tahmin yok). `query_chief_model`'e `agents=False` eklendi: düz metin özeti için kod ajanı başlatılmaz (elle denemede router agy'yi seçmişti). Sohbet modeli yoksa elenme nedeni (ör. "ollama: bağlanılamıyor") tek satır not olarak yazılır ve ilk 10 + son 30 satır gösterilir; `--no-model` ve `exec.model: false` da öyle. Orkestra config'i yoksa `exec` yine çalışır (modelsiz).
+- **Config:** `exec: {max_lines: 40, tier: 1, model: true, timeout_s: 1800}`.
+- **Skill:** testleri, linter'ı ve derlemeyi `orkestra exec` ile çalıştır, ayrıntı gerekirse işaretçideki satırları oku; "Asla yapma"ya kural. Skill denetleyicisi click'in `--` (seçeneklerin sonu) kuralını öğrendi.
+- **Sınırlar:** kabuk yok (boru, `&&`, yönlendirme çalışmaz); özet kalitesi modele bağlı, ama kural tabanlı çıktılarda model yok. Kazancın ölçümü 13g'de (geri dönüp günlüğü okuma sayısı ayrıca).
+- **Testler:** 1524 → 1551 (+27).

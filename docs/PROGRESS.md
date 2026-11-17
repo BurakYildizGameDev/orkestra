@@ -38,7 +38,8 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13f – Kota bitince kesintisiz devam (ek) | ✅ | 2026-11-17 | ajan ve API kota mesajı tanıma, yenilenene kadar duraklatma (`quota_pause_s`), aynı komutta sıradakine geçiş, batch/kuyrukta bir daha denememe, bildirim satırı; ağsız ölçüm 10/10 (D-084) |
 | 13g – %25 token deneyi: büyük işte bölmek kazandırıyor mu? (ek) | ⏳ | | büyük gerçekçi görev; yalnız Claude vs Claude + Orkestra (okumayı ve toplu yazmayı devret, kısa rapor, başka bir AI'nın çapraz denetimi); başarı ölçütü Claude token'ında ≥ %25 azalma; ayrıntı yerel YAPILIS_PLANI.md |
 | 13h – Token haritası: Claude'un tokenı nereye gidiyor (ek) | ✅ | 2026-11-17 | `orkestra tokens`: araç çağrısı başına maliyet, türlere göre pay, sabit başlangıç, önbellek kaçırma, ölçüye göre ölçekleme; bulgu: maliyetin ~%80'i bağlamın yeniden okunması (D-086) |
-| 13i – Bağlam süzgeci: `exec` / `read` / `find` + proje fihristi (ek, ana kaldıraç) | ⏳ | | büyük çıktı/dosya Claude'un bağlamına girmez; işaretçili kısa cevap |
+| 13i-a – Bağlam süzgeci: `orkestra exec` (ek, ana kaldıraç) | ✅ | 2026-11-17 | kısa çıktı olduğu gibi; pytest/ruff/pyright/derleyici kurallarla (`dosya:satır`, test adı düşmez); diğerleri sohbet modeli özeti; çıkış kodu korunur; skill kuralı (D-088) |
+| 13i-b – Bağlam süzgeci: `read` / `find` + proje fihristi (ek) | ⏳ | | işaretçili kısa cevap; fihrist commit sonrası güncellenir |
 | 13j – Kısa oturum disiplini (ek) | ⏳ | | `handoff to claude`, eşik önerisi |
 | 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ⏳ | | kesintisizlik, 13f'nin devamı |
 | 13l – İşe göre model ve bilgisayar yükü (ek) | ⏳ | | hafif işler küçük/ücretsiz modele |
@@ -46,6 +47,23 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13i-a – Bağlam süzgeci: `orkestra exec` (2026-11-17)
+**Yapılanlar (D-088):** 13i ikiye bölündü (13i-a / 13i-b).
+- `orkestra exec [--max-lines n] [--no-model] [--timeout s] [--json] -- <komut>`: kısa çıktı olduğu gibi; uzun pytest/ruff/pyright/derleyici çıktısı kurallarla (`chief/outparse.py`); diğerleri sohbet modeli özeti (`agents=False`), yoksa ilk/son satırlar ve neden. Çıkış kodu komutunki (127, 124); tam çıktı `runs/<id>/output.log`, anahtarlar maskeli.
+- `exec` config'i; 5 dilde metinler; skill kuralı; README "Long command output" / "Uzun komut çıktısı"; Mimari §4, §19.
+
+**Kabul kriterleri:**
+- ✅ Kural tabanlı ayrıştırıcıların tablo testleri, gerçek pytest/ruff/pyright çıktılarıyla (`tests/unit/test_outparse.py`, `tests/fixtures/outputs`).
+- ✅ Özet çıkış kodunu ve başarısız test adlarını kaybetmiyor (`test_no_failed_test_name_is_ever_dropped`, `test_short_output_comes_back_as_it_is_with_the_exit_code`).
+- ✅ İşaretçiler gerçek satırı gösteriyor: gerçek pytest ve ruff koşusu (`test_failing_pytest_keeps_every_name_and_points_at_the_real_line`, `test_ruff_findings_point_at_the_real_line`).
+- ✅ Skill testi (komutlar gerçek CLI'ye karşı; denetleyici `--`'yi tanıyor).
+- ✅ Elle: bu repoda pytest (olduğu gibi), ruff (3 bulgu, `dosya:satır`), tanınmayan `git log` çıktısı (Ollama kapalı → neden tek satır, ilk/son satırlar).
+- ✅ ruff, pyright, pytest temiz.
+
+**Ertelenen / bilinen:** gerçek bir sohbet modeliyle özet bu ortamda denenemedi (Ollama kapalıydı; agy kod ajanı olduğu için artık kullanılmıyor). Kazancın ölçümü 13g'de.
+
+Testler: **1551 geçti** (1524 + 27). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 13h (PR #30), 2026-11-17
 `/code-review` 10 bulgu; hepsi düzeltildi (D-087). Önce 10 kırmızı test.

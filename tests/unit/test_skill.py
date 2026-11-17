@@ -119,6 +119,9 @@ def _split_options(command: Any, words: list[str], path: list[str]) -> tuple[lis
     rest = list(words)
     while rest:
         word = rest.pop(0)
+        if word == "--":  # click: everything after it is an argument (``exec -- pytest -q``)
+            positionals.extend(rest)
+            break
         if not _is_option(word):
             positionals.append(word)
             continue
@@ -296,6 +299,8 @@ def test_the_checker_catches_what_does_not_exist(words: list[str]) -> None:
         ["batch", "tasks.yaml", "--parallel", "4", "--fail-fast", "--json"],
         ["batch", "tasks.yaml", "--estimate", "--json"],  # Faz 7b
         ["batch", "tasks.yaml", "--json", "--yes-cost"],
+        ["exec", "--max-lines", "5", "--", "uv", "run", "pytest", "-q", "-x"],  # Faz 13i-a
+        ["tokens", "--since", "7d", "--top", "3", "--json"],  # Faz 13h
         ["apply", "--batch", "<batch_id>", "--only-ok", "--json"],
         ["stats", "--since", "7d", "--json"],
         ["status", "--json"],  # Faz 8a

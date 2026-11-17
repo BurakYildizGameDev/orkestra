@@ -50,6 +50,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | Apply a batch's passing runs in the order they ran, stop at a conflict | `orkestra apply --batch <batch_id> --only-ok [--json]` |
 | How the workers did: success rate, attempts, tokens, cost and time per provider and tag | `orkestra stats [--since 7d] [--json]` |
 | Where Claude Code's tokens go: costly tool calls, shares by kind, context growth, cache misses (reads its transcripts, uses no quota) | `orkestra tokens [--session id \| --since 7d] [--project p] [--top n] [--json]` |
+| Run a command and get only what matters: short output as it is, pytest/ruff/pyright/compiler output as its findings with `file:line`, other output summarised; full output in the log | `orkestra exec [--max-lines n] [--no-model] [--timeout s] [--json] -- <command>` |
 | Code agents (Codex CLI, Antigravity) as workers, in the worktree, with process-tree cleanup | `cli_agent` providers |
 | A run's envelope, full output, log or change | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | The chief's view at a glance (at most 15 lines): unapplied runs, the night queue, today's budget, paused providers | `orkestra status [--json]` |
@@ -541,6 +542,40 @@ asked. `edit` tasks and code agents' answers are never cached. `--no-cache` (on 
 **Savings (estimated).** `orkestra stats` also shows how many tokens the workers wrote and how
 many came back to the chief in envelopes, for the runs that passed. The chief's own use
 cannot be measured, so the line is always marked as an estimate.
+
+## Long command output: `orkestra exec`
+
+Test runs, linters and builds are the biggest thing that enters Claude's context (see the
+token map below), and every later request reads them again. `orkestra exec` runs the
+command and gives back only what matters:
+
+```bash
+orkestra exec -- uv run pytest
+orkestra exec --max-lines 20 -- uv run ruff check .
+orkestra exec --json -- npm test
+```
+
+```
+exit 1 · 412 lines · pytest · full output: ~/.orkestra/runs/20261117-205059-46bf/output.log
+3 failed, 120 passed in 4.10s
+tests/test_calc.py:6: FAILED tests/test_calc.py::test_add - assert -1 == 5
+…
+```
+
+- Up to `exec.max_lines` lines (default 40) the output comes back as it is.
+- Longer output of a tool Orkestra knows is digested by rules, with no model and no
+  mistakes: **pytest** (every failed or errored test, never dropped, with the `file:line`
+  where it failed), **ruff** (check and format), **pyright**, and compilers or type checkers
+  that write `file:line` (mypy, gcc/clang, tsc, rustc). Paths are relative to the project.
+- Other long output is summarised by a chat model on `exec.tier` (default 1, through the
+  router, so output with keys stays local; code agents are never started for it). Without
+  one, or with `--no-model`, the first and last lines are shown and the reason is named.
+- The exit code is the command's own (127: program not found, 124: `--timeout` hit, the
+  command and its child processes are stopped). The whole output, with keys masked, is in
+  `runs/<id>/output.log` (cleaned by `gc` like other run records).
+- There is no shell: pipes, `&&` and redirection do not work; give one command.
+
+The Claude skill tells Claude to run tests, linters and builds this way.
 
 ## Where do Claude's tokens go?
 
