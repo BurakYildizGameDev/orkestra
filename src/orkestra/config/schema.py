@@ -172,6 +172,8 @@ class HandoffCfg(_Model):
     max_lines: PosInt = 200
     brief_max_lines: PosInt = 60
     stale_after_commits: PosInt = 5
+    # Faz 13j: past this context size (tokens) status and tokens suggest a fresh session.
+    suggest_at_tokens: PosInt = 120_000
 
 
 class ReviewCfg(_Model):

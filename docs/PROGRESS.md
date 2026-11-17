@@ -40,13 +40,28 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13h – Token haritası: Claude'un tokenı nereye gidiyor (ek) | ✅ | 2026-11-17 | `orkestra tokens`: araç çağrısı başına maliyet, türlere göre pay, sabit başlangıç, önbellek kaçırma, ölçüye göre ölçekleme; bulgu: maliyetin ~%80'i bağlamın yeniden okunması (D-086) |
 | 13i-a – Bağlam süzgeci: `orkestra exec` (ek, ana kaldıraç) | ✅ | 2026-11-17 | kısa çıktı olduğu gibi; pytest/ruff/pyright/derleyici kurallarla (`dosya:satır`, test adı düşmez); diğerleri sohbet modeli özeti; çıkış kodu korunur; skill kuralı (D-088) |
 | 13i-b – Bağlam süzgeci: `read` / `find` + proje fihristi (ek) | ✅ | 2026-11-17 | `read` işaretçileri dosyaya karşı denetler; `find` modelsiz, çok sonuç fihrist özetiyle gruplanır; `map --install-hook` (D-090) |
-| 13j – Kısa oturum disiplini (ek) | ⏳ | | `handoff to claude`, eşik önerisi |
+| 13j – Kısa oturum disiplini (ek) | ✅ | 2026-11-17 | aynı şefe devir (`handoff to claude`), `status`/`tokens`'ta eşik önerisi (bağlam − yeni başlangıç) × okuma ağırlığı; skill kuralı (D-092) |
 | 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ⏳ | | kesintisizlik, 13f'nin devamı |
 | 13l – İşe göre model ve bilgisayar yükü (ek) | ⏳ | | hafif işler küçük/ücretsiz modele |
 | 13m – Toplu devretme ve çapraz denetim (ek) | ⏳ | | yazma devrinin sabit yükünü düşürmek |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13j – Kısa oturum disiplini (2026-11-17)
+**Yapılanlar (D-092):**
+- `handoff to claude`: aynı şefe devir zaten çalışıyordu; testle doğrulandı (`from = to`).
+- `tokens.handoff_hint`; `status`'ta `session` bölümü ve `tokens`'ta aynı satır: "bağlam ~X: yeni oturum her 100 istekte ~Y kazandırır"; eşik `handoff.suggest_at_tokens` (120.000).
+- Skill: faz/alt görev sonunda öneri; README "Short sessions" / "Kısa oturumlar"; Mimari §19.
+- Testler gerçek `~/.claude` dökümlerini okumaz (`CLAUDE_CONFIG_DIR` conftest'te).
+
+**Kabul kriterleri:**
+- ✅ Eşik hesabının tablo testi, sahte dökümlerle (`tests/unit/test_session_hint.py`, `tests/integration/test_session_status.py`).
+- ⏳ 13g'de kısa oturumlu kolun ölçümü (13g'nin işi).
+- ✅ Elle: bu oturumda `status` ~636 bin token bağlam ve ~5,9 milyon/100 istek kazanç gösterdi.
+- ✅ ruff, pyright, pytest temiz.
+
+Testler: **1596 geçti** (1585 + 11). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 13i-b (PR #32), 2026-11-17
 `/code-review` 10 bulgu; hepsi düzeltildi (D-091). Önce 10 kırmızı test.

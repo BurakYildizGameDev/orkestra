@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from orkestra.config.schema import Config
+from orkestra.errors import UsageError
 from orkestra.handoff import brief, model, store
 from orkestra.i18n import t
 from orkestra.providers import registry
@@ -29,6 +31,7 @@ MAX_LINES = 15
 SHOWN_RUNS = 3  # unapplied runs listed by name
 SHOWN_PROVIDERS = 4  # budget lines before "+N more"
 QUEUE_FAILED_WINDOW = timedelta(hours=24)  # queue failures older than this are not shown
+SESSION_ACTIVE = timedelta(hours=6)  # a transcript changed since is the session going on
 CHIEF_ENV = "ORKESTRA_CHIEF"
 STATUS_WARNING_KEYS: dict[str, str] = {
     "no_git": "status.handoff.no_git",
@@ -136,6 +139,34 @@ def _handoff(ctx: StatusContext) -> Section | None:
     lines = [t("status.handoff.line", goal=" ".join(first.split())[:70] or "-")]
     lines.extend(brief.warning_lines(state, STATUS_WARNING_KEYS))
     return Section(lines, data)
+
+
+@section("session", order=25)
+def _session(ctx: StatusContext) -> Section | None:
+    """The chief's own Claude Code session (Faz 13j): past ``handoff.suggest_at_tokens`` one
+    line suggests a fresh session. Nothing without a transcript changed in the last hours."""
+    from orkestra.chief import tokens
+
+    home = tokens.claude_home(ctx.environ)
+    for where in dict.fromkeys([Path.cwd().resolve(), store.project_root(Path.cwd())]):
+        try:
+            (path,) = tokens.select_sessions(tokens.project_folder(where, home))
+        except (UsageError, ValueError):
+            continue
+        break
+    else:
+        return None
+    if time.time() - path.stat().st_mtime > SESSION_ACTIVE.total_seconds():
+        return None
+    session = tokens.read_session(path, calibrate=False)  # only the request sizes matter
+    hint = tokens.handoff_hint(
+        session, ctx.config.tokens.weights, threshold=ctx.config.handoff.suggest_at_tokens
+    )
+    if hint is None:
+        return None
+    data = {"id": session.id, "context": hint.context, "start": hint.start,
+            "saving_per_100": round(hint.saving_per_100), "over": hint.over}  # fmt: skip
+    return Section([tokens.hint_line(hint)] if hint.over else [], data)
 
 
 @section("unapplied", order=30)

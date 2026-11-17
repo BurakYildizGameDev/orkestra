@@ -275,6 +275,13 @@ Kotadan dolayı veya kullanıcı istediğinde işi başka bir şefe devret:
 - İsteğe bağlı hatırlatıcı: `orkestra handoff install-hook` deponun `pre-commit` kancasına
   işaretli bir blok ekler (var olan kancayı ezmez, commit'i asla engellemez).
 
+**Kısa oturum.** Uzun oturumda bağlamın tamamı her istekte yeniden okunur. Bir faz ya da alt görev
+bitince `orkestra status` çıktısına bak: "bağlam ~… token: yeni oturum … kazandırır" satırı
+varsa (eşik `handoff.suggest_at_tokens`), devir dosyasını güncelle (`done`, `in_progress`,
+`status`), değişiklikleri commit et ve kullanıcıya yeni oturum öner: ya `/clear` yazıp yeni
+bağlamda `orkestra handoff show --brief` okumanı, ya da bu oturumu kapatıp kendi terminalinde
+`orkestra handoff to claude` çalıştırmasını. Yarım bir işin ortasında önerme.
+
 ## 8. Raporlama
 
 İş bitince kullanıcıya kısaca bildir: hangi işler delege edildi, hangi sağlayıcı/kademe, kaç deneme, maliyet (zarftaki `usage.cost_usd`; günlük toplam için `orkestra budget --json`), neyi kendin düzelttin. Uzun log yapıştırma. Kullanıcı hangi işçinin ne kadar başarılı olduğunu sorarsa: `orkestra stats --since 7d --json` (sağlayıcı ve etiket başına koşu, başarı oranı, deneme, token, maliyet, süre).

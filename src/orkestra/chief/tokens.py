@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from orkestra.config import loader
-from orkestra.config.schema import TokensCfg, TokenWeights
+from orkestra.config.schema import Config, HandoffCfg, TokensCfg, TokenWeights
 from orkestra.errors import ConfigError, UsageError
 from orkestra.i18n import t
 
@@ -38,6 +38,8 @@ SHORT_LINES = 10  # "what if this result were 10 lines"
 IMAGE_TOKENS = 1600  # about what one screenshot costs; its base64 is not what is billed
 REBUILD_MIN = 2000  # tokens no longer read from the cache that count as a cache miss
 MIN_SCALE, MAX_SCALE = 0.25, 4.0  # calibration limits
+BRIEF_TOKENS = 3000  # about what a handoff brief adds to a fresh session's start
+HINT_REQUESTS = 100  # the saving is shown per this many later requests
 GROWTH_POINTS = 5
 
 CATEGORIES: dict[str, tuple[str, ...]] = {
@@ -169,6 +171,27 @@ class Report:
     growth: list[int]  # context size per request, newest session
     subagents: Subagents
     warnings: list[str] = field(default_factory=list)
+    hint: HandoffHint | None = None  # the newest session's (Faz 13j)
+
+
+@dataclass(frozen=True)
+class HandoffHint:
+    """Is a fresh session worth it now (Faz 13j)? Every later request reads the whole context
+    again; a fresh session starts from the first request's context plus a brief."""
+
+    context: int  # the latest request's context
+    start: int  # what a fresh session would start with
+    saving_per_100: float  # weighted tokens saved over the next 100 requests
+    over: bool  # past ``handoff.suggest_at_tokens``
+
+
+def handoff_hint(session: Session, weights: TokenWeights, *, threshold: int) -> HandoffHint | None:
+    if not session.turns:
+        return None
+    context = session.turns[-1].context
+    start = session.turns[0].context + BRIEF_TOKENS
+    saving = max(0, context - start) * weights.cache_read * HINT_REQUESTS
+    return HandoffHint(context, start, saving, context >= threshold)
 
 
 # --- finding transcripts ---------------------------------------------------------------
@@ -215,13 +238,18 @@ def settings(
 ) -> tuple[TokensCfg, list[str]]:
     """The ``tokens`` settings of ``project``'s config, and warnings. The command needs no
     config: none, or one that does not load, means the default weights (with a warning)."""
+    config, warnings = _config(config_flag, project)
+    return (config.tokens if config is not None else TokensCfg()), warnings
+
+
+def _config(config_flag: Path | None, project: Path | None) -> tuple[Config | None, list[str]]:
     if not loader.find_sources(config_flag, project):
-        return TokensCfg(), []
+        return None, []
     try:
-        return loader.load_config(config_flag, project).config.tokens, []
+        return loader.load_config(config_flag, project).config, []
     except ConfigError as exc:
         reason = (exc.message or type(exc).__name__).splitlines()[0]
-        return TokensCfg(), [t("tokens.warning.config", error=reason)]
+        return None, [t("tokens.warning.config", error=reason)]
 
 
 def collect(
@@ -234,10 +262,14 @@ def collect(
     environ: Mapping[str, str] | None = None,
 ) -> Report:
     """``orkestra tokens``: read the chosen sessions of ``project`` and rank what they cost."""
-    cfg, warnings = settings(config_flag, project=project)
+    config, warnings = _config(config_flag, project)
+    cfg = config.tokens if config is not None else TokensCfg()
+    threshold = (config.handoff if config is not None else HandoffCfg()).suggest_at_tokens
     folder = project_folder(project, claude_home(environ))
     paths = select_sessions(folder, session=session, since=since)
-    report = analyse([read_session(p) for p in paths], cfg.weights, top=top or cfg.top)
+    sessions = [read_session(p) for p in paths]
+    report = analyse(sessions, cfg.weights, top=top or cfg.top)
+    report.hint = handoff_hint(sessions[0], cfg.weights, threshold=threshold)
     report.warnings.extend(warnings)
     return report
 
@@ -577,6 +609,10 @@ def to_dict(report: Report) -> dict[str, Any]:
                       "weighted": _int(report.subagents.total.weighted(w))},
         "estimate": {"chars_per_token": CHARS_PER_TOKEN},
         "warnings": report.warnings,
+        "handoff_hint": None if report.hint is None else {
+            "context": report.hint.context, "start": report.hint.start,
+            "saving_per_100": _int(report.hint.saving_per_100), "over": report.hint.over,
+        },
     }  # fmt: skip
 
 
@@ -632,8 +668,15 @@ def render(report: Report) -> str:
     low, high = (min(scales), max(scales)) if scales else (1.0, 1.0)
     shown = f"{low:.2f}" if round(low, 2) == round(high, 2) else f"{low:.2f}-{high:.2f}"
     lines.append(t("tokens.estimate_note", chars=CHARS_PER_TOKEN, scale=shown))
+    if report.hint is not None and report.hint.over:
+        lines.append(hint_line(report.hint))
     lines.extend(report.warnings)
     return "\n".join(lines)
+
+
+def hint_line(hint: HandoffHint) -> str:
+    return t("tokens.hint", context=_n(hint.context), saving=_n(hint.saving_per_100),
+             requests=HINT_REQUESTS)  # fmt: skip
 
 
 def _sample(values: list[int], points: int = GROWTH_POINTS) -> list[int]:

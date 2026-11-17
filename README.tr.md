@@ -658,6 +658,24 @@ Yani maliyetin yaklaşık %85'i Claude'un yazması değil, bağlamın yeniden ok
 oturumun başındaki büyük komut çıktıları ve dosya okumaları asıl kaldıraç. Sonraki fazlar
 (bağlam süzgeci ve kısa oturumlar) buna yöneliyor.
 
+## Kısa oturumlar: işe yaradığında yeni bağlam
+
+Uzun bir oturumda her istek bağlamın tamamını yeniden okur (token haritasına bak), yani bir
+isteğin bedeli oturumla birlikte büyür. `handoff.suggest_at_tokens` (varsayılan 120.000)
+geçilince `orkestra status` ve `orkestra tokens`, oturumun kendi sayılarından, yeni bir
+oturumun ne kazandıracağını söyler:
+
+```
+bağlam ~180,000 token: yeni oturum her 100 istekte ~1,300,000 ağırlıklı token kazandırır
+(orkestra handoff update …, sonra /clear ve orkestra handoff show --brief, ya da orkestra handoff to claude)
+```
+
+Yeni oturum ilk isteğin bağlamından (sistem istemi, araçlar, CLAUDE.md) ve devir özetinden
+(~3.000 token) başlar; sonraki her istek o kadar az okur. Devir dosyasını güncelleyip commit
+ettikten sonra iki yol var: Claude Code'da `/clear` ve `orkestra handoff show --brief`'i
+okumak, ya da oturumu kapatıp `orkestra handoff to claude` (aynı şefe devir). Claude skill'i
+bunu bir fazın ya da alt görevin sonunda önerir, ortasında asla.
+
 ## Worktree'ler: yalıtılmış değişiklikler
 
 İşçiler senin çalışma kopyanı asla değiştirmez. Kod değiştiren bir koşu `~/.orkestra/worktrees/`

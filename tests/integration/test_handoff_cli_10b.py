@@ -329,3 +329,18 @@ def test_a_commit_through_the_installed_hook_shows_the_reminder(
     output = (done.stdout + done.stderr).decode("utf-8", errors="replace")
     # At the third commit HEAD is two commits past the recorded one (threshold 1).
     assert t("handoff.check.stale", count=2) in output
+
+
+def test_a_chief_can_hand_off_to_a_fresh_session_of_itself(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    """Faz 13j: a short session is a handoff to the same chief (a new, empty context)."""
+    _prepare(tmp_path, monkeypatch, capsys)
+    capture = tmp_path / "captured.txt"
+    monkeypatch.setenv("FAKE_CHIEF_OUT", str(capture))
+    monkeypatch.setenv("ORKESTRA_CHIEF", "fake")  # this session's chief
+    code, _, err = _run(["handoff", "to", "fake"], capsys)
+    assert code == 0, err
+    (row,) = _rows()
+    assert (row["from_chief"], row["to_chief"]) == ("fake", "fake")
+    assert json.loads(capture.read_bytes().decode("utf-8"))  # the new session got the brief
