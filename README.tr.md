@@ -50,6 +50,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Bir batch'in geçen koşularını çalıştıkları sırayla uygula, çakışmada dur | `orkestra apply --batch <batch_id> --only-ok [--json]` |
 | İşçiler nasıl gitti: sağlayıcı ve etiket başına başarı oranı, deneme, token, maliyet, süre | `orkestra stats [--since 7d] [--json]` |
 | Claude Code'un tokenı nereye gidiyor: pahalı araç çağrıları, türlere göre pay, bağlamın büyümesi, önbellek kaçırma (dökümleri okur, kota harcamaz) | `orkestra tokens [--session id \| --since 7d] [--project p] [--top n] [--json]` |
+| Bir komutu çalıştır, yalnız işe yarayanı al: kısa çıktı olduğu gibi, pytest/ruff/pyright/derleyici çıktısı `dosya:satır` bulgularıyla, diğerleri özetlenerek; tam çıktı günlükte | `orkestra exec [--max-lines n] [--no-model] [--timeout s] [--json] -- <komut>` |
 | İşçi olarak kod ajanları (Codex CLI, Antigravity): worktree'de, süreç ağacı temizliğiyle | `cli_agent` sağlayıcıları |
 | Şef için tek bakışta durum (en fazla 15 satır): uygulanmamış koşular, gece kuyruğu, bugünkü bütçe, duraklatılmış sağlayıcılar | `orkestra status [--json]` |
 | Gece kuyruğu: görev veya batch'leri şimdi ekle, sonra (gece, yerel modellerle) çalıştır; aynı anda tek çalıştırma, belirli saatte veya maliyette durur | `orkestra queue add <dosya> [--profile p]`, `queue list`, `queue remove <id>`, `queue run [--until 07:00] [--max-cost-usd X] [--notify]` |
@@ -537,6 +538,40 @@ görevleri ve kod ajanlarının cevapları asla önbelleğe alınmaz. `--no-cach
 **Tasarruf (tahmini).** `orkestra stats` işçilerin kaç token yazdığını ve şefe zarflarla kaç
 token döndüğünü de gösterir (doğrulamayı geçen koşular için). Şefin kendi kullanımı
 ölçülemediği için satır her zaman tahmini olarak işaretlenir.
+
+## Uzun komut çıktısı: `orkestra exec`
+
+Test koşuları, linter'lar ve derlemeler Claude'un bağlamına giren en büyük şey (aşağıdaki
+token haritasına bak) ve sonraki her istek onları yeniden okur. `orkestra exec` komutu
+çalıştırır ve yalnız işe yarayanı geri verir:
+
+```bash
+orkestra exec -- uv run pytest
+orkestra exec --max-lines 20 -- uv run ruff check .
+orkestra exec --json -- npm test
+```
+
+```
+çıkış 1 · 412 satır · pytest · tam çıktı: ~/.orkestra/runs/20261117-205059-46bf/output.log
+3 failed, 120 passed in 4.10s
+tests/test_calc.py:6: FAILED tests/test_calc.py::test_add - assert -1 == 5
+…
+```
+
+- `exec.max_lines` satıra kadar (varsayılan 40) çıktı olduğu gibi döner.
+- Orkestra'nın tanıdığı bir aracın uzun çıktısı kurallarla, modelsiz ve hatasız özetlenir:
+  **pytest** (başarısız ya da hatalı her test, hiçbiri düşmez, başarısız olduğu
+  `dosya:satır` ile), **ruff** (check ve format), **pyright**, ve `dosya:satır` yazan
+  derleyiciler ya da tip denetleyiciler (mypy, gcc/clang, tsc, rustc). Yollar projeye göre.
+- Diğer uzun çıktıyı `exec.tier`'deki (varsayılan 1) bir sohbet modeli özetler (router
+  üzerinden: anahtar içeren çıktı yerelde kalır; bunun için kod ajanı hiç başlatılmaz).
+  Model yoksa ya da `--no-model` verildiyse ilk ve son satırlar gösterilir, nedeni yazılır.
+- Çıkış kodu komutun kendi kodudur (127: program yok, 124: `--timeout` doldu, komut alt
+  süreçleriyle durdurulur). Tam çıktı, anahtarlar maskelenmiş olarak,
+  `runs/<id>/output.log`'dadır (diğer koşu kayıtları gibi `gc` temizler).
+- Kabuk yoktur: boru, `&&` ve yönlendirme çalışmaz; tek komut ver.
+
+Claude skill'i Claude'a testleri, linter'ları ve derlemeleri böyle çalıştırmasını söyler.
 
 ## Claude'un tokenı nereye gidiyor?
 

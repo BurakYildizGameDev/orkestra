@@ -227,6 +227,16 @@ Batch'te her `ok` koşunun diff'ini yukarıdaki gibi denetle. Hepsi uygunsa `ork
 
 Uzun bir çalışmanın sonunda sahipsiz worktree'leri ve eski kayıtları temizlemek için `orkestra gc --dry-run` ile bak, kullanıcı isterse `orkestra gc` çalıştır.
 
+**Bağlamı küçük tut: uzun komut çıktısı.** Testleri, linter'ı, derlemeyi ya da çıktısı uzun olabilecek bir komutu doğrudan çalıştırıp çıktısını bağlamına alma; `orkestra exec` ile çalıştır:
+
+```bash
+orkestra exec -- uv run pytest
+orkestra exec --max-lines 20 -- uv run ruff check .
+orkestra exec --json -- npm test
+```
+
+40 satıra kadar çıktı olduğu gibi gelir. Daha uzununda pytest, ruff, pyright ve derleyici çıktısı başlık satırı ve her bulgu `dosya:satır` ile gelir (başarısız test adlarının hepsi), diğer çıktılar bir işçinin özetiyle (işçi yoksa ilk ve son satırlar). Çıkış kodu komutun kendi kodudur (127: program yok, 124: zaman aşımı); ilk satır tam çıktının günlük yolunu verir. Ayrıntı gerekirse önce işaretçideki satırları oku; günlüğü ancak gerekiyorsa ve parça parça oku. Kabuk yoktur: boru, `&&` ve yönlendirme çalışmaz, tek komut ver.
+
 ## 7. Devir dosyasını güncel tut
 
 Projede `.orkestra/HANDOFF.md` varsa (yoksa uzun işlerde `orkestra handoff init` öner):
@@ -265,3 +275,4 @@ Kotadan dolayı veya kullanıcı istediğinde işi başka bir şefe devret:
 - `.env`, anahtar dosyaları veya `.orkestraignore` kapsamındaki dosyaları bağlama ekleme.
 - Kullanıcının izni olmadan sağlayıcı onaylama (`--yes`), maliyet eşiğini geçme (`--yes-cost`) veya gizli bilgiyi uzağa gönderme (`--allow-secrets`).
 - Bütçe bittiğinde kullanıcıya sormadan config'teki limitleri değiştirme.
+- Test, linter ya da derleme çıktısını `orkestra exec` olmadan bağlamına alma (çıktı kısa olduğu belli değilse).

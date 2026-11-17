@@ -928,3 +928,26 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - Temizlik: bir isteğin mesaj ve ekleri tek öğe; `Call.raw()` kullanılmayan parametresiz; "10 satır olsaydı" yalnız sonucu küçültür (Edit/Write'ın gönderdiği girdi kalır).
 - Gerçek raporda atanamayan pay %0'a indi; README örneği yenilendi (yeniden okuma ~%85).
 - **Testler:** 1514 → 1524 (+10).
+
+## D-088 – Faz 13i ikiye bölündü; 13i-a: `orkestra exec` (2026-11-17, Faz 13i-a)
+**Bağlam:** 13h, maliyetin ~%85'inin bağlamın yeniden okunması olduğunu, en büyük payın komut çıktısında (%23) olduğunu gösterdi. 13i'nin planı (exec + read + find + proje fihristi) tek PR için büyük; önceki fazlardaki gibi bölündü: **13i-a** `exec`, kural tabanlı ayrıştırıcılar, model özeti ve skill kuralı; **13i-b** `read`, `find` ve proje fihristi.
+**Karar:**
+- **`orkestra exec [--max-lines n] [--no-model] [--timeout s] [--json] -- <komut>`** (`chief/execute.py`): kabuksuz (AGENTS kuralı; program `shutil.which` ile, Windows'ta `.cmd` de), stdout ve stderr birlikte, zaman aşımında süreç ağacı durdurulur. Tam çıktı anahtarlar maskelenerek `runs/<id>/output.log` + `exec.json` (koşu kimliği biçimi aynı, `gc` temizler; `runs` tablosuna satır yazılmaz). **Çıkış kodu komutun kendi kodu** (Claude başarısızlığı görür); program yok 127, zaman aşımı 124 — kabukların kodları.
+- **Kural önce, model sonra** (`chief/outparse.py`): pytest (her `FAILED`/`ERROR` satırı, hata bölümündeki son `dosya:satır: Hata` ile; başarısız test adları **hiç kesilmez**), ruff (concise, tam biçim, `format --check`), pyright, derleyiciler/tip denetleyiciler (`dosya:satır: error`, tsc, rust `-->`). Diğer bulgular 30'da kesilir, kalanı sayılır. Yollar çalışılan klasöre göre. Örnek çıktılar gerçek araçlardan (`tests/fixtures/outputs`, yollar `/work/proj`).
+- **Bilinmeyen uzun çıktı** `exec.tier`'deki (varsayılan 1) bir **sohbet modeline** özetletilir (son 400 satır / 40 bin karakter; sistem istemi: en çok 12 satır, her hata `dosya:satır` ile, adlar aynen, tavsiye ve tahmin yok). `query_chief_model`'e `agents=False` eklendi: düz metin özeti için kod ajanı başlatılmaz (elle denemede router agy'yi seçmişti). Sohbet modeli yoksa elenme nedeni (ör. "ollama: bağlanılamıyor") tek satır not olarak yazılır ve ilk 10 + son 30 satır gösterilir; `--no-model` ve `exec.model: false` da öyle. Orkestra config'i yoksa `exec` yine çalışır (modelsiz).
+- **Config:** `exec: {max_lines: 40, tier: 1, model: true, timeout_s: 1800}`.
+- **Skill:** testleri, linter'ı ve derlemeyi `orkestra exec` ile çalıştır, ayrıntı gerekirse işaretçideki satırları oku; "Asla yapma"ya kural. Skill denetleyicisi click'in `--` (seçeneklerin sonu) kuralını öğrendi.
+- **Sınırlar:** kabuk yok (boru, `&&`, yönlendirme çalışmaz); özet kalitesi modele bağlı, ama kural tabanlı çıktılarda model yok. Kazancın ölçümü 13g'de (geri dönüp günlüğü okuma sayısı ayrıca).
+- **Testler:** 1524 → 1551 (+27).
+
+## D-089 – Faz 13i-a kod denetimi düzeltmeleri (2026-11-17, Faz 13i-a)
+`/code-review` (PR #31): 10 bulgu, hepsi düzeltildi; önce 9 kırmızı test.
+- **Süreç:** zaman aşımında süreç ağacı durdurulur ve çıktı en çok `KILL_GRACE_S` beklenir (çıktı borusunu tutan başıboş süreç `exec`'i sonsuza dek bekletiyordu; `command` doğrulayıcısındaki gibi). Komut kendisi bitmiş ama borusu tutuluyorsa kendi çıkış kodu döner. Ctrl+C ya da başka bir hata süreç ağacını durdurur. Bulunan ama başlatılamayan program (çalıştırma izni yok, `.txt`) traceback değil **çıkış kodu 126**.
+- **Birden çok araç tek çıktıda** (`make check`, `pre-commit`): tanınan her aracın bulguları birleşir (`ruff+pyright`, başlıklar ` · ` ile); önce yalnız ilk eşleşen kalıyordu.
+- **Derleyici biçimi** yalnız başka hiçbir araç tanınmadığında ve en az bir **hata** satırı varsa sayılır: tek bir uyarı satırı `cargo test`'in başarısız testlerini model özetinden saklıyordu.
+- **pytest işaretçileri** hata bölümüne adıyla **ve dosyasıyla**, sırayla eşlenir: farklı dosyalardaki aynı adlı testler kendi dosyasını gösterir; `ERROR at setup/teardown of …` bölümleri de eşlenir.
+- **"Kısa" karakterle de sınırlı** (`max_lines × 300`): tek satırlık 2 MB çıktı bağlama olduğu gibi girmiyor; ilk/son satırlarda her satır 300 karakterde kesilir.
+- **İlk/son satırlar `--max-lines`'a göre** (dörtte biri baştan, kalanı sondan).
+- **Bozuk config** "config'i yok" diye değil nedeniyle yazılır; **anahtar maskeleme config'siz de**: adı anahtar gibi görünen ortam değişkenlerinin değerleri (`*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`, `*AUTH*` …; `security.redact.secret_env_values`) günlükte ve cevapta maskelenir.
+- Hiç gösterilmeyen `exec.kind.model` / `exec.kind.digest` anahtarları kaldırıldı.
+- **Testler:** 1551 → 1560 (+9).

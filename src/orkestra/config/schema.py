@@ -225,6 +225,17 @@ class TokensCfg(_Model):
     top: PosInt = 10
 
 
+class ExecCfg(_Model):
+    """``orkestra exec`` (Faz 13i-a): output up to ``max_lines`` comes back as it is; longer
+    output is digested by rule (pytest, ruff, pyright, compilers) or summarised by a worker
+    on ``tier`` (``model: false`` shows its head and tail instead)."""
+
+    max_lines: PosInt = 40
+    tier: Annotated[int, Field(ge=1, le=3)] = 1
+    model: bool = True
+    timeout_s: PosInt = 1800
+
+
 def default_profiles() -> dict[str, Profile]:
     return {
         "cheap": Profile(min_tier=1, max_tier=1),
@@ -257,6 +268,7 @@ class Config(_Model):
     notify: NotifyCfg = Field(default_factory=NotifyCfg)
     queue: QueueCfg = Field(default_factory=QueueCfg)
     tokens: TokensCfg = Field(default_factory=TokensCfg)
+    exec: ExecCfg = Field(default_factory=ExecCfg)
     security: Security = Field(default_factory=Security)
 
     @field_validator("providers")

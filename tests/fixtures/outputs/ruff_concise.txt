@@ -1,0 +1,5 @@
+/work/proj/bad.py:1:1: I001 [*] Import block is un-sorted or un-formatted
+/work/proj/bad.py:1:8: F401 [*] `os` imported but unused
+/work/proj/bad.py:4:10: F821 Undefined name `undefined_name`
+Found 3 errors.
+[*] 2 fixable with `--fix`.

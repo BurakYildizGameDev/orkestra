@@ -16,10 +16,12 @@ from orkestra import paths
 from orkestra.config.schema import CliAgentProvider, Config
 from orkestra.errors import (
     BudgetExhausted,
+    NoProviderAvailable,
     OrkestraError,
     ProviderError,
     ProviderTimeout,
 )
+from orkestra.i18n import t
 from orkestra.providers.base import (
     AgentRequest,
     CompletionRequest,
@@ -62,13 +64,15 @@ async def query_chief_model(
     conn: sqlite3.Connection | None = None,
     now: datetime | None = None,
     environ: Mapping[str, str] | None = None,
+    agents: bool = True,
 ) -> tuple[str, str]:
     """Query a candidate model chosen by the router for a chief tool.
 
     Returns ``(answer_text, provider_model_label)``. Candidates are tried in the router's
     order; when all of them fail, the last provider (or budget) error is raised, and when
     none could be tried, the router's own error (``NoProviderAvailable``,
-    ``ConsentRequired``) (D-062).
+    ``ConsentRequired``) (D-062). ``agents=False`` leaves code agents out: summarising text
+    does not need a whole agent run (``exec``, D-088).
     """
     env = os.environ if environ is None else environ
     current_time = db.local_now() if now is None else now
@@ -93,7 +97,18 @@ async def query_chief_model(
         snapshot = take_snapshot(conn, config, current_time, environ=env)
         route_result = route(needs, config, snapshot, profile=None)
         last_error: OrkestraError | None = None
-        for candidate in route_result.candidates:
+        candidates = [
+            c for c in route_result.candidates
+            if agents or not isinstance(c.config, CliAgentProvider)
+        ]  # fmt: skip
+        if route_result.candidates and not candidates:
+            # Why the chat models are out (paused, no consent, …) says more than "none".
+            chat = [
+                e.reason for e in route_result.eliminated
+                if not isinstance(config.providers.get(e.provider), CliAgentProvider)
+            ]  # fmt: skip
+            raise NoProviderAvailable(t("chief.error.no_chat_model"), details=chat)
+        for candidate in candidates:
             if health.get(conn, candidate.provider).is_open(current_time):
                 continue
             try:

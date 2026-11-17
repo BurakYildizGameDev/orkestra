@@ -1,0 +1,16 @@
+unformatted: File would be reformatted
+ --> /work/proj/bad.py:2:1
+  |
+1 | import os
+  - x=1
+  - def f( a ):
+  -   return undefined_name
+2 +
+3 + x = 1
+4 +
+5 +
+6 + def f(a):
+7 +     return undefined_name
+  |
+
+1 file would be reformatted, 2 files already formatted
