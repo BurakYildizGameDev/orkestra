@@ -809,3 +809,6 @@ statusline.config.where: "Fügen Sie dies in die Einstellungen von Claude Code e
 cli.statusline.help: "Statuszeile für Claude Code: Claudes Nutzungsfenster und Orkestras Kontingentwarnungen (liest das JSON von Claude Code von stdin)."
 cli.statusline.hook.help: "Hook für Claude Code: sobald ein Nutzungsfenster handoff.prepare_at_percent überschreitet, bittet er den Chef einmal, die Übergabedatei zu aktualisieren."
 cli.statusline.config.help: "Den settings.json-Teil ausgeben, der Statuszeile und Hook einrichtet."
+statusline.claude: "Claude"
+limits.window.five_hour: "5h"
+limits.window.seven_day: "7T"

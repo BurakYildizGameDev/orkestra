@@ -41,12 +41,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13i-a – Bağlam süzgeci: `orkestra exec` (ek, ana kaldıraç) | ✅ | 2026-11-17 | kısa çıktı olduğu gibi; pytest/ruff/pyright/derleyici kurallarla (`dosya:satır`, test adı düşmez); diğerleri sohbet modeli özeti; çıkış kodu korunur; skill kuralı (D-088) |
 | 13i-b – Bağlam süzgeci: `read` / `find` + proje fihristi (ek) | ✅ | 2026-11-17 | `read` işaretçileri dosyaya karşı denetler; `find` modelsiz, çok sonuç fihrist özetiyle gruplanır; `map --install-hook` (D-090) |
 | 13j – Kısa oturum disiplini (ek) | ✅ | 2026-11-17 | aynı şefe devir (`handoff to claude`), `status`/`tokens`'ta eşik önerisi (bağlam − yeni başlangıç) × okuma ağırlığı; skill kuralı (D-092) |
-| 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ✅ | 2026-11-18 | hız × bilinen/öğrenilen sınır → "~40 dk içinde biter" (`status`, `doctor`, bildirim); router azalanı kademesinde sona alır; `orkestra statusline` + kanca: Claude'un penceresi %85'i geçince şef devir dosyasını bir kez günceller (D-094) |
+| 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ✅ | 2026-11-18 | hız × bilinen/öğrenilen sınır → "~40 dk içinde biter" (`status`, `doctor`, bildirim); router azalanı kademesinde sona alır; `orkestra statusline` + kanca: Claude'un penceresi %85'i geçince şef devir dosyasını bir kez günceller (D-094); kod denetimi (D-095) |
 | 13l – İşe göre model ve bilgisayar yükü (ek) | ⏳ | | hafif işler küçük/ücretsiz modele |
 | 13m – Toplu devretme ve çapraz denetim (ek) | ⏳ | | yazma devrinin sabit yükünü düşürmek |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 13k (PR #34), 2026-11-18
+`/code-review` 9 bulgu; hepsi düzeltildi (D-095). Önce 10 kırmızı test.
+- ✅ Kancanın "bir kez" işareti atomik ayrı dosya (durum satırı yazışı geri alamıyor, iki kanca tek not); `resets_at` olmayan pencere yeniden soruluyor.
+- ✅ Tahmin bütçeyle aynı günü sayıyor; durum satırı/kanca ev klasörü yokken ve bozuk satırda çökmüyor; taşma yok.
+- ✅ Router duraklatılmış sağlayıcıya tahmin yapmıyor, kullanım tek sorguda; duraklatma kuralı tek yerde; öğrenilen sınırda sıfırlar elenmeden önce `LIMIT` yok; durum satırı metinleri çevrili.
+
+Testler: **1682 geçti** (1672 + 10). ruff, ruff format, pyright temiz.
 
 ### Faz 13k – Kota tahmini ve otomatik devir hazırlığı (2026-11-18)
 **Yapılanlar (D-094):**

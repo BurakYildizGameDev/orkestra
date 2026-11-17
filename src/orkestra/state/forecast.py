@@ -29,12 +29,14 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from orkestra.i18n import t
+from orkestra.state import budget
 from orkestra.state.budget import LIMITS, Amount
 
 if TYPE_CHECKING:
-    from orkestra.config.schema import Budget, ForecastCfg
+    from orkestra.config.schema import ForecastCfg
 
 LEARNED_LIMITS = ("daily_runs", "daily_requests")
+_LEARNED_COLUMNS = (("daily_runs", "runs"), ("daily_requests", "requests"))
 LEARN_DAYS = 30
 MIN_HOURS_TEXT = 120 * 60  # below two hours the time left is told in minutes
 
@@ -78,27 +80,40 @@ def window_start(conn: sqlite3.Connection, provider: str, now: datetime) -> date
     return max(start, began)
 
 
-def usage_between(
-    conn: sqlite3.Connection, provider: str, since: datetime, now: datetime
-) -> Amount:
-    """Settled usage of ``provider`` from ``since`` up to ``now``."""
+def usage_since(
+    conn: sqlite3.Connection, provider: str, starts: list[datetime], now: datetime
+) -> list[Amount]:
+    """Settled usage of ``provider`` from each of ``starts`` up to ``now``: one query, each
+    row read once (the router asks for every task)."""
+    totals = [Amount() for _ in starts]
+    if not starts:
+        return totals
     rows = conn.execute(
         "SELECT prompt_tokens, completion_tokens, cost_usd, requests, runs, created_at "
         "FROM usage WHERE provider = ? AND kind = 'actual' AND day >= ?",
-        (provider, since.date().isoformat()),
+        (provider, min(starts).date().isoformat()),
     ).fetchall()
-    total = Amount()
     for row in rows:
         created = datetime.fromisoformat(row["created_at"])
-        if not since <= created <= now:
+        if created > now:
             continue
-        total = total + Amount(
+        amount = Amount(
             (row["prompt_tokens"] or 0) + (row["completion_tokens"] or 0),
             row["cost_usd"] or 0.0,
             row["requests"] or 0,
             row["runs"] or 0,
         )
-    return total
+        for index, since in enumerate(starts):
+            if since <= created:
+                totals[index] = totals[index] + amount
+    return totals
+
+
+def usage_between(
+    conn: sqlite3.Connection, provider: str, since: datetime, now: datetime
+) -> Amount:
+    """Settled usage of ``provider`` from ``since`` up to ``now``."""
+    return usage_since(conn, provider, [since], now)[0]
 
 
 def record_event(
@@ -124,15 +139,16 @@ def learned_limits(
 ) -> dict[str, float]:
     """The median use at the last ``events`` used-up quotas of the last 30 days, per limit.
     A zero says nothing (a weekly quota hit on the first run of a day) and is skipped."""
-    oldest = (now - timedelta(days=LEARN_DAYS)).isoformat()
-    rows = conn.execute(
-        "SELECT at, runs, requests FROM quota_events WHERE provider = ? ORDER BY id DESC LIMIT ?",
-        (provider, events),
-    ).fetchall()
-    recent = [r for r in rows if datetime.fromisoformat(r["at"]) >= datetime.fromisoformat(oldest)]
+    oldest = now - timedelta(days=LEARN_DAYS)
     found: dict[str, float] = {}
-    for limit, column in (("daily_runs", "runs"), ("daily_requests", "requests")):
-        values = [r[column] for r in recent if r[column]]
+    for limit, column in _LEARNED_COLUMNS:
+        # Zeros are left out before LIMIT, so they cannot take the places of real values.
+        rows = conn.execute(
+            f"SELECT at, {column} AS value FROM quota_events "
+            f"WHERE provider = ? AND {column} > 0 ORDER BY id DESC LIMIT ?",
+            (provider, events),
+        ).fetchall()
+        values = [r["value"] for r in rows if datetime.fromisoformat(r["at"]) >= oldest]
         if values:
             found[limit] = float(statistics.median(values))
     return found
@@ -151,19 +167,42 @@ class _Limit:
 
 
 def provider_forecast(
-    conn: sqlite3.Connection, provider: str, cfg: Any, now: datetime, settings: ForecastCfg
+    conn: sqlite3.Connection,
+    provider: str,
+    cfg: Any,
+    now: datetime,
+    settings: ForecastCfg,
+    *,
+    today: Amount | None = None,
 ) -> Forecast | None:
     """The most pressing limit of ``provider``; None when it has none (or forecasts are off).
 
-    ``cfg`` is the provider's config: only its ``budget`` is read.
+    ``cfg`` is the provider's config: only its ``budget`` is read. ``today``: its settled use
+    today (``budget.used(..., reservations=False)``) when the caller already has it.
     """
     if not settings.enabled:
         return None
-    candidates = _limits(conn, provider, cfg.budget, now, settings)
-    if not candidates:
+    configured = [name for name in LIMITS if getattr(cfg.budget, name) is not None]
+    learned = {
+        name: value
+        for name, value in learned_limits(conn, provider, now, events=settings.learn_events).items()
+        if name not in configured
+    }
+    if not configured and not learned:
         return None
-    window = timedelta(seconds=settings.window_s)
-    recent = usage_between(conn, provider, now - window, now)
+    window_began = window_start(conn, provider, now) if learned else now
+    recent, current = usage_since(
+        conn, provider, [now - timedelta(seconds=settings.window_s), window_began], now
+    )
+    candidates: list[_Limit] = []
+    if configured:
+        # Counted like the budget the router enforces: by the row's day.
+        used = budget.used(conn, provider, now, reservations=False) if today is None else today
+        resets_in = (_midnight(now) + timedelta(days=1) - now).total_seconds()
+        candidates += [_Limit(name, getattr(cfg.budget, name), used.get(name), False, resets_in)
+                       for name in configured]  # fmt: skip
+    candidates += [_Limit(name, value, current.get(name), True, None)
+                   for name, value in learned.items()]  # fmt: skip
     found = [_forecast(provider, limit, recent, settings) for limit in candidates]
     # Low ones first, then the soonest, then the smallest share left; ties keep config order.
     return min(
@@ -174,29 +213,6 @@ def provider_forecast(
             f.remaining / f.value if f.value else 0.0,
         ),
     )
-
-
-def _limits(
-    conn: sqlite3.Connection, provider: str, budget: Budget, now: datetime, settings: ForecastCfg
-) -> list[_Limit]:
-    found: list[_Limit] = []
-    configured = {name for name in LIMITS if getattr(budget, name) is not None}
-    if configured:
-        today = usage_between(conn, provider, _midnight(now), now)
-        resets_in = (_midnight(now) + timedelta(days=1) - now).total_seconds()
-        for name in LIMITS:
-            if name in configured:
-                found.append(_Limit(name, getattr(budget, name), today.get(name), False, resets_in))
-    learned = {
-        name: value
-        for name, value in learned_limits(conn, provider, now, events=settings.learn_events).items()
-        if name not in configured
-    }
-    if learned:
-        window = usage_between(conn, provider, window_start(conn, provider, now), now)
-        found += [_Limit(name, value, window.get(name), True, None)
-                  for name, value in learned.items()]  # fmt: skip
-    return found
 
 
 def _forecast(provider: str, limit: _Limit, recent: Amount, settings: ForecastCfg) -> Forecast:
@@ -229,14 +245,16 @@ def forecasts(
     return found
 
 
-def low_now(conn: sqlite3.Connection, config: Any, now: datetime) -> list[Forecast]:
-    """Providers running low that are not paused (notifications, the status line)."""
-    paused = {
-        row["provider"]
-        for row in conn.execute("SELECT provider, open_until FROM health").fetchall()
-        if row["open_until"] and now < datetime.fromisoformat(row["open_until"])
-    }
-    return [f for f in forecasts(conn, config, now, skip=paused) if f.low]
+def low_now(
+    conn: sqlite3.Connection,
+    config: Any,
+    now: datetime,
+    *,
+    skip: set[str] | frozenset[str] = frozenset(),
+) -> list[Forecast]:
+    """Providers running low (notifications, the status line); ``skip``: the paused ones
+    (``health.paused_names``), which already say when they come back."""
+    return [f for f in forecasts(conn, config, now, skip=skip) if f.low]
 
 
 # --- text ---------------------------------------------------------------------------------

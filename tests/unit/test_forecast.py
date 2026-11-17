@@ -204,6 +204,61 @@ def test_old_events_are_forgotten(conn: sqlite3.Connection) -> None:
     assert forecast.learned_limits(conn, "agy", NOON, events=5) == {}
 
 
+def test_zeros_do_not_crowd_out_the_events_that_say_something(conn: sqlite3.Connection) -> None:
+    """Code review #34: zeros took the LIMIT's places, so the median rested on one event."""
+    for day, runs in ((10, 20), (11, 22), (12, 10), (13, 0), (14, 0), (15, 0)):
+        at = NOON.replace(day=day)
+        if runs:
+            _use(conn, "agy", at.replace(hour=8), runs=runs)
+        _quota(conn, at)
+
+    assert forecast.learned_limits(conn, "agy", NOON, events=3)["daily_runs"] == 20
+
+
+def test_today_is_counted_by_day_like_the_budget(conn: sqlite3.Connection) -> None:
+    """Code review #34: a request settled just after midnight keeps yesterday's ``day``; the
+    budget does not count it today, so the forecast must not either."""
+    with db.transaction(conn):
+        conn.execute(
+            "INSERT INTO usage (run_id, provider, model, day, prompt_tokens, completion_tokens, "
+            "cost_usd, requests, runs, estimated, kind, created_at) "
+            "VALUES ('r', 'agy', 'm', ?, 0, 0, 0, 1, 10, 0, 'actual', ?)",
+            ((NOON - timedelta(days=1)).date().isoformat(), NOON.replace(hour=0, second=30)
+             .isoformat()),
+        )  # fmt: skip
+    cfg = _config(budget={"daily_runs": 10}).providers["agy"]
+
+    found = forecast.provider_forecast(conn, "agy", cfg, NOON, SETTINGS)
+
+    assert found is not None and found.used == 0 and not found.low
+
+
+def test_a_paused_provider_is_not_forecast_by_the_router(
+    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+    real = forecast.provider_forecast
+
+    def counting(*args: Any, **kwargs: Any) -> Any:
+        calls.append(args[1])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(forecast, "provider_forecast", counting)
+    _quota(conn, NOON - timedelta(minutes=1))
+    take_snapshot(conn, _config(budget={"daily_runs": 20}), NOON, environ={})
+
+    assert calls == []
+
+
+def test_low_now_leaves_out_paused_providers(conn: sqlite3.Connection) -> None:
+    config = _config(budget={"daily_runs": 20})
+    _use(conn, "agy", NOON - timedelta(minutes=5), runs=19)
+    assert [f.provider for f in forecast.low_now(conn, config, NOON)] == ["agy"]
+    assert forecast.low_now(conn, config, NOON, skip={"agy"}) == []
+    _quota(conn, NOON)
+    assert health.paused_names(conn, NOON) == {"agy"}
+
+
 def test_forecast_off_returns_nothing(conn: sqlite3.Connection) -> None:
     _use(conn, "agy", NOON - timedelta(minutes=5), runs=19)
     cfg = _config(budget={"daily_runs": 20}).providers["agy"]

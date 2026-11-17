@@ -433,16 +433,18 @@ def take_snapshot(
         if not cfg.enabled:
             continue
         h = health.get(conn, name)
+        used = budget.used(conn, name, now, reservations=False)  # D-054
         states[name] = ProviderState(
             consent=consent.state(conn, name, cfg),
             open_until=h.open_until,
             last_error=h.last_error,
             open_reason=h.reason,
             key_present=key_present(cfg, env) is not False,
-            used=budget.used(conn, name, now, reservations=False),  # D-054
+            used=used,
             installed=not isinstance(cfg, CliAgentProvider)
             or cli_agent.find_program(cfg.command, env) is not None,
-            quota_low=_running_low(conn, name, cfg, now, config),
+            # A paused provider is left out anyway: no forecast for it.
+            quota_low=not h.is_open(now) and _running_low(conn, name, cfg, now, config, used),
         )
         if isinstance(cfg, CliAgentProvider):
             continue
@@ -461,9 +463,11 @@ def take_snapshot(
     return Snapshot(now, states, prices, scores)
 
 
-def _running_low(conn: sqlite3.Connection, name: str, cfg: Any, now: datetime,
-                 config: Config) -> bool:  # fmt: skip
-    found = forecast.provider_forecast(conn, name, cfg, now, config.forecast)
+def _running_low(
+    conn: sqlite3.Connection, name: str, cfg: Any, now: datetime, config: Config,
+    used: budget.Amount,
+) -> bool:  # fmt: skip
+    found = forecast.provider_forecast(conn, name, cfg, now, config.forecast, today=used)
     return found is not None and found.low
 
 

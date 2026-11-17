@@ -159,7 +159,9 @@ def run_with_notify(
         notify.with_quota(
             notify.counts_text(report.finished, len(report.failed), skipped=len(report.skipped)),
             health.new_quota_pauses(conn, before, db.local_now()),
-            low=forecast.low_now(conn, config, db.local_now()),
+            low=forecast.low_now(
+                conn, config, db.local_now(), skip=health.paused_names(conn, db.local_now())
+            ),
         ),
     )
     return report, deliveries

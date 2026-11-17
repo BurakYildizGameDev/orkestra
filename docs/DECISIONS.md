@@ -1003,3 +1003,16 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Ayar dosyasına yazılmaz:** `orkestra statusline config` settings.json parçasını basar; kullanıcının Claude Code ayarlarını kendimiz değiştirmiyoruz (mevcut statusLine'ı ezme riski).
 - **Hızlı giriş:** konsol betiği `orkestra.cli:app` → `orkestra.entry:main` (D-002'deki `app` aynen duruyor). Tam olarak `statusline` ve `statusline hook` bütün CLI'yi (openai SDK, doctor) yüklemeden çalışır: ~1,35 sn → ~0,3 sn; `PostToolUse` her araç çağrısında koştuğu için gerekli. `_safe_streams` `console.safe_streams`'e taşındı (iki yol da kullanıyor). Hiçbiri hata vermez.
 - **Testler:** 1603 → 1672 (+69).
+
+## D-095 – Faz 13k kod denetimi düzeltmeleri (2026-11-18, Faz 13k)
+`/code-review` (PR #34): 9 bulgu, hepsi düzeltildi; önce 10 kırmızı test.
+- **Bir kez sorma yarışsız:** kancanın işareti artık `chief_quota.json`'da değil, `~/.orkestra/chief_quota.prompted/<pencere>-<anahtar özeti>` dosyasında; `O_CREAT|O_EXCL` ile atomik (aynı anda iki kanca → tek not). Durum satırı her mesajda yalnız okumaları yazar, işarete dokunmaz. İki durum satırının yarışı en çok bir okumayı kaybettirir.
+- **`resets_at` yoksa** pencere anahtarı okumaların başladığı an (`started`; kullanım düşünce yeni pencere); eskiden sabit `-` idi ve bir daha hiç sorulmuyordu.
+- **"Bugün" bütçeyle aynı:** bilinen sınırın kullanımı `budget.used(..., reservations=False)` (satırın `day`'i); router zaten hesapladığını `today=` ile veriyor.
+- **Hiç çökmez:** `statusline`/`hook`/`status` `RuntimeError` (ev klasörü yok), `ValueError`, `TypeError`, `sqlite3.Error` dahil yutar; ev klasörü yoksa okuma kaydedilmez.
+- **Taşma yok:** pencere sıfırlanması sayıyla karşılaştırılır (`eta >= (resets - last_at)`), `datetime + timedelta` değil.
+- **Router ucuzladı:** duraklatılmış sağlayıcıya tahmin yapılmaz; kullanım tek sorguda, her satır bir kez (`forecast.usage_since`, birden çok başlangıç).
+- **Duraklatma kuralı tek yerde:** `health.paused_names`; `forecast.low_now(skip=...)` kendi SQL'ini yazmaz.
+- **Öğrenilen sınır:** sıfırlar SQL'de `LIMIT`'ten önce elenir; 30 gün sınırı `datetime` ile karşılaştırılır.
+- **i18n:** `Claude`, `5h`/`7d` `t()` ile (`statusline.claude`, `limits.window.*`; tr `5sa`/`7g`).
+- **Testler:** 1672 → 1682 (+10).

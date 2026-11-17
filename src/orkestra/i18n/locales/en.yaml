@@ -809,3 +809,6 @@ statusline.config.where: "Add this to Claude Code's settings: ~/.claude/settings
 cli.statusline.help: "Claude Code status line: Claude's usage windows and Orkestra's quota warnings (reads Claude Code's JSON on stdin)."
 cli.statusline.hook.help: "Claude Code hook: once a usage window passes handoff.prepare_at_percent, asks the chief once to update the handoff file."
 cli.statusline.config.help: "Print the settings.json part that wires up the status line and the hook."
+statusline.claude: "Claude"
+limits.window.five_hour: "5h"
+limits.window.seven_day: "7d"

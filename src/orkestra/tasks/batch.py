@@ -457,6 +457,7 @@ def quota_low(config: Config) -> list[forecast.Forecast]:
     nothing when state.db cannot be read."""
     try:
         with closing(db.connect()) as conn:
-            return forecast.low_now(conn, config, db.local_now())
+            now = db.local_now()
+            return forecast.low_now(conn, config, now, skip=health.paused_names(conn, now))
     except sqlite3.Error:
         return []

@@ -144,6 +144,14 @@ def quota_paused(conn: sqlite3.Connection, now: datetime) -> list[Health]:
     return [h for row in rows if (h := _health(row)).is_open(now)]
 
 
+def paused_names(conn: sqlite3.Connection, now: datetime) -> set[str]:
+    """Providers paused right now, for any reason."""
+    rows = conn.execute(
+        "SELECT provider, consecutive_failures, open_until, last_error, open_reason FROM health"
+    ).fetchall()
+    return {h.provider for row in rows if (h := _health(row)).is_open(now)}
+
+
 def quota_snapshot(conn: sqlite3.Connection, now: datetime) -> dict[str, datetime | None]:
     """The quota pauses before a batch or queue run: only new ones are announced after it."""
     return {h.provider: h.open_until for h in quota_paused(conn, now)}

@@ -121,19 +121,59 @@ def test_a_window_whose_reset_passed_is_not_shown() -> None:
 # --- when to ask for the handoff file -------------------------------------------------
 
 
-def test_past_the_threshold_it_is_due_once_per_window() -> None:
+def test_past_the_threshold_it_is_due_once_per_window(tmp_path: Path) -> None:
+    marks = tmp_path / "marks"
     state = _state((NOON, 86))
     config = _config()
 
-    due = limits.due(state, config, NOON)
+    due = limits.due(state, config, NOON, marks)
     assert due is not None and due.name == "five_hour"
 
-    state = limits.mark_prompted(state, due)
-    assert limits.due(state, config, NOON) is None
+    assert limits.claim(marks, due) is True
+    assert limits.claim(marks, due) is False  # a second hook at the same time loses
+    assert limits.due(state, config, NOON, marks) is None
     renewed = limits.record(
         state, [limits.Reading("five_hour", 88, RESETS + timedelta(hours=5))], NOON
     )
-    assert limits.due(renewed, config, NOON) is not None  # the next window asks again
+    assert limits.due(renewed, config, NOON, marks) is not None  # the next window asks again
+
+
+def test_a_status_line_write_does_not_undo_the_hooks_mark(tmp_path: Path) -> None:
+    """Code review #34: the status line read the file before the hook marked it and then
+    wrote its old copy back, so the note came again."""
+    path = tmp_path / "q.json"
+    limits.statusline(_payload(90), config=_config(), now=NOON, path=path, extra=lambda: [])
+    stale = limits.load(path)  # the status line has read the file ...
+    event = json.dumps({"hook_event_name": "PostToolUse"})
+    assert limits.hook(event, config=_config(), now=NOON, path=path) is not None
+    later = NOON + timedelta(seconds=1)  # ... and writes its copy after the hook marked it
+    limits.save(path, limits.record(stale, limits.parse(json.loads(_payload(90))), later))
+
+    assert limits.hook(event, config=_config(), now=later, path=path) is None
+
+
+def test_without_a_reset_time_a_new_window_is_asked_about_again(tmp_path: Path) -> None:
+    """Code review #34: with no ``resets_at`` every window had the same key, so after the
+    first note no window was ever asked about again."""
+    marks = tmp_path / "marks"
+
+    def read(state: dict[str, Any], used: float, at: datetime) -> dict[str, Any]:
+        return limits.record(state, [limits.Reading("five_hour", used, None)], at)
+
+    state = read({}, 90, NOON)
+    first = limits.due(state, _config(), NOON, marks)
+    assert first is not None and limits.claim(marks, first)
+
+    later = NOON + timedelta(days=2)
+    state = read(read(state, 10, later), 95, later + timedelta(minutes=1))  # it was reset
+    assert limits.due(state, _config(), later + timedelta(minutes=1), marks) is not None
+
+
+def test_a_pace_of_almost_nothing_does_not_overflow() -> None:
+    """Code review #34: ``last_at + timedelta(eta)`` went past the year 9999."""
+    state = _state((NOON - timedelta(minutes=10), 50.0), (NOON, 50.0000000001))
+    [window] = limits.windows(state, NOON)
+    assert window.eta_s is None
 
 
 def test_below_the_threshold_but_running_out_soon_is_due() -> None:
@@ -222,6 +262,55 @@ def test_the_hook_says_nothing_for_other_events_or_bad_input(tmp_path: Path, tex
 def test_the_hook_without_readings_says_nothing(tmp_path: Path) -> None:
     event = json.dumps({"hook_event_name": "UserPromptSubmit"})
     assert limits.hook(event, config=_config(), now=NOON, path=tmp_path / "none.json") is None
+
+
+def test_an_unknown_home_never_breaks_the_line_or_the_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Code review #34: ``Path.home()`` raises RuntimeError when no home can be found."""
+    from orkestra import paths
+
+    def no_home() -> Path:
+        raise RuntimeError("Could not determine home directory.")
+
+    def broken() -> Config:
+        raise RuntimeError("Could not determine home directory.")
+
+    monkeypatch.setattr(paths, "orkestra_home", no_home)
+    line = limits.run_statusline(_payload(40), load_config=broken, connect=_no_db, now=NOON)
+    assert line.startswith("Claude")
+    event = json.dumps({"hook_event_name": "UserPromptSubmit"})
+    assert limits.run_hook(event, load_config=_config, now=NOON) is None
+
+
+def test_bad_rows_in_the_database_leave_out_orkestras_part(tmp_path: Path) -> None:
+    import sqlite3
+
+    from orkestra.state import db
+
+    def connect() -> sqlite3.Connection:
+        conn = db.connect(tmp_path / "s.db")
+        conn.execute("INSERT INTO health (provider, open_until, open_reason) "
+                     "VALUES ('agy', 'not a time', 'quota')")  # fmt: skip
+        conn.commit()
+        return conn
+
+    line = limits.run_statusline(_payload(40), load_config=_config, connect=connect, now=NOON)
+    assert line.startswith("Claude")
+
+
+def _no_db() -> Any:
+    raise OSError("no database")
+
+
+def test_the_line_is_translated() -> None:
+    from orkestra import i18n
+
+    window = limits.Window("five_hour", 72, RESETS, None)
+    i18n.set_language("tr")
+    assert limits.window_text(window) == "5sa 72%"
+    i18n.set_language("en")
+    assert limits.window_text(window) == "5h 72%"
 
 
 def test_the_settings_snippet_wires_the_line_and_the_hooks() -> None:

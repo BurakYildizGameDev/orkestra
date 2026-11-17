@@ -808,3 +808,6 @@ statusline.config.where: "Bunu Claude Code ayarlarına ekleyin: ~/.claude/settin
 cli.statusline.help: "Claude Code durum satırı: Claude'un kullanım pencereleri ve Orkestra'nın kota uyarıları (Claude Code'un JSON'unu stdin'den okur)."
 cli.statusline.hook.help: "Claude Code kancası: bir kullanım penceresi handoff.prepare_at_percent'i geçince şeften devir dosyasını güncellemesini bir kez ister."
 cli.statusline.config.help: "Durum satırını ve kancayı bağlayan settings.json parçasını yazdırır."
+statusline.claude: "Claude"
+limits.window.five_hour: "5sa"
+limits.window.seven_day: "7g"

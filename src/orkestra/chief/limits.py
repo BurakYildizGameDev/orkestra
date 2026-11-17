@@ -10,8 +10,10 @@ Only the chief knows what it is doing, so Orkestra cannot write the handoff summ
 Instead, once a window passes ``handoff.prepare_at_percent`` (or would run out within
 ``forecast.warn_within_s``), the ``statusline hook`` command, run by Claude Code on
 ``UserPromptSubmit`` and ``PostToolUse``, adds one note to the chief's context: update the
-handoff file now. It says so once per window. When the quota then runs out, the user only
-types ``orkestra handoff to agy``.
+handoff file now. It says so once per window: the mark is a file of its own, created
+atomically (``chief_quota.prompted/``), so two hooks at once give one note and the status line,
+which rewrites ``chief_quota.json`` on every message, cannot undo it. When the quota then runs
+out, the user only types ``orkestra handoff to agy``.
 
 Nothing here may fail the status line or the hook: bad input, a broken state file or a
 broken config give a shorter line, never an error.
@@ -20,6 +22,7 @@ broken config give a shorter line, never an error.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import math
 import os
@@ -38,7 +41,8 @@ from orkestra.i18n import t
 from orkestra.state import forecast, health
 
 STATE_FILE = "chief_quota.json"
-WINDOW_LABELS: dict[str, str] = {"five_hour": "5h", "seven_day": "7d"}
+MARKS_DIR = "chief_quota.prompted"  # one file per window the hook has spoken about
+WINDOWS = ("five_hour", "seven_day")
 FRESH = timedelta(minutes=15)  # older readings are not shown: the session is over
 SAMPLE_SPAN = timedelta(hours=1)  # the pace is read over this span
 MIN_SPAN = timedelta(minutes=5)  # shorter spans give no pace yet
@@ -73,15 +77,19 @@ class Window:
     used: float
     resets_at: datetime | None
     eta_s: float | None  # seconds until 100 % at the recent pace; None: no pace, or resets first
+    started: datetime | None = None  # first reading of this window
 
     @property
     def label(self) -> str:
-        return WINDOW_LABELS[self.name]
+        return t(f"limits.window.{self.name}")
 
     @property
     def key(self) -> str:
-        """Which window this is: a new reset time is a new window."""
-        return self.resets_at.isoformat() if self.resets_at else "-"
+        """Which window this is: its reset time, else when its readings began (a window
+        without a reset time is new once its use went down)."""
+        if self.resets_at is not None:
+            return self.resets_at.isoformat()
+        return "start " + (self.started.isoformat() if self.started else "-")
 
 
 def state_path() -> Path:
@@ -105,7 +113,7 @@ def parse(payload: Any) -> list[Reading]:
     if not isinstance(rate, dict):
         return []
     found: list[Reading] = []
-    for name in WINDOW_LABELS:
+    for name in WINDOWS:
         entry = rate.get(name)
         if not isinstance(entry, dict):
             continue
@@ -171,24 +179,25 @@ def _samples(entry: Any) -> list[tuple[datetime, float]]:
 
 def record(state: Mapping[str, Any], readings: list[Reading], now: datetime) -> dict[str, Any]:
     """``state`` with ``readings`` added: a window keeps its last hour of readings, and starts
-    again when its reset time changes (or its use goes down: it was reset)."""
+    again (a new ``started``) when its reset time changes or its use goes down."""
     windows = dict(_windows_of(state))
     for reading in readings:
         key = reading.resets_at.isoformat() if reading.resets_at else None
         old = windows.get(reading.name)
         samples = _samples(old)
         same = isinstance(old, dict) and old.get("resets_at") == key
-        if not same or (samples and reading.used < samples[-1][1]):
-            samples = []
+        started = old.get("started") if same and isinstance(old, dict) else None
+        if not same or (samples and reading.used < samples[-1][1]) or not started:
+            samples, started = [], now.isoformat()
         samples.append((now, reading.used))
         samples = [s for s in samples if s[0] >= now - SAMPLE_SPAN][-MAX_SAMPLES:]
         windows[reading.name] = {
             "used": reading.used,
             "resets_at": key,
+            "started": started,
             "samples": [[at.isoformat(), used] for at, used in samples],
         }
-    prompted = state.get("prompted")
-    return {"windows": windows, "prompted": dict(prompted) if isinstance(prompted, dict) else {}}
+    return {"windows": windows}
 
 
 def _eta(samples: list[tuple[datetime, float]], resets: datetime | None) -> float | None:
@@ -199,7 +208,8 @@ def _eta(samples: list[tuple[datetime, float]], resets: datetime | None) -> floa
     if span < MIN_SPAN.total_seconds() or last_used <= first_used:
         return None
     eta = (100.0 - last_used) / ((last_used - first_used) / span)
-    if resets is not None and last_at + timedelta(seconds=eta) >= resets:
+    # Compared as numbers: at a pace of almost nothing a datetime would overflow.
+    if resets is not None and eta >= (resets - last_at).total_seconds():
         return None  # the window resets before the pace uses it up
     return eta
 
@@ -208,18 +218,25 @@ def windows(state: Mapping[str, Any], now: datetime) -> list[Window]:
     """The windows read in the last 15 minutes whose reset is still ahead."""
     found: list[Window] = []
     saved = _windows_of(state)
-    for name in WINDOW_LABELS:
+    for name in WINDOWS:
         entry = saved.get(name)
         samples = _samples(entry)
         if not samples or now - samples[-1][0] > FRESH or not isinstance(entry, dict):
             continue
-        resets = None
-        with contextlib.suppress(TypeError, ValueError):
-            resets = datetime.fromisoformat(entry["resets_at"]) if entry.get("resets_at") else None
+        resets, started = _when(entry.get("resets_at")), _when(entry.get("started"))
         if resets is not None and resets <= now:
             continue
-        found.append(Window(name, samples[-1][1], resets, _eta(samples, resets)))
+        found.append(Window(name, samples[-1][1], resets, _eta(samples, resets), started))
     return found
+
+
+def _when(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _pressing(window: Window, config: Config) -> bool:
@@ -228,20 +245,40 @@ def _pressing(window: Window, config: Config) -> bool:
     return window.eta_s is not None and window.eta_s <= config.forecast.warn_within_s
 
 
-def due(state: Mapping[str, Any], config: Config, now: datetime) -> Window | None:
-    """The first window past the threshold (or running out soon) not yet asked about."""
-    prompted = state.get("prompted")
-    asked = prompted if isinstance(prompted, dict) else {}
+def due(
+    state: Mapping[str, Any], config: Config, now: datetime, marks: Path | None = None
+) -> Window | None:
+    """The first window past the threshold (or running out soon) not yet asked about (no
+    mark in ``marks``)."""
     for window in windows(state, now):
-        if _pressing(window, config) and asked.get(window.name) != window.key:
+        if _pressing(window, config) and (marks is None or not _mark(marks, window).exists()):
             return window
     return None
 
 
-def mark_prompted(state: Mapping[str, Any], window: Window) -> dict[str, Any]:
-    prompted = state.get("prompted")
-    return {**state, "prompted": {**(prompted if isinstance(prompted, dict) else {}),
-                                  window.name: window.key}}  # fmt: skip
+def _mark(marks: Path, window: Window) -> Path:
+    digest = hashlib.sha256(window.key.encode("utf-8")).hexdigest()[:16]
+    return marks / f"{window.name}-{digest}"
+
+
+def claim(marks: Path, window: Window) -> bool:
+    """Mark ``window`` as asked about; False when it already was (another hook was first)
+    or the mark cannot be written (then no note: it would come again on every call)."""
+    target = _mark(marks, window)
+    try:
+        marks.mkdir(parents=True, exist_ok=True)
+        os.close(os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+    except OSError:  # FileExistsError included
+        return False
+    for old in marks.glob(f"{window.name}-*"):  # earlier windows of the same kind
+        if old != target:
+            with contextlib.suppress(OSError):
+                old.unlink()
+    return True
+
+
+def marks_dir(path: Path) -> Path:
+    return path.with_name(MARKS_DIR)
 
 
 # --- text ---------------------------------------------------------------------------------
@@ -268,12 +305,13 @@ def statusline(
     *,
     config: Config,
     now: datetime,
-    path: Path,
+    path: Path | None,
     extra: Callable[[], list[str]],
     environ: Mapping[str, str] | None = None,
 ) -> str:
     """One line: Claude's windows, what Orkestra has to say (``extra``), and past the
-    threshold the handoff command. Saves the readings for ``status`` and the hook."""
+    threshold the handoff command. Saves the readings for ``status`` and the hook (not
+    without a ``path``: no home folder)."""
     env = os.environ if environ is None else environ
     try:
         payload = json.loads(text) if text.strip() else None
@@ -282,11 +320,12 @@ def statusline(
     readings = parse(payload)
     shown: list[Window] = []
     if readings:
-        state = record(load(path), readings, now)
-        save(path, state)
+        state = record(load(path) if path is not None else {}, readings, now)
+        if path is not None:
+            save(path, state)
         names = {r.name for r in readings}
         shown = [w for w in windows(state, now) if w.name in names]
-    head = "Claude"
+    head = t("statusline.claude")
     if shown:
         head += " " + " · ".join(window_text(w) for w in shown)
     parts = [head]
@@ -316,10 +355,10 @@ def hook(
     event = payload.get("hook_event_name") if isinstance(payload, dict) else None
     if event not in HOOK_EVENTS:
         return None
-    state = load(path)
-    window = due(state, config, now)
-    if window is None or not save(path, mark_prompted(state, window)):
-        return None  # without the mark it would say it again on every call
+    marks = marks_dir(path)
+    window = due(load(path), config, now, marks)
+    if window is None or not claim(marks, window):
+        return None
     eta = f", {forecast.eta_text(window.eta_s)} left" if window.eta_s is not None else ""
     resets = f", resets {window.resets_at:%Y-%m-%d %H:%M}" if window.resets_at else ""
     context = HOOK_CONTEXT.format(
@@ -354,8 +393,13 @@ def orkestra_notes(conn: sqlite3.Connection, config: Config, now: datetime) -> l
           until=health.until_text(h.open_until, now)) if h.open_until else h.provider
         for h in health.quota_paused(conn, now)
     ]  # fmt: skip
-    notes += [forecast.describe(f) for f in forecast.low_now(conn, config, now)]
-    return notes
+    low = forecast.low_now(conn, config, now, skip=health.paused_names(conn, now))
+    return notes + [forecast.describe(f) for f in low]
+
+
+# Everything the status line and the hook swallow: a broken config, state file or database,
+# no home folder (``Path.home()`` raises RuntimeError), a bad row in state.db.
+_SAFE = (OrkestraError, OSError, RuntimeError, ValueError, TypeError, sqlite3.Error)
 
 
 def run_statusline(
@@ -363,36 +407,46 @@ def run_statusline(
     now: datetime,
 ) -> str:  # fmt: skip
     """``orkestra statusline``: never fails. A broken config gives the defaults; a database
-    that cannot be read leaves out what Orkestra has to say."""
+    that cannot be read leaves out what Orkestra has to say; no home folder, no saving."""
     try:
         config = load_config()
-    except (OrkestraError, OSError):
+    except _SAFE:
         config = Config.model_validate({"version": 1})
+    try:
+        path: Path | None = state_path()
+    except _SAFE:
+        path = None
 
     def notes() -> list[str]:
         try:
             conn = connect()
-        except (OrkestraError, OSError, sqlite3.Error):
+        except _SAFE:
             return []
         try:
             return orkestra_notes(conn, config, now)
-        except (OrkestraError, OSError, sqlite3.Error):
+        except _SAFE:
             return []
         finally:
             conn.close()
 
-    return statusline(text, config=config, now=now, path=state_path(), extra=notes)
+    try:
+        return statusline(text, config=config, now=now, path=path, extra=notes)
+    except _SAFE:
+        return t("statusline.claude")
 
 
 def run_hook(text: str, *, load_config: Callable[[], Config], now: datetime) -> str | None:
     """``orkestra statusline hook``: never fails; a broken config means no note."""
     try:
-        config = load_config()
-    except (OrkestraError, OSError):
+        return hook(text, config=load_config(), now=now, path=state_path())
+    except _SAFE:
         return None
-    return hook(text, config=config, now=now, path=state_path())
 
 
 def status_windows(now: datetime) -> list[Window]:
-    """For ``status``: the chief's windows from the last status line readings."""
-    return windows(load(state_path()), now)
+    """For ``status``: the chief's windows from the last status line readings (none when
+    they cannot be read)."""
+    try:
+        return windows(load(state_path()), now)
+    except _SAFE:
+        return []
