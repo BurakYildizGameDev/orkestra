@@ -16,7 +16,6 @@ import importlib
 import os
 import re
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import closing
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -144,19 +143,12 @@ def delivery_lines(deliveries: list[Delivery], config: NotifyCfg) -> list[str]:
 
 
 def send_batch(
-    config: NotifyCfg, results: int, ok: int, *, paused: Sequence[health.Health] | None = None
+    config: NotifyCfg, results: int, ok: int, *, paused: Sequence[health.Health] = ()
 ) -> list[Delivery]:
-    """``batch --notify``: how many tasks ended and how many did not end ok, and which
-    providers ran out of quota (read from state.db unless given)."""
-    if paused is None:
-        paused = quota_paused()
+    """``batch --notify``: how many tasks ended and how many did not end ok, and the
+    providers whose quota ran out during the batch (``batch.quota_pauses``)."""
     message = with_quota(counts_text(results, results - ok), paused)
     return send(config, t("notify.title.batch"), message)
-
-
-def quota_paused() -> list[health.Health]:
-    with closing(db.connect()) as conn:
-        return health.quota_paused(conn, db.local_now())
 
 
 def with_quota(message: str, paused: Sequence[health.Health]) -> str:

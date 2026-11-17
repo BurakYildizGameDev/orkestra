@@ -12,6 +12,7 @@ closes it. A missing model (``ProviderModelNotFound``) is about the request and 
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -52,15 +53,17 @@ class Health:
 
 def get(conn: sqlite3.Connection, provider: str) -> Health:
     row = conn.execute(
-        "SELECT consecutive_failures, open_until, last_error, open_reason FROM health "
-        "WHERE provider = ?",
+        "SELECT provider, consecutive_failures, open_until, last_error, open_reason "
+        "FROM health WHERE provider = ?",
         (provider,),
     ).fetchone()
-    if row is None:
-        return Health(provider)
+    return Health(provider) if row is None else _health(row)
+
+
+def _health(row: sqlite3.Row) -> Health:
     open_until = datetime.fromisoformat(row["open_until"]) if row["open_until"] else None
     return Health(
-        provider, row["consecutive_failures"] or 0, open_until, row["last_error"],
+        row["provider"], row["consecutive_failures"] or 0, open_until, row["last_error"],
         row["open_reason"],
     )  # fmt: skip
 
@@ -101,9 +104,12 @@ def record_failure(
         current = get(conn, provider)
         message = error.message[:300]
         failures = current.consecutive_failures + 1
+        if isinstance(error, ProviderQuotaExhausted) and error.model_only:
+            return current  # one model's quota: the provider's other models still work
         if isinstance(error, ProviderQuotaExhausted):
-            pause = min(max(timedelta(seconds=error.pause_s), QUOTA_MIN_OPEN), QUOTA_MAX_OPEN)
-            updated = Health(provider, failures, now + pause, message, "quota")
+            updated = Health(
+                provider, failures, now + _quota_pause(error.pause_s), message, "quota"
+            )
         elif isinstance(error, ProviderAuthError):
             updated = Health(provider, failures, now + AUTH_OPEN, message, "auth")
         elif isinstance(error, _TRANSIENT):
@@ -117,12 +123,43 @@ def record_failure(
     return updated
 
 
+def _quota_pause(seconds: float) -> timedelta:
+    """Clamped before ``timedelta`` is built: ``inf`` or ``nan`` from a header must not crash."""
+    if math.isnan(seconds):
+        return QUOTA_MAX_OPEN
+    low, high = QUOTA_MIN_OPEN.total_seconds(), QUOTA_MAX_OPEN.total_seconds()
+    return timedelta(seconds=min(max(seconds, low), high))
+
+
 def quota_paused(conn: sqlite3.Connection, now: datetime) -> list[Health]:
     """Providers paused right now because their quota is used up, by name."""
     rows = conn.execute(
-        "SELECT provider FROM health WHERE open_reason = 'quota' ORDER BY provider"
+        "SELECT provider, consecutive_failures, open_until, last_error, open_reason "
+        "FROM health WHERE open_reason = 'quota' ORDER BY provider"
     ).fetchall()
-    return [h for row in rows if (h := get(conn, row["provider"])).is_open(now)]
+    return [h for row in rows if (h := _health(row)).is_open(now)]
+
+
+def quota_snapshot(conn: sqlite3.Connection, now: datetime) -> dict[str, datetime | None]:
+    """The quota pauses before a batch or queue run: only new ones are announced after it."""
+    return {h.provider: h.open_until for h in quota_paused(conn, now)}
+
+
+def new_quota_pauses(
+    conn: sqlite3.Connection, before: dict[str, datetime | None], now: datetime
+) -> list[Health]:
+    """Quota pauses that started (or were renewed) since ``before`` was taken."""
+    return [
+        h for h in quota_paused(conn, now)
+        if h.provider not in before or before[h.provider] != h.open_until
+    ]  # fmt: skip
+
+
+def pause_kind(reason: str | None) -> str:
+    """Why a paused provider is paused, as the message key suffix (and router code):
+    ``quota_paused`` or ``circuit_open``. ``providers.*``, ``select.reason.*`` and ``doctor.*``
+    have both, so every place that shows a pause says the same thing."""
+    return "quota_paused" if reason == "quota" else "circuit_open"
 
 
 def until_text(until: datetime, now: datetime) -> str:

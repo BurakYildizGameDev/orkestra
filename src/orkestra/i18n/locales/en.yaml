@@ -171,6 +171,7 @@ agent.error.timeout: "the agent did not finish within {seconds} seconds; it was 
 agent.error.exit: "the agent exited with code {code}: {detail}"
 agent.error.empty: "{name} finished without a final message"
 agent.error.quota: "{name} has used up its quota or usage limit: {detail}"
+agent.error.rate_limited: "{name} is rate limited (not a used-up quota): {detail}"
 agent.error.agy_mcp_stall: "agy waited {seconds} s for MCP servers that do not connect ({servers}) and sends nothing until they do; it was stopped. Remove those servers from agy's MCP config, make them exit at once when they cannot connect, or raise 'mcp_wait_s' if they are only slow. agy's log, in the run's folder: {log}"
 edit.error.no_json: "The answer has no JSON object. Answer with {{\"files\": [{{\"path\": ..., \"content\": ...}}], \"note\": ...}}."
 edit.error.bad_json: "The answer is not valid JSON (it may be cut off): {error}"

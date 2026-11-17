@@ -356,14 +356,20 @@ providers:
 ```
 
 - Kota mesajına yalnız zaten başarısız olan koşuda bakılır (sıfır olmayan çıkış kodu, cevap
-  yok, HTTP 429); kotalardan söz eden bir cevap hiçbir şeyi duraklatmaz. Orkestra'nın
-  tanımadığı bir mesajda da iş eskisi gibi sıradakine geçer; yalnız duraklatma olmaz.
+  yok, HTTP 429), ajanlarda da yalnız çıktının son satırlarında; kotalardan söz eden bir
+  cevap ya da test çıktısı hiçbir şeyi duraklatmaz. Orkestra'nın tanımadığı bir mesajda da
+  iş eskisi gibi sıradakine geçer; yalnız duraklatma olmaz.
+- Kısa bir istek sınırı ("429 Too Many Requests") kota bitmesi sayılmaz: eskisi gibi yeniden
+  denenir ya da sayılır (art arda 3'ü 5 dakika duraklatır).
+- Hesabın değil tek modelin kotası (OpenRouter'ın günlük ücretsiz modelleri, Gemini'nin
+  model başına kotaları) yalnız o modeli atlatır; sağlayıcının diğer modelleri çalışır.
+- Mesajdaki yenilenme zamanı genel bir `retry-after` başlığından önce gelir.
 - Zarftaki `failovers` sağlayıcının kendi sözleriyle `ProviderQuotaExhausted` yazar;
   `status`, `providers list`, `doctor` ve `--dry-run` "kota bitti, duraklatıldı (açılış: 14:30)"
   gösterir (haftalık sınırda tarihle). `orkestra providers enable <ad>` duraklatmayı hemen
   kaldırır.
-- `batch --notify` ve `queue run --notify` duraklatılan sağlayıcıları ve açılış saatlerini
-  tek satırla ekler, başka bir şey değil.
+- `batch --notify` ve `queue run --notify`, o batch ya da kuyruk koşusunda kotası biten
+  sağlayıcıları ve açılış saatlerini tek satırla ekler, başka bir şey değil.
 - Ağsız ölçüm (`tests/integration/test_continuity_cli.py`): 10 görevlik bir batch'te 4.
   görevde kotası biten bir ajan → **10/10 görev biter**, 4–10 Ollama'da; ajan 4 kez başlatılır,
   kota mesajından sonra bir daha hiç; geçişin bedeli bir başarısız ajan koşusu, bekleme yok.

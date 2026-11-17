@@ -890,3 +890,15 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Ölçüm (ağsız, `tests/integration/test_continuity_cli.py`):** 10 görevlik batch, sahte ajan 4. görevde Codex'in kota mesajıyla çıkıyor → 10/10 bitti (1–3 ajan, 4–10 Ollama), ajan 4 kez başlatıldı ve sonra hiç, 4. görevin zarfında tek `ProviderQuotaExhausted` failover'ı, 5–10'da failover yok, duraklatma mesajdaki 5 sa 19 dk'ya göre; tüm batch ~0,5 sn (geçişin bedeli bir başarısız ajan koşusu, bekleme yok). README "When an AI runs out" / "Bir AI'nın kotası bitince" bölümü; skill'e not.
 - `go_seconds` `cli_agent.py`'den `quota.py`'ye taşındı (döngüsel içe aktarma olmasın; `cli_agent.go_seconds` adı duruyor).
 - **Testler:** 1448 → 1487 (+39: kota tablosu, sağlık, ajan, API, uçtan uca süreklilik; şema sürümü ve `providers list --json` beklentileri 4'e/`reason`'a güncellendi).
+
+## D-085 – Faz 13f kod denetimi düzeltmeleri (2026-11-17, Faz 13f)
+`/code-review` (PR #29): 10 bulgu, hepsi düzeltildi; önce 9 kırmızı test.
+- **Ajanın kısa istek sınırı kota değil:** yumuşak eşleşme (`429 Too Many Requests`, `rate limit exceeded`) ajanda artık `ProviderRateLimit` (yeni `agent.error.rate_limited` metni); devre kesici eskisi gibi art arda 3'te 5 dk açar, "kota bitti" denmez, bildirime girmez. D-084'teki "yumuşak için 5 dk duraklatma" kaldırıldı (`RATE_PAUSE_S` yok).
+- **Ajanın kendi işi sayılmaz:** kota mesajı stdout'un son 5, stderr'in son 10, agy günlüğünün son 20 satırında aranır (önce son 4000 karakter); dosyalar sondan okunur (`_tail`, 16 KB), uzun döküm iki kez baştan okunmaz.
+- **Tek modelin kotası** (`model_only`: OpenRouter `free-models-per-day`, Gemini `RESOURCE_EXHAUSTED`, Google "quota metric") yalnız o modeli atlar (`NEXT`) ve devreyi açmaz: aynı sağlayıcının ücretli/diğer modelleri çalışmaya devam eder.
+- **API gövdesi bütünüyle okunur** (anahtar maskelenir, 300 karaktere kesilmez) ve süre desenleri Python repr'deki tek tırnağı da tanır (`'retryDelay': '34s'`); `try again in 2h30m15s` büyük harfle de okunur.
+- **Mesajdaki yenilenme zamanı `retry-after`'dan önce gelir** ("3 gün" bir dakikalık başlıkla kısalmaz).
+- **Süre `timedelta`'dan önce sınırlanır:** `inf`/`nan`/çok büyük değer çökertmez (`nan` → 7 gün).
+- **Bildirim yalnız o koşuda biten kotayı** söyler: batch'te zarflardaki `ProviderQuotaExhausted` failover'larından (`batch.quota_pauses`; state.db okunamazsa saatsiz adlar), kuyrukta başlangıç ve bitiş anlık görüntüsünün farkından (`health.quota_snapshot` / `new_quota_pauses`). `notify` artık veritabanı açmıyor.
+- **Tek yerden gösterim:** `health.pause_kind(reason)` (`quota_paused` | `circuit_open`) ve `health.until_text` `providers list`, `doctor`, router ve koşu döngüsünde ortak; `doctor` verisinde her duraklatmada `reason` ve `hint`. `quota_paused` tek sorgu.
+- **Testler:** 1487 → 1496 (+9).

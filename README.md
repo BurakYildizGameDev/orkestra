@@ -359,14 +359,20 @@ providers:
 ```
 
 - The quota message is looked for only when a run already failed (non-zero exit, no answer,
-  HTTP 429), so an answer that talks about quotas never pauses anything. A message Orkestra
-  does not know still fails over to the next provider as before; only the pause is missing.
+  HTTP 429), and for agents only in the last lines of their output, so an answer or test
+  output that talks about quotas never pauses anything. A message Orkestra does not know
+  still fails over to the next provider as before; only the pause is missing.
+- A short rate limit ("429 Too Many Requests") is not a used-up quota: it is retried or
+  counted as before (3 in a row pause for 5 minutes).
+- A quota of one model, not the account (OpenRouter's free models per day, Gemini's
+  per-model quotas), skips only that model; the provider's other models keep working.
+- The reset time in the message wins over a generic `retry-after` header.
 - The envelope's `failovers` say `ProviderQuotaExhausted` with the provider's own words;
   `status`, `providers list`, `doctor` and `--dry-run` show "quota used up, paused until 14:30"
   (with the date when it is a weekly limit). `orkestra providers enable <name>` lifts the
   pause at once.
-- `batch --notify` and `queue run --notify` add one line naming the paused providers and
-  when they open, nothing else.
+- `batch --notify` and `queue run --notify` add one line naming the providers whose quota ran
+  out during that batch or queue run and when they open, nothing else.
 - Measured without network (`tests/integration/test_continuity_cli.py`): an agent that runs
   out of quota at task 4 of a 10-task batch → **10/10 tasks finish**, 4 to 10 on Ollama; the
   agent is started 4 times and never again after its quota message; switching costs one

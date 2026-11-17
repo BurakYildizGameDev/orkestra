@@ -58,7 +58,7 @@ class RetryPolicy:
 
 def classify(error: ProviderError | BudgetExhausted) -> Action:
     if isinstance(error, ProviderQuotaExhausted):
-        return Action.SKIP_PROVIDER
+        return Action.NEXT if error.model_only else Action.SKIP_PROVIDER
     if isinstance(error, ProviderTransient | ProviderRateLimit | ProviderConnectionError):
         return Action.RETRY
     if isinstance(error, ProviderModelNotFound):

@@ -171,6 +171,7 @@ agent.error.timeout: "der Agent wurde nicht innerhalb von {seconds} Sekunden bee
 agent.error.exit: "der Agent wurde mit Code {code} beendet: {detail}"
 agent.error.empty: "{name} wurde ohne Abschlussmeldung beendet"
 agent.error.quota: "{name} hat sein Kontingent oder Nutzungslimit aufgebraucht: {detail}"
+agent.error.rate_limited: "{name} ist durch ein Rate-Limit gebremst (kein aufgebrauchtes Kontingent): {detail}"
 agent.error.agy_mcp_stall: "agy hat {seconds} s auf MCP-Server gewartet, die sich nicht verbinden ({servers}), und sendet vorher nichts; es wurde gestoppt. Entferne diese Server aus agys MCP-Config, lasse sie sofort beenden, wenn keine Verbindung möglich ist, oder erhöhe 'mcp_wait_s', falls sie nur langsam sind. agys Log im Ordner des Laufs: {log}"
 edit.error.no_json: "Die Antwort enthält kein JSON-Objekt. Antworte mit {{\"files\": [{{\"path\": ..., \"content\": ...}}], \"note\": ...}}."
 edit.error.bad_json: "Die Antwort ist kein gültiges JSON (sie könnte abgeschnitten sein): {error}"

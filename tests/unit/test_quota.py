@@ -106,8 +106,6 @@ def test_the_shown_detail_is_the_matching_line_shortened() -> None:
 def test_pause_uses_the_reset_time_then_the_default() -> None:
     assert quota.pause_seconds(quota.detect(AGY_LIMIT), 3600) == 9015  # type: ignore[arg-type]
     assert quota.pause_seconds(quota.detect("insufficient_quota"), 3600) == 3600  # type: ignore[arg-type]
-    # A plain rate limit without a hint: the short pause, not the quota one.
-    assert quota.pause_seconds(quota.detect("429 Too Many Requests"), 3600) == 300  # type: ignore[arg-type]
 
 
 # --- the circuit breaker ---------------------------------------------------------------
@@ -254,7 +252,7 @@ def _ollama() -> OllamaChat:
 
 @respx.mock
 async def test_an_api_whose_quota_is_used_up_pauses_instead_of_retrying() -> None:
-    body = {"error": {"message": "Rate limit exceeded: free-models-per-day", "code": 429}}
+    body = {"error": {"message": "You exceeded your current quota", "type": "insufficient_quota"}}
     respx.post("https://router.test/api/v1/chat/completions").mock(
         return_value=httpx.Response(429, json=body)
     )
@@ -307,3 +305,87 @@ def test_the_notification_names_quota_paused_providers_and_nothing_else() -> Non
     assert lines == ["3 finished, 0 failed", t("notify.quota", providers=f"agy ({until})")]
     assert "secret detail" not in message
     assert notify.with_quota("3 finished, 0 failed", []) == "3 finished, 0 failed"
+
+
+# --- code review fixes (PR #29) --------------------------------------------------------
+
+
+def test_reset_times_in_python_repr_and_capitalised_go_durations_are_read() -> None:
+    assert quota.reset_seconds("{'details': [{'retryDelay': '34s'}]}") == 34
+    assert quota.reset_seconds("{'resets_in_seconds': 120}") == 120
+    assert quota.reset_seconds("Quota exceeded. Try again in 2h30m15s.") == 9015
+
+
+def test_a_huge_or_broken_pause_is_clamped_not_a_crash(conn: sqlite3.Connection) -> None:
+    for pause in (float("inf"), float("nan"), 1e30):
+        state = health.record_failure(conn, "p", ProviderQuotaExhausted("x", pause_s=pause), NOON)
+        assert state.open_until is not None
+        assert NOON < state.open_until <= NOON + timedelta(days=7)
+
+
+def test_a_model_quota_skips_only_that_model_and_pauses_nothing(conn: sqlite3.Connection) -> None:
+    error = ProviderQuotaExhausted("free models used up", pause_s=3600, model_only=True)
+    assert classify(error) is Action.NEXT
+    health.record_failure(conn, "router", error, NOON)
+    assert not health.get(conn, "router").is_open(NOON)
+
+
+def test_an_agent_that_is_only_rate_limited_is_not_reported_as_quota(tmp_path: Path) -> None:
+    with pytest.raises(ProviderRateLimit):
+        asyncio.run(_agent("rate_limited").run(_request(tmp_path)))
+
+
+def test_quota_words_in_the_agents_own_work_do_not_count(tmp_path: Path) -> None:
+    # The agent's transcript mentions a quota error (a test it ran), then it failed for
+    # another reason: only its last lines and stderr say why it stopped.
+    with pytest.raises(ProviderBadOutput):
+        asyncio.run(_agent("quota_in_work").run(_request(tmp_path)))
+
+
+@respx.mock
+async def test_free_models_per_day_skips_the_model_not_the_provider() -> None:
+    body = {"error": {"message": "Rate limit exceeded: free-models-per-day", "code": 429}}
+    respx.post("https://router.test/api/v1/chat/completions").mock(
+        return_value=httpx.Response(429, json=body)
+    )
+    with pytest.raises(ProviderQuotaExhausted) as exc_info:
+        await _openai().complete(_req())
+    assert exc_info.value.model_only
+
+
+@respx.mock
+async def test_gemini_per_minute_quota_through_the_api_is_per_model_with_its_delay() -> None:
+    long = "x" * 400
+    error = {"code": 429, "message": f"You exceeded your current quota. {long}"}
+    body = {"error": {**error, "status": "RESOURCE_EXHAUSTED", "details": [{"retryDelay": "34s"}]}}
+    respx.post("https://router.test/api/v1/chat/completions").mock(
+        return_value=httpx.Response(429, json=[body])
+    )
+    with pytest.raises(ProviderQuotaExhausted) as exc_info:
+        await _openai().complete(_req())
+    assert exc_info.value.model_only and exc_info.value.pause_s == 34
+
+
+@respx.mock
+async def test_the_messages_reset_time_wins_over_a_short_retry_after() -> None:
+    respx.post("http://ollama.test:11434/api/chat").mock(
+        return_value=httpx.Response(
+            429,
+            headers={"retry-after": "60"},
+            json={"error": "weekly usage limit reached, try again in 3 days"},
+        )
+    )
+    with pytest.raises(ProviderQuotaExhausted) as exc_info:
+        await _ollama().complete(_req())
+    assert exc_info.value.pause_s == 3 * 86400 and not exc_info.value.model_only
+
+
+def test_a_pause_from_before_is_not_announced_again(conn: sqlite3.Connection) -> None:
+    from orkestra.notify import notify
+
+    health.record_failure(conn, "agy", ProviderQuotaExhausted("x", pause_s=86400), NOON)
+    before = health.quota_snapshot(conn, NOON)
+    health.record_failure(conn, "codex", ProviderQuotaExhausted("x", pause_s=3600), NOON)
+    new = health.new_quota_pauses(conn, before, NOON)
+    assert [h.provider for h in new] == ["codex"]
+    assert "agy" not in notify.with_quota("1 finished, 0 failed", new)

@@ -21,6 +21,9 @@ Modes:
   "still connecting" log line to ``$FAKE_AGENT_LOG``, then behaves like ``hang``.
 - ``quota``: Codex's usage limit message (with a reset time) on stderr, exit code 1.
 - ``quota_plain``: a quota message without a reset time on stderr, exit code 1.
+- ``rate_limited``: "429 Too Many Requests" on stderr, exit code 1 (not a used-up quota).
+- ``quota_in_work``: a transcript that mentions a quota error early on, then many lines of
+  work, then an unrelated failure (exit code 1).
 - ``quota_ok``: a successful answer that talks about usage limits (exit code 0).
 - ``quota_after``: answers ``fine`` until the run numbered ``$FAKE_AGENT_QUOTA_AT`` (counted
   in the file ``$FAKE_AGENT_COUNTER``); from then on it behaves like ``quota``.
@@ -92,6 +95,15 @@ def main() -> int:
         return 1
     elif mode == "quota_plain":
         print("Error: quota exceeded for this account", file=sys.stderr)
+        return 1
+    elif mode == "rate_limited":
+        print("stream error: 429 Too Many Requests", file=sys.stderr)
+        return 1
+    elif mode == "quota_in_work":
+        print("FAILED test_api.py::test_quota - RuntimeError: quota exceeded for this account")
+        for n in range(30):
+            print(f"working on step {n}")
+        print("tool crashed", file=sys.stderr)
         return 1
     elif mode == "quota_ok":
         print("A usage limit message means the account's quota is used up.")

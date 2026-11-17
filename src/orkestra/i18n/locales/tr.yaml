@@ -170,6 +170,7 @@ agent.error.timeout: "ajan {seconds} saniye içinde bitmedi; (bütün alt süre�
 agent.error.exit: "ajan {code} koduyla çıktı: {detail}"
 agent.error.empty: "{name} son bir mesaj vermeden bitti"
 agent.error.quota: "{name} kotasını ya da kullanım sınırını doldurdu: {detail}"
+agent.error.rate_limited: "{name} istek sınırına takıldı (kota bitmedi): {detail}"
 agent.error.agy_mcp_stall: "agy bağlanmayan MCP sunucularını ({servers}) {seconds} sn bekledi ve onlar bağlanana kadar hiçbir şey göndermiyor; durduruldu. Bu sunucuları agy'nin MCP ayarından çıkar, bağlanamadıklarında hemen kapanacak şekilde ayarla ya da sadece yavaşlarsa 'mcp_wait_s' değerini artır. agy'nin günlüğü, koşu klasöründe: {log}"
 edit.error.no_json: "Cevapta JSON nesnesi yok. {{\"files\": [{{\"path\": ..., \"content\": ...}}], \"note\": ...}} biçiminde cevap verilmeli."
 edit.error.bad_json: "Cevap geçerli JSON değil (kesilmiş olabilir): {error}"

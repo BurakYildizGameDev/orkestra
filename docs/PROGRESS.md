@@ -47,6 +47,17 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 13f (PR #29), 2026-11-17
+`/code-review` 10 bulgu; hepsi düzeltildi (D-085). Önce 9 kırmızı test.
+- ✅ Ajanın kısa istek sınırı kota sayılmaz (`test_an_agent_that_is_only_rate_limited_is_not_reported_as_quota`).
+- ✅ Ajanın kendi çıktısındaki kota kelimeleri sayılmaz, yalnız son satırlar (`test_quota_words_in_the_agents_own_work_do_not_count`).
+- ✅ Tek modelin kotası yalnız o modeli atlar (`test_free_models_per_day_skips_the_model_not_the_provider`, `test_a_model_quota_skips_only_that_model_and_pauses_nothing`, `test_gemini_per_minute_quota_through_the_api_is_per_model_with_its_delay`).
+- ✅ Mesajdaki yenilenme `retry-after`'dan önce; repr ve büyük harfli süreler okunur; büyük/bozuk süre çökertmez.
+- ✅ Bildirim yalnız o koşuda biten kotayı söyler (`test_a_pause_from_before_is_not_announced_again`); `notify` veritabanı açmıyor.
+- ✅ Duraklatma metni tek yerden (`health.pause_kind`), `quota_paused` tek sorgu, çıktılar sondan okunur.
+
+Testler: **1496 geçti** (1487 + 9). ruff, ruff format, pyright temiz.
+
 ### Faz 13f – Kota bitince kesintisiz devam (2026-11-17)
 **Yapılanlar (D-084):**
 - `ProviderQuotaExhausted`: yeniden denenmez; sağlayıcı kotası yenilenene kadar duraklatılır, iş aynı komutta sıradakine geçer (zarfta `failovers`).

@@ -6,6 +6,7 @@ environment variable named in the config and never appears in messages.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from typing import Any
@@ -152,7 +153,8 @@ class OpenAICompatChat:
                 t("provider.error.auth", provider=name, status=exc.status_code)
             )
         if isinstance(exc, openai.RateLimitError):
-            text = _scrub(exc.message, api_key)
+            # The whole body, not the 300-character message: the reset time may be at its end.
+            text = _mask(f"{exc.message}\n{json.dumps(exc.body, default=str)}", api_key)
             return quota.api_rate_limit(
                 name, text, retry_after(exc.response.headers), self.config.quota_pause_s
             )
@@ -217,9 +219,11 @@ def _is_context_error(exc: openai.APIStatusError) -> bool:
 
 def _scrub(text: str, secret: str) -> str:
     """Mask the key first, then shorten: cutting first could leave half a key behind."""
-    if secret and secret != NO_KEY:
-        text = text.replace(secret, "***")
-    return text[:300]
+    return _mask(text, secret)[:300]
+
+
+def _mask(text: str, secret: str) -> str:
+    return text.replace(secret, "***") if secret and secret != NO_KEY else text
 
 
 def read_api_key(config: OpenAICompatProvider, environ: Mapping[str, str]) -> str | None:

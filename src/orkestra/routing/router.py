@@ -321,17 +321,12 @@ def route(
             drop(name, None, "secrets_remote", "route.reason.secrets")
             continue
         if state.open_until is not None and snapshot.now < state.open_until:
-            if state.open_reason == "quota":
-                drop(
-                    name, None, "quota_paused", "select.reason.quota_paused",
-                    until=health.until_text(state.open_until, snapshot.now),
-                    error=state.last_error or "-",
-                )  # fmt: skip
-            else:
-                drop(
-                    name, None, "circuit_open", "select.reason.circuit_open",
-                    until=state.open_until.strftime("%H:%M"), error=state.last_error or "-",
-                )  # fmt: skip
+            kind = health.pause_kind(state.open_reason)
+            drop(
+                name, None, kind, f"select.reason.{kind}",
+                until=health.until_text(state.open_until, snapshot.now),
+                error=state.last_error or "-",
+            )  # fmt: skip
             continue
         if isinstance(cfg, CliAgentProvider):
             agent = _agent_candidate(name, cfg, needs, state, (low, high), profile_name, drop)

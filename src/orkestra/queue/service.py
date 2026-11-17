@@ -142,6 +142,7 @@ def run_with_notify(
 ) -> tuple[QueueReport, list[notify.Delivery]]:
     """``queue run --notify``: the counts when it ends, a short line when it breaks (never
     for a refused start or Ctrl+C: somebody is there to see it)."""
+    before = health.quota_snapshot(conn, db.local_now())  # announce only new quota pauses
     try:
         report = run_queue(conn, **kwargs)
     except (QueueBusy, UsageError):
@@ -157,7 +158,7 @@ def run_with_notify(
         t("notify.title.queue"),
         notify.with_quota(
             notify.counts_text(report.finished, len(report.failed), skipped=len(report.skipped)),
-            health.quota_paused(conn, db.local_now()),
+            health.new_quota_pauses(conn, before, db.local_now()),
         ),
     )
     return report, deliveries

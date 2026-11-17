@@ -19,10 +19,9 @@ def row_text(row: registry.ProviderRow) -> str:
     ]
     h = row.health
     now = db.local_now()
-    if h.open_until is not None and h.is_open(now) and h.reason == "quota":
-        parts.append(t("providers.quota_paused", until=health.until_text(h.open_until, now)))
-    elif h.open_until is not None and h.is_open(now):
-        parts.append(t("providers.circuit_open", until=h.open_until.strftime("%H:%M")))
+    if h.open_until is not None and h.is_open(now):
+        until = health.until_text(h.open_until, now)
+        parts.append(t(f"providers.{health.pause_kind(h.reason)}", until=until))
     elif h.consecutive_failures:
         parts.append(t("providers.failures", count=h.consecutive_failures))
     if row.key_env:
