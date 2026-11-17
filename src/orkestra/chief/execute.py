@@ -193,7 +193,7 @@ async def _summarize(
     user = f"exit code: {code}\nlines: {len(lines)} (the last {MODEL_LINES} below)\n\n{tail}"
     return await query_chief_model(
         config, tier=settings.tier, system=SUMMARY_SYSTEM, user=user, environ=environ,
-        agents=False,
+        agents=False, work="summary",
     )  # fmt: skip
 
 

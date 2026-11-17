@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from orkestra import paths
-from orkestra.config.schema import CliAgentProvider, Config
+from orkestra.config.schema import CliAgentProvider, Config, WorkKind
 from orkestra.errors import (
     BudgetExhausted,
     NoProviderAvailable,
@@ -65,6 +65,7 @@ async def query_chief_model(
     now: datetime | None = None,
     environ: Mapping[str, str] | None = None,
     agents: bool = True,
+    work: WorkKind,
 ) -> tuple[str, str]:
     """Query a candidate model chosen by the router for a chief tool.
 
@@ -72,7 +73,8 @@ async def query_chief_model(
     order; when all of them fail, the last provider (or budget) error is raised, and when
     none could be tried, the router's own error (``NoProviderAvailable``,
     ``ConsentRequired``) (D-062). ``agents=False`` leaves code agents out: summarising text
-    does not need a whole agent run (``exec``, D-088).
+    does not need a whole agent run (``exec``, D-088). ``work`` names the kind of work for
+    ``routing.by_kind`` (Faz 13l, D-096): every tool passes its own.
     """
     env = os.environ if environ is None else environ
     current_time = db.local_now() if now is None else now
@@ -86,6 +88,7 @@ async def query_chief_model(
         prompt_chars=len(system) + len(user),
         has_secrets=prompt_has_secrets(config, system + "\n" + user, environ=env),
         allow_secrets=False,
+        work=work,
     )
 
     should_close_conn = False

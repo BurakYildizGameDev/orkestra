@@ -1016,3 +1016,13 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Öğrenilen sınır:** sıfırlar SQL'de `LIMIT`'ten önce elenir; 30 gün sınırı `datetime` ile karşılaştırılır.
 - **i18n:** `Claude`, `5h`/`7d` `t()` ile (`statusline.claude`, `limits.window.*`; tr `5sa`/`7g`).
 - **Testler:** 1672 → 1682 (+10).
+
+## D-096 – Faz 13l: işe göre model ve bilgisayar yükü (2026-11-18, Faz 13l)
+**Karar:**
+- **`routing.by_kind.<iş>.prefer`** (desen listesi: sağlayıcı, `sağlayıcı/model`, glob). İş türleri sabit: `summary` (exec), `read` (read, find --ask), `map`, `review`, `plan`, görev türleri `ask`/`edit`; bilinmeyen tür config hatası. Router sırası: kademe → kotası azalan sona (D-094) → **tercih sırası** → skor → priority → config sırası. Kademe, bütçe, gizlilik kuralları önce; tercih kademe aşmaz. Varsayılan boş (davranış değişmez); önerilen ayarlar README'de. `--dry-run --json`'da `prefer_rank`.
+- **Plandan sapma:** plan `by_kind`'da "varsayılan kademe/model" diyordu. Kademe zaten araç başına ayarlı (`exec.tier`, `read.tier`, `map.tier`, `review.tier`); ikinci bir kademe ayarı çelişki yaratırdı. `by_kind` yalnız model tercihini taşır.
+- `query_chief_model(work=...)` zorunlu: her şef aracı kendi türünü verir (unutulursa pyright yakalar).
+- **Tek ağır yerel model:** plan "aynı anda tek ağır yerel model (`concurrency`)" diyordu; süreç içinde zaten öyleydi, süreçler arasında değildi (batch + şefin `exec`'i + kuyruk iki model yükleyebiliyordu). Yeni ayar yerine **var olan `concurrency` yerel sağlayıcılarda makine genelinde** uygulanır: migration 6 `local_slots`, `state/slots.py` (`BEGIN IMMEDIATE`, 0,5 sn yoklama; ölü süreç ya da 6 saat → geri alınır; state.db yoksa yalnız süreç içi sınır). `runner.Slot` iki yeri birlikte tutar. `process_alive`/`current_owner` `state/process.py`'ye taşındı (kuyruk kilidi de kullanıyor; `queue.store` → `tasks.batch` → `runner` döngüsünü önlemek için).
+- **`doctor` donanım önerisi** (`hardware.py`, yalnız yerel sağlayıcı varsa): RAM (psutil) ve en büyük NVIDIA GPU belleği (`nvidia-smi`, kabuksuz, 5 sn); GPU yoksa RAM'in yarısı. Kullanılabilir GB < 6 → 3b, < 10 → 7b, < 20 → 14b, < 40 → 32b, yoksa 70b; hafif işler için 1.5b-3b. Model adındaki boyut (`:14b`) önerilenden büyükse uyarı. Bu makinede 32 GB RAM + 12 GB GPU → 14b. Testlerde `nvidia-smi` hiç çalışmaz (conftest).
+- **Ağır işler gece kuyruğuna:** yeni kod yok; README `queue add`'i gösteriyor.
+- **Testler:** 1682 → 1717 (+35).

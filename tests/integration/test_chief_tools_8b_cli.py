@@ -605,7 +605,7 @@ def test_chief_call_raises_the_provider_error_and_a_success_resets_the_failure_c
 
     async def ask() -> str:
         answer, _label = await call.query_chief_model(
-            config, tier=1, system="s", user="u", privacy="local_only"
+            config, tier=1, system="s", user="u", privacy="local_only", work="ask"
         )
         return answer
 

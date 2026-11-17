@@ -12,26 +12,20 @@ process) is a crash's leftover and is replaced.
 from __future__ import annotations
 
 import hashlib
-import os
 import sqlite3
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-import psutil
-
 from orkestra.errors import InternalError, QueueBusy, UsageError
 from orkestra.i18n import t
 from orkestra.state.db import transaction
+from orkestra.state.process import Alive, Owner, current_owner, process_alive
 from orkestra.tasks import batch, spec
 
 Kind = Literal["task", "batch"]
-Owner = tuple[int, float | None]  # pid, process start time
-Alive = Callable[[int, "float | None"], bool]
 FINISHED = ("done", "failed")
-_CREATE_TIME_SLACK_S = 1.0
 
 
 @dataclass(frozen=True)
@@ -216,25 +210,6 @@ def mark_skipped(conn: sqlite3.Connection, item_id: int, note: str | None) -> No
 
 
 # --- the lock ---------------------------------------------------------------------------
-
-
-def process_alive(pid: int, created: float | None) -> bool:
-    """Is ``pid`` still the process that took the lock (same start time)?"""
-    try:
-        process = psutil.Process(pid)
-        if created is None:
-            return process.is_running()
-        return abs(process.create_time() - created) <= _CREATE_TIME_SLACK_S
-    except psutil.NoSuchProcess:
-        return False
-    except psutil.AccessDenied:  # another user's or a system process: never our runner
-        return False
-    except (psutil.Error, OverflowError, ValueError):
-        return False
-
-
-def current_owner() -> Owner:
-    return os.getpid(), psutil.Process().create_time()
 
 
 def lock_owner(conn: sqlite3.Connection) -> LockOwner | None:

@@ -21,6 +21,9 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
 
     monkeypatch.setattr(cli_agent, "AGY_SETTINGS", tmp_path / "agy-home" / "settings.json")
     monkeypatch.setattr(cli_agent, "AGY_MCP_CONFIG", tmp_path / "agy-home" / "mcp_config.json")
+    from orkestra import hardware  # doctor never runs the developer's nvidia-smi (Faz 13l)
+
+    monkeypatch.setattr(hardware, "_run", lambda args: None)
     monkeypatch.setenv(i18n.STRICT_ENV, "1")
     # Wide terminal so rich does not wrap help text in assertions.
     monkeypatch.setenv("COLUMNS", "200")

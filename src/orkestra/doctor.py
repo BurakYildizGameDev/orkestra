@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from orkestra import hardware
 from orkestra.config.loader import load_config
 from orkestra.config.schema import (
     CliAgentProvider,
@@ -425,6 +426,7 @@ async def run_doctor(
     agy_mcp_config: Path | None = None,
     git_config: GitConfig | None = None,
     platform: str = sys.platform,
+    machine: hardware.Machine | None = None,
 ) -> DoctorReport:
     env = os.environ if environ is None else environ
     checks: list[Check] = []
@@ -458,6 +460,9 @@ async def run_doctor(
             checks.extend(provider_checks)
         checks.extend(_state_checks(loaded.config.providers, loaded.config.forecast))
         checks.extend(await _price_checks(loaded.config, env))
+        if any(c.local and c.enabled for c in loaded.config.providers.values()):
+            # Faz 13l: which model sizes this computer runs comfortably (a suggestion only).
+            checks.extend(hardware.checks(loaded.config, machine or hardware.detect(which=which)))
     checks.append(_check_tool("git", which, probe, required=True))
     if platform == "win32" and which("git") is not None:
         checks.extend(_longpaths_check(git_config or read_git_config))

@@ -8,18 +8,22 @@ Order: tier ascending → (``routing.adaptive``) success score descending → pr
 descending → the order in the config (providers as written, then their models as listed). The
 user states a preference by writing it first; ``priority`` overrides that. Budgets only
 filter, they do not reorder (D-031); the one exception is a provider running low on quota
-(``state.forecast``, Faz 13k, D-094): it goes last inside its tier, before the score. The
+(``state.forecast``, Faz 13k, D-094): it goes last inside its tier, before the score.
+``routing.by_kind`` (Faz 13l, D-096) then puts the models the kind of work prefers first,
+inside each tier too. The
 score (``adaptive.py``, Faz 12b) only orders inside a tier; below ``min_samples`` it is
 neutral.
 """
 
 from __future__ import annotations
 
+import math
 import os
 import sqlite3
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
+from fnmatch import fnmatchcase
 from typing import Any, Literal, Protocol
 
 from orkestra.config.schema import (
@@ -30,6 +34,7 @@ from orkestra.config.schema import (
     ModelSpec,
     OpenAICompatProvider,
     Profile,
+    WorkKind,
     resolve_edit_format,
 )
 from orkestra.errors import ConfigError, ConsentRequired, NoProviderAvailable, UsageError
@@ -62,6 +67,7 @@ class TaskNeeds:
     allow_secrets: bool = False
     edit_lines: int = 0  # edit tasks: lines of the largest context file
     edit_format: EditFormatSetting | None = None  # the task file's choice; None: each model's
+    work: WorkKind | None = None  # kind of work for ``routing.by_kind``; None: ``kind`` (Faz 13l)
 
 
 def _edit_format(needs: TaskNeeds, model: ModelSpec, config: Config) -> EditFormat:
@@ -110,6 +116,7 @@ class Candidate:
     edit_format: EditFormat | None = None  # how an API worker answers an edit task (Faz 9c)
     score: Score | None = None  # routing.adaptive: success score and sample count (Faz 12b)
     quota_low: bool = False  # running low on quota (Faz 13k): last in its tier
+    prefer_rank: int | None = None  # place in ``routing.by_kind``'s list; None: not named
 
     @property
     def tier(self) -> int:
@@ -383,6 +390,9 @@ def route(
             candidates.append(Candidate(name, cfg, model, ratio, price, position, edit_format,
                                         quota_low=state.quota_low))  # fmt: skip
 
+    prefs = config.routing.by_kind.get(needs.work or needs.kind)
+    if prefs is not None and prefs.prefer:
+        candidates = [replace(c, prefer_rank=_prefer_rank(c, prefs.prefer)) for c in candidates]
     if config.routing.adaptive:
         neutral = Score(adaptive.NEUTRAL, 0, 0, config.routing.min_samples, scored=False)
         candidates = [
@@ -399,10 +409,20 @@ def _score_key(c: Candidate) -> ScoreKey:
     return (c.provider, c.model.id)
 
 
-def _order_key(c: Candidate) -> tuple[int, bool, float, int, tuple[int, int]]:
-    """Tier first, always; running low on quota and the score only reorder inside a tier."""
+def _prefer_rank(c: Candidate, patterns: Sequence[str]) -> int | None:
+    """The first pattern that names the candidate: ``provider``, ``provider/model`` or a glob."""
+    for index, pattern in enumerate(patterns):
+        if fnmatchcase(c.label, pattern) or fnmatchcase(c.provider, pattern):
+            return index
+    return None
+
+
+def _order_key(c: Candidate) -> tuple[int, bool, float, float, int, tuple[int, int]]:
+    """Tier first, always; running low on quota, the kind's preference and the score only
+    reorder inside a tier."""
     score = -(c.score.value if c.score is not None else 0.0)
-    return (c.tier, c.quota_low, score, -c.model.priority, c.order)
+    rank = math.inf if c.prefer_rank is None else float(c.prefer_rank)
+    return (c.tier, c.quota_low, rank, score, -c.model.priority, c.order)
 
 
 def take_snapshot(
@@ -487,6 +507,7 @@ def describe_candidates(candidates: Sequence[Candidate]) -> list[dict[str, Any]]
             "score_samples": c.score.samples if c.score is not None else None,
             "score_used": c.score.scored if c.score is not None else None,
             "quota_low": c.quota_low,
+            "prefer_rank": c.prefer_rank,
         }
         for c in candidates
     ]

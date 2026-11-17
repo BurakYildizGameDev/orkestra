@@ -812,3 +812,6 @@ cli.statusline.config.help: "Affiche la partie de settings.json qui branche la l
 statusline.claude: "Claude"
 limits.window.five_hour: "5h"
 limits.window.seven_day: "7j"
+doctor.hardware.suggest: "cet ordinateur : RAM {ram} Go{gpu} ; résumés et recherche avec un modèle {light}, modèles de code jusqu'à environ {largest} (simple suggestion ; routing.by_kind choisit selon le type de travail)"
+doctor.hardware.gpu: ", GPU {vram} Go"
+doctor.hardware.too_big: "{model} (~{size}b) est peut-être trop lourd pour cet ordinateur (suggéré jusqu'à {largest}) ; il peut être lent ou ralentir l'ordinateur"

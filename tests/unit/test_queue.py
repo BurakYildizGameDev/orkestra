@@ -483,7 +483,7 @@ def test_access_denied_is_not_our_runner(monkeypatch: pytest.MonkeyPatch) -> Non
     def denied(pid: int) -> object:
         raise psutil.AccessDenied(pid)
 
-    monkeypatch.setattr(store.psutil, "Process", denied)
+    monkeypatch.setattr(psutil, "Process", denied)
     assert store.process_alive(4242, 1.0) is False  # our own runner is always readable
 
 
