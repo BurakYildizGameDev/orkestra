@@ -30,6 +30,7 @@ from orkestra.chief.call import prompt_has_secrets, query_chief_model
 from orkestra.config.loader import find_git_root
 from orkestra.config.schema import Config
 from orkestra.errors import ConsentRequired, NoProviderAvailable, ProviderError, UsageError
+from orkestra.handoff.launch import InstallResult, install_block
 from orkestra.i18n import t
 from orkestra.state import db
 from orkestra.tasks.runner import ProviderSlots
@@ -196,7 +197,8 @@ def _load_spec(root: Path, filename: str) -> pathspec.PathSpec | None:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return None
-    return pathspec.PathSpec.from_lines("gitwildmatch", lines)
+    # GitIgnoreSpec: git's own rules ("gitwildmatch" is deprecated in pathspec 1.x).
+    return pathspec.GitIgnoreSpec.from_lines(lines)
 
 
 _IGNORED_DIRS = {
@@ -436,6 +438,35 @@ def _merged(root: Path, targets: Sequence[Path] | None, files: list[FileMap]) ->
         if old.path not in mapped and not in_scope(old.path) and (root / old.path).is_file()
     ]
     return sorted([*kept, *files], key=lambda f: f.path)
+
+
+INDEX_HOOK_START = "# >>> orkestra map >>>"
+INDEX_HOOK_COMMAND = "orkestra map <changed files>"
+INDEX_HOOK_BLOCK = (
+    f"{INDEX_HOOK_START}\n"
+    "# Refreshes the project index (.orkestra/MAP.md) for the files this commit changed,\n"
+    "# in the background: it never slows down or blocks a commit.\n"
+    "if command -v orkestra >/dev/null 2>&1; then\n"
+    "  files=$(git diff-tree --no-commit-id --name-only -r --diff-filter=d HEAD)\n"
+    '  if [ -n "$files" ]; then\n'
+    "    (printf '%s\\n' \"$files\" | tr '\\n' '\\0' | xargs -0 orkestra map"
+    " >/dev/null 2>&1 &)\n"
+    "  fi\n"
+    "fi\n"
+    "# <<< orkestra map <<<\n"
+)
+
+
+def install_index_hook(cwd: Path) -> InstallResult:
+    """``map --install-hook``: a post-commit block that maps the files each commit changed."""
+    return install_block(
+        cwd, "post-commit", INDEX_HOOK_BLOCK, marker=INDEX_HOOK_START, command=INDEX_HOOK_COMMAND
+    )
+
+
+def read_index(root: Path) -> list[FileMap]:
+    """The project index: the last map's entries (``find`` shows their summaries)."""
+    return _read_index(root)
 
 
 def _read_index(root: Path) -> list[FileMap]:

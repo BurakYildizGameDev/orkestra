@@ -236,6 +236,19 @@ class ExecCfg(_Model):
     timeout_s: PosInt = 1800
 
 
+class ReadCfg(_Model):
+    """``orkestra read`` / ``find --ask`` (Faz 13i-b): the worker's tier."""
+
+    tier: Annotated[int, Field(ge=1, le=3)] = 1
+
+
+class FindCfg(_Model):
+    """``orkestra find`` (Faz 13i-b): up to ``max_hits`` hits are listed one by one, more are
+    grouped per file."""
+
+    max_hits: PosInt = 40
+
+
 def default_profiles() -> dict[str, Profile]:
     return {
         "cheap": Profile(min_tier=1, max_tier=1),
@@ -269,6 +282,8 @@ class Config(_Model):
     queue: QueueCfg = Field(default_factory=QueueCfg)
     tokens: TokensCfg = Field(default_factory=TokensCfg)
     exec: ExecCfg = Field(default_factory=ExecCfg)
+    read: ReadCfg = Field(default_factory=ReadCfg)
+    find: FindCfg = Field(default_factory=FindCfg)
     security: Security = Field(default_factory=Security)
 
     @field_validator("providers")

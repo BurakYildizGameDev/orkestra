@@ -19,6 +19,8 @@ import typer
 from orkestra import __version__, doctor, envelope, i18n
 from orkestra.cache import responses
 from orkestra.chief import execute as executor
+from orkestra.chief import finder as file_finder
+from orkestra.chief import reader as file_reader
 from orkestra.chief import status
 from orkestra.chief import tokens as token_map
 from orkestra.config import loader
@@ -963,6 +965,60 @@ def build_app() -> typer.Typer:
             typer.echo(executor.render(result))
         raise typer.Exit(result.exit_code)
 
+    @app.command("read", help=t("cli.read.help"))
+    def read_command(
+        ctx: typer.Context,
+        files: Annotated[
+            list[Path], typer.Argument(metavar="FILES...", help=t("cli.read.arg.files"))
+        ],
+        question: Annotated[
+            str, typer.Argument(metavar="QUESTION", help=t("cli.read.arg.question"))
+        ],
+        no_cache: Annotated[
+            bool, typer.Option("--no-cache", help=t("cli.read.option.no_cache"))
+        ] = False,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+        result = file_reader.read(
+            files, question, config=loaded.config, cwd=Path.cwd(), no_cache=no_cache
+        )
+        if as_json:
+            _echo_json(file_reader.to_dict(result))
+        else:
+            typer.echo(file_reader.render(result))
+
+    @app.command("find", help=t("cli.find.help"))
+    def find_command(
+        ctx: typer.Context,
+        pattern: Annotated[str, typer.Argument(metavar="PATTERN", help=t("cli.find.arg.pattern"))],
+        regex: Annotated[bool, typer.Option("--regex", help=t("cli.find.option.regex"))] = False,
+        globs: Annotated[
+            list[str] | None, typer.Option("--glob", help=t("cli.find.option.glob"))
+        ] = None,
+        max_hits: Annotated[
+            int | None, typer.Option("--max-hits", min=1, help=t("cli.find.option.max_hits"))
+        ] = None,
+        question: Annotated[
+            str | None, typer.Option("--ask", metavar="QUESTION", help=t("cli.find.option.ask"))
+        ] = None,
+        no_cache: Annotated[
+            bool, typer.Option("--no-cache", help=t("cli.read.option.no_cache"))
+        ] = False,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        config, _ = executor.load(ctx.ensure_object(_State).config_path)
+        result = file_finder.find(
+            pattern, cwd=Path.cwd(), config=config, regex=regex, globs=globs or (),
+            max_hits=max_hits, question=question, no_cache=no_cache,
+        )  # fmt: skip
+        if as_json:
+            _echo_json(file_finder.to_dict(result))
+        else:
+            typer.echo(file_finder.render(result))
+        if not result.hits:
+            raise typer.Exit(1)  # like grep
+
     @app.command("tokens", help=t("cli.tokens.help"))
     def tokens_command(
         ctx: typer.Context,
@@ -1243,11 +1299,19 @@ def build_app() -> typer.Typer:
             int | None,
             typer.Option("--max-files", min=1, help=t("cli.map.option.max_files")),
         ] = None,
+        install_hook: Annotated[
+            bool, typer.Option("--install-hook", help=t("cli.map.option.install_hook"))
+        ] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
-        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
         from orkestra.chief import repomap
 
+        if install_hook:
+            hooked = repomap.install_index_hook(Path.cwd())
+            key = "created" if hooked.created else "updated" if hooked.updated else "exists"
+            typer.echo(t(f"map.hook.{key}", path=hooked.path))
+            return
+        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
         cwd = Path.cwd()
 
         def echo_progress(done: int, total: int, path: str) -> None:
