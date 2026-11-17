@@ -913,3 +913,18 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Gizlilik:** etiketlerde dosyalar projeye göre göreli, proje dışındakiler yalnız adıyla; komutlarda proje `.`, ev klasörü `~` (her eğik çizgi, büyük/küçük harf); oturum kimliği ve sürüm dışında yol yok. README örneği bu deponun kendi 12 oturumundan.
 - **İlk bulgu (README'de):** bu projenin 12 oturumunda (2.793 istek) ağırlıklı maliyetin ~%80'i bağlamın yeniden okunması: komut çıktısı %20, sonraki mesajlar/hatırlatmalar %18, yazma %14, Claude'un çıktısı %14, sabit başlangıç %11, cevapların yeniden okunması %11, okuma %7. En pahalı tek çağrı 650 satırlık bir plan dosyasının 269 istek boyunca taşınması (10 satır olsaydı ~%98 daha ucuz). 13i (bağlam süzgeci) ve 13j (kısa oturum) bu yüzden doğru kaldıraçlar.
 - **Testler:** 1496 → 1514 (+18; sahte dökümlerle, ağsız).
+
+## D-087 – Faz 13h kod denetimi düzeltmeleri (2026-11-17, Faz 13h)
+`/code-review` (PR #30): 10 bulgu, hepsi düzeltildi; önce 10 kırmızı test.
+- **Gizlilik:** `scrub` Windows yolunu Git Bash (`/c/Users/...`) ve WSL (`/mnt/c/Users/...`) yazımlarıyla da tanır; bu deponun ajanları komutları çoğunlukla böyle yazıyor, etiketlerde kullanıcı adı kalıyordu.
+- **Sıkıştırma çağrıdan hemen sonraysa** sonuç hiç gönderilmemiş sayılır (önce bir sonraki sıkıştırmaya kadar yeniden okunuyordu).
+- **Claude Code'un kendi yer tutucuları** (`<synthetic>` model, sıfır `usage`: API hatası, kesinti) istek sayılmaz; sahte önbellek kaçırması ve büyüme çizgisindeki 0 kalktı.
+- **Görsel** (`image` bloğu) base64 uzunluğuyla değil sabit ~1600 token sayılır.
+- **Ölçekleme:** ilk istekte yalnız yazılan (`input + cache_write`) çıkarılır; başka oturumun yazdığı önbellekten okunan sistem istemi artık ölçeği düşürmüyor. Her sıkıştırmadan sonraki yeniden başlangıç (özet) da çıkarılır.
+- **Grep/Glob** `path` verilse de desenleriyle etiketlenir.
+- **Eski biçimdeki alt ajanlar** (ana dökümde `isSidechain`) ana bağlama karışmaz, alt ajan olarak sayılır.
+- **Ayarlar `--project`'in config'inden**; config yüklenemezse varsayılan ağırlıklar ve bir uyarı (komut config'siz de çalışır).
+- **Belirsiz `--session` öneki** kullanım hatası ve eşleşen kimlikler; tam eşleşme önce gelir.
+- Temizlik: bir isteğin mesaj ve ekleri tek öğe; `Call.raw()` kullanılmayan parametresiz; "10 satır olsaydı" yalnız sonucu küçültür (Edit/Write'ın gönderdiği girdi kalır).
+- Gerçek raporda atanamayan pay %0'a indi; README örneği yenilendi (yeniden okuma ~%85).
+- **Testler:** 1514 → 1524 (+10).

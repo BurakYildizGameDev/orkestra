@@ -724,6 +724,8 @@ cli.tokens.option.top: "En pahalı araç çağrılarından kaç tanesi listelens
 tokens.error.none: "Bu proje için Claude Code dökümü yok ({folder} klasörü). Projenin klasöründen çalıştır ya da --project kullan."
 tokens.error.session: "Kimliği '{session}' ile başlayan oturum yok."
 tokens.error.since: "Bu sürede değişen oturum yok."
+tokens.warning.config: "Orkestra'nın config'i okunamadı ({error}); varsayılan ağırlıklar kullanıldı."
+tokens.error.ambiguous: "'{session}' ile başlayan birden fazla oturum var: {ids}. Kimliğin daha fazlasını yaz."
 tokens.header: "Claude Code tokenları: {sessions} oturum, {requests} istek (Claude Code {versions})"
 tokens.totals: "ölçülen: girdi {input}, önbelleğe yazma {cache_write}, önbellekten okuma {cache_read}, çıktı {output}; ham {raw}, ağırlıklı {weighted}"
 tokens.weights: "ağırlıklar (girdi = 1): çıktı ×{output}, önbelleğe yazma ×{cache_write}, önbellekten okuma ×{cache_read}; API fiyatları, abonelik farklı tartabilir"

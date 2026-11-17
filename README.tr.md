@@ -574,23 +574,22 @@ dosyalar projeye göre, komutlarda proje `.`, ev klasörü `~` olarak görünür
 
 ```
 ağırlıklı tokenlar nereye gidiyor:
-  komut çıktısı (Bash, PowerShell): %20
-  sonraki mesajların ve hatırlatmalar: %18
-  yazma (Edit, Write): %14
+  komut çıktısı (Bash, PowerShell): %23
+  sonraki mesajların ve hatırlatmalar: %21
+  yazma (Edit, Write): %16
   Claude'un çıktısı (metin, düşünme, araç çağrıları): %14
+  Claude'un cevapları ve araç çağrıları, sonradan yeniden okunması: %12
   sabit başlangıç (sistem istemi, araçlar, CLAUDE.md, hafıza), her istekte yeniden okunur: %11
-  Claude'un cevapları ve araç çağrıları, sonradan yeniden okunması: %11
-  okuma (Read, Grep, Glob, web): %7
-  geri kalan (atanamayan: tahmin farkı, görünmeyen bağlam): %4
+  okuma (Read, Grep, Glob, web): %8
   önbellek kaçırma (ara ya da model değişikliği sonrası bağlamın yeniden yazılması): %1
 
 en pahalı araç çağrıları (boyut × bağlamda kaldığı istek sayısı):
-  Read YAPILIS_PLANI.md: ~21,960 token, 650 satır, 269 kez yeniden okundu, ağırlıklı 618,174
-    10 satır olsaydı: 9,510 (608,664 tasarruf)
-istek başına bağlam (en son oturum): 47,252 → 165,241 → 220,173 → 287,348 → 362,705
+  Read YAPILIS_PLANI.md: ~23,027 token, 650 satır, 269 kez yeniden okundu, ağırlıklı 648,210
+    10 satır olsaydı: 9,972 (638,238 tasarruf)
+istek başına bağlam (en son oturum): 47,252 → 174,632 → 247,227 → 332,261 → 405,278
 ```
 
-Yani maliyetin yaklaşık %80'i Claude'un yazması değil, bağlamın yeniden okunması: uzun bir
+Yani maliyetin yaklaşık %85'i Claude'un yazması değil, bağlamın yeniden okunması: uzun bir
 oturumun başındaki büyük komut çıktıları ve dosya okumaları asıl kaldıraç. Sonraki fazlar
 (bağlam süzgeci ve kısa oturumlar) buna yöneliyor.
 

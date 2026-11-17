@@ -725,6 +725,8 @@ cli.tokens.option.top: "Wie viele der teuersten Tool-Aufrufe aufgelistet werden.
 tokens.error.none: "Keine Claude-Code-Transkripte für dieses Projekt (Ordner {folder}). Im Projektordner ausführen oder --project verwenden."
 tokens.error.session: "Keine Sitzung, deren ID mit '{session}' beginnt."
 tokens.error.since: "Keine Sitzung hat sich in diesem Zeitraum geändert."
+tokens.warning.config: "Die Konfiguration von Orkestra konnte nicht gelesen werden ({error}); es gelten die Standardgewichte."
+tokens.error.ambiguous: "Mehr als eine Sitzung beginnt mit '{session}': {ids}. Gib mehr von der ID an."
 tokens.header: "Claude-Code-Tokens: {sessions} Sitzung(en), {requests} Anfragen (Claude Code {versions})"
 tokens.totals: "gemessen: Eingabe {input}, Cache-Schreiben {cache_write}, Cache-Lesen {cache_read}, Ausgabe {output}; roh {raw}, gewichtet {weighted}"
 tokens.weights: "Gewichte (Eingabe = 1): Ausgabe ×{output}, Cache-Schreiben ×{cache_write}, Cache-Lesen ×{cache_read}; API-Preise, ein Abo kann anders gewichten"

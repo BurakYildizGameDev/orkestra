@@ -47,6 +47,15 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 13h (PR #30), 2026-11-17
+`/code-review` 10 bulgu; hepsi düzeltildi (D-087). Önce 10 kırmızı test.
+- ✅ Git Bash/WSL yazımlı kişisel yollar temizlenir (`test_git_bash_and_wsl_spellings_of_personal_paths_are_scrubbed`).
+- ✅ Çağrıdan hemen sonraki sıkıştırma: gönderilmedi (`test_a_compaction_right_after_the_call_means_its_result_was_never_sent`).
+- ✅ Yer tutucu girdiler istek değil; görsel sabit boyut; ölçekleme paylaşılan önbelleği saymaz.
+- ✅ Grep/Glob deseniyle; eski alt ajanlar ayrı; ayarlar projeden, bozuk config uyarı; belirsiz önek hata; mesajlar istek başına tek öğe.
+
+Testler: **1524 geçti** (1514 + 10). ruff, ruff format, pyright temiz.
+
 ### Faz 13h – Token haritası (2026-11-17)
 **Yapılanlar (D-086):**
 - `orkestra tokens [--session id | --since 7d] [--project yol] [--top n] [--json]` (`chief/tokens.py`): Claude Code oturum dökümlerinden ölçülen toplamlar, ağırlıklı toplam, türlere göre pay, en pahalı araç çağrıları ve "10 satır olsaydı", bağlamın büyümesi, alt ajanlar, sıkıştırma, önbellek kaçırma.

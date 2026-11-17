@@ -578,23 +578,22 @@ Example, this repository's own 12 sessions of building Orkestra (Claude Code 2.1
 
 ```
 where the weighted tokens go:
-  command output (Bash, PowerShell): 20%
-  your later messages and reminders: 18%
-  writing (Edit, Write): 14%
+  command output (Bash, PowerShell): 23%
+  your later messages and reminders: 21%
+  writing (Edit, Write): 16%
   Claude's output (text, thinking, tool calls): 14%
+  Claude's replies and tool calls, read again later: 12%
   fixed start (system prompt, tools, CLAUDE.md, memory), read again by every request: 11%
-  Claude's replies and tool calls, read again later: 11%
-  reading (Read, Grep, Glob, web): 7%
-  the rest (not attributed: estimate gaps, hidden context): 4%
+  reading (Read, Grep, Glob, web): 8%
   cache misses (context written again after a pause or model change): 1%
 
 costliest tool calls (size × requests it stayed in the context):
-  Read YAPILIS_PLANI.md: ~21,960 tokens, 650 lines, read again 269×, weighted 618,174
-    as 10 lines: 9,510 (saves 608,664)
-context per request (newest session): 47,252 → 165,241 → 220,173 → 287,348 → 362,705
+  Read YAPILIS_PLANI.md: ~23,027 tokens, 650 lines, read again 269×, weighted 648,210
+    as 10 lines: 9,972 (saves 638,238)
+context per request (newest session): 47,252 → 174,632 → 247,227 → 332,261 → 405,278
 ```
 
-So about 80% of the cost is context being read again, not Claude's writing: big command
+So about 85% of the cost is context being read again, not Claude's writing: big command
 outputs and file reads early in a long session are the levers, which is what the next phases
 (a context filter and shorter sessions) go after.
 

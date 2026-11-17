@@ -142,7 +142,7 @@ def test_each_tool_result_costs_its_cache_write_and_every_later_read(home: Path,
     assert read.tool == "Read" and read.category == "read"
     assert read.tokens == 3000 and read.lines == 300
     assert read.rereads == 2  # written at turn 1, read at turns 2 and 3
-    assert read.raw(W) == 3000 * 3
+    assert read.raw() == 3000 * 3
     assert read.weighted(W) == pytest.approx(3000 * 1.25 + 3000 * 0.1 * 2)
     assert read.weighted_if_lines(W, 10) == pytest.approx(100 * 1.25 + 100 * 0.1 * 2)
     assert calls["t2"].category == "command" and calls["t2"].rereads == 1
@@ -282,3 +282,130 @@ def test_json_and_text_say_the_same_and_name_no_paths(
     assert "src/a.py" in text and "2.1.325" in text
     for out in (json.dumps(data), text):
         assert str(tmp_path) not in out and str(Path.home()) not in out
+
+
+# --- code review fixes (PR #30) --------------------------------------------------------
+
+
+def test_git_bash_and_wsl_spellings_of_personal_paths_are_scrubbed() -> None:
+    cwd, home = r"C:\Users\someone\code\proj", r"C:\Users\someone"
+    command = "cd /c/Users/someone/code/proj && cat /c/Users/someone/n.txt /mnt/c/Users/someone/x"
+    text = tokens.scrub(command, cwd, home=home)
+    assert text == "cd . && cat ~/n.txt ~/x"
+    assert tokens.scrub(r"type C:\Users\someone\a.txt", cwd, home=home) == r"type ~\a.txt"
+
+
+def test_a_compaction_right_after_the_call_means_its_result_was_never_sent(
+    home: Path, cwd: Path
+) -> None:
+    entries = [
+        _assistant("m1", _usage(1, 10, 0, 1), _use("t1", "Read", file_path="a.py")),
+        _result("t1", "x" * 400),
+        {"type": "system", "subtype": "compact_boundary"},
+        _assistant("m2", _usage(1, 10, 10, 1), {"type": "text", "text": "a"}),
+        _assistant("m3", _usage(1, 10, 10, 1), {"type": "text", "text": "b"}),
+    ]
+    path = _write(tokens.project_folder(cwd, home) / "s.jsonl", entries)
+    (call,) = tokens.read_session(path).calls
+    assert not call.sent and call.rereads == 0
+
+
+def test_synthetic_and_zero_usage_entries_are_not_requests(home: Path, cwd: Path) -> None:
+    error = _assistant("e1", _usage(0, 0, 0, 0), {"type": "text", "text": "API Error"})
+    error["message"]["model"] = "<synthetic>"
+    entries = [
+        _assistant("m1", _usage(1, 150_000, 0, 1), {"type": "text", "text": "a"}),
+        error,
+        _assistant("m2", _usage(1, 100, 150_000, 1), {"type": "text", "text": "b"}),
+    ]
+    path = _write(tokens.project_folder(cwd, home) / "s.jsonl", entries)
+    session = tokens.read_session(path)
+    assert len(session.turns) == 2 and session.rebuilds == []
+
+
+def test_an_image_counts_as_an_image_not_as_its_base64(home: Path, cwd: Path) -> None:
+    image = {"type": "image", "source": {"type": "base64", "data": "A" * 400_000}}
+    entries = [
+        _assistant("m1", _usage(1, 10, 0, 1), _use("t1", "Read", file_path="shot.png")),
+        _result("t1", [image]),
+        _assistant("m2", _usage(1, 10, 10, 1), {"type": "text", "text": "a"}),
+    ]
+    path = _write(tokens.project_folder(cwd, home) / "s.jsonl", entries)
+    (call,) = tokens.read_session(path, calibrate=False).calls
+    assert call.tokens == tokens.IMAGE_TOKENS
+
+
+def test_calibration_leaves_out_what_the_first_request_read_from_a_shared_cache(
+    home: Path, cwd: Path
+) -> None:
+    entries = [
+        # The system prompt came from a cache another session wrote: 20 000 read, 0 new.
+        _assistant("m1", _usage(0, 0, 20_000, 1), _use("t1", "Read", file_path="a.py")),
+        _result("t1", "x" * 4000),  # ~1 000 estimated
+        _assistant("m2", _usage(0, 2000, 20_000, 1), {"type": "text", "text": ""}),
+    ]
+    path = _write(tokens.project_folder(cwd, home) / "s.jsonl", entries)
+    assert tokens.read_session(path).scale == pytest.approx(2.0, rel=0.02)
+
+
+def test_grep_and_glob_are_labelled_by_their_pattern_even_with_a_path() -> None:
+    assert tokens.label("Grep", {"pattern": "def main", "path": "src/orkestra"}, None) == "def main"
+    assert tokens.label("Glob", {"pattern": "**/*.py", "path": "src"}, None) == "**/*.py"
+
+
+def test_old_style_subagent_entries_are_counted_as_subagents(home: Path, cwd: Path) -> None:
+    side = _assistant("x1", _usage(3, 500, 200, 40), {"type": "text", "text": "sub"})
+    side["isSidechain"] = True
+    entries = [
+        _assistant("m1", _usage(1, 10, 0, 1), {"type": "text", "text": "a"}),
+        {"type": "user", "isSidechain": True, "parentUuid": None,
+         "message": {"role": "user", "content": "s" * 4000}},
+        side,
+        _assistant("m2", _usage(1, 10, 10, 1), {"type": "text", "text": "b"}),
+    ]  # fmt: skip
+    path = _write(tokens.project_folder(cwd, home) / "s.jsonl", entries)
+    session = tokens.read_session(path, calibrate=False)
+    assert session.subagents.runs == 1 and session.subagents.total.output == 40
+    assert not [i for i in session.items if i.category == "messages"]
+
+
+def test_an_ambiguous_session_prefix_is_a_usage_error(home: Path, cwd: Path) -> None:
+    _session(home, cwd, "a1")
+    _session(home, cwd, "a7")
+    folder = tokens.project_folder(cwd, home)
+    with pytest.raises(UsageError):
+        tokens.select_sessions(folder, session="a")
+    assert tokens.select_sessions(folder, session="a1") == [folder / "a1.jsonl"]
+
+
+def test_settings_come_from_the_project_and_a_broken_config_falls_back(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "orkestra.yaml").write_text(
+        "version: 1\ntokens:\n  weights:\n    output: 4.0\n", encoding="utf-8"
+    )
+    cfg, warnings = tokens.settings(project=project)
+    assert cfg.weights.output == 4.0 and warnings == []
+    (project / "orkestra.yaml").write_text("version: 1\nnot_a_key: 1\n", encoding="utf-8")
+    cfg, warnings = tokens.settings(project=project)
+    assert cfg.weights.output == 5.0 and len(warnings) == 1
+
+
+def test_messages_of_one_request_are_one_item_and_ten_lines_keeps_the_input(
+    home: Path, cwd: Path
+) -> None:
+    entries = [
+        _assistant("m1", _usage(1, 10, 0, 1), _use(
+            "t1", "Edit", file_path="a.py", old_string="o" * 400, new_string="n" * 400)),
+        _result("t1", "line\n" * 100),
+        {"type": "user", "message": {"role": "user", "content": "one"}},
+        {"type": "attachment", "attachment": {"content": "two"}},
+        _assistant("m2", _usage(1, 10, 10, 1), {"type": "text", "text": "a"}),
+        _assistant("m3", _usage(1, 10, 10, 1), {"type": "text", "text": "b"}),
+    ]  # fmt: skip
+    path = _write(tokens.project_folder(cwd, home) / "s.jsonl", entries)
+    session = tokens.read_session(path, calibrate=False)
+    assert len([i for i in session.items if i.category == "messages"]) == 1
+    (edit,) = session.calls
+    # As 10 lines only the result shrinks: what the edit sent stays.
+    assert edit.weighted_if_lines(W, 10) > (edit.input_chars / 4) * 1.25

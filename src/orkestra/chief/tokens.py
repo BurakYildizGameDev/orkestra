@@ -29,12 +29,13 @@ from typing import Any
 
 from orkestra.config import loader
 from orkestra.config.schema import TokensCfg, TokenWeights
-from orkestra.errors import UsageError
+from orkestra.errors import ConfigError, UsageError
 from orkestra.i18n import t
 
 CHARS_PER_TOKEN = 4
 LABEL_CHARS = 60
 SHORT_LINES = 10  # "what if this result were 10 lines"
+IMAGE_TOKENS = 1600  # about what one screenshot costs; its base64 is not what is billed
 REBUILD_MIN = 2000  # tokens no longer read from the cache that count as a cache miss
 MIN_SCALE, MAX_SCALE = 0.25, 4.0  # calibration limits
 GROWTH_POINTS = 5
@@ -102,20 +103,28 @@ class Call:
 
     @property
     def tokens(self) -> int:
-        chars = self.result_chars + (self.input_chars if self.category in _INPUT_COUNTS else 0)
-        return round(chars / CHARS_PER_TOKEN * self.scale)
+        return round(self._input_tokens + self._result_tokens)
 
-    def raw(self, w: TokenWeights) -> int:
+    @property
+    def _result_tokens(self) -> float:
+        return self.result_chars / CHARS_PER_TOKEN * self.scale
+
+    @property
+    def _input_tokens(self) -> float:
+        chars = self.input_chars if self.category in _INPUT_COUNTS else 0
+        return chars / CHARS_PER_TOKEN * self.scale
+
+    def raw(self) -> int:
         return self.tokens * (1 + self.rereads) if self.sent else 0
 
     def weighted(self, w: TokenWeights) -> float:
         return self._cost(self.tokens, w)
 
     def weighted_if_lines(self, w: TokenWeights, lines: int = SHORT_LINES) -> float:
-        """The same call if its result had been ``lines`` lines long."""
+        """The same call if its result had been ``lines`` lines long (what it sent stays)."""
         if self.lines <= lines:
             return self.weighted(w)
-        return self._cost(self.tokens * lines / self.lines, w)
+        return self._cost(self._input_tokens + self._result_tokens * lines / self.lines, w)
 
     def _cost(self, tokens: float, w: TokenWeights) -> float:
         if not self.sent:
@@ -159,6 +168,7 @@ class Report:
     by_category: dict[str, float]
     growth: list[int]  # context size per request, newest session
     subagents: Subagents
+    warnings: list[str] = field(default_factory=list)
 
 
 # --- finding transcripts ---------------------------------------------------------------
@@ -183,10 +193,14 @@ def select_sessions(
     if not files:
         raise UsageError(t("tokens.error.none", folder=folder.name))
     if session is not None:
-        chosen = [p for p in files if p.stem.startswith(session)]
+        exact = [p for p in files if p.stem == session]
+        chosen = exact or [p for p in files if p.stem.startswith(session)]
         if not chosen:
             raise UsageError(t("tokens.error.session", session=session))
-        return chosen[:1]
+        if len(chosen) > 1:
+            ids = ", ".join(p.stem for p in chosen[:5])
+            raise UsageError(t("tokens.error.ambiguous", session=session, ids=ids))
+        return chosen
     if since is not None:
         stamp = since.timestamp()
         chosen = [p for p in files if p.stat().st_mtime >= stamp]
@@ -196,11 +210,18 @@ def select_sessions(
     return files[:1]
 
 
-def settings(config_flag: Path | None = None) -> TokensCfg:
-    """The ``tokens`` settings; the defaults when Orkestra has no config yet (it needs none)."""
-    if not loader.find_sources(config_flag):
-        return TokensCfg()
-    return loader.load_config(config_flag).config.tokens
+def settings(
+    config_flag: Path | None = None, *, project: Path | None = None
+) -> tuple[TokensCfg, list[str]]:
+    """The ``tokens`` settings of ``project``'s config, and warnings. The command needs no
+    config: none, or one that does not load, means the default weights (with a warning)."""
+    if not loader.find_sources(config_flag, project):
+        return TokensCfg(), []
+    try:
+        return loader.load_config(config_flag, project).config.tokens, []
+    except ConfigError as exc:
+        reason = (exc.message or type(exc).__name__).splitlines()[0]
+        return TokensCfg(), [t("tokens.warning.config", error=reason)]
 
 
 def collect(
@@ -213,10 +234,12 @@ def collect(
     environ: Mapping[str, str] | None = None,
 ) -> Report:
     """``orkestra tokens``: read the chosen sessions of ``project`` and rank what they cost."""
-    cfg = settings(config_flag)
+    cfg, warnings = settings(config_flag, project=project)
     folder = project_folder(project, claude_home(environ))
     paths = select_sessions(folder, session=session, since=since)
-    return analyse([read_session(p) for p in paths], cfg.weights, top=top or cfg.top)
+    report = analyse([read_session(p) for p in paths], cfg.weights, top=top or cfg.top)
+    report.warnings.extend(warnings)
+    return report
 
 
 # --- reading one session ---------------------------------------------------------------
@@ -258,8 +281,10 @@ def _text_size(content: Any) -> tuple[int, int]:
             if isinstance(block, dict) and isinstance(block.get("text"), str):
                 chars += len(block["text"])
                 lines += len(block["text"].splitlines())
+            elif isinstance(block, dict) and block.get("type") == "image":
+                chars += IMAGE_TOKENS * CHARS_PER_TOKEN  # billed by size, not by its base64
             elif isinstance(block, dict):
-                chars += len(json.dumps(block, default=str))  # images and other blocks
+                chars += len(json.dumps(block, default=str))
         return chars, lines
     return 0, 0
 
@@ -269,7 +294,9 @@ def read_session(path: Path, *, calibrate: bool = True) -> Session:
     ids: dict[str, int] = {}
     calls: dict[str, Call] = {}
     replies: dict[int, Call] = {}
+    messages: dict[int, Call] = {}
     boundaries: list[int] = []
+    side_ids: dict[str, Usage] = {}
     cwd: str | None = None
     for entry in _entries(path, session):
         kind = entry.get("type")
@@ -282,7 +309,13 @@ def read_session(path: Path, *, calibrate: bool = True) -> Session:
         if kind == "system" and entry.get("subtype") == "compact_boundary":
             session.compactions += 1
             boundaries.append(len(session.turns))
-        elif kind == "assistant" and isinstance(message, dict) and not entry.get("isSidechain"):
+        elif entry.get("isSidechain"):
+            # Older Claude Code wrote subagents into the main transcript: counted apart.
+            if kind == "user" and entry.get("parentUuid") is None:
+                session.subagents.runs += 1
+            if kind == "assistant" and isinstance(message, dict):
+                side_ids[str(message.get("id") or len(side_ids))] = _usage(message.get("usage"))
+        elif kind == "assistant" and isinstance(message, dict) and _real(message):
             msg_id = str(message.get("id") or f"#{len(ids)}")
             if msg_id not in ids:
                 ids[msg_id] = len(session.turns)
@@ -301,7 +334,9 @@ def read_session(path: Path, *, calibrate: bool = True) -> Session:
         elif kind == "user" and isinstance(message, dict):
             content = message.get("content")
             if isinstance(content, str) and session.turns:
-                _item(session, {}, "messages", len(session.turns) - 1).result_chars += len(content)
+                _item(session, messages, "messages", len(session.turns) - 1).result_chars += len(
+                    content
+                )
             for block in _blocks(message):
                 if block.get("type") == "tool_result":
                     call = calls.get(str(block.get("tool_use_id")))
@@ -309,16 +344,31 @@ def read_session(path: Path, *, calibrate: bool = True) -> Session:
                         call.result_chars, call.lines = _text_size(block.get("content"))
                 elif block.get("type") == "text" and session.turns:
                     chars = _text_size([block])[0]
-                    _item(session, {}, "messages", len(session.turns) - 1).result_chars += chars
+                    _item(
+                        session, messages, "messages", len(session.turns) - 1
+                    ).result_chars += chars
         elif kind == "attachment" and session.turns:
             chars = len(json.dumps(entry.get("attachment"), default=str))
-            _item(session, {}, "messages", len(session.turns) - 1).result_chars += chars
+            _item(session, messages, "messages", len(session.turns) - 1).result_chars += chars
     _place(session, boundaries)
     session.rebuilds = _rebuilds(session, boundaries)
     if calibrate:
-        _calibrate(session)
-    session.subagents = _subagents(path.with_suffix("") / "subagents")
+        _calibrate(session, boundaries)
+    found = _subagents(path.with_suffix("") / "subagents")
+    session.subagents.runs += found.runs
+    session.subagents.total.add(found.total)
+    for usage in side_ids.values():
+        session.subagents.total.add(usage)
     return session
+
+
+def _real(message: dict[str, Any]) -> bool:
+    """A request the API answered: not Claude Code's own placeholder (an API error, an
+    interruption) that has a ``<synthetic>`` model or no usage at all."""
+    if message.get("model") == "<synthetic>":
+        return False
+    usage = _usage(message.get("usage"))
+    return usage.raw > 0
 
 
 def _item(session: Session, by_turn: dict[int, Call], kind: str, turn: int) -> Call:
@@ -352,8 +402,10 @@ def _place(session: Session, boundaries: list[int]) -> None:
     count = len(session.turns)
     for call in [*session.calls, *session.items]:
         written = call.turn + 1
-        call.sent = written < count
-        end = next((b for b in boundaries if b > written), count)
+        # The first compaction after the call ends its life; one right after it (at the
+        # request that would have sent it) means it was summarised away, never sent.
+        end = next((b for b in boundaries if b > call.turn), count)
+        call.sent = written < end
         call.rereads = max(0, end - written - 1) if call.sent else 0
 
 
@@ -369,15 +421,19 @@ def _rebuilds(session: Session, boundaries: list[int]) -> list[int]:
     return found
 
 
-def _calibrate(session: Session) -> None:
-    """Scale the size estimates so that they add up to the new context Claude Code measured
-    (``input + cache_write`` of every request, without the start and the cache misses)."""
+def _calibrate(session: Session, boundaries: list[int]) -> None:
+    """Scale the size estimates so that they add up to the new context Claude Code measured:
+    ``input + cache_write`` of every request, without the start, the restart after each
+    compaction (its summary) and the cache misses. A start read from a cache another session
+    wrote was never part of ``input + cache_write``, so only what it wrote is left out."""
     items = [c for c in [*session.calls, *session.items] if c.sent]
     estimated = sum(c.tokens for c in items)
     if not session.turns or estimated == 0:
         return
     measured = sum(t.input + t.cache_write for t in session.turns)
-    new = measured - session.turns[0].context - sum(session.rebuilds)
+    starts = [0, *(b for b in boundaries if b < len(session.turns))]
+    fresh = sum(session.turns[i].input + session.turns[i].cache_write for i in set(starts))
+    new = measured - fresh - sum(session.rebuilds)
     if new <= 0:
         return
     session.scale = min(max(new / estimated, MIN_SCALE), MAX_SCALE)
@@ -404,14 +460,14 @@ def _subagents(folder: Path) -> Subagents:
 
 
 def label(tool: str, data: Mapping[str, Any], cwd: str | None) -> str:
+    key = _TEXT_KEYS.get(tool)
+    if key and isinstance(data.get(key), str):
+        return _clip(scrub(data[key], cwd))
     for key in _PATH_KEYS:
         if isinstance(data.get(key), str):
             return _short_path(data[key], cwd)
     if tool in ("Bash", "PowerShell") and isinstance(data.get("command"), str):
         return _clip(scrub(data["command"], cwd))
-    key = _TEXT_KEYS.get(tool)
-    if key and isinstance(data.get(key), str):
-        return _clip(scrub(data[key], cwd))
     return ""
 
 
@@ -426,16 +482,27 @@ def _short_path(raw: str, cwd: str | None) -> str:
     return path.rsplit("/", 1)[-1] if absolute or path.startswith("~") else path
 
 
-def scrub(text: str, cwd: str | None) -> str:
-    """The working directory as ``.``, the home directory as ``~`` (any slash, any case)."""
-    for place, short in ((cwd, "."), (str(Path.home()), "~")):
+def scrub(text: str, cwd: str | None, *, home: str | None = None) -> str:
+    """The working directory as ``.``, the home directory as ``~``: any slash, any case, and
+    a Windows path also as Git Bash (``/c/Users/...``) and WSL (``/mnt/c/Users/...``) write it.
+    """
+    for place, short in ((cwd, "."), (home if home is not None else str(Path.home()), "~")):
         if place:
-            parts = [re.escape(p) for p in re.split(r"[\\/]+", place.rstrip("\\/")) if p]
-            pattern = r"[\\/]+".join(parts)
-            if place.startswith(("/", "\\")):
-                pattern = r"[\\/]+" + pattern
-            text = re.sub(pattern, lambda _m, s=short: s, text, flags=re.IGNORECASE)
+            text = re.sub(_place_pattern(place), lambda _m, s=short: s, text, flags=re.IGNORECASE)
     return text
+
+
+def _place_pattern(place: str) -> str:
+    parts = [p for p in re.split(r"[\\/]+", place.rstrip("\\/")) if p]
+    sep = r"[\\/]+"
+    drive = re.fullmatch(r"([A-Za-z]):", parts[0]) if parts else None
+    if drive is None:
+        lead = sep if place.startswith(("/", "\\")) else ""
+        return lead + sep.join(re.escape(p) for p in parts)
+    rest = sep.join(re.escape(p) for p in parts[1:])
+    letter = re.escape(drive[1])
+    # C:\Users\x, /c/Users/x or /mnt/c/Users/x
+    return rf"(?:{letter}:|{sep}(?:mnt{sep})?{letter}(?=[\\/])){sep}{rest}"
 
 
 def _clip(text: str) -> str:
@@ -501,7 +568,7 @@ def to_dict(report: Report) -> dict[str, Any]:
         "by_category": {k: _int(v) for k, v in report.by_category.items()},
         "top": [
             {"tool": c.tool, "label": c.label, "category": c.category, "tokens": c.tokens,
-             "lines": c.lines, "rereads": c.rereads, "raw": c.raw(w),
+             "lines": c.lines, "rereads": c.rereads, "raw": c.raw(),
              "weighted": _int(c.weighted(w)), "if_10_lines": _int(c.weighted_if_lines(w))}
             for c in report.top
         ],
@@ -509,6 +576,7 @@ def to_dict(report: Report) -> dict[str, Any]:
         "subagents": {"runs": report.subagents.runs,
                       "weighted": _int(report.subagents.total.weighted(w))},
         "estimate": {"chars_per_token": CHARS_PER_TOKEN},
+        "warnings": report.warnings,
     }  # fmt: skip
 
 
@@ -564,6 +632,7 @@ def render(report: Report) -> str:
     low, high = (min(scales), max(scales)) if scales else (1.0, 1.0)
     shown = f"{low:.2f}" if round(low, 2) == round(high, 2) else f"{low:.2f}-{high:.2f}"
     lines.append(t("tokens.estimate_note", chars=CHARS_PER_TOKEN, scale=shown))
+    lines.extend(report.warnings)
     return "\n".join(lines)
 
 
