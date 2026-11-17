@@ -48,6 +48,15 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 13i-a (PR #31), 2026-11-17
+`/code-review` 10 bulgu; hepsi düzeltildi (D-089). Önce 9 kırmızı test.
+- ✅ Boruyu tutan başıboş süreç `exec`'i bekletmiyor; Ctrl+C süreç ağacını durduruyor; başlatılamayan program kod 126.
+- ✅ Tek çıktıdaki bütün araçların bulguları (`test_every_tool_in_one_output_is_kept`); tek uyarı test koşusunu derleyici özetine çevirmiyor.
+- ✅ Aynı adlı testler kendi dosyalarını gösteriyor; setup hataları eşleniyor.
+- ✅ Tek dev satır bağlama girmiyor; ilk/son satırlar `--max-lines`'a göre; bozuk config nedeniyle yazılıyor; anahtar gibi adlı ortam değişkenleri config'siz de maskeleniyor.
+
+Testler: **1560 geçti** (1551 + 9). ruff, ruff format, pyright temiz.
+
 ### Faz 13i-a – Bağlam süzgeci: `orkestra exec` (2026-11-17)
 **Yapılanlar (D-088):** 13i ikiye bölündü (13i-a / 13i-b).
 - `orkestra exec [--max-lines n] [--no-model] [--timeout s] [--json] -- <komut>`: kısa çıktı olduğu gibi; uzun pytest/ruff/pyright/derleyici çıktısı kurallarla (`chief/outparse.py`); diğerleri sohbet modeli özeti (`agents=False`), yoksa ilk/son satırlar ve neden. Çıkış kodu komutunki (127, 124); tam çıktı `runs/<id>/output.log`, anahtarlar maskeli.

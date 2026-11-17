@@ -952,8 +952,9 @@ def build_app() -> typer.Typer:
         ] = None,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
+        config, problem = executor.load(ctx.ensure_object(_State).config_path)
         result = executor.execute(
-            command, cwd=Path.cwd(), config=executor.load(ctx.ensure_object(_State).config_path),
+            command, cwd=Path.cwd(), config=config, config_problem=problem,
             max_lines=max_lines, use_model=False if no_model else None, timeout_s=timeout,
         )  # fmt: skip
         if as_json:

@@ -81,13 +81,30 @@ class Digest:
 
 
 def parse(output: str, *, cwd: str | None = None) -> Digest | None:
-    """The digest of output a known tool wrote; ``None`` when no parser knows it."""
+    """The digest of output known tools wrote; ``None`` when no parser knows it.
+
+    One command may run several tools (``make check``, ``pre-commit run``): every tool that
+    is recognised keeps its findings. Compiler-style lines count only when nothing else was
+    recognised and at least one of them is an error (one stray warning in a test log must not
+    hide the failed tests from the worker's summary).
+    """
     lines = [_ANSI.sub("", line).rstrip("\r") for line in output.splitlines()]
-    for parser in _PARSERS:
-        digest = parser(lines, cwd)
-        if digest is not None:
-            return digest
-    return None
+    found = [d for parser in _PARSERS if (d := parser(lines, cwd)) is not None]
+    if not found:
+        compiled = _compiler(lines, cwd)
+        return compiled if compiled is not None and _has_error(compiled) else None
+    if len(found) == 1:
+        return found[0]
+    headlines = [d.headline for d in found if d.headline]
+    return Digest(
+        "+".join(d.tool for d in found),
+        " · ".join(headlines) or None,
+        [item for d in found for item in d.items],
+    )
+
+
+def _has_error(digest: Digest) -> bool:
+    return any(item.text.lower().startswith(("error", "fatal error")) for item in digest.items)
 
 
 def render_items(digest: Digest, *, cap: int = MAX_ITEMS) -> str:
@@ -127,35 +144,57 @@ def _pytest(lines: list[str], cwd: str | None) -> Digest | None:
     match = _PYTEST_SUMMARY.match(summary)
     assert match is not None
     headline = match[1]
-    where = _pytest_locations(lines, cwd)
+    sections = _pytest_sections(lines, cwd)
     items: list[Item] = []
     for line in lines:
         match = _PYTEST_RESULT.match(line)
         if match is None:
             continue
         test_id = match[2]
+        file = relative(test_id.split("::")[0], cwd)
         name = ".".join(test_id.split("::")[1:])
-        file, number = where.get(name, (relative(test_id.split("::")[0], cwd), None))
-        items.append(Item(line.strip(), file, number))
+        where = _take_section(sections, name, file)
+        items.append(Item(line.strip(), *(where or (file, None))))
     return Digest("pytest", headline, items)
 
 
-def _pytest_locations(lines: list[str], cwd: str | None) -> dict[str, tuple[str, int]]:
-    """Each failure section's last ``file:line: Error`` line: where the test failed."""
-    found: dict[str, tuple[str, int]] = {}
-    current: str | None = None
+_SETUP = re.compile(r"^ERROR at (?:setup|teardown) of (.+)$")
+
+
+def _pytest_sections(lines: list[str], cwd: str | None) -> list[tuple[str, list[tuple[str, int]]]]:
+    """Each failure section's test name and its ``file:line: Error`` lines, in order."""
+    sections: list[tuple[str, list[tuple[str, int]]]] = []
+    current: list[tuple[str, int]] | None = None
     for line in lines:
         header = _PYTEST_HEADER.match(line)
         if header:
-            current = header[1]
+            setup = _SETUP.match(header[1])
+            current = []
+            sections.append((setup[1] if setup else header[1], current))
             continue
         if line.startswith("="):
             current = None
             continue
         match = _PYTEST_WHERE.match(line)
         if current is not None and match:
-            found[current] = (relative(match[1], cwd), int(match[2]))
-    return found
+            current.append((relative(match[1], cwd), int(match[2])))
+    return sections
+
+
+def _take_section(
+    sections: list[tuple[str, list[tuple[str, int]]]], name: str, file: str
+) -> tuple[str, int] | None:
+    """Where the test failed (its section's last location), taking the section so that a
+    test of the same name in another file gets its own: the one that went through its file
+    first, else the first of that name."""
+    named = [s for s in sections if s[0] == name and s[1]]
+    chosen = next(
+        (s for s in named if any(f == file for f, _ in s[1])), named[0] if named else None
+    )
+    if chosen is None:
+        return None
+    sections.remove(chosen)
+    return chosen[1][-1]
 
 
 def _ruff(lines: list[str], cwd: str | None) -> Digest | None:
@@ -215,5 +254,5 @@ def _compiler(lines: list[str], cwd: str | None) -> Digest | None:
 
 
 _PARSERS: tuple[Callable[[list[str], str | None], Digest | None], ...] = (
-    _pytest, _pyright, _ruff, _compiler,
+    _ruff, _pyright, _pytest,
 )  # fmt: skip

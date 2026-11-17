@@ -939,3 +939,15 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Skill:** testleri, linter'ı ve derlemeyi `orkestra exec` ile çalıştır, ayrıntı gerekirse işaretçideki satırları oku; "Asla yapma"ya kural. Skill denetleyicisi click'in `--` (seçeneklerin sonu) kuralını öğrendi.
 - **Sınırlar:** kabuk yok (boru, `&&`, yönlendirme çalışmaz); özet kalitesi modele bağlı, ama kural tabanlı çıktılarda model yok. Kazancın ölçümü 13g'de (geri dönüp günlüğü okuma sayısı ayrıca).
 - **Testler:** 1524 → 1551 (+27).
+
+## D-089 – Faz 13i-a kod denetimi düzeltmeleri (2026-11-17, Faz 13i-a)
+`/code-review` (PR #31): 10 bulgu, hepsi düzeltildi; önce 9 kırmızı test.
+- **Süreç:** zaman aşımında süreç ağacı durdurulur ve çıktı en çok `KILL_GRACE_S` beklenir (çıktı borusunu tutan başıboş süreç `exec`'i sonsuza dek bekletiyordu; `command` doğrulayıcısındaki gibi). Komut kendisi bitmiş ama borusu tutuluyorsa kendi çıkış kodu döner. Ctrl+C ya da başka bir hata süreç ağacını durdurur. Bulunan ama başlatılamayan program (çalıştırma izni yok, `.txt`) traceback değil **çıkış kodu 126**.
+- **Birden çok araç tek çıktıda** (`make check`, `pre-commit`): tanınan her aracın bulguları birleşir (`ruff+pyright`, başlıklar ` · ` ile); önce yalnız ilk eşleşen kalıyordu.
+- **Derleyici biçimi** yalnız başka hiçbir araç tanınmadığında ve en az bir **hata** satırı varsa sayılır: tek bir uyarı satırı `cargo test`'in başarısız testlerini model özetinden saklıyordu.
+- **pytest işaretçileri** hata bölümüne adıyla **ve dosyasıyla**, sırayla eşlenir: farklı dosyalardaki aynı adlı testler kendi dosyasını gösterir; `ERROR at setup/teardown of …` bölümleri de eşlenir.
+- **"Kısa" karakterle de sınırlı** (`max_lines × 300`): tek satırlık 2 MB çıktı bağlama olduğu gibi girmiyor; ilk/son satırlarda her satır 300 karakterde kesilir.
+- **İlk/son satırlar `--max-lines`'a göre** (dörtte biri baştan, kalanı sondan).
+- **Bozuk config** "config'i yok" diye değil nedeniyle yazılır; **anahtar maskeleme config'siz de**: adı anahtar gibi görünen ortam değişkenlerinin değerleri (`*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`, `*AUTH*` …; `security.redact.secret_env_values`) günlükte ve cevapta maskelenir.
+- Hiç gösterilmeyen `exec.kind.model` / `exec.kind.digest` anahtarları kaldırıldı.
+- **Testler:** 1551 → 1560 (+9).

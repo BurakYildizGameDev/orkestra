@@ -33,16 +33,16 @@ from orkestra.config import loader
 from orkestra.config.schema import Config, ExecCfg
 from orkestra.errors import ConfigError, OrkestraError
 from orkestra.i18n import t
-from orkestra.providers.cli_agent import kill_tree
-from orkestra.security.redact import Redactor, configured_secrets
+from orkestra.providers.cli_agent import KILL_GRACE_S, kill_tree
+from orkestra.security.redact import Redactor, configured_secrets, secret_env_values
 from orkestra.tasks.runner import new_run_id
 
 LOG_FILE = "output.log"
 META_FILE = "exec.json"
-HEAD_LINES, TAIL_LINES = 10, 30
+CHARS_PER_LINE = 300  # "short" also means at most max_lines * this many characters
 MODEL_LINES = 400  # the last lines a worker reads
 MODEL_CHARS = 40_000
-NOT_FOUND, TIMED_OUT = 127, 124
+NOT_FOUND, CANNOT_RUN, TIMED_OUT = 127, 126, 124
 NOTE_CHARS = 160
 
 SUMMARY_SYSTEM = (
@@ -84,28 +84,50 @@ def run_command(argv: list[str], cwd: Path, timeout_s: float) -> Completed:
     program = shutil.which(argv[0])
     if program is None:  # as a shell would say it, with its code
         return Completed(NOT_FOUND, t("exec.error.not_found", command=argv[0]).encode("utf-8"))
-    proc = subprocess.Popen(
-        [program, *argv[1:]], cwd=cwd, stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-    )  # fmt: skip
+    try:
+        proc = subprocess.Popen(
+            [program, *argv[1:]], cwd=cwd, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )  # fmt: skip
+    except (OSError, ValueError) as exc:  # found, but not a program (no exec bit, a .txt …)
+        message = t("exec.error.cannot_run", command=argv[0], error=exc)
+        return Completed(CANNOT_RUN, message.encode("utf-8"))
     try:
         output, _ = proc.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired:
+        finished = proc.poll() is not None  # it ended; a process it left holds the output
         kill_tree(proc.pid)  # its children too (a test runner's workers)
-        output, _ = proc.communicate()
-        return Completed(TIMED_OUT, output or b"", timed_out=True)
+        output = _drain(proc)
+        if finished:
+            return Completed(proc.returncode, output)
+        return Completed(TIMED_OUT, output, timed_out=True)
+    except BaseException:
+        kill_tree(proc.pid)  # Ctrl+C: leave no test run behind
+        raise
     return Completed(proc.returncode, output or b"")
 
 
-def load(config_flag: Path | None = None) -> Config | None:
-    """The config, or ``None`` when there is none or it does not load: ``exec`` works without
-    one (no worker summary then)."""
-    if not loader.find_sources(config_flag):
-        return None
+def _drain(proc: subprocess.Popen[bytes]) -> bytes:
+    """Output of a stopped command, waiting at most ``KILL_GRACE_S``: a process outside its
+    tree (a server it started) may hold the pipe open, and then the output is given up
+    instead of waiting forever (as the ``command`` check does)."""
     try:
-        return loader.load_config(config_flag).config
-    except ConfigError:
-        return None
+        output, _ = proc.communicate(timeout=KILL_GRACE_S)
+    except subprocess.TimeoutExpired:
+        return b""
+    return output or b""
+
+
+def load(config_flag: Path | None = None) -> tuple[Config | None, str | None]:
+    """The config and, when it does not load, why. ``exec`` works without one (no worker
+    summary then); a broken one is named instead of being taken for a missing one."""
+    if not loader.find_sources(config_flag):
+        return None, None
+    try:
+        return loader.load_config(config_flag).config, None
+    except ConfigError as exc:
+        first = exc.details[0] if exc.details else exc.message
+        return None, _one_line(first or type(exc).__name__)
 
 
 def execute(
@@ -113,6 +135,7 @@ def execute(
     *,
     cwd: Path,
     config: Config | None,
+    config_problem: str | None = None,
     max_lines: int | None = None,
     use_model: bool | None = None,
     timeout_s: float | None = None,
@@ -123,13 +146,15 @@ def execute(
     settings = config.exec if config is not None else ExecCfg()
     limit = max_lines or settings.max_lines
     done = runner(argv, cwd, timeout_s or settings.timeout_s)
-    redact = Redactor(configured_secrets(config, environ) if config is not None else ())
+    # Keys the config names, and any variable that looks like one: also without a config.
+    secrets = configured_secrets(config, environ) if config is not None else []
+    redact = Redactor([*secrets, *secret_env_values(environ)])
     text = redact(done.output.decode("utf-8", errors="replace").replace("\r\n", "\n"))
     log = _record(argv, text, done, redact, now)
     lines = text.splitlines()
     result = ExecResult(done.code, len(lines), log, "full", text.rstrip("\n"),
                         timed_out=done.timed_out)  # fmt: skip
-    if len(lines) <= limit:
+    if len(lines) <= limit and len(text) <= limit * CHARS_PER_LINE:
         return result
     digest = outparse.parse(text, cwd=str(cwd))
     if digest is not None:
@@ -149,8 +174,11 @@ def execute(
             result.kind, result.summary, result.model = "model", answer.strip(), label
             return result
     elif wanted:
-        result.note = t("exec.note.no_config")
-    result.kind, result.summary = "head_tail", _head_tail(lines)
+        problem = config_problem
+        result.note = (
+            t("exec.note.config_error", error=problem) if problem else t("exec.note.no_config")
+        )
+    result.kind, result.summary = "head_tail", _head_tail(lines, limit)
     return result
 
 
@@ -174,11 +202,17 @@ def _one_line(text: str, limit: int = NOTE_CHARS) -> str:
     return first if len(first) <= limit else first[: limit - 1] + "…"
 
 
-def _head_tail(lines: list[str]) -> str:
-    skipped = len(lines) - HEAD_LINES - TAIL_LINES
+def _head_tail(lines: list[str], limit: int) -> str:
+    """The first quarter and the last three quarters of ``limit`` lines, each line cut to
+    ``CHARS_PER_LINE`` (one huge line must not come through whole either)."""
+    head = max(1, limit // 4)
+    tail = max(1, limit - head)
+    clipped = [line if len(line) <= CHARS_PER_LINE else line[: CHARS_PER_LINE - 1] + "…"
+               for line in lines]  # fmt: skip
+    skipped = len(clipped) - head - tail
     if skipped <= 0:
-        return "\n".join(lines)
-    return "\n".join([*lines[:HEAD_LINES], t("exec.skipped", count=skipped), *lines[-TAIL_LINES:]])
+        return "\n".join(clipped)
+    return "\n".join([*clipped[:head], t("exec.skipped", count=skipped), *clipped[-tail:]])
 
 
 def _record(
@@ -198,7 +232,7 @@ def _record(
 
 def header(result: ExecResult) -> str:
     """The first line the chief reads: exit code, size, how it was shortened, the log."""
-    how = result.parser or result.model or t(f"exec.kind.{result.kind}")
+    how = result.parser or result.model or t(f"exec.kind.{result.kind}")  # full, head_tail
     return t("exec.header", code=result.exit_code, lines=result.lines, how=how, log=result.log)
 
 

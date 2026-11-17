@@ -256,3 +256,100 @@ def test_a_paused_chat_model_is_named_as_the_reason(
     _, out, _ = _run(["--lang", "en", "exec", "--json", "--", *_noisy()], capsys)
     note = json.loads(out)["note"]
     assert "ollama" in note and "paused" in note
+
+
+# --- code review fixes (PR #31) --------------------------------------------------------
+
+
+def test_a_stray_process_holding_the_output_does_not_hang_exec(
+    work: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import time
+
+    import psutil
+
+    pid_file = tmp_path / "stray.pid"
+    # The command starts a process that keeps its output pipe and ends at once.
+    child = f"import os, time; open(r'{pid_file}', 'w').write(str(os.getpid())); time.sleep(60)"
+    script = (
+        f"import subprocess, sys; subprocess.Popen([sys.executable, '-c', {child!r}]); "
+        "print('left')"
+    )
+    started = time.monotonic()
+    try:
+        code, _, _ = _run(["exec", "--timeout", "1", "--json", "--", PY, "-c", script], capsys)
+        assert time.monotonic() - started < 20
+        assert code == 0  # the command itself ended well; only its output was held
+    finally:
+        for _ in range(50):
+            if pid_file.exists() and pid_file.read_text(encoding="utf-8"):
+                break
+            time.sleep(0.1)
+        if pid_file.exists():
+            with __import__("contextlib").suppress(psutil.Error, ValueError):
+                psutil.Process(int(pid_file.read_text(encoding="utf-8"))).kill()
+
+
+def test_ctrl_c_stops_the_whole_command(
+    work: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+
+    killed: list[int] = []
+    monkeypatch.setattr(execute, "kill_tree", lambda pid, *a, **k: killed.append(pid))
+
+    def interrupted(self: subprocess.Popen[bytes], timeout: float | None = None) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        execute.run_command([PY, "-c", "print(1)"], work, 5)
+    assert len(killed) == 1
+
+
+def test_a_program_that_cannot_start_is_exit_code_126(
+    work: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    import shutil
+
+    not_a_program = tmp_path / "notes.txt"
+    not_a_program.write_text("just text\n", encoding="utf-8")
+    monkeypatch.setattr(shutil, "which", lambda name, *a, **k: str(not_a_program))
+    code, out, _ = _run(["exec", "--", "notes"], capsys)
+    assert code == 126 and "notes" in out
+
+
+def test_one_huge_line_is_not_passed_through(
+    work: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out, _ = _run(["exec", "--json", "--", PY, "-c", "print('x' * 200_000)"], capsys)
+    data = json.loads(out)
+    assert code == 0 and data["kind"] != "full"
+    assert len(out) < 10_000
+
+
+def test_head_and_tail_follow_max_lines(work: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _, out, _ = _run(
+        ["exec", "--max-lines", "8", "--no-model", "--json", "--", *_noisy(39)], capsys
+    )
+    shown = json.loads(out)["summary"].splitlines()
+    assert len(shown) <= 9  # 8 lines and the "left out" marker
+    assert shown[0] == "step 0" and shown[-1] == "step 38"
+
+
+def test_a_broken_config_is_named_and_secret_variables_are_still_masked(
+    work: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    _write_config(tmp_path, "version: 1\nnot_a_key: 1\n")
+    monkeypatch.setenv("MY_SERVICE_TOKEN", "custom-format-value-1234567890")
+    _, out, _ = _run(
+        ["--lang", "en", "exec", "--json", "--", PY, "-c",
+         "import os\nprint(os.environ['MY_SERVICE_TOKEN'])\n" + "print('x')\n" * 100],
+        capsys,
+    )  # fmt: skip
+    data = json.loads(out)
+    assert "custom-format-value-1234567890" not in out
+    assert "custom-format-value" not in Path(data["log"]).read_text(encoding="utf-8")
+    assert "config" in data["note"].lower() and "no config yet" not in data["note"]

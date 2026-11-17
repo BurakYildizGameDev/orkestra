@@ -32,6 +32,19 @@ def configured_secrets(config: Config, environ: Mapping[str, str] | None = None)
     return values
 
 
+_SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH", re.IGNORECASE)
+
+
+def secret_env_values(environ: Mapping[str, str] | None = None) -> list[str]:
+    """Values of environment variables whose names look like keys (``*_TOKEN``, ``*KEY*`` …):
+    masked in command output even when no config names them (``exec``, D-089)."""
+    env = os.environ if environ is None else environ
+    return [
+        value.strip() for name, value in env.items()
+        if _SECRET_NAME.search(name) and len(value.strip()) >= MIN_SECRET_LENGTH
+    ]  # fmt: skip
+
+
 def config_for_display(config: Config) -> dict[str, Any]:
     """The config as JSON data for ``config show``, with header credentials masked.
 

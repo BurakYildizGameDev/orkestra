@@ -128,3 +128,54 @@ def test_many_linter_findings_are_capped_with_a_count() -> None:
     rendered = outparse.render_items(digest)
     assert "a.py:30:1" in rendered and "a.py:31:1" not in rendered
     assert "70" in rendered  # "+70 more in the log"
+
+
+# --- code review fixes (PR #31) --------------------------------------------------------
+
+
+def test_every_tool_in_one_output_is_kept() -> None:
+    text = "\n".join([
+        "ruff check .",
+        "/work/proj/a.py:1:8: F401 `os` imported but unused",
+        "/work/proj/b.py:3:1: E501 Line too long",
+        "Found 2 errors.",
+        "pyright",
+        "0 errors, 0 warnings, 0 informations",
+    ])  # fmt: skip
+    digest = outparse.parse(text, cwd="/work/proj")
+    assert digest is not None and digest.tool == "ruff+pyright"
+    assert _pointers(digest) == ["a.py:1", "b.py:3"]
+    assert digest.headline == "Found 2 errors. · 0 errors, 0 warnings, 0 informations"
+
+
+def test_a_warning_alone_does_not_make_a_test_run_a_compiler_digest() -> None:
+    text = "\n".join([
+        "warning: unused import: `std::fmt`",
+        " --> src/lib.rs:1:5",
+        "running 2 tests",
+        "test tests::it_works ... FAILED",
+        "failures:",
+        "test result: FAILED. 1 passed; 1 failed",
+    ])  # fmt: skip
+    assert outparse.parse(text) is None  # left to the worker's summary
+
+
+def test_same_named_tests_in_two_files_point_at_their_own_file() -> None:
+    text = "\n".join([
+        "=================================== FAILURES ===================================",
+        "__________________________________ test_init ___________________________________",
+        "tests/a/test_api.py:7: AssertionError",
+        "__________________________________ test_init ___________________________________",
+        "tests/b/test_db.py:42: AssertionError",
+        "____________________________ ERROR at setup of test_x ____________________________",
+        "tests/c/test_x.py:3: ValueError",
+        "=========================== short test summary info ============================",
+        "FAILED tests/a/test_api.py::test_init - assert 1 == 2",
+        "FAILED tests/b/test_db.py::test_init - assert 3 == 4",
+        "ERROR tests/c/test_x.py::test_x - ValueError: no db",
+        "==================== 2 failed, 1 error in 0.10s ====================",
+    ])  # fmt: skip
+    digest = outparse.parse(text)
+    assert digest is not None
+    assert _pointers(digest) == ["tests/a/test_api.py:7", "tests/b/test_db.py:42",
+                                 "tests/c/test_x.py:3"]  # fmt: skip
