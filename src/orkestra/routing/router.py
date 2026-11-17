@@ -7,8 +7,10 @@ state. Every candidate that is left out gets a reason; ``--dry-run`` prints them
 Order: tier ascending → (``routing.adaptive``) success score descending → priority
 descending → the order in the config (providers as written, then their models as listed). The
 user states a preference by writing it first; ``priority`` overrides that. Budgets only
-filter, they do not reorder (D-031). The score (``adaptive.py``, Faz 12b) only orders inside
-a tier; below ``min_samples`` it is neutral.
+filter, they do not reorder (D-031); the one exception is a provider running low on quota
+(``state.forecast``, Faz 13k, D-094): it goes last inside its tier, before the score. The
+score (``adaptive.py``, Faz 12b) only orders inside a tier; below ``min_samples`` it is
+neutral.
 """
 
 from __future__ import annotations
@@ -38,7 +40,7 @@ from orkestra.providers.pricing import Price
 from orkestra.providers.registry import ChatConfig, key_present
 from orkestra.routing import adaptive
 from orkestra.routing.adaptive import Score, ScoreKey
-from orkestra.state import budget, consent, health
+from orkestra.state import budget, consent, forecast, health
 
 CONTEXT_FILL = 0.8  # the estimated prompt may use at most 80% of the context window
 AGENT_CONTEXT = 1_000_000  # agents read files themselves: no context window check
@@ -86,6 +88,7 @@ class ProviderState:
     key_present: bool = True
     installed: bool = True  # code agents: the program is on PATH
     used: budget.Amount = field(default_factory=budget.Amount)
+    quota_low: bool = False  # running low on quota: last in its tier (Faz 13k)
 
 
 @dataclass(frozen=True)
@@ -106,6 +109,7 @@ class Candidate:
     order: tuple[int, int] = (0, 0)  # position in the config: (provider, model)
     edit_format: EditFormat | None = None  # how an API worker answers an edit task (Faz 9c)
     score: Score | None = None  # routing.adaptive: success score and sample count (Faz 12b)
+    quota_low: bool = False  # running low on quota (Faz 13k): last in its tier
 
     @property
     def tier(self) -> int:
@@ -331,7 +335,9 @@ def route(
         if isinstance(cfg, CliAgentProvider):
             agent = _agent_candidate(name, cfg, needs, state, (low, high), profile_name, drop)
             if agent is not None:
-                candidates.append(replace(agent, order=(provider_order[name], 0)))
+                candidates.append(
+                    replace(agent, order=(provider_order[name], 0), quota_low=state.quota_low)
+                )
             continue
         models = _models_for(name, cfg, needs, low)
         if not models and needs.model is not None:
@@ -374,7 +380,8 @@ def route(
                 continue
             position = (provider_order[name], model_order(cfg, model))
             edit_format = _edit_format(needs, model, config) if needs.kind == "edit" else None
-            candidates.append(Candidate(name, cfg, model, ratio, price, position, edit_format))
+            candidates.append(Candidate(name, cfg, model, ratio, price, position, edit_format,
+                                        quota_low=state.quota_low))  # fmt: skip
 
     if config.routing.adaptive:
         neutral = Score(adaptive.NEUTRAL, 0, 0, config.routing.min_samples, scored=False)
@@ -392,9 +399,10 @@ def _score_key(c: Candidate) -> ScoreKey:
     return (c.provider, c.model.id)
 
 
-def _order_key(c: Candidate) -> tuple[int, float, int, tuple[int, int]]:
-    """Tier first, always; the score only reorders inside a tier."""
-    return (c.tier, -(c.score.value if c.score is not None else 0.0), -c.model.priority, c.order)
+def _order_key(c: Candidate) -> tuple[int, bool, float, int, tuple[int, int]]:
+    """Tier first, always; running low on quota and the score only reorder inside a tier."""
+    score = -(c.score.value if c.score is not None else 0.0)
+    return (c.tier, c.quota_low, score, -c.model.priority, c.order)
 
 
 def take_snapshot(
@@ -434,6 +442,7 @@ def take_snapshot(
             used=budget.used(conn, name, now, reservations=False),  # D-054
             installed=not isinstance(cfg, CliAgentProvider)
             or cli_agent.find_program(cfg.command, env) is not None,
+            quota_low=_running_low(conn, name, cfg, now, config),
         )
         if isinstance(cfg, CliAgentProvider):
             continue
@@ -452,6 +461,12 @@ def take_snapshot(
     return Snapshot(now, states, prices, scores)
 
 
+def _running_low(conn: sqlite3.Connection, name: str, cfg: Any, now: datetime,
+                 config: Config) -> bool:  # fmt: skip
+    found = forecast.provider_forecast(conn, name, cfg, now, config.forecast)
+    return found is not None and found.low
+
+
 def describe_candidates(candidates: Sequence[Candidate]) -> list[dict[str, Any]]:
     return [
         {
@@ -467,6 +482,7 @@ def describe_candidates(candidates: Sequence[Candidate]) -> list[dict[str, Any]]
             "score": round(c.score.value, 4) if c.score is not None else None,
             "score_samples": c.score.samples if c.score is not None else None,
             "score_used": c.score.scored if c.score is not None else None,
+            "quota_low": c.quota_low,
         }
         for c in candidates
     ]

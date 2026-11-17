@@ -174,6 +174,9 @@ class HandoffCfg(_Model):
     stale_after_commits: PosInt = 5
     # Faz 13j: past this context size (tokens) status and tokens suggest a fresh session.
     suggest_at_tokens: PosInt = 120_000
+    # Faz 13k: past this share of a Claude usage window (``statusline``), the hook asks the
+    # chief once to bring the handoff file up to date.
+    prepare_at_percent: Annotated[int, Field(ge=1, le=100)] = 85
 
 
 class ReviewCfg(_Model):
@@ -251,6 +254,19 @@ class FindCfg(_Model):
     max_hits: PosInt = 40
 
 
+class ForecastCfg(_Model):
+    """Quota forecast (Faz 13k, D-094): the pace of the last ``window_s`` seconds against a
+    provider's limit (its ``budget``, or one learned from its last ``learn_events`` used-up
+    quotas). A provider is running low when it would run out within ``warn_within_s`` or has
+    at most ``low_share`` of the limit left; the router then tries it last in its tier."""
+
+    enabled: bool = True
+    window_s: PosInt = 3600
+    warn_within_s: PosInt = 3600
+    low_share: Annotated[float, Field(ge=0, le=1)] = 0.1
+    learn_events: PosInt = 5
+
+
 def default_profiles() -> dict[str, Profile]:
     return {
         "cheap": Profile(min_tier=1, max_tier=1),
@@ -286,6 +302,7 @@ class Config(_Model):
     exec: ExecCfg = Field(default_factory=ExecCfg)
     read: ReadCfg = Field(default_factory=ReadCfg)
     find: FindCfg = Field(default_factory=FindCfg)
+    forecast: ForecastCfg = Field(default_factory=ForecastCfg)
     security: Security = Field(default_factory=Security)
 
     @field_validator("providers")

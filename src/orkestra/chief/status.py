@@ -17,13 +17,14 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any
 
+from orkestra.chief import limits
 from orkestra.config.schema import Config
 from orkestra.errors import UsageError
 from orkestra.handoff import brief, model, store
 from orkestra.i18n import t
 from orkestra.providers import registry
 from orkestra.queue import store as queue_store
-from orkestra.state import health
+from orkestra.state import forecast, health
 from orkestra.workspace import service
 
 MAX_LINES = 15
@@ -180,6 +181,23 @@ def _live_transcript(ctx: StatusContext, tokens: Any) -> tuple[Path, Path] | Non
     return None
 
 
+@section("chief_quota", order=27)
+def _chief_quota(ctx: StatusContext) -> Section | None:
+    """The chief's usage windows, as the status line last read them (Faz 13k); nothing when
+    there is no fresh reading (no status line set up, or the session is over)."""
+    found = limits.status_windows(ctx.now)
+    if not found:
+        return None
+    data = {"windows": [
+        {"name": w.name, "used": w.used,
+         "resets_at": w.resets_at.isoformat() if w.resets_at else None,
+         "eta_s": round(w.eta_s) if w.eta_s is not None else None}
+        for w in found
+    ]}  # fmt: skip
+    return Section([t("status.chief_quota.line",
+                      windows=" · ".join(limits.window_text(w) for w in found))], data)  # fmt: skip
+
+
 @section("unapplied", order=30)
 def _unapplied(ctx: StatusContext) -> Section:
     runs = service.unapplied_runs(ctx.conn)
@@ -238,6 +256,22 @@ def _budget(ctx: StatusContext) -> Section:
     if len(rows) > SHOWN_PROVIDERS:
         lines.append(t("status.budget.more", count=len(rows) - SHOWN_PROVIDERS))
     return Section(lines, data)
+
+
+@section("forecast", order=55)
+def _forecast(ctx: StatusContext) -> Section | None:
+    """Providers running low on quota (Faz 13k): one line naming them, none when no provider
+    is; the JSON has every forecast. Paused providers already say when they come back."""
+    paused = {r.name for r in ctx.providers if r.health.is_open(ctx.now)}
+    found = forecast.forecasts(ctx.conn, ctx.config, ctx.now, skip=paused)
+    if not found:
+        return None
+    data = {"providers": [forecast.to_dict(f) for f in found]}
+    low = [f for f in found if f.low]
+    if not low:
+        return Section([], data)
+    names = ", ".join(forecast.describe(f) for f in low)
+    return Section([t("status.forecast.line", providers=names)], data)
 
 
 @section("health", order=70)

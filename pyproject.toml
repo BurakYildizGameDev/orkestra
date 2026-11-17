@@ -24,7 +24,7 @@ dependencies = [
 notify = ["desktop-notifier>=6.0"]
 
 [project.scripts]
-orkestra = "orkestra.cli:app"
+orkestra = "orkestra.entry:main"
 
 [dependency-groups]
 dev = [

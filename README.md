@@ -381,6 +381,42 @@ providers:
   agent is started 4 times and never again after its quota message; switching costs one
   failed agent run and no waiting.
 
+### Before it runs out
+
+Orkestra also looks ahead. It compares each provider's pace over the last hour with its
+limit and tells you when the limit will be reached:
+
+- **Known limits** are your `budget` (`daily_runs` …). **Learned limits** cover quotas nobody
+  wrote down, such as an agent's subscription: every used-up quota records how much was used
+  since its window began, and the median of the last 5 becomes the limit.
+- A provider is **running low** when it would run out within an hour or has 10 % or less
+  left. `status`, `doctor` and the `--notify` messages say so ("quota running low: agy: ~40
+  min (runs 18/20)"). The router then tries it **last in its tier**: work drifts to the
+  others before the quota is gone, and nothing is blocked. `--dry-run --json` shows
+  `quota_low`.
+
+```yaml
+forecast:
+  enabled: true        # false: no warnings, no reordering
+  window_s: 3600       # the pace is read over this span
+  warn_within_s: 3600  # "running low" when the limit is this close
+  low_share: 0.1       # ... or when this share of the limit is left
+  learn_events: 5      # used-up quotas a learned limit is the median of
+```
+
+**The chief's own quota.** Claude Code passes its usage windows (5 hours, 7 days) to a status
+line command. Wire up Orkestra's line and hook once:
+
+```bash
+orkestra statusline config   # prints the part for ~/.claude/settings.json
+```
+
+The line reads `Claude 5h 72% (~40 min) · 7d 40% | orkestra: agy ~20 min (runs 18/20)`. Once a
+window passes `handoff.prepare_at_percent` (default 85), or would run out within an hour, the
+hook tells Claude, once per window, to bring the handoff file up to date and commit. When the
+limit then runs out, you type only `orkestra handoff to agy`. Both commands start in about
+0.3 s: they skip the rest of the CLI.
+
 ## Batches: many tasks at once
 
 ```yaml

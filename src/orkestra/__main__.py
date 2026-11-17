@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from orkestra.cli import app
+from orkestra.entry import main
 
 if __name__ == "__main__":
-    app()
+    main()

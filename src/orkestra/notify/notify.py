@@ -23,7 +23,7 @@ import httpx
 
 from orkestra.config.schema import NotifyCfg
 from orkestra.i18n import t
-from orkestra.state import db, health
+from orkestra.state import db, forecast, health
 
 NTFY_URL = "https://ntfy.sh/{topic}"
 TIMEOUT_S = 10.0
@@ -143,23 +143,30 @@ def delivery_lines(deliveries: list[Delivery], config: NotifyCfg) -> list[str]:
 
 
 def send_batch(
-    config: NotifyCfg, results: int, ok: int, *, paused: Sequence[health.Health] = ()
-) -> list[Delivery]:
-    """``batch --notify``: how many tasks ended and how many did not end ok, and the
-    providers whose quota ran out during the batch (``batch.quota_pauses``)."""
-    message = with_quota(counts_text(results, results - ok), paused)
+    config: NotifyCfg, results: int, ok: int, *, paused: Sequence[health.Health] = (),
+    low: Sequence[forecast.Forecast] = (),
+) -> list[Delivery]:  # fmt: skip
+    """``batch --notify``: how many tasks ended and how many did not end ok, the providers
+    whose quota ran out during the batch (``batch.quota_pauses``) and those running low."""
+    message = with_quota(counts_text(results, results - ok), paused, low=low)
     return send(config, t("notify.title.batch"), message)
 
 
-def with_quota(message: str, paused: Sequence[health.Health]) -> str:
-    """The counts, plus one line naming the providers paused for quota (Faz 13f): only names
-    and times, nothing of the work."""
+def with_quota(
+    message: str, paused: Sequence[health.Health], *, low: Sequence[forecast.Forecast] = ()
+) -> str:
+    """The counts, plus one line naming the providers paused for quota (Faz 13f) and one
+    naming those running low (Faz 13k): only names, times and counts, nothing of the work."""
     now = db.local_now()
     names = ", ".join(
         f"{h.provider} ({health.until_text(h.open_until, now)})" if h.open_until else h.provider
         for h in paused
     )
-    return f"{message}\n{t('notify.quota', providers=names)}" if names else message
+    if names:
+        message = f"{message}\n{t('notify.quota', providers=names)}"
+    if low:
+        message += "\n" + t("notify.quota_low", providers=", ".join(map(forecast.describe, low)))
+    return message
 
 
 def any_sent(deliveries: list[Delivery]) -> bool:

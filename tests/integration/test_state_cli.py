@@ -218,6 +218,12 @@ def test_changed_settings_need_consent_again(
 def test_budget_exhausted_moves_to_next_provider(
     home: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # The budget as a filter only: with the forecast (Faz 13k) four quick requests of five
+    # already put the router last in its tier (tests/unit/test_forecast.py).
+    config = home / "config.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8") + "forecast:\n  enabled: false\n", encoding="utf-8"
+    )
     _enable(capsys, "router", "ollama")
     router = respx.post(f"{ROUTER}/chat/completions").mock(return_value=_router_ok())
     ollama = respx.post(f"{OLLAMA}/api/chat").mock(return_value=_ollama_ok())

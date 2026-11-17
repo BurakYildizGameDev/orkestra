@@ -43,7 +43,7 @@ from orkestra.envelope import (
 )
 from orkestra.errors import ExitCode, InternalError, OrkestraError, UsageError
 from orkestra.i18n import t
-from orkestra.state import db, health
+from orkestra.state import db, forecast, health
 from orkestra.tasks import runner
 from orkestra.tasks.context import glob_files
 from orkestra.tasks.spec import TaskSpec, parse_task, read_document
@@ -450,3 +450,13 @@ def quota_pauses(document: BatchEnvelope) -> list[health.Health]:
     except sqlite3.Error:
         return [health.Health(name) for name in names]
     return [h for h in states if h.reason == "quota"]  # a model's quota pauses nothing
+
+
+def quota_low(config: Config) -> list[forecast.Forecast]:
+    """Providers running low on quota after the batch, for the notification (Faz 13k);
+    nothing when state.db cannot be read."""
+    try:
+        with closing(db.connect()) as conn:
+            return forecast.low_now(conn, config, db.local_now())
+    except sqlite3.Error:
+        return []
