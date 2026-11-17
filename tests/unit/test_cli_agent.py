@@ -14,6 +14,7 @@ import pytest
 from orkestra.config.schema import CliAgentProvider
 from orkestra.errors import ProviderBadOutput, ProviderTimeout, ProviderUnavailable
 from orkestra.providers import cli_agent as ca
+from orkestra.providers import quota
 from orkestra.providers.base import AgentRequest
 
 FAKE = Path(__file__).resolve().parents[1] / "fixtures" / "fake_agent.py"
@@ -317,7 +318,7 @@ def test_agy_mcp_stall_is_read_from_the_log(
      ("500ms", 0.5), ("soon", None), ("30", None), ("30sx", None)],
 )  # fmt: skip
 def test_go_durations(text: str, seconds: float | None) -> None:
-    assert ca.go_seconds(text) == seconds
+    assert quota.go_seconds(text) == seconds
 
 
 def test_the_log_tail_reads_only_new_complete_lines(tmp_path: Path) -> None:

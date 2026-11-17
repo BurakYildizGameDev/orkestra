@@ -15,7 +15,7 @@ import asyncio
 import importlib
 import os
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -23,6 +23,7 @@ import httpx
 
 from orkestra.config.schema import NotifyCfg
 from orkestra.i18n import t
+from orkestra.state import db, health
 
 NTFY_URL = "https://ntfy.sh/{topic}"
 TIMEOUT_S = 10.0
@@ -141,9 +142,24 @@ def delivery_lines(deliveries: list[Delivery], config: NotifyCfg) -> list[str]:
     return lines
 
 
-def send_batch(config: NotifyCfg, results: int, ok: int) -> list[Delivery]:
-    """``batch --notify``: how many tasks ended and how many did not end ok."""
-    return send(config, t("notify.title.batch"), counts_text(results, results - ok))
+def send_batch(
+    config: NotifyCfg, results: int, ok: int, *, paused: Sequence[health.Health] = ()
+) -> list[Delivery]:
+    """``batch --notify``: how many tasks ended and how many did not end ok, and the
+    providers whose quota ran out during the batch (``batch.quota_pauses``)."""
+    message = with_quota(counts_text(results, results - ok), paused)
+    return send(config, t("notify.title.batch"), message)
+
+
+def with_quota(message: str, paused: Sequence[health.Health]) -> str:
+    """The counts, plus one line naming the providers paused for quota (Faz 13f): only names
+    and times, nothing of the work."""
+    now = db.local_now()
+    names = ", ".join(
+        f"{h.provider} ({health.until_text(h.open_until, now)})" if h.open_until else h.provider
+        for h in paused
+    )
+    return f"{message}\n{t('notify.quota', providers=names)}" if names else message
 
 
 def any_sent(deliveries: list[Delivery]) -> bool:

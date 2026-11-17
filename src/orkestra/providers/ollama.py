@@ -20,12 +20,12 @@ from orkestra.errors import (
     ProviderConnectionError,
     ProviderError,
     ProviderModelNotFound,
-    ProviderRateLimit,
     ProviderTimeout,
     ProviderTransient,
     ProviderUnavailable,
 )
 from orkestra.i18n import t
+from orkestra.providers import quota
 from orkestra.providers.base import (
     CompletionRequest,
     CompletionResult,
@@ -118,10 +118,9 @@ class OllamaChat:
             raise ContextTooLong(t("provider.error.context", provider=self.name, model=model))
         if status in (401, 403):
             raise ProviderAuthError(t("provider.error.auth", provider=self.name, status=status))
-        if status == 429:
-            raise ProviderRateLimit(
-                t("provider.error.rate_limit", provider=self.name),
-                retry_after=retry_after(response.headers),
+        if status == 429:  # Ollama's cloud models have hourly and weekly usage limits
+            raise quota.api_rate_limit(
+                self.name, detail, retry_after(response.headers), self.config.quota_pause_s
             )
         if status >= 500:
             raise ProviderTransient(

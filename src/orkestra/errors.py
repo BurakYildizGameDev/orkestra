@@ -140,6 +140,23 @@ class ProviderRateLimit(ProviderError):
         self.retry_after = retry_after
 
 
+class ProviderQuotaExhausted(ProviderError):
+    """The provider's quota or usage limit is used up (Faz 13f).
+
+    Unlike ``ProviderRateLimit`` it is not retried: the provider is paused at once for
+    ``pause_s`` seconds (the reset time in its message, else the configured
+    ``quota_pause_s``) and the run moves on to another provider.
+
+    ``model_only``: the quota of one model, not the account (OpenRouter's free models,
+    Gemini's per-model quotas); only that model is skipped and nothing is paused (D-085).
+    """
+
+    def __init__(self, message: str = "", pause_s: float = 3600.0, *, model_only: bool = False):
+        super().__init__(message)
+        self.pause_s = pause_s
+        self.model_only = model_only
+
+
 class ProviderTransient(ProviderError):
     """Temporary failure: 5xx, network error, timeout."""
 

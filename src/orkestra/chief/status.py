@@ -22,6 +22,7 @@ from orkestra.handoff import brief, model, store
 from orkestra.i18n import t
 from orkestra.providers import registry
 from orkestra.queue import store as queue_store
+from orkestra.state import health
 from orkestra.workspace import service
 
 MAX_LINES = 15
@@ -202,16 +203,24 @@ def _health(ctx: StatusContext) -> Section:
     paused = [r for r in ctx.providers if r.health.is_open(ctx.now)]
     data = {"paused": [
         {"name": r.name, "until": r.health.open_until.isoformat() if r.health.open_until else None,
-         "error": r.health.last_error}
+         "error": r.health.last_error, "reason": r.health.reason}
         for r in paused
     ]}  # fmt: skip
     if not paused:
         return Section([t("status.health.ok")], data)
-    names = ", ".join(
-        f"{r.name} ({r.health.open_until:%H:%M})" if r.health.open_until else r.name for r in paused
-    )
+    names = ", ".join(_paused_name(r.name, r.health, ctx.now) for r in paused)
     return Section([t("status.health.paused", providers=names)], data)
 
 
 def default_context(config: Config, conn: sqlite3.Connection, now: datetime) -> StatusContext:
     return StatusContext(config, conn, now, dict(os.environ))
+
+
+def _paused_name(name: str, state: health.Health, now: datetime) -> str:
+    if state.open_until is None:
+        return name
+    if state.reason == "quota":
+        return t(
+            "status.health.quota_item", name=name, until=health.until_text(state.open_until, now)
+        )
+    return f"{name} ({state.open_until:%H:%M})"

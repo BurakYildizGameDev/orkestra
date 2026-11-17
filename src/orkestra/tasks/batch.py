@@ -24,6 +24,7 @@ that needs another one's change belongs in a later batch, after ``apply``.
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import closing
@@ -42,7 +43,7 @@ from orkestra.envelope import (
 )
 from orkestra.errors import ExitCode, InternalError, OrkestraError, UsageError
 from orkestra.i18n import t
-from orkestra.state import db
+from orkestra.state import db, health
 from orkestra.tasks import runner
 from orkestra.tasks.context import glob_files
 from orkestra.tasks.spec import TaskSpec, parse_task, read_document
@@ -431,3 +432,21 @@ async def run_batch(
     )  # fmt: skip
     code = int(ExitCode.OK) if all(i.status == "ok" for i in items) else int(ExitCode.TASK_FAILED)
     return document, code
+
+
+def quota_pauses(document: BatchEnvelope) -> list[health.Health]:
+    """Providers whose quota ran out during this batch (a ``ProviderQuotaExhausted`` failover)
+    and are paused for it, for the notification (Faz 13f). A pause from before the batch is
+    not announced again. If state.db cannot be read, the names come without their times."""
+    names = sorted({
+        f.provider for item in document.results if item.envelope is not None
+        for f in item.envelope.failovers if f.error == "ProviderQuotaExhausted"
+    })  # fmt: skip
+    if not names:
+        return []
+    try:
+        with closing(db.connect()) as conn:
+            states = [health.get(conn, name) for name in names]
+    except sqlite3.Error:
+        return [health.Health(name) for name in names]
+    return [h for h in states if h.reason == "quota"]  # a model's quota pauses nothing

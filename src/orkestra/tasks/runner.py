@@ -1263,10 +1263,14 @@ class _TaskRun:
         state = health.get(self.conn, candidate.provider)
         if state.open_until is None or not state.is_open(self.now()):
             return None
+        kind = health.pause_kind(state.reason)
         reason = t(
-            "select.reason.circuit_open", name=candidate.provider,
-            until=state.open_until.strftime("%H:%M"), error=state.last_error or "-",
+            f"select.reason.{kind}", name=candidate.provider,
+            until=health.until_text(state.open_until, self.now()), error=state.last_error or "-",
         )  # fmt: skip
+        if kind == "quota_paused":  # its other models are paused too
+            return self._fail(candidate, None, tries, retry.Action.SKIP_PROVIDER, reason=reason,
+                              error="QuotaPaused")  # fmt: skip
         return self._fail(candidate, None, tries, retry.Action.NEXT, reason=reason,
                           error="CircuitOpen")  # fmt: skip
 

@@ -27,7 +27,7 @@ from orkestra.errors import OrkestraError, QueueBusy, UsageError
 from orkestra.i18n import t
 from orkestra.notify import notify
 from orkestra.queue import store
-from orkestra.state import db
+from orkestra.state import db, health
 from orkestra.tasks import batch, runner, spec
 
 ItemStatus = Literal["done", "failed", "skipped"]
@@ -142,6 +142,7 @@ def run_with_notify(
 ) -> tuple[QueueReport, list[notify.Delivery]]:
     """``queue run --notify``: the counts when it ends, a short line when it breaks (never
     for a refused start or Ctrl+C: somebody is there to see it)."""
+    before = health.quota_snapshot(conn, db.local_now())  # announce only new quota pauses
     try:
         report = run_queue(conn, **kwargs)
     except (QueueBusy, UsageError):
@@ -155,7 +156,10 @@ def run_with_notify(
     deliveries = notify.send(
         config.notify,
         t("notify.title.queue"),
-        notify.counts_text(report.finished, len(report.failed), skipped=len(report.skipped)),
+        notify.with_quota(
+            notify.counts_text(report.finished, len(report.failed), skipped=len(report.skipped)),
+            health.new_quota_pauses(conn, before, db.local_now()),
+        ),
     )
     return report, deliveries
 

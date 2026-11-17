@@ -50,6 +50,7 @@ providers:
     sandbox: workspace-write      # read-only | workspace-write  (danger-full-access is not supported)
     model: null                   # null = Codex default
     timeout_s: 1200
+    quota_pause_s: 3600           # quota used up and no reset time in the message: pause this long
     budget:
       daily_runs: 20
 

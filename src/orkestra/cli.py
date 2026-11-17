@@ -123,6 +123,7 @@ def _row_json(row: registry.ProviderRow) -> dict[str, Any]:
             "open_until": h.open_until.isoformat() if h.open_until else None,
             "consecutive_failures": h.consecutive_failures,
             "last_error": h.last_error,
+            "reason": h.reason,
         },
         "budget": _limits_json(row),
         "api_key_env": row.key_env,
@@ -265,7 +266,10 @@ def _run_batch(
             typer.echo(warning, err=True)
     typer.echo(envelope.to_json(document) if as_json else envelope.batch_summary(document))
     if notify_on:
-        deliveries = notify.send_batch(config.notify, len(document.results), document.totals.ok)
+        deliveries = notify.send_batch(
+            config.notify, len(document.results), document.totals.ok,
+            paused=batch.quota_pauses(document),
+        )  # fmt: skip
         for line in notify.delivery_lines(deliveries, config.notify):
             typer.echo(line, err=True)
     if code:

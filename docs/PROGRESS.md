@@ -35,9 +35,48 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13c – Deneme ve ölçüm (2 görev, 4 Claude oturumu) | ✅ | 2026-11-15 | 6/6 geçti; B delege etmedi; `/usage` payı kullanıcıdan bekleniyor (D-080); kod denetimi (D-081) |
 | 13d – İlk tam tur (`--repeat 1`, 40 Claude oturumu) | ⏳ | | hazırlık bitti: mod D + Windows izinleri (D-082), kod denetimi (D-083); tam tur kullanıcının `/usage` bilgisiyle |
 | 13e – 2. ve 3. turlar, sonuçlar, README tablosu | ⏳ | | `--resume`, 80 Claude oturumu |
+| 13f – Kota bitince kesintisiz devam (ek) | ✅ | 2026-11-17 | ajan ve API kota mesajı tanıma, yenilenene kadar duraklatma (`quota_pause_s`), aynı komutta sıradakine geçiş, batch/kuyrukta bir daha denememe, bildirim satırı; ağsız ölçüm 10/10 (D-084) |
+| 13g – %25 token deneyi: büyük işte bölmek kazandırıyor mu? (ek) | ⏳ | | büyük gerçekçi görev; yalnız Claude vs Claude + Orkestra (okumayı ve toplu yazmayı devret, kısa rapor, başka bir AI'nın çapraz denetimi); başarı ölçütü Claude token'ında ≥ %25 azalma; ayrıntı yerel YAPILIS_PLANI.md |
+| 13h – Token haritası: Claude'un tokenı nereye gidiyor (ek) | ⏳ | | Claude Code dökümlerinden araç çağrısı başına maliyet; kota harcamaz |
+| 13i – Bağlam süzgeci: `exec` / `read` / `find` + proje fihristi (ek, ana kaldıraç) | ⏳ | | büyük çıktı/dosya Claude'un bağlamına girmez; işaretçili kısa cevap |
+| 13j – Kısa oturum disiplini (ek) | ⏳ | | `handoff to claude`, eşik önerisi |
+| 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ⏳ | | kesintisizlik, 13f'nin devamı |
+| 13l – İşe göre model ve bilgisayar yükü (ek) | ⏳ | | hafif işler küçük/ücretsiz modele |
+| 13m – Toplu devretme ve çapraz denetim (ek) | ⏳ | | yazma devrinin sabit yükünü düşürmek |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 13f (PR #29), 2026-11-17
+`/code-review` 10 bulgu; hepsi düzeltildi (D-085). Önce 9 kırmızı test.
+- ✅ Ajanın kısa istek sınırı kota sayılmaz (`test_an_agent_that_is_only_rate_limited_is_not_reported_as_quota`).
+- ✅ Ajanın kendi çıktısındaki kota kelimeleri sayılmaz, yalnız son satırlar (`test_quota_words_in_the_agents_own_work_do_not_count`).
+- ✅ Tek modelin kotası yalnız o modeli atlar (`test_free_models_per_day_skips_the_model_not_the_provider`, `test_a_model_quota_skips_only_that_model_and_pauses_nothing`, `test_gemini_per_minute_quota_through_the_api_is_per_model_with_its_delay`).
+- ✅ Mesajdaki yenilenme `retry-after`'dan önce; repr ve büyük harfli süreler okunur; büyük/bozuk süre çökertmez.
+- ✅ Bildirim yalnız o koşuda biten kotayı söyler (`test_a_pause_from_before_is_not_announced_again`); `notify` veritabanı açmıyor.
+- ✅ Duraklatma metni tek yerden (`health.pause_kind`), `quota_paused` tek sorgu, çıktılar sondan okunur.
+
+Testler: **1496 geçti** (1487 + 9). ruff, ruff format, pyright temiz.
+
+### Faz 13f – Kota bitince kesintisiz devam (2026-11-17)
+**Yapılanlar (D-084):**
+- `ProviderQuotaExhausted`: yeniden denenmez; sağlayıcı kotası yenilenene kadar duraklatılır, iş aynı komutta sıradakine geçer (zarfta `failovers`).
+- `providers/quota.py`: Codex, agy/Gemini, OpenRouter, OpenAI, Ollama bulut kota mesajları; yalnız başarısız koşuda (ajan: çıkış ≠ 0 ya da boş cevap; API: HTTP 429). Süre mesajdan, yoksa yeni `quota_pause_s` (sağlayıcı başına, varsayılan 3600).
+- Migration 4: `health.open_reason`; `status`, `providers list`, `doctor`, `--dry-run` "kota bitti, açılış HH:MM" gösterir; `providers enable` kaldırır.
+- `batch --notify` / `queue run --notify`: kota yüzünden duraklatılanlar için tek satır.
+- README "When an AI runs out" / "Bir AI'nın kotası bitince"; skill'e not; Mimari §6, §6.2, §7.1.
+
+**Kabul kriterleri:**
+- ✅ Kota mesajı tanıma tablosu, yanlış pozitifler dahil (`test_quota_messages_are_recognised`, `test_ordinary_failures_are_not_quota`, `test_a_successful_answer_about_quotas_is_not_a_quota_error`).
+- ✅ Kota → devre hemen açık, süre mesajdaki yenilenmeden; `providers enable` sıfırlar (`test_quota_pauses_at_once_until_the_reset`, `test_providers_enable_opens_a_quota_pause`).
+- ✅ Aynı komutta sıradakine geçiş, zarfta `ProviderQuotaExhausted` (`test_the_agent_runs_out_at_task_4_and_all_ten_finish_on_ollama`).
+- ✅ Batch: 10 görev, 4.'de kota → 10/10 biter, ajan sonra hiç çağrılmaz (aynı test); ~0,5 sn, bekleme yok.
+- ✅ README bölümü; ruff, pyright, pytest temiz.
+
+**Ertelenen / bilinen:** gerçek codex/agy kota mesajlarının birebir metni canlı olarak görülmedi (desenler bilinen biçimlere ve genel ifadelere göre; tanınmayan mesaj eski yoldan sıradakine geçer). "try again at 3:04 PM" gibi saat biçimindeki yenilenme okunmuyor (varsayılan süre kullanılır).
+
+Testler: **1487 geçti** (1448 + 39). ruff, ruff format, pyright temiz.
+
 
 ### Kod denetimi – Faz 13d hazırlığı (PR #28), 2026-11-15
 `/code-review` 9 bulgu; hepsi düzeltildi (D-083). Önce 7 kırmızı test.

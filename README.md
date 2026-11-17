@@ -42,6 +42,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | One question to a worker model, with context files and an optional JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Routing with profiles, privacy and failover; see why each provider was chosen or skipped | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Adaptive routing: inside a tier, the model that did best on tasks with the same tag goes first (after `min_samples` runs); `--dry-run` shows the score | `routing.adaptive: true` |
+| When a provider's quota runs out (Codex, agy, OpenRouter, OpenAI, Ollama cloud): paused until it resets, the work goes on with the next one | `quota_pause_s`, see [When an AI runs out](#when-an-ai-runs-out) |
 | Task files (YAML/JSON): verify the answer, retry with feedback, move up a tier | `orkestra run task.yaml [--dry-run] [--json]` |
 | Edit tasks: a worker changes code in an isolated worktree, your tests decide | `orkestra run edit.yaml`, then `show --diff`, `apply` |
 | Batches: many tasks with dependencies, in parallel, each provider within its concurrency | `orkestra batch tasks.yaml [--parallel N] [--fail-fast] [--notify] [--json]` |
@@ -335,6 +336,47 @@ providers:
   ```
 
 Tested with codex-cli 0.160.0 and agy 1.5.5 (agy 1.5.3 before `--log-file` was used).
+
+## When an AI runs out
+
+The point of having several providers is that the work goes on when one of them stops. What
+happens in each case, without you stepping in:
+
+| What ran out | What Orkestra does |
+|---|---|
+| **Connection** (offline, DNS, refused) | one retry after 0.5 s, then the next provider in the same command; a local model takes over in about half a second |
+| **API errors** (timeouts, 5xx, short rate limits) | retried with backoff; after 3 failures in a row the provider is paused for 5 minutes |
+| **Your budget** (`daily_usd`, `daily_tokens`, `daily_runs` …) | the provider is left out until local midnight; the next one gets the work |
+| **The provider's quota** (Codex or agy usage limit, Gemini `RESOURCE_EXHAUSTED`, OpenRouter's free daily requests, OpenAI `insufficient_quota`, Ollama cloud usage limits) | not retried: the provider is **paused until its quota resets** (the time in its message, else `quota_pause_s`, default 1 hour) and the task moves on in the same command; later tasks, the rest of a batch and the night queue do not try it again |
+| **The chief's quota** (Claude's own limit) | `orkestra handoff to <chief>` hands the work to the next chief with a short brief (see Chief tools) |
+
+```yaml
+providers:
+  agy:
+    type: cli_agent
+    command: agy
+    quota_pause_s: 7200          # when the quota message has no reset time (default 3600)
+```
+
+- The quota message is looked for only when a run already failed (non-zero exit, no answer,
+  HTTP 429), and for agents only in the last lines of their output, so an answer or test
+  output that talks about quotas never pauses anything. A message Orkestra does not know
+  still fails over to the next provider as before; only the pause is missing.
+- A short rate limit ("429 Too Many Requests") is not a used-up quota: it is retried or
+  counted as before (3 in a row pause for 5 minutes).
+- A quota of one model, not the account (OpenRouter's free models per day, Gemini's
+  per-model quotas), skips only that model; the provider's other models keep working.
+- The reset time in the message wins over a generic `retry-after` header.
+- The envelope's `failovers` say `ProviderQuotaExhausted` with the provider's own words;
+  `status`, `providers list`, `doctor` and `--dry-run` show "quota used up, paused until 14:30"
+  (with the date when it is a weekly limit). `orkestra providers enable <name>` lifts the
+  pause at once.
+- `batch --notify` and `queue run --notify` add one line naming the providers whose quota ran
+  out during that batch or queue run and when they open, nothing else.
+- Measured without network (`tests/integration/test_continuity_cli.py`): an agent that runs
+  out of quota at task 4 of a 10-task batch → **10/10 tasks finish**, 4 to 10 on Ollama; the
+  agent is started 4 times and never again after its quota message; switching costs one
+  failed agent run and no waiting.
 
 ## Batches: many tasks at once
 
