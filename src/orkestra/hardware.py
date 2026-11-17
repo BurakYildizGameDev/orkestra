@@ -6,8 +6,9 @@ and the sizes are rough (a 4-bit quantised model needs about 0.6 GB per billion 
 plus room for the context and the rest of the system).
 
 Memory: total RAM from psutil; GPU memory from ``nvidia-smi`` when it is installed (no shell).
-Without a GPU figure half the RAM is counted (Apple silicon shares it; elsewhere the model
-runs on the CPU from RAM).
+Half the RAM is counted, or the GPU's memory when it is larger: a model larger than a small
+GPU still runs, split between the GPU and the CPU (Ollama does that), so a 4 GB card does not
+hide 64 GB of RAM (code review, D-097).
 """
 
 from __future__ import annotations
@@ -33,7 +34,8 @@ MIB = 1024**2
 SIZES: tuple[tuple[float, float], ...] = ((6, 3), (10, 7), (20, 14), (40, 32))
 LARGEST = 70.0
 LIGHT = "1.5b-3b"  # summaries, search, output digests: small is enough and fast
-_SIZE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)b\b", re.IGNORECASE)
+# ``14b``, ``1.5b``, ``32B``; a mixture of experts ``8x22b`` counts all of them.
+_SIZE = re.compile(r"(?<![\d.])(?:(\d+)x)?(\d+(?:\.\d+)?)b\b", re.IGNORECASE)
 NVIDIA_TIMEOUT_S = 5
 
 Run = Callable[[list[str]], "str | None"]
@@ -80,11 +82,8 @@ def detect(run: Run | None = None, which: Which = shutil.which) -> Machine:
 
 
 def _usable_gb(machine: Machine) -> float | None:
-    if machine.vram is not None:
-        return machine.vram / GB
-    if machine.ram is not None:
-        return machine.ram / GB / 2
-    return None
+    found = [x for x in (machine.vram, machine.ram / 2 if machine.ram else None) if x]
+    return max(found) / GB if found else None
 
 
 def largest_number(machine: Machine) -> float | None:
@@ -102,9 +101,13 @@ def largest_size(machine: Machine) -> str | None:
 
 def size_of(model_id: str) -> float | None:
     """Billions of parameters in a model name (``qwen2.5-coder:14b`` → 14), if it says."""
-    tag = model_id.rsplit(":", 1)[-1] if ":" in model_id else model_id
-    found = _SIZE.search(tag)
-    return float(found[1]) if found else None
+    # The tag first, else the name (``hf.co/.../Qwen2.5-Coder-32B-Instruct-GGUF:Q4_K_M``).
+    tag = model_id.rsplit(":", 1)[-1] if ":" in model_id else ""
+    found = _SIZE.search(tag) or _SIZE.search(model_id)
+    if found is None:
+        return None
+    experts = int(found[1]) if found[1] else 1
+    return experts * float(found[2])
 
 
 def checks(config: Config, machine: Machine) -> list[Check]:

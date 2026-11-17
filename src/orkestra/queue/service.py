@@ -27,7 +27,7 @@ from orkestra.errors import OrkestraError, QueueBusy, UsageError
 from orkestra.i18n import t
 from orkestra.notify import notify
 from orkestra.queue import store
-from orkestra.state import db, forecast, health
+from orkestra.state import db, forecast, health, process
 from orkestra.tasks import batch, runner, spec
 
 ItemStatus = Literal["done", "failed", "skipped"]
@@ -100,13 +100,13 @@ def run_queue(
     until: str | None = None,
     max_cost_usd: float | None = None,
     now: db.Clock = db.local_now,
-    alive: store.Alive = store.process_alive,
-    owner: store.Owner | None = None,
+    alive: process.Alive = process.process_alive,
+    owner: process.Owner | None = None,
     on_item: OnItem | None = None,
 ) -> QueueReport:
     started = now()
     stop_at = deadline(until, started) if until is not None else None
-    me = owner or store.current_owner()
+    me = owner or process.current_owner()
     store.acquire_lock(conn, started, owner=me, alive=alive)
     report = QueueReport()
     try:

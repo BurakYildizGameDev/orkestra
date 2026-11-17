@@ -16,7 +16,7 @@ import pytest
 
 from orkestra.errors import ExitCode, QueueBusy, UsageError
 from orkestra.queue import service, store
-from orkestra.state import db
+from orkestra.state import db, process
 
 TZ = datetime(2026, 11, 15, 12, 0).astimezone().tzinfo
 
@@ -198,9 +198,9 @@ def test_a_lock_left_by_a_dead_process_is_cleared(
 
 def test_process_alive_tells_a_reused_pid_from_the_owner() -> None:
     me = psutil.Process()
-    assert store.process_alive(me.pid, me.create_time())
-    assert not store.process_alive(me.pid, me.create_time() - 3600)  # same pid, other process
-    assert not store.process_alive(2**31 - 7, None)  # no such process
+    assert process.process_alive(me.pid, me.create_time())
+    assert not process.process_alive(me.pid, me.create_time() - 3600)  # same pid, other process
+    assert not process.process_alive(2**31 - 7, None)  # no such process
 
 
 def test_the_lock_is_released_even_when_an_item_breaks_the_loop(
@@ -484,7 +484,7 @@ def test_access_denied_is_not_our_runner(monkeypatch: pytest.MonkeyPatch) -> Non
         raise psutil.AccessDenied(pid)
 
     monkeypatch.setattr(psutil, "Process", denied)
-    assert store.process_alive(4242, 1.0) is False  # our own runner is always readable
+    assert process.process_alive(4242, 1.0) is False  # our own runner is always readable
 
 
 def test_failed_items_count_only_when_they_are_recent(

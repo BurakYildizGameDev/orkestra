@@ -37,6 +37,7 @@ from orkestra.providers.base import CompletionRequest
 from orkestra.providers.ollama import OllamaChat, has_model
 from orkestra.providers.openai_compat import OpenAICompatChat
 from orkestra.providers.registry import request_timeout
+from orkestra.routing.router import unmatched_preferences
 from orkestra.state import consent, db, forecast, health
 
 CheckStatus = Literal["ok", "warn", "fail", "info"]
@@ -446,6 +447,12 @@ async def run_doctor(
         )
         if not loaded.config.providers:
             checks.append(Check("config", "warn", t("select.no_providers")))
+        # Faz 13l (D-097): routing ignores a by_kind pattern that names nothing; say so here.
+        checks.extend(
+            Check("config", "warn", t("doctor.by_kind.unmatched", kind=kind, pattern=pattern),
+                  {"by_kind": kind, "pattern": pattern})
+            for kind, pattern in unmatched_preferences(loaded.config)
+        )  # fmt: skip
         # Providers are independent: check them at the same time, report in config order.
         defaults = loaded.config.defaults
         per_provider = await asyncio.gather(

@@ -110,7 +110,7 @@ from orkestra.routing.router import (
 from orkestra.security.redact import Redactor, configured_secrets
 from orkestra.security.secrets_scan import Finding, blocking, scan_text
 from orkestra.state import budget, consent, db, health
-from orkestra.state.slots import MachineSlots
+from orkestra.state.slots import MachineSlots, server_key
 from orkestra.tasks import edit_format as ef
 from orkestra.tasks.context import Context, collect_context
 from orkestra.tasks.prompts import (
@@ -180,7 +180,12 @@ class ProviderSlots:
 
     def __init__(self, config: Config, machine: MachineSlots | None = None) -> None:
         self._limits = {name: provider.concurrency for name, provider in config.providers.items()}
-        self._local = {name for name, provider in config.providers.items() if provider.local}
+        # Local providers share the machine's slots of their server (``state.slots``).
+        self._servers = {
+            name: server_key(name, provider)
+            for name, provider in config.providers.items()
+            if provider.local
+        }
         self._slots: dict[str, asyncio.Semaphore] = {}
         self._machine = machine or MachineSlots()
         self.prices = asyncio.Lock()  # price list fetches, one task at a time
@@ -188,8 +193,10 @@ class ProviderSlots:
     def __call__(self, provider: str) -> Slot:
         if provider not in self._slots:
             self._slots[provider] = asyncio.Semaphore(self._limits.get(provider, 1))
-        machine = self._machine if provider in self._local else None
-        return Slot(self._slots[provider], machine, provider, self._limits.get(provider, 1))
+        server = self._servers.get(provider)
+        machine = self._machine if server is not None else None
+        return Slot(self._slots[provider], machine, server or provider,
+                    self._limits.get(provider, 1))  # fmt: skip
 
 
 class Slot:
@@ -197,22 +204,24 @@ class Slot:
     Used as ``async with`` or with ``acquire()`` / ``release()`` on the same object."""
 
     def __init__(
-        self, semaphore: asyncio.Semaphore, machine: MachineSlots | None, provider: str,
+        self, semaphore: asyncio.Semaphore, machine: MachineSlots | None, key: str,
         limit: int,
     ) -> None:  # fmt: skip
         self._semaphore = semaphore
         self._machine = machine
-        self._provider = provider
+        self._key = key
         self._limit = limit
         self._held: int | None = None
 
-    async def acquire(self) -> None:
+    async def acquire(self, wait_s: float | None = None) -> None:
+        """``wait_s``: give up after that long on the machine's slot (``TimeoutError``); the
+        process's own place is given back then."""
         await self._semaphore.acquire()
         if self._machine is None:
             return
         try:
-            self._held = await self._machine.acquire(self._provider, self._limit)
-        except BaseException:  # cancelled while waiting: give the process's place back
+            self._held = await self._machine.acquire(self._key, self._limit, wait_s=wait_s)
+        except BaseException:  # timed out or cancelled: give the process's place back
             self._semaphore.release()
             raise
 

@@ -102,12 +102,42 @@ def test_the_dry_run_description_names_the_preference() -> None:
      ("plan", "plan")],
 )  # fmt: skip
 def test_every_chief_tool_names_its_work(module: str, work: str) -> None:
-    """``query_chief_model`` requires ``work``; each tool passes its own kind."""
+    """Each tool's ``query_chief_model`` call passes its own kind (read from the code, not
+    its text: formatting does not matter, a comment does not count)."""
+    import ast
     import importlib
     import inspect
 
-    source = inspect.getsource(importlib.import_module(f"orkestra.chief.{module}"))
-    assert f'work="{work}"' in source
+    tree = ast.parse(inspect.getsource(importlib.import_module(f"orkestra.chief.{module}")))
+    found = [
+        kw.value.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", getattr(node.func, "attr", None)) == "query_chief_model"
+        for kw in node.keywords
+        if kw.arg == "work" and isinstance(kw.value, ast.Constant)
+    ]
+    assert found == [work]
+
+
+def test_a_literal_id_with_brackets_matches_itself() -> None:
+    providers = {"local": {"type": "ollama", "models": [
+        {"id": "a", "tier": 1}, {"id": "foo[beta]", "tier": 1}]}}  # fmt: skip
+    routing = {"by_kind": {"read": {"prefer": ["local/foo[beta]"]}}}
+    config = Config.model_validate({"version": 1, "providers": providers, "routing": routing})
+    snapshot = Snapshot(NOW, {"local": ProviderState(consent="granted")})
+    found = route(TaskNeeds(work="read"), config, snapshot, profile="cheap")
+    assert [c.label for c in found.candidates] == ["local/foo[beta]", "local/a"]
+
+
+def test_patterns_that_name_nothing_are_reported() -> None:
+    from orkestra.routing.router import unmatched_preferences
+
+    config = Config.model_validate({"version": 1, "providers": PROVIDERS, "routing": {"by_kind": {
+        "summary": {"prefer": ["ollama/qwen2.5:1.5b", "router/*:free", "local"]},
+        "edit": {"prefer": ["codex"]},
+    }}})  # fmt: skip
+    assert unmatched_preferences(config) == [("summary", "ollama/qwen2.5:1.5b"), ("edit", "codex")]
 
 
 def test_query_chief_model_routes_with_the_work_kind(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -125,3 +155,18 @@ def test_query_chief_model_routes_with_the_work_kind(monkeypatch: pytest.MonkeyP
     with pytest.raises(NoProviderAvailable):
         asyncio.run(call.query_chief_model(config, tier=1, system="s", user="u", work="summary"))
     assert seen == ["summary"]
+
+
+def test_doctor_warns_about_a_pattern_that_names_nothing(tmp_path: Any) -> None:
+    from orkestra import doctor, hardware
+
+    config_file = tmp_path / "c.yaml"
+    config_file.write_text(
+        "version: 1\nproviders:\n  local:\n    type: ollama\n    models: [{id: a, tier: 1}]\n"
+        "routing:\n  by_kind:\n    summary: {prefer: [ollama/a]}\n",
+        encoding="utf-8",
+    )
+    report = asyncio.run(doctor.run_doctor(config_flag=config_file, which=lambda name: None,
+                                           machine=hardware.Machine(None, None)))  # fmt: skip
+    [check] = [c for c in report.checks if c.data.get("by_kind")]
+    assert check.status == "warn" and "ollama/a" in check.message

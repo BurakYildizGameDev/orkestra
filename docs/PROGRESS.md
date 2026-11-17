@@ -42,11 +42,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13i-b – Bağlam süzgeci: `read` / `find` + proje fihristi (ek) | ✅ | 2026-11-17 | `read` işaretçileri dosyaya karşı denetler; `find` modelsiz, çok sonuç fihrist özetiyle gruplanır; `map --install-hook` (D-090) |
 | 13j – Kısa oturum disiplini (ek) | ✅ | 2026-11-17 | aynı şefe devir (`handoff to claude`), `status`/`tokens`'ta eşik önerisi (bağlam − yeni başlangıç) × okuma ağırlığı; skill kuralı (D-092) |
 | 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ✅ | 2026-11-18 | hız × bilinen/öğrenilen sınır → "~40 dk içinde biter" (`status`, `doctor`, bildirim); router azalanı kademesinde sona alır; `orkestra statusline` + kanca: Claude'un penceresi %85'i geçince şef devir dosyasını bir kez günceller (D-094); kod denetimi (D-095) |
-| 13l – İşe göre model ve bilgisayar yükü (ek) | ✅ | 2026-11-18 | `routing.by_kind` (iş türüne göre model tercihi, kademe içinde); yerel sağlayıcının `concurrency`'si süreçler arasında (tek ağır yerel model); `doctor` RAM/GPU'ya göre boyut önerisi (D-096) |
+| 13l – İşe göre model ve bilgisayar yükü (ek) | ✅ | 2026-11-18 | `routing.by_kind` (iş türüne göre model tercihi, kademe içinde); yerel sağlayıcının `concurrency`'si süreçler arasında (tek ağır yerel model); `doctor` RAM/GPU'ya göre boyut önerisi (D-096); kod denetimi (D-097) |
 | 13m – Toplu devretme ve çapraz denetim (ek) | ⏳ | | yazma devrinin sabit yükünü düşürmek |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 13l (PR #35), 2026-11-18
+`/code-review` 10 bulgu; hepsi düzeltildi (D-097). Önce kırmızı testler.
+- ✅ Şef araçları meşgul yerel modeli en çok 2 sn bekleyip sıradaki adaya geçiyor; bırakamadığı kendi satırını süreç geri alıyor; kilitli veritabanı sınırı atlatmıyor.
+- ✅ Yuva anahtarı yerel sunucu (aynı Ollama'ya iki ad tek sayaç); yoklama migrationsız ve olay döngüsü dışında.
+- ✅ Donanım önerisi küçük GPU + bol RAM'de doğru; model boyutu Hugging Face adlarından ve `8x22b`'den okunuyor.
+- ✅ `by_kind` birebir eşleşme önce; eşleşmeyen desen için `doctor` uyarısı; `queue/service.py` doğrudan `state.process`; iş türü testi AST ile.
+
+Testler: **1727 geçti** (1717 + 10). ruff, ruff format, pyright temiz.
 
 ### Faz 13l – İşe göre model ve bilgisayar yükü (2026-11-18)
 **Yapılanlar (D-096):**

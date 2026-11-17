@@ -13,7 +13,8 @@ GB = 1024**3
 @pytest.mark.parametrize(
     ("ram_gb", "vram_gb", "heavy"),
     [(4, None, "3b"), (8, None, "3b"), (16, None, "7b"), (32, None, "14b"), (64, None, "32b"),
-     (16, 8, "7b"), (16, 12, "14b"), (32, 24, "32b"), (128, 48, "70b")],
+     (16, 8, "7b"), (16, 12, "14b"), (32, 24, "32b"), (128, 48, "70b"),
+     (64, 4, "32b")],  # a small GPU does not hide plenty of RAM (code review #35)
 )  # fmt: skip
 def test_the_largest_code_model_follows_the_memory(
     ram_gb: int, vram_gb: int | None, heavy: str
@@ -27,6 +28,9 @@ def test_model_sizes_are_read_from_their_names() -> None:
     assert hardware.size_of("qwen2.5:1.5b-instruct-q4") == 1.5
     assert hardware.size_of("llama3.1:8b") == 8
     assert hardware.size_of("mistral") is None
+    # Code review #35: Hugging Face ids keep the size in the name, MoE names multiply.
+    assert hardware.size_of("hf.co/bartowski/Qwen2.5-Coder-32B-Instruct-GGUF:Q4_K_M") == 32
+    assert hardware.size_of("mixtral:8x22b") == 176
 
 
 def test_nvidia_memory_is_read_without_a_shell() -> None:

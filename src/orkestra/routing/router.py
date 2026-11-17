@@ -412,9 +412,32 @@ def _score_key(c: Candidate) -> ScoreKey:
 def _prefer_rank(c: Candidate, patterns: Sequence[str]) -> int | None:
     """The first pattern that names the candidate: ``provider``, ``provider/model`` or a glob."""
     for index, pattern in enumerate(patterns):
-        if fnmatchcase(c.label, pattern) or fnmatchcase(c.provider, pattern):
+        if _matches(pattern, c.label) or _matches(pattern, c.provider):
             return index
     return None
+
+
+def _matches(pattern: str, label: str) -> bool:
+    """The exact name first (a model id may contain ``[``), then a glob."""
+    return pattern == label or fnmatchcase(label, pattern)
+
+
+def unmatched_preferences(config: Config) -> list[tuple[str, str]]:
+    """``routing.by_kind`` patterns that name no configured provider or model (a typo, a
+    renamed provider): ``(kind, pattern)`` for ``doctor``, since routing ignores them."""
+    labels: list[str] = []
+    for name, cfg in config.providers.items():
+        labels.append(name)
+        if isinstance(cfg, CliAgentProvider):
+            labels.append(f"{name}/{cfg.model or cfg.kind or cfg.command}")
+        else:
+            labels += [f"{name}/{model.id}" for model in cfg.models]
+    return [
+        (kind, pattern)
+        for kind, prefs in config.routing.by_kind.items()
+        for pattern in prefs.prefer
+        if not any(_matches(pattern, label) for label in labels)
+    ]
 
 
 def _order_key(c: Candidate) -> tuple[int, bool, float, float, int, tuple[int, int]]:

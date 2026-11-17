@@ -43,6 +43,10 @@ from orkestra.security.secrets_scan import blocking, scan_text
 from orkestra.state import budget, db, health
 from orkestra.tasks.runner import ProviderSlots, new_run_id
 
+# A chief tool waits this long for a local model another process is using (Faz 13l, D-097),
+# then the next candidate gets the work: a summary must not wait behind a 30-minute task.
+LOCAL_WAIT_S = 2.0
+
 
 def prompt_has_secrets(
     config: Config, text: str, *, environ: Mapping[str, str] | None = None
@@ -158,7 +162,11 @@ async def _try_candidate(
     streak (D-062). ``BudgetExhausted`` means nothing was sent.
     """
     slot = slots(candidate.provider)
-    await slot.acquire()
+    try:
+        # A local model busy with another process's task: the next candidate, not a wait.
+        await slot.acquire(wait_s=LOCAL_WAIT_S)
+    except TimeoutError:
+        return None
     try:
         if health.get(conn, candidate.provider).is_open(current_time):
             return None
