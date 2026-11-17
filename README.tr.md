@@ -49,6 +49,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | Batch'ten önce maliyet tahmini (hiçbir şey gönderilmez); pahalı batch önce sorar | `orkestra batch tasks.yaml --estimate [--json]`, `--yes-cost` |
 | Bir batch'in geçen koşularını çalıştıkları sırayla uygula, çakışmada dur | `orkestra apply --batch <batch_id> --only-ok [--json]` |
 | İşçiler nasıl gitti: sağlayıcı ve etiket başına başarı oranı, deneme, token, maliyet, süre | `orkestra stats [--since 7d] [--json]` |
+| Claude Code'un tokenı nereye gidiyor: pahalı araç çağrıları, türlere göre pay, bağlamın büyümesi, önbellek kaçırma (dökümleri okur, kota harcamaz) | `orkestra tokens [--session id \| --since 7d] [--project p] [--top n] [--json]` |
 | İşçi olarak kod ajanları (Codex CLI, Antigravity): worktree'de, süreç ağacı temizliğiyle | `cli_agent` sağlayıcıları |
 | Şef için tek bakışta durum (en fazla 15 satır): uygulanmamış koşular, gece kuyruğu, bugünkü bütçe, duraklatılmış sağlayıcılar | `orkestra status [--json]` |
 | Gece kuyruğu: görev veya batch'leri şimdi ekle, sonra (gece, yerel modellerle) çalıştır; aynı anda tek çalıştırma, belirli saatte veya maliyette durur | `orkestra queue add <dosya> [--profile p]`, `queue list`, `queue remove <id>`, `queue run [--until 07:00] [--max-cost-usd X] [--notify]` |
@@ -536,6 +537,62 @@ görevleri ve kod ajanlarının cevapları asla önbelleğe alınmaz. `--no-cach
 **Tasarruf (tahmini).** `orkestra stats` işçilerin kaç token yazdığını ve şefe zarflarla kaç
 token döndüğünü de gösterir (doğrulamayı geçen koşular için). Şefin kendi kullanımı
 ölçülemediği için satır her zaman tahmini olarak işaretlenir.
+
+## Claude'un tokenı nereye gidiyor?
+
+`orkestra tokens` Claude Code'un kendi oturum dökümlerini okur
+(`~/.claude/projects/<proje>/*.jsonl` ya da `$CLAUDE_CONFIG_DIR` altında) ve bir oturumun ne
+harcadığını ve neden harcadığını gösterir. Hiçbir şey göndermez, kota harcamaz.
+
+```bash
+orkestra tokens                      # bu projenin en son oturumu
+orkestra tokens --since 7d --top 10  # son haftanın bütün oturumları
+orkestra tokens --session 1f49 --json
+orkestra tokens --project ../baska-repo
+```
+
+Bir araç çağrısının bedeli boyutundan fazladır: sonucu önbelleğe bir kez yazılır, sonra
+oturum bitene ya da sıkıştırılana kadar **sonraki her istekte yeniden okunur**. 300 istekli bir
+oturumun başında okunan 300 satırlık dosyanın bedeli 300 kez ödenir. Rapor şunları gösterir:
+
+- ölçülen toplamlar (girdi, önbelleğe yazma, önbellekten okuma, çıktı) ve girdi tokenına
+  göre API fiyatlarıyla ağırlıklı toplam (çıktı ×5, önbelleğe yazma ×1,25, önbellekten okuma
+  ×0,1; abonelik farklı tartabileceği için `tokens.weights` ile değiştirilebilir);
+- ağırlıklı tokenların nereye gittiği: okuma, komut çıktısı, yazma, ajanlar, Claude'un kendi
+  cevaplarının yeniden okunması, sonraki mesajların ve hatırlatmalar, Claude'un çıktısı, her
+  istekte yeniden okunan sabit başlangıç (sistem istemi, araçlar, CLAUDE.md), önbellek kaçırma
+  (ara ya da model değişikliği sonrası bağlamın yeniden yazılması) ve geri kalan;
+- en pahalı araç çağrıları ve "10 satır olsaydı …";
+- istek başına bağlamın büyümesi, alt ajanlar (ayrı sayılır) ve sıkıştırmalar.
+
+Araç çağrısı boyutları tahmin edilir (4 karakter ≈ 1 token), sonra her oturumda Claude
+Code'un ölçtüğü yeni bağlama eşit olacak şekilde ölçeklenir; katsayı yazılır. Etiketlerde
+dosyalar projeye göre, komutlarda proje `.`, ev klasörü `~` olarak görünür.
+
+Örnek, bu deponun Orkestra'yı yazarken geçen kendi 12 oturumu (Claude Code 2.1.312–2.1.325,
+2.793 istek):
+
+```
+ağırlıklı tokenlar nereye gidiyor:
+  komut çıktısı (Bash, PowerShell): %20
+  sonraki mesajların ve hatırlatmalar: %18
+  yazma (Edit, Write): %14
+  Claude'un çıktısı (metin, düşünme, araç çağrıları): %14
+  sabit başlangıç (sistem istemi, araçlar, CLAUDE.md, hafıza), her istekte yeniden okunur: %11
+  Claude'un cevapları ve araç çağrıları, sonradan yeniden okunması: %11
+  okuma (Read, Grep, Glob, web): %7
+  geri kalan (atanamayan: tahmin farkı, görünmeyen bağlam): %4
+  önbellek kaçırma (ara ya da model değişikliği sonrası bağlamın yeniden yazılması): %1
+
+en pahalı araç çağrıları (boyut × bağlamda kaldığı istek sayısı):
+  Read YAPILIS_PLANI.md: ~21,960 token, 650 satır, 269 kez yeniden okundu, ağırlıklı 618,174
+    10 satır olsaydı: 9,510 (608,664 tasarruf)
+istek başına bağlam (en son oturum): 47,252 → 165,241 → 220,173 → 287,348 → 362,705
+```
+
+Yani maliyetin yaklaşık %80'i Claude'un yazması değil, bağlamın yeniden okunması: uzun bir
+oturumun başındaki büyük komut çıktıları ve dosya okumaları asıl kaldıraç. Sonraki fazlar
+(bağlam süzgeci ve kısa oturumlar) buna yöneliyor.
 
 ## Worktree'ler: yalıtılmış değişiklikler
 

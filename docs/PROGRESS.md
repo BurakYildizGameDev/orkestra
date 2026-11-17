@@ -37,7 +37,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13e – 2. ve 3. turlar, sonuçlar, README tablosu | ⏳ | | `--resume`, 80 Claude oturumu |
 | 13f – Kota bitince kesintisiz devam (ek) | ✅ | 2026-11-17 | ajan ve API kota mesajı tanıma, yenilenene kadar duraklatma (`quota_pause_s`), aynı komutta sıradakine geçiş, batch/kuyrukta bir daha denememe, bildirim satırı; ağsız ölçüm 10/10 (D-084) |
 | 13g – %25 token deneyi: büyük işte bölmek kazandırıyor mu? (ek) | ⏳ | | büyük gerçekçi görev; yalnız Claude vs Claude + Orkestra (okumayı ve toplu yazmayı devret, kısa rapor, başka bir AI'nın çapraz denetimi); başarı ölçütü Claude token'ında ≥ %25 azalma; ayrıntı yerel YAPILIS_PLANI.md |
-| 13h – Token haritası: Claude'un tokenı nereye gidiyor (ek) | ⏳ | | Claude Code dökümlerinden araç çağrısı başına maliyet; kota harcamaz |
+| 13h – Token haritası: Claude'un tokenı nereye gidiyor (ek) | ✅ | 2026-11-17 | `orkestra tokens`: araç çağrısı başına maliyet, türlere göre pay, sabit başlangıç, önbellek kaçırma, ölçüye göre ölçekleme; bulgu: maliyetin ~%80'i bağlamın yeniden okunması (D-086) |
 | 13i – Bağlam süzgeci: `exec` / `read` / `find` + proje fihristi (ek, ana kaldıraç) | ⏳ | | büyük çıktı/dosya Claude'un bağlamına girmez; işaretçili kısa cevap |
 | 13j – Kısa oturum disiplini (ek) | ⏳ | | `handoff to claude`, eşik önerisi |
 | 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ⏳ | | kesintisizlik, 13f'nin devamı |
@@ -46,6 +46,24 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13h – Token haritası (2026-11-17)
+**Yapılanlar (D-086):**
+- `orkestra tokens [--session id | --since 7d] [--project yol] [--top n] [--json]` (`chief/tokens.py`): Claude Code oturum dökümlerinden ölçülen toplamlar, ağırlıklı toplam, türlere göre pay, en pahalı araç çağrıları ve "10 satır olsaydı", bağlamın büyümesi, alt ajanlar, sıkıştırma, önbellek kaçırma.
+- `tokens.weights` / `tokens.top` config'i; 5 dilde metinler; README "Where do Claude's tokens go?" / "Claude'un tokenı nereye gidiyor?" (bu deponun 12 oturumundan örnek); Mimari §4 ve §19.
+
+**Kabul kriterleri:**
+- ✅ Sahte dökümlerle tablo testleri, ağsız (`tests/unit/test_tokens.py`, `tests/integration/test_tokens_cli.py`).
+- ✅ Bu projenin kendi dökümü üzerinde elle rapor (12 oturum, 2.793 istek); kişisel yol yok (JSON'da `Users`/kullanıcı adı aranıp bulunmadı; etiketler göreli, `~`, `.`).
+- ✅ README'de "nereye gidiyor" örneği.
+- ✅ Döküm biçimi değişirse: bilinmeyen girdi atlanır, bozuk satır sayılır, sürümler raporda.
+- ✅ ruff, pyright, pytest temiz.
+
+**Bulgu:** ağırlıklı maliyetin ~%80'i bağlamın yeniden okunması (komut çıktısı %20, sonraki mesajlar/hatırlatmalar %18, yazma %14, sabit başlangıç %11, cevapların yeniden okunması %11, okuma %7); Claude'un çıktısı %14. Kaldıraç: büyük çıktıları bağlama sokmamak (13i) ve oturumu kısa tutmak (13j).
+
+**Ertelenen / bilinen:** düşünme bloklarının sonraki isteklerde geri gidip gitmediği dökümden görülemiyor (geri gitmediği varsayıldı; fark "geri kalan"da ve ölçekte). Ağırlıklar API fiyatları; aboneliğin 5 saatlik sınırının gerçek ağırlığı bilinmiyor.
+
+Testler: **1514 geçti** (1496 + 18). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 13f (PR #29), 2026-11-17
 `/code-review` 10 bulgu; hepsi düzeltildi (D-085). Önce 9 kırmızı test.
