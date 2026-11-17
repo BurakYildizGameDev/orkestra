@@ -123,6 +123,7 @@ def _row_json(row: registry.ProviderRow) -> dict[str, Any]:
             "open_until": h.open_until.isoformat() if h.open_until else None,
             "consecutive_failures": h.consecutive_failures,
             "last_error": h.last_error,
+            "reason": h.reason,
         },
         "budget": _limits_json(row),
         "api_key_env": row.key_env,

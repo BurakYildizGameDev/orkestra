@@ -22,12 +22,12 @@ from orkestra.errors import (
     ProviderConnectionError,
     ProviderError,
     ProviderModelNotFound,
-    ProviderRateLimit,
     ProviderTimeout,
     ProviderTransient,
     ProviderUnavailable,
 )
 from orkestra.i18n import t
+from orkestra.providers import quota
 from orkestra.providers.base import (
     CompletionRequest,
     CompletionResult,
@@ -152,9 +152,9 @@ class OpenAICompatChat:
                 t("provider.error.auth", provider=name, status=exc.status_code)
             )
         if isinstance(exc, openai.RateLimitError):
-            return ProviderRateLimit(
-                t("provider.error.rate_limit", provider=name),
-                retry_after=retry_after(exc.response.headers),
+            text = _scrub(exc.message, api_key)
+            return quota.api_rate_limit(
+                name, text, retry_after(exc.response.headers), self.config.quota_pause_s
             )
         if isinstance(exc, openai.BadRequestError):
             if _is_context_error(exc):

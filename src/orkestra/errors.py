@@ -140,6 +140,19 @@ class ProviderRateLimit(ProviderError):
         self.retry_after = retry_after
 
 
+class ProviderQuotaExhausted(ProviderError):
+    """The provider's quota or usage limit is used up (Faz 13f).
+
+    Unlike ``ProviderRateLimit`` it is not retried: the provider is paused at once for
+    ``pause_s`` seconds (the reset time in its message, else the configured
+    ``quota_pause_s``) and the run moves on to another provider.
+    """
+
+    def __init__(self, message: str = "", pause_s: float = 3600.0) -> None:
+        super().__init__(message)
+        self.pause_s = pause_s
+
+
 class ProviderTransient(ProviderError):
     """Temporary failure: 5xx, network error, timeout."""
 

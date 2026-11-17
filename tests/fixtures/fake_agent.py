@@ -19,6 +19,11 @@ Modes:
   still be there (exit code 4 otherwise) and fixes it.
 - ``mcp_stall``: like agy waiting for an MCP server that cannot connect: writes agy's
   "still connecting" log line to ``$FAKE_AGENT_LOG``, then behaves like ``hang``.
+- ``quota``: Codex's usage limit message (with a reset time) on stderr, exit code 1.
+- ``quota_plain``: a quota message without a reset time on stderr, exit code 1.
+- ``quota_ok``: a successful answer that talks about usage limits (exit code 0).
+- ``quota_after``: answers ``fine`` until the run numbered ``$FAKE_AGENT_QUOTA_AT`` (counted
+  in the file ``$FAKE_AGENT_COUNTER``); from then on it behaves like ``quota``.
 """
 
 from __future__ import annotations
@@ -29,6 +34,10 @@ import sys
 import time
 from pathlib import Path
 
+QUOTA = (
+    "ERROR: You've hit your usage limit. Upgrade to Pro (https://openai.com/chatgpt/pricing) "
+    "or try again in 5 hours 19 minutes."
+)
 RIGHT = "def add(a, b):\n    return a + b\n"
 WRONG = "def add(a, b):\n    return a * b\n"
 
@@ -78,6 +87,22 @@ def main() -> int:
                 encoding="utf-8",
             )
         time.sleep(600)
+    elif mode == "quota":
+        print(QUOTA, file=sys.stderr)
+        return 1
+    elif mode == "quota_plain":
+        print("Error: quota exceeded for this account", file=sys.stderr)
+        return 1
+    elif mode == "quota_ok":
+        print("A usage limit message means the account's quota is used up.")
+    elif mode == "quota_after":
+        counter = Path(os.environ["FAKE_AGENT_COUNTER"])
+        runs = int(counter.read_text(encoding="utf-8") or "0") + 1 if counter.exists() else 1
+        counter.write_text(str(runs), encoding="utf-8")
+        if runs >= int(os.environ["FAKE_AGENT_QUOTA_AT"]):
+            print(QUOTA, file=sys.stderr)
+            return 1
+        print("fine")
     elif mode == "escape_fail":
         Path(os.environ["FAKE_AGENT_ESCAPE"]).write_bytes(b"written by the agent\n")
         print("crashed", file=sys.stderr)

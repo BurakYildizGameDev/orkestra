@@ -42,6 +42,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | İşçi modele tek soru; bağlam dosyaları ve isteğe bağlı JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Profil, gizlilik ve yedeğe geçişli yönlendirme; her sağlayıcının neden seçildiğini/elendiğini görme | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Öğrenen yönlendirme: aynı kademede, aynı etiketli görevlerde en başarılı model öne geçer (`min_samples` koşudan sonra); `--dry-run` skoru gösterir | `routing.adaptive: true` |
+| Bir sağlayıcının kotası bitince (Codex, agy, OpenRouter, OpenAI, Ollama bulut): yenilenene kadar duraklatılır, iş sıradakiyle sürer | `quota_pause_s`, bkz. [Bir AI'nın kotası bitince](#bir-ainın-kotası-bitince) |
 | Görev dosyaları (YAML/JSON): cevabı doğrula, geri bildirimle tekrar dene, üst kademeye geç | `orkestra run gorev.yaml [--dry-run] [--json]` |
 | Düzenleme görevleri: işçi kodu yalıtılmış worktree'de değiştirir, karar senin testlerinin | `orkestra run duzenle.yaml`, sonra `show --diff`, `apply` |
 | Batch: bağımlılıklarıyla birçok görev, paralel, her sağlayıcı kendi concurrency sınırında | `orkestra batch tasks.yaml [--parallel N] [--fail-fast] [--notify] [--json]` |
@@ -332,6 +333,40 @@ providers:
   ```
 
 codex-cli 0.160.0 ve agy 1.5.5 ile denendi (`--log-file` kullanılmadan önce agy 1.5.3).
+
+## Bir AI'nın kotası bitince
+
+Birden fazla sağlayıcının amacı, biri durduğunda işin sürmesi. Sen müdahale etmeden her
+durumda olan şu:
+
+| Biten ne | Orkestra ne yapar |
+|---|---|
+| **Bağlantı** (internet yok, DNS, bağlantı reddi) | 0,5 sn sonra bir kez daha dener, sonra aynı komutta sıradaki sağlayıcıya geçer; yerel model yaklaşık yarım saniyede devralır |
+| **API hataları** (zaman aşımı, 5xx, kısa istek sınırları) | bekleyerek yeniden dener; art arda 3 hatada sağlayıcı 5 dakika duraklatılır |
+| **Senin bütçen** (`daily_usd`, `daily_tokens`, `daily_runs` …) | sağlayıcı yerel gece yarısına kadar kullanılmaz; iş sıradakine gider |
+| **Sağlayıcının kotası** (Codex ya da agy kullanım sınırı, Gemini `RESOURCE_EXHAUSTED`, OpenRouter'ın günlük ücretsiz istekleri, OpenAI `insufficient_quota`, Ollama bulut kullanım sınırları) | yeniden denenmez: sağlayıcı **kotası yenilenene kadar duraklatılır** (mesajdaki süre, yoksa `quota_pause_s`, varsayılan 1 saat) ve görev aynı komutta sıradakine geçer; sonraki görevler, batch'in geri kalanı ve gece kuyruğu onu bir daha denemez |
+| **Şefin kotası** (Claude'un kendi sınırı) | `orkestra handoff to <şef>` işi kısa bir özetle sıradaki şefe devreder (bkz. Şef araçları) |
+
+```yaml
+providers:
+  agy:
+    type: cli_agent
+    command: agy
+    quota_pause_s: 7200          # kota mesajında yenilenme zamanı yoksa (varsayılan 3600)
+```
+
+- Kota mesajına yalnız zaten başarısız olan koşuda bakılır (sıfır olmayan çıkış kodu, cevap
+  yok, HTTP 429); kotalardan söz eden bir cevap hiçbir şeyi duraklatmaz. Orkestra'nın
+  tanımadığı bir mesajda da iş eskisi gibi sıradakine geçer; yalnız duraklatma olmaz.
+- Zarftaki `failovers` sağlayıcının kendi sözleriyle `ProviderQuotaExhausted` yazar;
+  `status`, `providers list`, `doctor` ve `--dry-run` "kota bitti, duraklatıldı (açılış: 14:30)"
+  gösterir (haftalık sınırda tarihle). `orkestra providers enable <ad>` duraklatmayı hemen
+  kaldırır.
+- `batch --notify` ve `queue run --notify` duraklatılan sağlayıcıları ve açılış saatlerini
+  tek satırla ekler, başka bir şey değil.
+- Ağsız ölçüm (`tests/integration/test_continuity_cli.py`): 10 görevlik bir batch'te 4.
+  görevde kotası biten bir ajan → **10/10 görev biter**, 4–10 Ollama'da; ajan 4 kez başlatılır,
+  kota mesajından sonra bir daha hiç; geçişin bedeli bir başarısız ajan koşusu, bekleme yok.
 
 ## Batch: birçok görev birden
 

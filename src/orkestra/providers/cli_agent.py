@@ -12,6 +12,9 @@ Common rules (``run_process``):
   reports an error, the tree is stopped the same way and that error is raised (agy waiting
   for an MCP server that cannot connect, D-055).
 - Environment: the parent's, without ``ORKESTRA_*``, plus ``NO_COLOR=1`` and ``CI=1``.
+- A failed run (non-zero exit or no final message) whose output says the quota or usage
+  limit is used up raises ``ProviderQuotaExhausted``: the provider is paused, not retried
+  (``providers/quota.py``, Faz 13f).
 
 Kinds: ``codex`` (``codex exec``), ``agy`` (Antigravity, experimental), ``generic`` (any
 program: prompt on stdin, final message on stdout; used by the test fake agent).
@@ -35,13 +38,23 @@ from typing import Any
 import psutil
 
 from orkestra.config.schema import CliAgentProvider
-from orkestra.errors import ProviderBadOutput, ProviderError, ProviderTimeout, ProviderUnavailable
+from orkestra.errors import (
+    ProviderBadOutput,
+    ProviderError,
+    ProviderQuotaExhausted,
+    ProviderTimeout,
+    ProviderUnavailable,
+)
 from orkestra.i18n import t
+from orkestra.providers import quota
 from orkestra.providers.base import AgentRequest, AgentResult, Usage
+from orkestra.providers.quota import go_seconds
 
 KILL_GRACE_S = 5.0
 VERSION_TIMEOUT_S = 15.0
 STDERR_TAIL = 500
+QUOTA_TAIL = 4000  # characters of each output searched for a quota message
+QUOTA_LOG_LINES = 20  # agy: the last lines of its own log
 PROMPT_FILE = "agent_prompt.md"  # agy: the prompt, next to the run's records
 STDOUT_FILE = "agent.stdout"
 STDERR_FILE = "agent.stderr"
@@ -50,8 +63,6 @@ WATCH_INTERVAL_S = 1.0
 _AGY_TEXT_KEYS = ("result", "response", "text", "output", "message", "content")
 # agy reports every 30 s while MCP servers have not connected; nothing is sent until they do.
 _AGY_MCP_STALL = re.compile(r"MCP: \d+ server\(s\) still connecting after (\S+): (.+?)\s*$")
-_GO_DURATION_PART = re.compile(r"(\d+(?:\.\d+)?)(h|ms|m|s)")
-_GO_UNITS = {"h": 3600.0, "m": 60.0, "s": 1.0, "ms": 0.001}
 
 Watcher = Callable[[], "ProviderError | None"]
 
@@ -213,12 +224,31 @@ class CliAgent:
             watch=self.watcher(req), watch_interval_s=self.watch_interval_s,
         )  # fmt: skip
         if code != 0:
+            self._raise_if_quota(req, stdout_path, stderr_path)
             tail = _read(stderr_path).strip()[-STDERR_TAIL:] or _read(stdout_path)[-STDERR_TAIL:]
             raise ProviderBadOutput(t("agent.error.exit", code=code, detail=tail or "-"))
         message = self.final_message(req, stdout_path)
         if not message.strip():
+            self._raise_if_quota(req, stdout_path, stderr_path)
             raise ProviderBadOutput(t("agent.error.empty", name=self.name))
         return AgentResult(message, code, stdout_path, stderr_path, self.usage(stdout_path))
+
+    def quota_text(self, req: AgentRequest, stdout_path: Path, stderr_path: Path) -> str:
+        """Where a failed run's quota message may be: the ends of stderr and stdout (Faz 13f).
+
+        Only the ends: the error comes last, and the agent's own work earlier in a long
+        transcript (a file it read that mentions quotas) must not count.
+        """
+        return "\n".join((_read(stderr_path)[-QUOTA_TAIL:], _read(stdout_path)[-QUOTA_TAIL:]))
+
+    def _raise_if_quota(self, req: AgentRequest, stdout_path: Path, stderr_path: Path) -> None:
+        hit = quota.detect(self.quota_text(req, stdout_path, stderr_path))
+        if hit is None:
+            return
+        raise ProviderQuotaExhausted(
+            t("agent.error.quota", name=self.name, detail=hit.detail),
+            pause_s=quota.pause_seconds(hit, self.config.quota_pause_s),
+        )
 
 
 class CodexAgent(CliAgent):
@@ -294,6 +324,11 @@ class AgyAgent(CliAgent):
 
     def final_message(self, req: AgentRequest, stdout_path: Path) -> str:
         return parse_agy_output(_read(stdout_path))
+
+    def quota_text(self, req: AgentRequest, stdout_path: Path, stderr_path: Path) -> str:
+        """agy may say it only in its own log: its last lines too."""
+        log = _read(req.output_file.parent / AGENT_LOG).splitlines()[-QUOTA_LOG_LINES:]
+        return "\n".join((super().quota_text(req, stdout_path, stderr_path), *log))
 
     def watcher(self, req: AgentRequest) -> Watcher | None:
         wait_s = self.config.mcp_wait_s
@@ -464,14 +499,6 @@ def _text_of(value: Any) -> str | None:
         texts = [text for item in value if (text := _text_of(item))]
         return texts[-1] if texts else None
     return None
-
-
-def go_seconds(duration: str) -> float | None:
-    """Seconds in a Go duration such as ``30s``, ``1m30s`` or ``1h0m0s``; None if it is not one."""
-    parts = _GO_DURATION_PART.findall(duration)
-    if not parts or "".join(n + u for n, u in parts) != duration:
-        return None
-    return sum(float(n) * _GO_UNITS[u] for n, u in parts)
 
 
 def agy_mcp_stall(lines: str) -> tuple[float, list[str]] | None:

@@ -8,7 +8,7 @@ from __future__ import annotations
 from orkestra.i18n import t
 from orkestra.providers import registry
 from orkestra.routing.adaptive import Score
-from orkestra.state import db
+from orkestra.state import db, health
 
 
 def row_text(row: registry.ProviderRow) -> str:
@@ -18,7 +18,10 @@ def row_text(row: registry.ProviderRow) -> str:
         t(f"providers.consent.{row.consent}"),
     ]
     h = row.health
-    if h.open_until is not None and h.is_open(db.local_now()):
+    now = db.local_now()
+    if h.open_until is not None and h.is_open(now) and h.reason == "quota":
+        parts.append(t("providers.quota_paused", until=health.until_text(h.open_until, now)))
+    elif h.open_until is not None and h.is_open(now):
         parts.append(t("providers.circuit_open", until=h.open_until.strftime("%H:%M")))
     elif h.consecutive_failures:
         parts.append(t("providers.failures", count=h.consecutive_failures))

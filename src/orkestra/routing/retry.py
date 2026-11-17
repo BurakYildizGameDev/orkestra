@@ -7,6 +7,7 @@
   network blip, then skip the provider. Offline, the fallback to a local model costs half a
   second instead of seven.
 - Authentication failure or key missing: skip the provider for the rest of the run.
+- Quota used up (Faz 13f): not retried; the provider is paused and skipped, the run moves on.
 - Model missing (404): only that model is skipped; the next candidate may be the same provider.
 - Worker answered CANNOT_DO: next candidate on a higher tier (Mimari §8.1).
 - Context too long: next candidate with a bigger context window.
@@ -29,6 +30,7 @@ from orkestra.errors import (
     ProviderConnectionError,
     ProviderError,
     ProviderModelNotFound,
+    ProviderQuotaExhausted,
     ProviderRateLimit,
     ProviderTransient,
     ProviderUnavailable,
@@ -55,6 +57,8 @@ class RetryPolicy:
 
 
 def classify(error: ProviderError | BudgetExhausted) -> Action:
+    if isinstance(error, ProviderQuotaExhausted):
+        return Action.SKIP_PROVIDER
     if isinstance(error, ProviderTransient | ProviderRateLimit | ProviderConnectionError):
         return Action.RETRY
     if isinstance(error, ProviderModelNotFound):

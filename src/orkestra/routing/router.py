@@ -82,6 +82,7 @@ class ProviderState:
     consent: consent.ConsentState = "missing"
     open_until: datetime | None = None
     last_error: str | None = None
+    open_reason: health.Reason | None = None  # quota | auth | errors (Faz 13f)
     key_present: bool = True
     installed: bool = True  # code agents: the program is on PATH
     used: budget.Amount = field(default_factory=budget.Amount)
@@ -320,10 +321,17 @@ def route(
             drop(name, None, "secrets_remote", "route.reason.secrets")
             continue
         if state.open_until is not None and snapshot.now < state.open_until:
-            drop(
-                name, None, "circuit_open", "select.reason.circuit_open",
-                until=state.open_until.strftime("%H:%M"), error=state.last_error or "-",
-            )  # fmt: skip
+            if state.open_reason == "quota":
+                drop(
+                    name, None, "quota_paused", "select.reason.quota_paused",
+                    until=health.until_text(state.open_until, snapshot.now),
+                    error=state.last_error or "-",
+                )  # fmt: skip
+            else:
+                drop(
+                    name, None, "circuit_open", "select.reason.circuit_open",
+                    until=state.open_until.strftime("%H:%M"), error=state.last_error or "-",
+                )  # fmt: skip
             continue
         if isinstance(cfg, CliAgentProvider):
             agent = _agent_candidate(name, cfg, needs, state, (low, high), profile_name, drop)
@@ -426,6 +434,7 @@ def take_snapshot(
             consent=consent.state(conn, name, cfg),
             open_until=h.open_until,
             last_error=h.last_error,
+            open_reason=h.reason,
             key_present=key_present(cfg, env) is not False,
             used=budget.used(conn, name, now, reservations=False),  # D-054
             installed=not isinstance(cfg, CliAgentProvider)

@@ -81,6 +81,8 @@ class ProviderBase(_Model):
     timeout_s: PosInt | None = None
     budget: Budget = Field(default_factory=Budget)
     experimental: bool = False
+    # Quota used up and the message has no reset time: pause this long (Faz 13f, D-084).
+    quota_pause_s: PosInt = 3600
 
 
 class OllamaProvider(ProviderBase):

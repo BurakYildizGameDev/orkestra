@@ -370,7 +370,12 @@ def test_success_resets_failures(home: Path, capsys: pytest.CaptureFixture[str])
     for _ in range(2):  # 1st: two failed tries; 2nd: success resets
         _run(["ask", "hi", "--provider", "router"], capsys)
     health = _providers(capsys)["router"]["health"]
-    assert health == {"open_until": None, "consecutive_failures": 0, "last_error": None}
+    assert health == {
+        "open_until": None,
+        "consecutive_failures": 0,
+        "last_error": None,
+        "reason": None,
+    }
 
 
 @respx.mock

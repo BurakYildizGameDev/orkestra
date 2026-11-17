@@ -287,7 +287,24 @@ def _state_checks(providers: Mapping[str, Provider]) -> list[Check]:
                     )
                 )
             state = health.get(conn, name)
-            if state.is_open(now):
+            if state.is_open(now) and state.reason == "quota" and state.open_until is not None:
+                checks.append(
+                    Check(
+                        f"provider:{name}",
+                        "warn",
+                        t(
+                            "doctor.quota_paused",
+                            until=health.until_text(state.open_until, now),
+                            error=state.last_error or "-",
+                        ),
+                        {
+                            "open_until": state.open_until.isoformat(),
+                            "reason": "quota",
+                            "hint": f"orkestra providers enable {name}",
+                        },
+                    )
+                )
+            elif state.is_open(now):
                 until = state.open_until.isoformat() if state.open_until else None
                 checks.append(
                     Check(
