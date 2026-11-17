@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import os
 import sqlite3
-import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -31,7 +30,6 @@ MAX_LINES = 15
 SHOWN_RUNS = 3  # unapplied runs listed by name
 SHOWN_PROVIDERS = 4  # budget lines before "+N more"
 QUEUE_FAILED_WINDOW = timedelta(hours=24)  # queue failures older than this are not shown
-SESSION_ACTIVE = timedelta(hours=6)  # a transcript changed since is the session going on
 CHIEF_ENV = "ORKESTRA_CHIEF"
 STATUS_WARNING_KEYS: dict[str, str] = {
     "no_git": "status.handoff.no_git",
@@ -144,29 +142,42 @@ def _handoff(ctx: StatusContext) -> Section | None:
 @section("session", order=25)
 def _session(ctx: StatusContext) -> Section | None:
     """The chief's own Claude Code session (Faz 13j): past ``handoff.suggest_at_tokens`` one
-    line suggests a fresh session. Nothing without a transcript changed in the last hours."""
+    line suggests a fresh session. Best effort: nothing when there is no transcript changed
+    in the last hours, or it cannot be read (status must never fail for it)."""
     from orkestra.chief import tokens
 
-    home = tokens.claude_home(ctx.environ)
-    for where in dict.fromkeys([Path.cwd().resolve(), store.project_root(Path.cwd())]):
-        try:
-            (path,) = tokens.select_sessions(tokens.project_folder(where, home))
-        except (UsageError, ValueError):
-            continue
-        break
-    else:
+    try:
+        found = _live_transcript(ctx, tokens)
+        if found is None:
+            return None
+        path, folder = found
+        session = tokens.request_sizes(path)
+        hint = tokens.handoff_hint(
+            session, ctx.config.tokens.weights, threshold=ctx.config.handoff.suggest_at_tokens,
+            start=tokens.fresh_start(folder),
+        )  # fmt: skip
+    except (OSError, UsageError):
         return None
-    if time.time() - path.stat().st_mtime > SESSION_ACTIVE.total_seconds():
-        return None
-    session = tokens.read_session(path, calibrate=False)  # only the request sizes matter
-    hint = tokens.handoff_hint(
-        session, ctx.config.tokens.weights, threshold=ctx.config.handoff.suggest_at_tokens
-    )
     if hint is None:
         return None
     data = {"id": session.id, "context": hint.context, "start": hint.start,
             "saving_per_100": round(hint.saving_per_100), "over": hint.over}  # fmt: skip
     return Section([tokens.hint_line(hint)] if hint.over else [], data)
+
+
+def _live_transcript(ctx: StatusContext, tokens: Any) -> tuple[Path, Path] | None:
+    """The newest transcript of this project, if the session is still going. Claude Code names
+    the folder after the directory as it was started (not resolved: a mapped drive stays); the
+    git root is asked only when the current directory has none."""
+    home = tokens.claude_home(ctx.environ)
+    cwd = Path.cwd().absolute()
+    for where in (lambda: cwd, lambda: store.project_root(cwd)):
+        folder = tokens.project_folder(where(), home)
+        if not folder.is_dir():
+            continue
+        (path,) = tokens.select_sessions(folder)
+        return (path, folder) if tokens.active(path, ctx.now) else None
+    return None
 
 
 @section("unapplied", order=30)

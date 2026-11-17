@@ -97,3 +97,82 @@ def test_tokens_shows_the_same_hint(
     _, out, _ = _run(["tokens", "--json"], capsys)
     hint = json.loads(out)["handoff_hint"]
     assert hint["over"] is True and hint["saving_per_100"] == 1_300_000
+
+
+# --- code review fixes (PR #33) --------------------------------------------------------
+
+
+def test_a_transcript_that_cannot_be_read_does_not_break_status(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    _transcript(tmp_path / "claude-home", project, 47_000, 300_000)
+
+    def denied(*args: object, **kwargs: object) -> list[Path]:
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(tokens, "select_sessions", denied)
+    code, out, _ = _run(["status", "--json"], capsys)
+    assert code == 0 and "session" not in json.loads(out)["sections"]
+
+
+def test_status_reads_only_the_request_sizes_and_skips_git_when_it_can(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    from orkestra.chief import status
+
+    _transcript(tmp_path / "claude-home", project, 47_000, 300_000)
+
+    def never(*args: object, **kwargs: object) -> object:
+        raise AssertionError("not needed")
+
+    monkeypatch.setattr(tokens, "read_session", never)
+    real_root = status.store.project_root
+    calls: list[object] = []
+    monkeypatch.setattr(status.store, "project_root",
+                        lambda *a, **k: calls.append(a) or real_root(*a, **k))  # fmt: skip
+    code, out, _ = _run(["status", "--json"], capsys)
+    assert code == 0 and json.loads(out)["sections"]["session"]["over"] is True
+    assert len([c for c in calls if c]) <= 1  # only the handoff section's own lookup
+
+
+def test_the_activity_window_follows_the_injected_clock(project: Path, tmp_path: Path) -> None:
+    from contextlib import closing
+    from datetime import timedelta
+
+    from orkestra.chief import status
+    from orkestra.config.loader import load_config
+    from orkestra.state import db
+
+    _transcript(tmp_path / "claude-home", project, 47_000, 300_000)
+    config = load_config(cwd=project, environ={}).config
+    environ = {"CLAUDE_CONFIG_DIR": str(tmp_path / "claude-home")}
+    with closing(db.connect()) as conn:
+        later = db.local_now() + timedelta(hours=7)
+        report = status.collect(status.StatusContext(config, conn, later, environ))
+    assert "session" not in report.sections
+
+
+def test_a_resumed_session_is_compared_with_a_real_fresh_start(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = tmp_path / "claude-home"
+    old = _transcript(home, project, 47_000, 90_000)
+    old.rename(old.with_name("earlier.jsonl"))
+    past = time.time() - 3600
+    os.utime(old.with_name("earlier.jsonl"), (past, past))
+    _transcript(home, project, 300_000, 350_000)  # resumed: starts with the old history
+    _, out, _ = _run(["status", "--json"], capsys)
+    session = json.loads(out)["sections"]["session"]
+    assert session["start"] == 47_000 + tokens.BRIEF_TOKENS and session["over"] is True
+
+
+def test_tokens_has_no_hint_for_a_session_that_is_over(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = _transcript(tmp_path / "claude-home", project, 47_000, 300_000)
+    old = time.time() - 24 * 3600
+    os.utime(path, (old, old))
+    code, out, _ = _run(["tokens", "--json"], capsys)
+    assert code == 0 and json.loads(out)["handoff_hint"] is None

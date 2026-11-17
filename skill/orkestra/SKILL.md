@@ -276,8 +276,8 @@ Kotadan dolayı veya kullanıcı istediğinde işi başka bir şefe devret:
   işaretli bir blok ekler (var olan kancayı ezmez, commit'i asla engellemez).
 
 **Kısa oturum.** Uzun oturumda bağlamın tamamı her istekte yeniden okunur. Bir faz ya da alt görev
-bitince `orkestra status` çıktısına bak: "bağlam ~… token: yeni oturum … kazandırır" satırı
-varsa (eşik `handoff.suggest_at_tokens`), devir dosyasını güncelle (`done`, `in_progress`,
+bitince `orkestra status --json` çıktısında `sections.session.over` değerine bak: `true` ise
+(eşik `handoff.suggest_at_tokens`; `saving_per_100` kazancı verir), devir dosyasını güncelle (`done`, `in_progress`,
 `status`), değişiklikleri commit et ve kullanıcıya yeni oturum öner: ya `/clear` yazıp yeni
 bağlamda `orkestra handoff show --brief` okumanı, ya da bu oturumu kapatıp kendi terminalinde
 `orkestra handoff to claude` çalıştırmasını. Yarım bir işin ortasında önerme.

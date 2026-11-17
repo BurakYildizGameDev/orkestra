@@ -48,6 +48,13 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 13j (PR #33), 2026-11-17
+`/code-review` 10 bulgu; hepsi düzeltildi (D-093). Önce 8 kırmızı test.
+- ✅ Okunamayan döküm `status`'u çökertmiyor; etkinlik penceresi enjekte saatle; `status` yalnız istek boyutlarını okuyor, git'e gerekmedikçe sormuyor.
+- ✅ Devam ettirilen oturumda gerçek yeni başlangıç; kazanç yoksa öneri yok; `tokens` yalnız süren oturuma öneri veriyor; klasör adı çözülmemiş yoldan; skill JSON alanına bakıyor.
+
+Testler: **1603 geçti** (1596 + 7). ruff, ruff format, pyright temiz.
+
 ### Faz 13j – Kısa oturum disiplini (2026-11-17)
 **Yapılanlar (D-092):**
 - `handoff to claude`: aynı şefe devir zaten çalışıyordu; testle doğrulandı (`from = to`).

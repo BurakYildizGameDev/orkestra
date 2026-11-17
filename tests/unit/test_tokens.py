@@ -384,11 +384,11 @@ def test_settings_come_from_the_project_and_a_broken_config_falls_back(tmp_path:
     (project / "orkestra.yaml").write_text(
         "version: 1\ntokens:\n  weights:\n    output: 4.0\n", encoding="utf-8"
     )
-    cfg, warnings = tokens.settings(project=project)
-    assert cfg.weights.output == 4.0 and warnings == []
+    config, warnings = tokens.load(project=project)
+    assert config is not None and config.tokens.weights.output == 4.0 and warnings == []
     (project / "orkestra.yaml").write_text("version: 1\nnot_a_key: 1\n", encoding="utf-8")
-    cfg, warnings = tokens.settings(project=project)
-    assert cfg.weights.output == 5.0 and len(warnings) == 1
+    config, warnings = tokens.load(project=project)
+    assert config is None and len(warnings) == 1
 
 
 def test_messages_of_one_request_are_one_item_and_ten_lines_keeps_the_input(

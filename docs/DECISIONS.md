@@ -980,3 +980,16 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Skill:** faz/alt görev sonunda `status`'ta bu satır varsa devir dosyasını güncelle, commit et ve yeni oturum öner; yarım işin ortasında önerme.
 - **Testler:** `CLAUDE_CONFIG_DIR` artık bütün testlerde geçici klasör (gerçek dökümler okunmaz). 1585 → 1596 (+11).
 - **İlk gerçek değer:** bu geliştirme oturumunun kendisi ~636 bin token bağlamdaydı; araç yeni oturumun her 100 istekte ~5,9 milyon ağırlıklı token kazandıracağını hesapladı. Ölçüm 13g'nin kısa oturumlu kolunda.
+
+## D-093 – Faz 13j kod denetimi düzeltmeleri (2026-11-17, Faz 13j)
+`/code-review` (PR #33): 10 bulgu, hepsi düzeltildi; önce 8 kırmızı test.
+- **`status` hiç çökmez:** `session` bölümü en iyi çaba; döküm okunamazsa (silinmiş, izin yok) bölüm yazılmaz, `status` sürer.
+- **Saat enjekte:** etkinlik penceresi `ctx.now` ile (`tokens.active`), gerçek saatle değil.
+- **Hızlı:** `status` dökümü baştan sona ayrıştırmaz; `tokens.request_sizes` yalnız `assistant` + `usage` satırlarını okur (alt ajanlar, araç çağrıları yok). Git köküne yalnız bulunulan klasörde döküm yoksa sorulur.
+- **Devam ettirilen oturum** (`--resume`): yeni başlangıç, projenin son 10 dökümünün en küçük ilk isteğinden (`tokens.fresh_start`); devam ettirilen dökümün ilk isteği eski geçmişi taşıdığı için kazancı olduğundan az gösteriyordu.
+- **Kazanç yoksa öneri yok** (`over` = eşik geçildi **ve** kazanç > 0).
+- **`tokens` yalnız süren oturum için** ipucu verir (son 6 saat); kapanmış bir oturuma "yeni oturuma geç" denmez.
+- **Klasör adı çözülmemiş yoldan** (Claude Code'un kendisi gibi): eşlenmiş sürücü / junction'da döküm bulunur.
+- **Skill** dile bağlı metin satırına değil `status --json` → `sections.session.over`'a bakar.
+- Kullanılmayan `tokens.settings` yerine tek giriş `tokens.load`.
+- **Testler:** 1596 → 1603 (+7).

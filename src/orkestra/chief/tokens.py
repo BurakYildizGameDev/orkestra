@@ -23,7 +23,7 @@ import os
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,7 @@ REBUILD_MIN = 2000  # tokens no longer read from the cache that count as a cache
 MIN_SCALE, MAX_SCALE = 0.25, 4.0  # calibration limits
 BRIEF_TOKENS = 3000  # about what a handoff brief adds to a fresh session's start
 HINT_REQUESTS = 100  # the saving is shown per this many later requests
+SESSION_ACTIVE = timedelta(hours=6)  # a transcript changed since is the session going on
 GROWTH_POINTS = 5
 
 CATEGORIES: dict[str, tuple[str, ...]] = {
@@ -185,13 +186,73 @@ class HandoffHint:
     over: bool  # past ``handoff.suggest_at_tokens``
 
 
-def handoff_hint(session: Session, weights: TokenWeights, *, threshold: int) -> HandoffHint | None:
+def handoff_hint(
+    session: Session, weights: TokenWeights, *, threshold: int, start: int | None = None
+) -> HandoffHint | None:
+    """``start``: a known fresh start (``fresh_start``); a resumed transcript's first request
+    carries the old history and would understate the saving. Suggested only when the context
+    is past ``threshold`` and a fresh session saves something."""
     if not session.turns:
         return None
     context = session.turns[-1].context
-    start = session.turns[0].context + BRIEF_TOKENS
-    saving = max(0, context - start) * weights.cache_read * HINT_REQUESTS
-    return HandoffHint(context, start, saving, context >= threshold)
+    fresh = (session.turns[0].context if start is None else start) + BRIEF_TOKENS
+    saving = max(0, context - fresh) * weights.cache_read * HINT_REQUESTS
+    return HandoffHint(context, fresh, saving, context >= threshold and saving > 0)
+
+
+def request_sizes(path: Path) -> Session:
+    """Only the requests' usage, for ``status``: no tool calls, replies or subagents (a long
+    session's transcript is many MB and ``status`` runs often)."""
+    session = Session(path.stem)
+    last: dict[str, Usage] = {}
+    with path.open("rb") as f:
+        for raw in f:
+            if b'"assistant"' not in raw or b'"usage"' not in raw:
+                continue
+            try:
+                entry = json.loads(raw)
+            except ValueError:
+                continue
+            message = entry.get("message") if isinstance(entry, dict) else None
+            if (entry.get("type") != "assistant" or entry.get("isSidechain")
+                    or not isinstance(message, dict) or not _real(message)):  # fmt: skip
+                continue
+            last[str(message.get("id") or len(last))] = _usage(message.get("usage"))
+    session.turns = list(last.values())
+    return session
+
+
+def fresh_start(folder: Path, *, limit: int = 10) -> int | None:
+    """What a fresh session starts with: the smallest first request among the project's
+    newest transcripts (a resumed one starts with old history; an empty start does not)."""
+    files = sorted(folder.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    starts = [size for path in files[:limit] if (size := _first_request(path)) is not None]
+    return min(starts) if starts else None
+
+
+def _first_request(path: Path) -> int | None:
+    try:
+        with path.open("rb") as f:
+            for raw in f:
+                if b'"assistant"' not in raw or b'"usage"' not in raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                except ValueError:
+                    continue
+                message = entry.get("message") if isinstance(entry, dict) else None
+                if (entry.get("type") == "assistant" and not entry.get("isSidechain")
+                        and isinstance(message, dict) and _real(message)):  # fmt: skip
+                    return _usage(message.get("usage")).context
+    except OSError:
+        return None
+    return None
+
+
+def active(path: Path, now: datetime) -> bool:
+    """The session is still going: its transcript changed within ``SESSION_ACTIVE``."""
+    changed = datetime.fromtimestamp(path.stat().st_mtime, tz=now.tzinfo)
+    return now - changed <= SESSION_ACTIVE
 
 
 # --- finding transcripts ---------------------------------------------------------------
@@ -233,16 +294,11 @@ def select_sessions(
     return files[:1]
 
 
-def settings(
+def load(
     config_flag: Path | None = None, *, project: Path | None = None
-) -> tuple[TokensCfg, list[str]]:
-    """The ``tokens`` settings of ``project``'s config, and warnings. The command needs no
-    config: none, or one that does not load, means the default weights (with a warning)."""
-    config, warnings = _config(config_flag, project)
-    return (config.tokens if config is not None else TokensCfg()), warnings
-
-
-def _config(config_flag: Path | None, project: Path | None) -> tuple[Config | None, list[str]]:
+) -> tuple[Config | None, list[str]]:
+    """``project``'s config and warnings. The command needs no config: none, or one that does
+    not load, means the defaults (with a warning)."""
     if not loader.find_sources(config_flag, project):
         return None, []
     try:
@@ -262,14 +318,18 @@ def collect(
     environ: Mapping[str, str] | None = None,
 ) -> Report:
     """``orkestra tokens``: read the chosen sessions of ``project`` and rank what they cost."""
-    config, warnings = _config(config_flag, project)
+    config, warnings = load(config_flag, project=project)
     cfg = config.tokens if config is not None else TokensCfg()
     threshold = (config.handoff if config is not None else HandoffCfg()).suggest_at_tokens
     folder = project_folder(project, claude_home(environ))
     paths = select_sessions(folder, session=session, since=since)
     sessions = [read_session(p) for p in paths]
     report = analyse(sessions, cfg.weights, top=top or cfg.top)
-    report.hint = handoff_hint(sessions[0], cfg.weights, threshold=threshold)
+    # Only for the session still going: a closed one cannot be handed off any more.
+    if active(paths[0], datetime.now().astimezone()):
+        report.hint = handoff_hint(
+            sessions[0], cfg.weights, threshold=threshold, start=fresh_start(folder)
+        )
     report.warnings.extend(warnings)
     return report
 

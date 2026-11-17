@@ -45,3 +45,18 @@ def test_the_hint_follows_the_weights() -> None:
     hint = tokens.handoff_hint(_session(10_000, 200_000), cheap_reads, threshold=100_000)
     assert hint is not None
     assert hint.saving_per_100 == pytest.approx((200_000 - 13_000) * 0.05 * 100)
+
+
+# --- code review fixes (PR #33) --------------------------------------------------------
+
+
+def test_a_fresh_session_that_saves_nothing_is_not_suggested() -> None:
+    hint = tokens.handoff_hint(_session(47_000, 48_000), W, threshold=40_000)
+    assert hint is not None and hint.over is False
+
+
+def test_a_known_fresh_start_replaces_a_resumed_transcripts_first_request() -> None:
+    resumed = _session(300_000, 350_000)  # --resume: the first request carries old history
+    hint = tokens.handoff_hint(resumed, W, threshold=120_000, start=47_000)
+    assert hint is not None and hint.start == 47_000 + tokens.BRIEF_TOKENS
+    assert hint.saving_per_100 == pytest.approx((350_000 - 50_000) * 0.1 * 100)
