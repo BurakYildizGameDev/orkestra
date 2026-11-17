@@ -661,6 +661,25 @@ So about 85% of the cost is context being read again, not Claude's writing: big 
 outputs and file reads early in a long session are the levers, which is what the next phases
 (a context filter and shorter sessions) go after.
 
+## Short sessions: a fresh context when it pays off
+
+In a long session every request reads the whole context again (see the token map), so the
+cost of a request grows with the session. Past `handoff.suggest_at_tokens` (default 120,000)
+`orkestra status` and `orkestra tokens` say what a fresh session would save, from the
+session's own numbers:
+
+```
+context ~180,000 tokens: a fresh session saves ~1,300,000 weighted tokens per 100 requests
+(orkestra handoff update …, then /clear and orkestra handoff show --brief, or orkestra handoff to claude)
+```
+
+A fresh session starts from the first request's context (system prompt, tools, CLAUDE.md)
+plus the handoff brief (~3,000 tokens); every later request then reads that much less.
+Two ways to take it, after updating the handoff file and committing: `/clear` in Claude
+Code and read `orkestra handoff show --brief`, or close the session and run
+`orkestra handoff to claude` (a handoff to the same chief). The Claude skill suggests it at
+the end of a phase or subtask, never in the middle of one.
+
 ## Worktrees: isolated changes
 
 Workers never change your checkout. A run that changes code gets its own git worktree under

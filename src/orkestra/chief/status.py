@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from orkestra.config.schema import Config
+from orkestra.errors import UsageError
 from orkestra.handoff import brief, model, store
 from orkestra.i18n import t
 from orkestra.providers import registry
@@ -136,6 +137,47 @@ def _handoff(ctx: StatusContext) -> Section | None:
     lines = [t("status.handoff.line", goal=" ".join(first.split())[:70] or "-")]
     lines.extend(brief.warning_lines(state, STATUS_WARNING_KEYS))
     return Section(lines, data)
+
+
+@section("session", order=25)
+def _session(ctx: StatusContext) -> Section | None:
+    """The chief's own Claude Code session (Faz 13j): past ``handoff.suggest_at_tokens`` one
+    line suggests a fresh session. Best effort: nothing when there is no transcript changed
+    in the last hours, or it cannot be read (status must never fail for it)."""
+    from orkestra.chief import tokens
+
+    try:
+        found = _live_transcript(ctx, tokens)
+        if found is None:
+            return None
+        path, folder = found
+        session = tokens.request_sizes(path)
+        hint = tokens.handoff_hint(
+            session, ctx.config.tokens.weights, threshold=ctx.config.handoff.suggest_at_tokens,
+            start=tokens.fresh_start(folder),
+        )  # fmt: skip
+    except (OSError, UsageError):
+        return None
+    if hint is None:
+        return None
+    data = {"id": session.id, "context": hint.context, "start": hint.start,
+            "saving_per_100": round(hint.saving_per_100), "over": hint.over}  # fmt: skip
+    return Section([tokens.hint_line(hint)] if hint.over else [], data)
+
+
+def _live_transcript(ctx: StatusContext, tokens: Any) -> tuple[Path, Path] | None:
+    """The newest transcript of this project, if the session is still going. Claude Code names
+    the folder after the directory as it was started (not resolved: a mapped drive stays); the
+    git root is asked only when the current directory has none."""
+    home = tokens.claude_home(ctx.environ)
+    cwd = Path.cwd().absolute()
+    for where in (lambda: cwd, lambda: store.project_root(cwd)):
+        folder = tokens.project_folder(where(), home)
+        if not folder.is_dir():
+            continue
+        (path,) = tokens.select_sessions(folder)
+        return (path, folder) if tokens.active(path, ctx.now) else None
+    return None
 
 
 @section("unapplied", order=30)

@@ -15,6 +15,8 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[No
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(i18n, "_platform_locale", lambda: None)
     monkeypatch.setenv("ORKESTRA_HOME", str(tmp_path / "orkestra-home"))
+    # Claude Code's transcripts (``tokens``, the session hint in ``status``): never the real ones.
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-home"))
     from orkestra.providers import cli_agent  # agy's files in the developer's home
 
     monkeypatch.setattr(cli_agent, "AGY_SETTINGS", tmp_path / "agy-home" / "settings.json")

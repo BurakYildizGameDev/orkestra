@@ -971,3 +971,25 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Önbellek anahtarı kademedeki modelleri içerir:** model değişince eski modelin cevabı dönmez.
 - **Verim:** `find` dosya metinlerini yalnız `--ask`'te tutar, sonuçları dosya başına toplar, en çok 5000 sonuçta durur (`truncated`), 2 MB'tan büyük dosyaları atlar.
 - **Testler:** 1575 → 1585 (+10).
+
+## D-092 – Faz 13j: kısa oturum disiplini (2026-11-17, Faz 13j)
+**Karar:**
+- **`handoff to claude` için yeni kod gerekmedi:** `handoff to` aynı şefe devri zaten yapıyordu (kayıtta `from = to`); test eklendi. Claude Code içinde ikinci yol `/clear` + `orkestra handoff show --brief` (oturum açık kalır, bağlam boşalır).
+- **Eşik önerisi** (`tokens.handoff_hint`): bağlam = en yeni dökümün son isteğinin bağlamı; yeni başlangıç = ilk isteğin bağlamı (sistem istemi, araçlar, CLAUDE.md) + ~3.000 token devir özeti; kazanç = (bağlam − başlangıç) × `cache_read` ağırlığı × 100 istek (sonraki her istek o kadar az okur). Kalan iş bilinmediği için "100 istek başına" verilir. Eşik `handoff.suggest_at_tokens` (varsayılan 120.000; bu projenin oturumları 47 bin ile başlayıp 400 bin+'ya çıkıyordu).
+- **Nerede:** `status`'ta yeni `session` bölümü (yalnız son 6 saatte değişmiş döküm = süren oturum; eşik geçilince tek satır, JSON'da her zaman), `tokens`'ta aynı satır ve `handoff_hint`. Döküm proje klasöründen, yoksa git kökünden aranır.
+- **Skill:** faz/alt görev sonunda `status`'ta bu satır varsa devir dosyasını güncelle, commit et ve yeni oturum öner; yarım işin ortasında önerme.
+- **Testler:** `CLAUDE_CONFIG_DIR` artık bütün testlerde geçici klasör (gerçek dökümler okunmaz). 1585 → 1596 (+11).
+- **İlk gerçek değer:** bu geliştirme oturumunun kendisi ~636 bin token bağlamdaydı; araç yeni oturumun her 100 istekte ~5,9 milyon ağırlıklı token kazandıracağını hesapladı. Ölçüm 13g'nin kısa oturumlu kolunda.
+
+## D-093 – Faz 13j kod denetimi düzeltmeleri (2026-11-17, Faz 13j)
+`/code-review` (PR #33): 10 bulgu, hepsi düzeltildi; önce 8 kırmızı test.
+- **`status` hiç çökmez:** `session` bölümü en iyi çaba; döküm okunamazsa (silinmiş, izin yok) bölüm yazılmaz, `status` sürer.
+- **Saat enjekte:** etkinlik penceresi `ctx.now` ile (`tokens.active`), gerçek saatle değil.
+- **Hızlı:** `status` dökümü baştan sona ayrıştırmaz; `tokens.request_sizes` yalnız `assistant` + `usage` satırlarını okur (alt ajanlar, araç çağrıları yok). Git köküne yalnız bulunulan klasörde döküm yoksa sorulur.
+- **Devam ettirilen oturum** (`--resume`): yeni başlangıç, projenin son 10 dökümünün en küçük ilk isteğinden (`tokens.fresh_start`); devam ettirilen dökümün ilk isteği eski geçmişi taşıdığı için kazancı olduğundan az gösteriyordu.
+- **Kazanç yoksa öneri yok** (`over` = eşik geçildi **ve** kazanç > 0).
+- **`tokens` yalnız süren oturum için** ipucu verir (son 6 saat); kapanmış bir oturuma "yeni oturuma geç" denmez.
+- **Klasör adı çözülmemiş yoldan** (Claude Code'un kendisi gibi): eşlenmiş sürücü / junction'da döküm bulunur.
+- **Skill** dile bağlı metin satırına değil `status --json` → `sections.session.over`'a bakar.
+- Kullanılmayan `tokens.settings` yerine tek giriş `tokens.load`.
+- **Testler:** 1596 → 1603 (+7).

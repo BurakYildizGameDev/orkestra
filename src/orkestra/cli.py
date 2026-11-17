@@ -1039,7 +1039,7 @@ def build_app() -> typer.Typer:
     ) -> None:
         start = db.local_now() - stats.parse_since(since) if since else None
         report = token_map.collect(
-            project=(project or Path.cwd()).resolve(), session=session, since=start, top=top,
+            project=(project or Path.cwd()).absolute(), session=session, since=start, top=top,
             config_flag=ctx.ensure_object(_State).config_path,
         )  # fmt: skip
         if as_json:
