@@ -194,6 +194,6 @@ def test_map_install_hook_refreshes_the_index_after_each_commit(
     assert code == 0
     hook = project / ".git" / "hooks" / "post-commit"
     text = hook.read_text(encoding="utf-8")
-    assert text.startswith("#!/bin/sh") and "orkestra map" in text and "--diff-filter=d" in text
+    assert text.startswith("#!/bin/sh") and "orkestra map --after-commit" in text
     _run(["map", "--install-hook"], capsys)
     assert hook.read_text(encoding="utf-8").count("orkestra map >>>") == 1  # once

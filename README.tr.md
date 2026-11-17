@@ -599,8 +599,9 @@ orkestra find "TODO" --ask "Hangileri güvenlikle ilgili?"
   `--ask "<soru>"` ile bir işçi sonuçlar hakkında (her birinin çevresindeki birkaç satırla)
   denetlenmiş işaretçilerle cevap verir.
 - **Proje fihristi**, `orkestra map`'in dosya başına özetleridir. `orkestra map
-  --install-hook`, her commit'in değiştirdiği dosyaları arka planda haritalayan bir
-  post-commit hook ekler; fihrist commit'leri yavaşlatmadan güncel kalır.
+  --install-hook`, arka planda `orkestra map --after-commit` çalıştıran bir post-commit hook
+  ekler: her commit'in değiştirdiği dosyalar, aynı anda tek koşuyla haritalanır (rebase'de
+  sıraya girer); fihrist commit'leri yavaşlatmadan güncel kalır.
 
 ## Claude'un tokenı nereye gidiyor?
 

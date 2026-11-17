@@ -790,3 +790,4 @@ cli.map.option.install_hook: "Her commit'in değiştirdiği dosyalar için fihri
 map.hook.created: "Hook oluşturuldu: {path}"
 map.hook.updated: "Fihrist tazeleme var olan hook'a eklendi: {path}"
 map.hook.exists: "Hook fihristi zaten tazeliyor: {path}"
+cli.map.option.after_commit: "Son commit'in değiştirdiği dosyaları haritala (--install-hook'un hook'unun çalıştırdığı); aynı anda tek koşu."

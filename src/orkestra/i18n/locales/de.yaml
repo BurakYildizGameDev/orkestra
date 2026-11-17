@@ -791,3 +791,4 @@ cli.map.option.install_hook: "Einen post-commit-Hook hinzufügen, der den Index 
 map.hook.created: "Hook erstellt: {path}"
 map.hook.updated: "Index-Aktualisierung zum bestehenden Hook hinzugefügt: {path}"
 map.hook.exists: "Der Hook aktualisiert den Index bereits: {path}"
+cli.map.option.after_commit: "Die vom letzten Commit geänderten Dateien kartieren (das, was der --install-hook-Hook ausführt); immer nur ein Lauf."

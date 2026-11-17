@@ -1007,10 +1007,10 @@ def build_app() -> typer.Typer:
         ] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
-        config, _ = executor.load(ctx.ensure_object(_State).config_path)
+        config, problem = executor.load(ctx.ensure_object(_State).config_path)
         result = file_finder.find(
             pattern, cwd=Path.cwd(), config=config, regex=regex, globs=globs or (),
-            max_hits=max_hits, question=question, no_cache=no_cache,
+            max_hits=max_hits, question=question, no_cache=no_cache, config_problem=problem,
         )  # fmt: skip
         if as_json:
             _echo_json(file_finder.to_dict(result))
@@ -1302,6 +1302,9 @@ def build_app() -> typer.Typer:
         install_hook: Annotated[
             bool, typer.Option("--install-hook", help=t("cli.map.option.install_hook"))
         ] = False,
+        after_commit: Annotated[
+            bool, typer.Option("--after-commit", help=t("cli.map.option.after_commit"))
+        ] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         from orkestra.chief import repomap
@@ -1310,6 +1313,11 @@ def build_app() -> typer.Typer:
             hooked = repomap.install_index_hook(Path.cwd())
             key = "created" if hooked.created else "updated" if hooked.updated else "exists"
             typer.echo(t(f"map.hook.{key}", path=hooked.path))
+            return
+        if after_commit:
+            config, _ = executor.load(ctx.ensure_object(_State).config_path)
+            if config is not None:  # the hook runs quietly; no config, nothing to map with
+                repomap.after_commit(repomap.project_root(Path.cwd()), config)
             return
         loaded = loader.load_config(ctx.ensure_object(_State).config_path)
         cwd = Path.cwd()

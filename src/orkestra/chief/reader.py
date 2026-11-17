@@ -21,9 +21,10 @@ from typing import Any
 from orkestra.cache import responses
 from orkestra.chief import pointers as ptr
 from orkestra.chief.call import query_chief_model
-from orkestra.config.schema import Config
+from orkestra.config.schema import CliAgentProvider, Config
 from orkestra.errors import UsageError
 from orkestra.i18n import t
+from orkestra.security.redact import Redactor, configured_secrets, secret_env_values
 from orkestra.state import db
 from orkestra.tasks.context import collect_context
 
@@ -63,13 +64,28 @@ def read(
     ignored = [display for display, _ in context.skipped_ignored]
     if not context.files:
         raise UsageError(t("read.error.nothing"), details=[*ignored, *context.skipped_binary])
-    texts = {f.display.replace("\\", "/"): f.text.splitlines() for f in context.files}
+    texts = {ptr.relative(f.path, cwd): ptr.lines(f.text) for f in context.files}
     blocks = "\n\n".join(ptr.numbered(path, lines) for path, lines in texts.items())
     user = f"Question: {question}\n\n{blocks}"
     answer, label, cached = ask(config, user, no_cache=no_cache, now=now, environ=environ)
+    found = ptr.check(answer, texts, redact=redactor(config, environ))
     return ReadResult(
-        answer, ptr.check(answer, texts), label, cached, list(texts), ignored,
-        list(context.skipped_binary),
+        answer, found, label, cached, list(texts), ignored, list(context.skipped_binary)
+    )
+
+
+def redactor(config: Config | None, environ: Mapping[str, str] | None) -> Redactor:
+    """Masks keys the config names and variables that look like keys (also in ``find``)."""
+    secrets = configured_secrets(config, environ) if config is not None else []
+    return Redactor([*secrets, *secret_env_values(environ)])
+
+
+def _tier_models(config: Config, tier: int) -> list[str]:
+    """The chat models that can answer on ``tier``: a cached answer is reused only while
+    they are the same (another model may answer better)."""
+    return sorted(
+        f"{name}/{m.id}" for name, p in config.providers.items() if not isinstance(
+            p, CliAgentProvider) for m in p.models if m.tier <= tier
     )  # fmt: skip
 
 
@@ -86,7 +102,10 @@ def ask(
     the same prompt was answered before: ``(answer, model label, cached)``."""
     current = db.local_now() if now is None else now
     use_cache = config.cache.enabled and not no_cache
-    key = responses.make_key("read", f"tier{config.read.tier}", system, user, json_mode=False)
+    models = ",".join(_tier_models(config, config.read.tier))
+    key = responses.make_key(
+        "read", f"tier{config.read.tier}:{models}", system, user, json_mode=False
+    )
     if use_cache:
         stored = responses.load(key, now=current, ttl_days=config.cache.ttl_days)
         if stored is not None:

@@ -791,3 +791,4 @@ cli.map.option.install_hook: "Add a post-commit hook that refreshes the index fo
 map.hook.created: "Hook created: {path}"
 map.hook.updated: "Index refresh added to the existing hook: {path}"
 map.hook.exists: "The hook already refreshes the index: {path}"
+cli.map.option.after_commit: "Map the files the last commit changed (what the --install-hook hook runs); one run at a time."

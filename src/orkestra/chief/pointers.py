@@ -7,9 +7,12 @@ it points at without opening the file; an invalid one is marked, so it is not tr
 
 from __future__ import annotations
 
+import html
+import os
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 LINE_CHARS = 120
 # A path whose extension starts with a letter (so "3.12:1" is not one), then :line[-line].
@@ -23,8 +26,11 @@ class Pointer:
     line: str | None  # the line it names, stripped and shortened
 
 
-def check(answer: str, files: Mapping[str, list[str]]) -> list[Pointer]:
-    """Each distinct pointer in ``answer``, in order; ``files`` maps a path to its lines."""
+def check(
+    answer: str, files: Mapping[str, list[str]], *, redact: Callable[[str], str] = str
+) -> list[Pointer]:
+    """Each distinct pointer in ``answer``, in order; ``files`` maps a path to its lines.
+    ``redact`` masks keys in the line shown (the worker may point at one, D-091)."""
     by_name = {path.replace("\\", "/"): lines for path, lines in files.items()}
     found: list[Pointer] = []
     seen: set[str] = set()
@@ -40,7 +46,7 @@ def check(answer: str, files: Mapping[str, list[str]]) -> list[Pointer]:
         if lines is None or not 1 <= first <= last <= len(lines):
             found.append(Pointer(shown, False, None))
             continue
-        found.append(Pointer(shown, True, _short(lines[first - 1])))
+        found.append(Pointer(shown, True, _short(redact(lines[first - 1]))))
     return found
 
 
@@ -56,6 +62,24 @@ def _short(line: str) -> str:
 
 
 def numbered(path: str, lines: list[str]) -> str:
-    """A file as the worker sees it: its path, then each line with its number."""
-    body = "\n".join(f"{n:>5}| {line}" for n, line in enumerate(lines, start=1))
-    return f'<file path="{path}">\n{body}\n</file>'
+    """A file as the worker sees it: its path, then each line with its number. As in task
+    context (D-036), the path is escaped and a ``</file>`` inside cannot close the block."""
+    safe = [line.replace("</file>", "<\\/file>") for line in lines]
+    body = "\n".join(f"{n:>5}| {line}" for n, line in enumerate(safe, start=1))
+    return f'<file path="{html.escape(path, quote=True)}">\n{body}\n</file>'
+
+
+def lines(text: str) -> list[str]:
+    """Lines as editors and grep count them: split on newlines only (``splitlines`` also
+    splits on form feeds and other separators, which shifts every later line number)."""
+    parts = text.replace("\r\n", "\n").split("\n")
+    return parts[:-1] if parts and parts[-1] == "" else parts
+
+
+def relative(path: Path, cwd: Path) -> str:
+    """``path`` as the chief would type it from ``cwd`` (``../other/x.py``); only its name
+    when it is on another drive: no absolute (home) path goes to a worker."""
+    try:
+        return os.path.relpath(path, cwd).replace("\\", "/")
+    except ValueError:
+        return path.name

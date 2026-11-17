@@ -12,7 +12,6 @@ answers with checked pointers. Like grep, no hit is exit code 1.
 from __future__ import annotations
 
 import re
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -22,15 +21,16 @@ from typing import Any
 from orkestra.chief import pointers as ptr
 from orkestra.chief import reader, repomap
 from orkestra.config.schema import Config, FindCfg
-from orkestra.errors import UsageError
+from orkestra.errors import ConfigError, UsageError
 from orkestra.i18n import t
-from orkestra.security.redact import Redactor, configured_secrets, secret_env_values
 from orkestra.tasks.context import glob_regex
 
 TEXT_CHARS = 160
 FIRST_HITS = 3  # per file, when hits are grouped
 AROUND = 2  # lines around each hit that a worker reads (--ask)
 ASK_HITS = 120
+MAX_HITS = 5000  # the search stops there (``truncated``)
+MAX_FILE_BYTES = 2_000_000  # larger files are not searched
 
 ASK_SYSTEM = (
     "You answer a programmer's question about search hits in their project, so that they "
@@ -69,6 +69,7 @@ class FindResult:
     pointers: list[ptr.Pointer] = field(default_factory=list)
     model: str | None = None
     cached: bool = False
+    truncated: bool = False
 
     @property
     def files(self) -> int:
@@ -85,86 +86,87 @@ def find(
     max_hits: int | None = None,
     question: str | None = None,
     no_cache: bool = False,
+    config_problem: str | None = None,
     now: datetime | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> FindResult:
+    if config_problem:
+        # Its ignore file and its keys are unknown: searching anyway could show what the
+        # user keeps out (D-091).
+        raise ConfigError(config_problem)
     try:
         matcher = re.compile(pattern if regex else re.escape(pattern))
     except re.error as exc:
         raise UsageError(t("find.error.pattern", pattern=pattern, error=exc)) from exc
     settings = config.find if config is not None else FindCfg()
     limit = max_hits or settings.max_hits
-    root = repomap.project_root(cwd)
+    here = cwd.resolve()
+    root = repomap.project_root(here)
     ignore = config.security.ignore_file if config is not None else ".orkestraignore"
     files = repomap.collect_repo_files(root, None, ignore_file=ignore).files
     wanted = [glob_regex(g) for g in globs]
-    secrets = configured_secrets(config, environ) if config is not None else []
-    redact = Redactor([*secrets, *secret_env_values(environ)])
+    redact = reader.redactor(config, environ)
     hits: list[Hit] = []
-    texts: dict[str, list[str]] = {}
+    per_file: dict[str, list[Hit]] = {}
+    texts: dict[str, list[str]] = {}  # only for --ask: the worker reads around each hit
     for path in files:
-        rel = _display(path, cwd, root)
+        rel = ptr.relative(path, here)
         if wanted and not any(w.fullmatch(rel) for w in wanted):
             continue
         try:
-            lines = path.read_bytes().decode("utf-8", errors="replace").splitlines()
+            if path.stat().st_size > MAX_FILE_BYTES:
+                continue  # a log or a data dump: not source to search
+            lines = ptr.lines(path.read_bytes().decode("utf-8-sig", errors="replace"))
         except OSError:
             continue
-        for number, line in enumerate(lines, start=1):
-            if matcher.search(line):
-                hits.append(Hit(rel, number, _clip(redact(line.strip()))))
-                texts[rel] = lines
-    result = FindResult(pattern, hits, limit)
+        found = [
+            Hit(rel, number, _clip(redact(line.strip())))
+            for number, line in enumerate(lines, start=1)
+            if matcher.search(line)
+        ]
+        if not found:
+            continue
+        hits.extend(found)
+        per_file[rel] = found
+        if question:
+            texts[rel] = [redact(line) for line in lines]
+        if len(hits) >= MAX_HITS:
+            break
+    result = FindResult(pattern, hits, limit, truncated=len(hits) >= MAX_HITS)
     if len(hits) > limit:
-        result.groups = _groups(hits, root, cwd)
+        result.groups = _groups(per_file, root, here)
     if question and hits:
         if config is None:
             raise UsageError(t("find.error.no_config"))
-        user = _ask_prompt(question, pattern, hits, texts, redact)
+        user = _ask_prompt(question, pattern, hits, texts)
         answer, label, cached = reader.ask(
             config, user, system=ASK_SYSTEM, no_cache=no_cache, now=now, environ=environ
         )
         result.answer, result.model, result.cached = answer, label, cached
-        result.pointers = ptr.check(answer, texts)
+        result.pointers = ptr.check(answer, texts)  # texts are already masked
     return result
-
-
-def _display(path: Path, cwd: Path, root: Path) -> str:
-    try:
-        return path.relative_to(cwd.resolve()).as_posix()
-    except ValueError:
-        return path.relative_to(root).as_posix()
 
 
 def _clip(text: str) -> str:
     return text if len(text) <= TEXT_CHARS else text[: TEXT_CHARS - 1] + "…"
 
 
-def _groups(hits: list[Hit], root: Path, cwd: Path) -> list[Group]:
+def _groups(per_file: dict[str, list[Hit]], root: Path, here: Path) -> list[Group]:
     """Hits per file, most first, with the file's summary from the project index."""
-    counts = Counter(h.file for h in hits)
-    index = {_from_root(f.path, root, cwd): f.summary for f in repomap.read_index(root)}
+    index = {ptr.relative(root / f.path, here): f.summary for f in repomap.read_index(root)}
+    ordered = sorted(per_file.items(), key=lambda item: -len(item[1]))
     return [
-        Group(
-            name, count, index.get(name) or None, [h for h in hits if h.file == name][:FIRST_HITS]
-        )
-        for name, count in counts.most_common()
+        Group(name, len(found), index.get(name) or None, found[:FIRST_HITS])
+        for name, found in ordered
     ]
 
 
-def _from_root(rel: str, root: Path, cwd: Path) -> str:
-    """An index path (relative to the project root) as the hits show it (relative to cwd)."""
-    return _display(root / rel, cwd, root)
-
-
-def _ask_prompt(
-    question: str, pattern: str, hits: list[Hit], texts: dict[str, list[str]], redact: Redactor
-) -> str:
+def _ask_prompt(question: str, pattern: str, hits: list[Hit], texts: dict[str, list[str]]) -> str:
     parts = [f"Question: {question}", f"Search: {pattern} ({len(hits)} hits)"]
     for hit in hits[:ASK_HITS]:
         lines = texts[hit.file]
         start, end = max(1, hit.line - AROUND), min(len(lines), hit.line + AROUND)
-        around = "\n".join(f"{n:>5}| {redact(lines[n - 1])}" for n in range(start, end + 1))
+        around = "\n".join(f"{n:>5}| {lines[n - 1]}" for n in range(start, end + 1))
         parts.append(f"{hit.pointer}\n{around}")
     if len(hits) > ASK_HITS:
         parts.append(f"({len(hits) - ASK_HITS} more hits not shown)")
@@ -196,5 +198,5 @@ def to_dict(result: FindResult) -> dict[str, Any]:
         "groups": [{"file": g.file, "count": g.count, "summary": g.summary,
                     "first": [h.pointer for h in g.first]} for g in result.groups],
         "answer": result.answer, "pointers": reader.pointers_json(result.pointers),
-        "model": result.model, "cached": result.cached,
+        "model": result.model, "cached": result.cached, "truncated": result.truncated,
     }  # fmt: skip

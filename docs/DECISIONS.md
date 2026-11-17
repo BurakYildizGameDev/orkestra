@@ -959,3 +959,15 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Proje fihristi** yeni bir yapı değil, `map`'in dosya başına özetleri (`index.json`; `repomap.read_index`). Güncel tutmak için **`orkestra map --install-hook`**: post-commit bloğu değişen (silinmemiş) dosyaları **arka planda** `orkestra map`'e verir, commit'i yavaşlatmaz. `map` konumsal yol aldığı için `map install-hook` alt komutu yerine bayrak. `handoff install-hook`'un kodu `install_block`'a genelleştirildi (hook adı, blok, işaret).
 - **Skill:** büyük dosyayı yalnız bir soru için okuma, `read`/`find` kullan; fihrist hook'unu kullanıcıya öner.
 - **Testler:** 1560 → 1575 (+15).
+
+## D-091 – Faz 13i-b kod denetimi düzeltmeleri (2026-11-17, Faz 13i-b)
+`/code-review` (PR #32): 10 bulgu, hepsi düzeltildi; önce 10 kırmızı test.
+- **Gizlilik:** `find --ask` ve `read`'in işaretçi satırları da maskelenir (işçi maskeli bir anahtarı gösterirse satırı açık metin dönüyordu). Klasör dışındaki dosya işçiye mutlak yolla değil göreli yolla (`../other/x.py`; başka sürücüdeyse yalnız adıyla) gider; onun işaretçileri de denetlenir.
+- **Fihrist hook'u Python'a taşındı:** blok yalnız `orkestra map --after-commit`'i arka planda başlatır. `after_commit` değişen dosyaları `git diff-tree -z -r -m --first-parent --root --diff-filter=d HEAD` ile alır (Türkçe/alışılmadık adlar tırnaksız, ilk commit ve merge de), bekleyen listeye ekler; **kilidi alan tek koşu** listeyi parti parti haritalar, diğerleri hemen çıkar (rebase'de 15 eşzamanlı `map` birbirinin fihristini eziyordu); sahibi ölmüş kilit devralınır; o arada silinen dosyalar atlanır.
+- **`read`'de dosya kendi bloğunu kapatamaz:** `numbered` yolu kaçışlar ve içerideki `</file>`'ı `<\/file>` yapar (D-036 gibi).
+- **`find` alt klasörden:** yollar bulunulan klasöre göre (`../README.md`), aynı adlı iki dosya karışmaz.
+- **Bozuk config'te `find` durur** (kod 2, nedeniyle): ignore dosyası ve anahtarlar bilinmeden aramak saklananı gösterebilirdi.
+- **Satır numaraları editörlerle aynı:** yalnız satır sonunda bölünür (`splitlines` form feed vb. yüzünden sonraki satırları kaydırıyordu); `find` BOM'u atar.
+- **Önbellek anahtarı kademedeki modelleri içerir:** model değişince eski modelin cevabı dönmez.
+- **Verim:** `find` dosya metinlerini yalnız `--ask`'te tutar, sonuçları dosya başına toplar, en çok 5000 sonuçta durur (`truncated`), 2 MB'tan büyük dosyaları atlar.
+- **Testler:** 1575 → 1585 (+10).

@@ -48,6 +48,14 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 13i-b (PR #32), 2026-11-17
+`/code-review` 10 bulgu; hepsi düzeltildi (D-091). Önce 10 kırmızı test.
+- ✅ İşaretçi satırları maskeli; klasör dışı dosyalar göreli yolla, işaretçileri denetleniyor.
+- ✅ Fihrist hook'u `map --after-commit`: `-z`, ilk commit, merge; kilitle tek koşu, bekleyenler sırayla.
+- ✅ `read`'de blok kaçışı; `find` alt klasörden doğru yollar; bozuk config'te durur; satır numaraları editörle aynı; önbellek modele bağlı; `find` bellek/işlem sınırları.
+
+Testler: **1585 geçti** (1575 + 10). ruff, ruff format, pyright temiz.
+
 ### Faz 13i-b – `orkestra read`, `orkestra find`, fihrist hook'u (2026-11-17)
 **Yapılanlar (D-090):**
 - `orkestra read DOSYALAR... SORU`: sohbet işçisi okur, cevaptaki her `dosya:satır` dosyaya karşı denetlenir ve satırıyla gösterilir; ignore'lu dosya gönderilmez; cevap önbelleği.

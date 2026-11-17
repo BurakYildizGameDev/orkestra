@@ -602,8 +602,9 @@ orkestra find "TODO" --ask "Which of them are about security?"
   project index and its first hits. No hit is exit code 1, like grep. `--ask "<question>"`
   lets a worker answer about the hits (with a few lines around each), with checked pointers.
 - **The project index** is `orkestra map`'s per-file summaries. `orkestra map --install-hook`
-  adds a post-commit hook that maps the files each commit changed, in the background, so the
-  index stays current without slowing commits down.
+  adds a post-commit hook that runs `orkestra map --after-commit` in the background: the files
+  each commit changed are mapped, one run at a time (a rebase queues them), so the index stays
+  current without slowing commits down.
 
 ## Where do Claude's tokens go?
 

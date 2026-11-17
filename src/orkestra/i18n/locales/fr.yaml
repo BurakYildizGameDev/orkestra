@@ -791,3 +791,4 @@ cli.map.option.install_hook: "Ajouter un hook post-commit qui met à jour l'inde
 map.hook.created: "Hook créé : {path}"
 map.hook.updated: "Mise à jour de l'index ajoutée au hook existant : {path}"
 map.hook.exists: "Le hook met déjà à jour l'index : {path}"
+cli.map.option.after_commit: "Cartographier les fichiers modifiés par le dernier commit (ce que lance le hook de --install-hook) ; une exécution à la fois."

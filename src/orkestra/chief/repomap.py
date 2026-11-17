@@ -14,17 +14,20 @@ never sent; mapping some paths keeps the rest of the map (``index.json``).
 from __future__ import annotations
 
 import ast
+import asyncio
 import contextlib
 import hashlib
 import json
 import os
 import re
 import sqlite3
+import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pathspec
+import psutil
 
 from orkestra.chief.call import prompt_has_secrets, query_chief_model
 from orkestra.config.loader import find_git_root
@@ -441,20 +444,102 @@ def _merged(root: Path, targets: Sequence[Path] | None, files: list[FileMap]) ->
 
 
 INDEX_HOOK_START = "# >>> orkestra map >>>"
-INDEX_HOOK_COMMAND = "orkestra map <changed files>"
+INDEX_HOOK_COMMAND = "orkestra map --after-commit"
 INDEX_HOOK_BLOCK = (
     f"{INDEX_HOOK_START}\n"
-    "# Refreshes the project index (.orkestra/MAP.md) for the files this commit changed,\n"
+    "# Refreshes the project index (.orkestra/MAP.md) for the files each commit changed,\n"
     "# in the background: it never slows down or blocks a commit.\n"
     "if command -v orkestra >/dev/null 2>&1; then\n"
-    "  files=$(git diff-tree --no-commit-id --name-only -r --diff-filter=d HEAD)\n"
-    '  if [ -n "$files" ]; then\n'
-    "    (printf '%s\\n' \"$files\" | tr '\\n' '\\0' | xargs -0 orkestra map"
-    " >/dev/null 2>&1 &)\n"
-    "  fi\n"
+    f"  ({INDEX_HOOK_COMMAND} >/dev/null 2>&1 &)\n"
     "fi\n"
     "# <<< orkestra map <<<\n"
 )
+AFTER_COMMIT_LOCK = "after-commit.lock"
+AFTER_COMMIT_PENDING = "after-commit.pending"
+# Every file of the commit: NUL-separated (no quoting of unusual names), the first commit
+# too (--root), a merge against its first parent; deleted files are left out.
+_CHANGED = ["git", "diff-tree", "-z", "-r", "-m", "--first-parent", "--root",
+            "--no-commit-id", "--name-only", "--diff-filter=d", "HEAD"]  # fmt: skip
+
+
+def changed_by_head(root: Path) -> list[str]:
+    try:
+        done = subprocess.run(_CHANGED, cwd=root, capture_output=True, timeout=60, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if done.returncode != 0:
+        return []
+    names = done.stdout.decode("utf-8", errors="surrogateescape").split("\0")
+    return list(dict.fromkeys(name for name in names if name))
+
+
+def after_commit(root: Path, config: Config) -> int:
+    """``map --after-commit`` (the post-commit hook): map the files the last commit changed.
+
+    A rebase runs the hook once per commit within a second. So each run adds its files to a
+    pending list, and only the run that takes the lock maps them, batch after batch, until
+    the list is empty; the others return at once. A lock whose process is gone is taken
+    over. Files deleted since are skipped. Returns how many files were mapped.
+    """
+    root = root.resolve()
+    folder = get_map_cache_dir(root)
+    folder.mkdir(parents=True, exist_ok=True)
+    pending = folder / AFTER_COMMIT_PENDING
+    changed = changed_by_head(root)
+    if changed:
+        with pending.open("ab") as f:
+            f.write("".join(f"{name}\0" for name in changed).encode("utf-8", "surrogateescape"))
+    lock = folder / AFTER_COMMIT_LOCK
+    if not _take_lock(lock):
+        return 0
+    mapped = 0
+    try:
+        while batch := _take_pending(pending):
+            existing = [root / name for name in batch if (root / name).is_file()]
+            if existing:
+                result = asyncio.run(generate_repomap(root, existing, config, cwd=root))
+                save_map(root, result)
+                mapped += len(result.files)
+    finally:
+        with contextlib.suppress(OSError):
+            lock.unlink()
+    return mapped
+
+
+def _take_lock(lock: Path) -> bool:
+    for _ in range(2):
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                owner = int(lock.read_text(encoding="utf-8").strip() or "0")
+            except (OSError, ValueError):
+                owner = 0
+            if owner > 0 and psutil.pid_exists(owner):
+                return False  # a run is going; it will map what we left pending
+            with contextlib.suppress(OSError):
+                lock.unlink()  # its owner is gone
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(str(os.getpid()))
+        return True
+    return False
+
+
+def _take_pending(pending: Path) -> list[str]:
+    """The files waiting to be mapped, taken off the list (a rename, so files a new commit
+    adds meanwhile go to a fresh list)."""
+    taken = pending.with_name(f"{pending.name}.{os.getpid()}")
+    try:
+        os.replace(pending, taken)
+    except FileNotFoundError:
+        return []
+    try:
+        names = taken.read_bytes().decode("utf-8", errors="surrogateescape").split("\0")
+    finally:
+        with contextlib.suppress(OSError):
+            taken.unlink()
+    return list(dict.fromkeys(name for name in names if name))
 
 
 def install_index_hook(cwd: Path) -> InstallResult:
