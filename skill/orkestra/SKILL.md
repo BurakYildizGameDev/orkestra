@@ -237,6 +237,16 @@ orkestra exec --json -- npm test
 
 40 satıra kadar çıktı olduğu gibi gelir. Daha uzununda pytest, ruff, pyright ve derleyici çıktısı başlık satırı ve her bulgu `dosya:satır` ile gelir (başarısız test adlarının hepsi), diğer çıktılar bir işçinin özetiyle (işçi yoksa ilk ve son satırlar). Çıkış kodu komutun kendi kodudur (127: program yok, 124: zaman aşımı); ilk satır tam çıktının günlük yolunu verir. Ayrıntı gerekirse önce işaretçideki satırları oku; günlüğü ancak gerekiyorsa ve parça parça oku. Kabuk yoktur: boru, `&&` ve yönlendirme çalışmaz, tek komut ver.
 
+**Büyük dosya ve arama.** Bir soruyu cevaplamak için büyük bir dosyayı baştan sona okuma; bir işçiye okut, işaretçili kısa cevabı al:
+
+```bash
+orkestra read src/config/loader.py "Config hangi sırayla birleştiriliyor?" --json
+orkestra find "load_config(" --glob "src/**" --json
+orkestra find "TODO" --ask "Hangileri güvenlikle ilgili?" --json
+```
+
+`read` cevabındaki her `dosya:satır` dosyaya karşı denetlenir: geçerli olanın yanında o satır yazar, geçersiz olan işaretlidir (ona güvenme). Aynı dosyalar için aynı soru önbellekten gelir. `find` model kullanmaz: az sonuç `dosya:satır: metin` olarak, çok sonuç dosya başına sayı ve proje fihristindeki (`orkestra map`) özetiyle gelir; sonuç yoksa kod 1. Düzenleyeceğin satırları yine kendin oku, ama yalnız işaretçinin çevresini. Fihristi commit'lerle güncel tutmak için kullanıcıya `orkestra map --install-hook` öner.
+
 ## 7. Devir dosyasını güncel tut
 
 Projede `.orkestra/HANDOFF.md` varsa (yoksa uzun işlerde `orkestra handoff init` öner):
@@ -276,3 +286,4 @@ Kotadan dolayı veya kullanıcı istediğinde işi başka bir şefe devret:
 - Kullanıcının izni olmadan sağlayıcı onaylama (`--yes`), maliyet eşiğini geçme (`--yes-cost`) veya gizli bilgiyi uzağa gönderme (`--allow-secrets`).
 - Bütçe bittiğinde kullanıcıya sormadan config'teki limitleri değiştirme.
 - Test, linter ya da derleme çıktısını `orkestra exec` olmadan bağlamına alma (çıktı kısa olduğu belli değilse).
+- Yalnız bir soruyu cevaplamak için büyük dosyayı baştan sona okuma: `orkestra read` / `orkestra find`.

@@ -236,7 +236,18 @@ def _file_list(files: list[str]) -> str:
 
 
 def install_hook(cwd: Path, *, git: Git | None = None) -> InstallResult:
-    """Put the reminder block into the repository's pre-commit hook, never overwriting it.
+    """Put the reminder block into the repository's pre-commit hook, never overwriting it."""
+    return install_block(
+        cwd, "pre-commit", HOOK_BLOCK, marker=HOOK_MARKER_START, command=HOOK_COMMAND, git=git
+    )
+
+
+def install_block(
+    cwd: Path, hook_name: str, hook_block: str, *, marker: str, command: str,
+    git: Git | None = None,
+) -> InstallResult:  # fmt: skip
+    """Put ``hook_block`` into the repository's ``hook_name`` hook, never overwriting it
+    (``handoff install-hook``; ``map --install-hook``, Faz 13i-b).
 
     The block goes right after the shebang, so an ``exit`` or ``exec`` later in the old hook
     cannot skip it. A hook that is not a shell script is left alone (shell lines in a Python
@@ -249,16 +260,16 @@ def install_hook(cwd: Path, *, git: Git | None = None) -> InstallResult:
     hooks = Path(output.strip())
     if not hooks.is_absolute():
         hooks = cwd / hooks
-    hook = hooks / "pre-commit"
+    hook = hooks / hook_name
     if hook.exists():
         text = hook.read_bytes().decode("utf-8", errors="surrogateescape")
-        if HOOK_MARKER_START in text:
+        if marker in text:
             return InstallResult(hook, False, False)
         newline = "\r\n" if "\r\n" in text else "\n"
         first, separator, rest = text.partition(newline)
         if not _is_shell_shebang(first):
-            raise UsageError(t("handoff.error.hook_not_shell", path=hook, command=HOOK_COMMAND))
-        block = HOOK_BLOCK.replace("\n", newline)
+            raise UsageError(t("handoff.error.hook_not_shell", path=hook, command=command))
+        block = hook_block.replace("\n", newline)
         hook.write_bytes(
             (first + newline + block + rest).encode("utf-8", errors="surrogateescape")
             if separator
@@ -267,7 +278,7 @@ def install_hook(cwd: Path, *, git: Git | None = None) -> InstallResult:
         _make_executable(hook)
         return InstallResult(hook, False, True)
     hook.parent.mkdir(parents=True, exist_ok=True)
-    hook.write_bytes(("#!/bin/sh\n" + HOOK_BLOCK).encode("utf-8"))
+    hook.write_bytes(("#!/bin/sh\n" + hook_block).encode("utf-8"))
     _make_executable(hook)
     return InstallResult(hook, True, False)
 

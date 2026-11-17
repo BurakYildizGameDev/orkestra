@@ -51,6 +51,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | How the workers did: success rate, attempts, tokens, cost and time per provider and tag | `orkestra stats [--since 7d] [--json]` |
 | Where Claude Code's tokens go: costly tool calls, shares by kind, context growth, cache misses (reads its transcripts, uses no quota) | `orkestra tokens [--session id \| --since 7d] [--project p] [--top n] [--json]` |
 | Run a command and get only what matters: short output as it is, pytest/ruff/pyright/compiler output as its findings with `file:line`, other output summarised; full output in the log | `orkestra exec [--max-lines n] [--no-model] [--timeout s] [--json] -- <command>` |
+| Let a worker read files or search hits and answer with checked `file:line` pointers; search without a model; keep the project index current after each commit | `orkestra read FILES... "<question>"`, `orkestra find PATTERN [--regex] [--glob g] [--ask q]`, `orkestra map --install-hook` |
 | Code agents (Codex CLI, Antigravity) as workers, in the worktree, with process-tree cleanup | `cli_agent` providers |
 | A run's envelope, full output, log or change | `orkestra show <run_id> [--output\|--log\|--diff] [--json]` |
 | The chief's view at a glance (at most 15 lines): unapplied runs, the night queue, today's budget, paused providers | `orkestra status [--json]` |
@@ -576,6 +577,34 @@ tests/test_calc.py:6: FAILED tests/test_calc.py::test_add - assert -1 == 5
 - There is no shell: pipes, `&&` and redirection do not work; give one command.
 
 The Claude skill tells Claude to run tests, linters and builds this way.
+
+## Reading and searching without filling the context: `orkestra read`, `orkestra find`
+
+Reading a large file to answer one question costs that file in every later request.
+Instead:
+
+```bash
+orkestra read src/config/loader.py "In what order are configs merged?"
+orkestra find "load_config(" --glob "src/**"
+orkestra find "TODO" --ask "Which of them are about security?"
+```
+
+- **`read FILES... QUESTION`**: a chat worker (`read.tier`, default 1; never a code agent)
+  reads the files with numbered lines and answers in a few lines with `file:line` pointers.
+  Every pointer is checked against the files: a valid one is shown with the line it names,
+  an invalid one is marked so it is not trusted. The files are read like task context
+  (`.orkestraignore` and binary files are left out and listed, the size limit applies). The
+  same question on unchanged files comes from the answer cache (`--no-cache` asks again).
+- **`find PATTERN`**: no model. Text (case-sensitive) or, with `--regex`, a regular
+  expression, in the project's files (`.gitignore`, `.orkestraignore`, binary files and
+  Orkestra's folders left out; `--glob` narrows it). Up to `find.max_hits` hits (default 40)
+  come back as `file:line: text`; more are grouped per file with the file's summary from the
+  project index and its first hits. No hit is exit code 1, like grep. `--ask "<question>"`
+  lets a worker answer about the hits (with a few lines around each), with checked pointers.
+- **The project index** is `orkestra map`'s per-file summaries. `orkestra map --install-hook`
+  adds a post-commit hook that runs `orkestra map --after-commit` in the background: the files
+  each commit changed are mapped, one run at a time (a rebase queues them), so the index stays
+  current without slowing commits down.
 
 ## Where do Claude's tokens go?
 

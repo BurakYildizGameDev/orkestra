@@ -39,7 +39,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13g – %25 token deneyi: büyük işte bölmek kazandırıyor mu? (ek) | ⏳ | | büyük gerçekçi görev; yalnız Claude vs Claude + Orkestra (okumayı ve toplu yazmayı devret, kısa rapor, başka bir AI'nın çapraz denetimi); başarı ölçütü Claude token'ında ≥ %25 azalma; ayrıntı yerel YAPILIS_PLANI.md |
 | 13h – Token haritası: Claude'un tokenı nereye gidiyor (ek) | ✅ | 2026-11-17 | `orkestra tokens`: araç çağrısı başına maliyet, türlere göre pay, sabit başlangıç, önbellek kaçırma, ölçüye göre ölçekleme; bulgu: maliyetin ~%80'i bağlamın yeniden okunması (D-086) |
 | 13i-a – Bağlam süzgeci: `orkestra exec` (ek, ana kaldıraç) | ✅ | 2026-11-17 | kısa çıktı olduğu gibi; pytest/ruff/pyright/derleyici kurallarla (`dosya:satır`, test adı düşmez); diğerleri sohbet modeli özeti; çıkış kodu korunur; skill kuralı (D-088) |
-| 13i-b – Bağlam süzgeci: `read` / `find` + proje fihristi (ek) | ⏳ | | işaretçili kısa cevap; fihrist commit sonrası güncellenir |
+| 13i-b – Bağlam süzgeci: `read` / `find` + proje fihristi (ek) | ✅ | 2026-11-17 | `read` işaretçileri dosyaya karşı denetler; `find` modelsiz, çok sonuç fihrist özetiyle gruplanır; `map --install-hook` (D-090) |
 | 13j – Kısa oturum disiplini (ek) | ⏳ | | `handoff to claude`, eşik önerisi |
 | 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ⏳ | | kesintisizlik, 13f'nin devamı |
 | 13l – İşe göre model ve bilgisayar yükü (ek) | ⏳ | | hafif işler küçük/ücretsiz modele |
@@ -47,6 +47,33 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 13i-b (PR #32), 2026-11-17
+`/code-review` 10 bulgu; hepsi düzeltildi (D-091). Önce 10 kırmızı test.
+- ✅ İşaretçi satırları maskeli; klasör dışı dosyalar göreli yolla, işaretçileri denetleniyor.
+- ✅ Fihrist hook'u `map --after-commit`: `-z`, ilk commit, merge; kilitle tek koşu, bekleyenler sırayla.
+- ✅ `read`'de blok kaçışı; `find` alt klasörden doğru yollar; bozuk config'te durur; satır numaraları editörle aynı; önbellek modele bağlı; `find` bellek/işlem sınırları.
+
+Testler: **1585 geçti** (1575 + 10). ruff, ruff format, pyright temiz.
+
+### Faz 13i-b – `orkestra read`, `orkestra find`, fihrist hook'u (2026-11-17)
+**Yapılanlar (D-090):**
+- `orkestra read DOSYALAR... SORU`: sohbet işçisi okur, cevaptaki her `dosya:satır` dosyaya karşı denetlenir ve satırıyla gösterilir; ignore'lu dosya gönderilmez; cevap önbelleği.
+- `orkestra find DESEN [--regex] [--glob] [--max-hits] [--ask]`: modelsiz arama; çok sonuç dosya başına fihrist özetiyle; `--ask` işçiye sorar; sonuç yoksa kod 1.
+- `orkestra map --install-hook`: post-commit'te değişen dosyaları arka planda haritalar; `install_block` genelleştirildi.
+- Skill kuralı; README "Reading and searching" / "Okumak ve aramak"; Mimari §4, §19.
+
+**Kabul kriterleri:**
+- ✅ İşaretçilerin gerçek satırı gösterdiği testler (`test_read_answers_with_checked_pointers`, `tests/unit/test_pointers.py`).
+- ✅ Önbellek dosya değişince geçersiz (`test_the_same_question_on_the_same_files_comes_from_the_cache`).
+- ✅ `find` önce fihriste bakıyor (`test_many_hits_are_grouped_per_file_with_the_index_summary`); az sonuçta model yok.
+- ✅ Fihrist commit sonrası güncelleniyor (`test_map_install_hook_refreshes_the_index_after_each_commit`); skill testi.
+- ✅ Elle: bu repoda `find` (6 sonuç, gruplama); `read` Ollama kapalıyken açık hata.
+- ✅ ruff, pyright, pytest temiz.
+
+**Ertelenen / bilinen:** `read`'in gerçek modelle cevap kalitesi bu ortamda denenemedi (Ollama kapalı). `find` doğal dil sorusunu desene çevirmiyor (bilerek, D-090).
+
+Testler: **1575 geçti** (1560 + 15). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 13i-a (PR #31), 2026-11-17
 `/code-review` 10 bulgu; hepsi düzeltildi (D-089). Önce 9 kırmızı test.

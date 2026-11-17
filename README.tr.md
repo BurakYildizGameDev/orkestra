@@ -51,6 +51,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | İşçiler nasıl gitti: sağlayıcı ve etiket başına başarı oranı, deneme, token, maliyet, süre | `orkestra stats [--since 7d] [--json]` |
 | Claude Code'un tokenı nereye gidiyor: pahalı araç çağrıları, türlere göre pay, bağlamın büyümesi, önbellek kaçırma (dökümleri okur, kota harcamaz) | `orkestra tokens [--session id \| --since 7d] [--project p] [--top n] [--json]` |
 | Bir komutu çalıştır, yalnız işe yarayanı al: kısa çıktı olduğu gibi, pytest/ruff/pyright/derleyici çıktısı `dosya:satır` bulgularıyla, diğerleri özetlenerek; tam çıktı günlükte | `orkestra exec [--max-lines n] [--no-model] [--timeout s] [--json] -- <komut>` |
+| Dosyaları ya da arama sonuçlarını bir işçiye okut, denetlenmiş `dosya:satır` işaretçileriyle cevap al; modelsiz ara; proje fihristini her commit'ten sonra güncel tut | `orkestra read DOSYALAR... "<soru>"`, `orkestra find DESEN [--regex] [--glob g] [--ask soru]`, `orkestra map --install-hook` |
 | İşçi olarak kod ajanları (Codex CLI, Antigravity): worktree'de, süreç ağacı temizliğiyle | `cli_agent` sağlayıcıları |
 | Şef için tek bakışta durum (en fazla 15 satır): uygulanmamış koşular, gece kuyruğu, bugünkü bütçe, duraklatılmış sağlayıcılar | `orkestra status [--json]` |
 | Gece kuyruğu: görev veya batch'leri şimdi ekle, sonra (gece, yerel modellerle) çalıştır; aynı anda tek çalıştırma, belirli saatte veya maliyette durur | `orkestra queue add <dosya> [--profile p]`, `queue list`, `queue remove <id>`, `queue run [--until 07:00] [--max-cost-usd X] [--notify]` |
@@ -572,6 +573,35 @@ tests/test_calc.py:6: FAILED tests/test_calc.py::test_add - assert -1 == 5
 - Kabuk yoktur: boru, `&&` ve yönlendirme çalışmaz; tek komut ver.
 
 Claude skill'i Claude'a testleri, linter'ları ve derlemeleri böyle çalıştırmasını söyler.
+
+## Bağlamı doldurmadan okumak ve aramak: `orkestra read`, `orkestra find`
+
+Tek bir soruyu cevaplamak için büyük bir dosyayı okumak, o dosyanın bedelini sonraki her
+istekte ödetir. Bunun yerine:
+
+```bash
+orkestra read src/config/loader.py "Config'ler hangi sırayla birleştiriliyor?"
+orkestra find "load_config(" --glob "src/**"
+orkestra find "TODO" --ask "Hangileri güvenlikle ilgili?"
+```
+
+- **`read DOSYALAR... SORU`**: bir sohbet işçisi (`read.tier`, varsayılan 1; asla kod ajanı)
+  dosyaları numaralı satırlarla okur ve birkaç satırda `dosya:satır` işaretçileriyle
+  cevaplar. Her işaretçi dosyalara karşı denetlenir: geçerli olanın yanında gösterdiği satır
+  yazar, geçersiz olan güvenilmesin diye işaretlenir. Dosyalar görev bağlamı gibi okunur
+  (`.orkestraignore` ve ikili dosyalar dışarıda kalır ve listelenir, boyut sınırı geçerli).
+  Değişmemiş dosyalar için aynı soru cevap önbelleğinden gelir (`--no-cache` yeniden sorar).
+- **`find DESEN`**: model yok. Metin (büyük/küçük harfe duyarlı) ya da `--regex` ile
+  düzenli ifade, projenin dosyalarında (`.gitignore`, `.orkestraignore`, ikili dosyalar ve
+  Orkestra'nın klasörleri dışında; `--glob` daraltır). `find.max_hits`'e kadar sonuç
+  (varsayılan 40) `dosya:satır: metin` olarak gelir; fazlası dosya başına, proje
+  fihristindeki özeti ve ilk sonuçlarıyla gruplanır. Sonuç yoksa grep gibi kod 1.
+  `--ask "<soru>"` ile bir işçi sonuçlar hakkında (her birinin çevresindeki birkaç satırla)
+  denetlenmiş işaretçilerle cevap verir.
+- **Proje fihristi**, `orkestra map`'in dosya başına özetleridir. `orkestra map
+  --install-hook`, arka planda `orkestra map --after-commit` çalıştıran bir post-commit hook
+  ekler: her commit'in değiştirdiği dosyalar, aynı anda tek koşuyla haritalanır (rebase'de
+  sıraya girer); fihrist commit'leri yavaşlatmadan güncel kalır.
 
 ## Claude'un tokenı nereye gidiyor?
 
