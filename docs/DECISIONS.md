@@ -993,3 +993,26 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Skill** dile bağlı metin satırına değil `status --json` → `sections.session.over`'a bakar.
 - Kullanılmayan `tokens.settings` yerine tek giriş `tokens.load`.
 - **Testler:** 1596 → 1603 (+7).
+
+## D-094 – Faz 13k: kota tahmini ve otomatik devir hazırlığı (2026-11-18, Faz 13k)
+**Karar:**
+- **Tahmin** (`state/forecast.py`): son `forecast.window_s` (3600) saniyenin hızı sınıra karşı. Bilinen sınır = `budget` (gece yarısı sıfırlanır; hız sınıra gece yarısından sonra varacaksa süre yok). Öğrenilen sınır = yazılmamış `daily_runs`/`daily_requests` için **migration 5 `quota_events`**'in son `learn_events` (5) olayının sıfır olmayan ortancası (30 gün); her biten kota (`model_only` hariç) pencerenin başından o ana kadarki `actual` kullanımı yazar. Pencere = yerel gece yarısı ya da önceki duraklatmanın bittiği an (hangisi sonraysa), böylece 5 saatlik kotalar da kabaca öğrenilir. Token öğrenilmez (ajanlarda tahmini).
+- **Azalıyor** = `warn_within_s` (3600) içinde bitecek ya da sınırın `low_share`'i (0,1) veya azı kaldı. `status` (`forecast` bölümü; JSON'da her zaman), `doctor` (uyarı; duraklatılmışsa yalnız duraklatma), `batch/queue --notify` (tek satır), `statusline`.
+- **Router (D-031'e istisna):** kotası azalan sağlayıcı **kademesinde sona** alınır (kademe kuralı önce; skor ve priority'den önce); hiçbir şey elenmez. `--dry-run --json`'da `quota_low`. Kapatmak: `forecast.enabled: false`. Bütçeyi saniyeler içinde tüketen testte (`test_budget_exhausted_moves_to_next_provider`) bu yüzden tahmin kapatıldı: test bütçe süzgecini sınıyor.
+- **Şefin kotası — sapma:** plan "durum satırı devir özetini kendiliğinden günceller" diyordu. Orkestra şefin ne yaptığını bilmez; git durumu ve uygulanmamış koşular zaten `handoff to` anında brief'e canlı giriyor. Bunun yerine: `orkestra statusline` Claude Code'un `rate_limits`'ini (`five_hour`, `seven_day`) okur, satır basar, okumaları `~/.orkestra/chief_quota.json`'a yazar; pencere `handoff.prepare_at_percent`'i (85) geçince ya da `warn_within_s` içinde bitecekse `orkestra statusline hook` (`UserPromptSubmit` + `PostToolUse`) **şefin bağlamına pencere başına bir kez** "devir dosyasını güncelle, commit et, kullanıcıya `handoff to <sonraki>` de" notu ekler. Özeti şef yazar, kullanıcı yalnız `handoff to agy` der.
+- **Ayar dosyasına yazılmaz:** `orkestra statusline config` settings.json parçasını basar; kullanıcının Claude Code ayarlarını kendimiz değiştirmiyoruz (mevcut statusLine'ı ezme riski).
+- **Hızlı giriş:** konsol betiği `orkestra.cli:app` → `orkestra.entry:main` (D-002'deki `app` aynen duruyor). Tam olarak `statusline` ve `statusline hook` bütün CLI'yi (openai SDK, doctor) yüklemeden çalışır: ~1,35 sn → ~0,3 sn; `PostToolUse` her araç çağrısında koştuğu için gerekli. `_safe_streams` `console.safe_streams`'e taşındı (iki yol da kullanıyor). Hiçbiri hata vermez.
+- **Testler:** 1603 → 1672 (+69).
+
+## D-095 – Faz 13k kod denetimi düzeltmeleri (2026-11-18, Faz 13k)
+`/code-review` (PR #34): 9 bulgu, hepsi düzeltildi; önce 10 kırmızı test.
+- **Bir kez sorma yarışsız:** kancanın işareti artık `chief_quota.json`'da değil, `~/.orkestra/chief_quota.prompted/<pencere>-<anahtar özeti>` dosyasında; `O_CREAT|O_EXCL` ile atomik (aynı anda iki kanca → tek not). Durum satırı her mesajda yalnız okumaları yazar, işarete dokunmaz. İki durum satırının yarışı en çok bir okumayı kaybettirir.
+- **`resets_at` yoksa** pencere anahtarı okumaların başladığı an (`started`; kullanım düşünce yeni pencere); eskiden sabit `-` idi ve bir daha hiç sorulmuyordu.
+- **"Bugün" bütçeyle aynı:** bilinen sınırın kullanımı `budget.used(..., reservations=False)` (satırın `day`'i); router zaten hesapladığını `today=` ile veriyor.
+- **Hiç çökmez:** `statusline`/`hook`/`status` `RuntimeError` (ev klasörü yok), `ValueError`, `TypeError`, `sqlite3.Error` dahil yutar; ev klasörü yoksa okuma kaydedilmez.
+- **Taşma yok:** pencere sıfırlanması sayıyla karşılaştırılır (`eta >= (resets - last_at)`), `datetime + timedelta` değil.
+- **Router ucuzladı:** duraklatılmış sağlayıcıya tahmin yapılmaz; kullanım tek sorguda, her satır bir kez (`forecast.usage_since`, birden çok başlangıç).
+- **Duraklatma kuralı tek yerde:** `health.paused_names`; `forecast.low_now(skip=...)` kendi SQL'ini yazmaz.
+- **Öğrenilen sınır:** sıfırlar SQL'de `LIMIT`'ten önce elenir; 30 gün sınırı `datetime` ile karşılaştırılır.
+- **i18n:** `Claude`, `5h`/`7d` `t()` ile (`statusline.claude`, `limits.window.*`; tr `5sa`/`7g`).
+- **Testler:** 1672 → 1682 (+10).

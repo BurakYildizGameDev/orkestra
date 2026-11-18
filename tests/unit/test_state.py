@@ -38,10 +38,18 @@ def conn(tmp_path: Path) -> Iterator[sqlite3.Connection]:
 
 def test_schema_tables(conn: sqlite3.Connection) -> None:
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert {"schema_version", "runs", "usage", "consents", "health", "handoffs"} <= tables
+    assert {
+        "schema_version",
+        "runs",
+        "usage",
+        "consents",
+        "health",
+        "handoffs",
+        "quota_events",
+    } <= tables
     assert {"queue", "queue_lock"} <= tables
     # 0002 adds handoffs (Faz 10a), 0003 the queue (Faz 12a); the v1 tables are unchanged.
-    assert conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == 4
+    assert conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == 5
     runs_columns = {r[1] for r in conn.execute("PRAGMA table_info(runs)")}
     assert {"tags", "batch_id", "worker_output_tokens", "envelope_chars"} <= runs_columns
 
@@ -55,7 +63,7 @@ def test_a_version_1_database_is_upgraded_to_the_handoffs_table(tmp_path: Path) 
         old.execute("INSERT INTO schema_version (version) VALUES (1)")
         old.commit()
     with closing(db.connect(path)) as upgraded:
-        assert upgraded.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == 4
+        assert upgraded.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == 5
         columns = {r[1] for r in upgraded.execute("PRAGMA table_info(handoffs)")}
         assert columns == {"id", "from_chief", "to_chief", "at", "commit", "brief_path"}
         assert upgraded.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
@@ -67,8 +75,8 @@ def test_wal_and_busy_timeout(conn: sqlite3.Connection) -> None:
 
 
 def test_migrate_is_idempotent(conn: sqlite3.Connection) -> None:
-    assert db.migrate(conn) == 4
-    assert conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 4
+    assert db.migrate(conn) == 5
+    assert conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 5
 
 
 def test_default_path_is_under_orkestra_home(tmp_path: Path) -> None:

@@ -8,12 +8,14 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping
 from contextlib import closing
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -22,6 +24,7 @@ from orkestra.config.schema import (
     CliAgentProvider,
     Config,
     Defaults,
+    ForecastCfg,
     OllamaProvider,
     OpenAICompatProvider,
     Provider,
@@ -33,7 +36,7 @@ from orkestra.providers.base import CompletionRequest
 from orkestra.providers.ollama import OllamaChat, has_model
 from orkestra.providers.openai_compat import OpenAICompatChat
 from orkestra.providers.registry import request_timeout
-from orkestra.state import consent, db, health
+from orkestra.state import consent, db, forecast, health
 
 CheckStatus = Literal["ok", "warn", "fail", "info"]
 VERSION_TIMEOUT_S = 10
@@ -268,14 +271,17 @@ async def _check_provider(
     return _check_agent(name, cfg, which, probe, login, agy_settings, agy_mcp_config)
 
 
-def _state_checks(providers: Mapping[str, Provider]) -> list[Check]:
-    """Consent and circuit breaker state from state.db."""
+def _state_checks(
+    providers: Mapping[str, Provider], settings: ForecastCfg | None = None
+) -> list[Check]:
+    """Consent, circuit breaker state and the quota forecast (Faz 13k) from state.db."""
     checks: list[Check] = []
     now = db.local_now()
     with closing(db.connect()) as conn:
         for name, cfg in providers.items():
             if not cfg.enabled:
                 continue
+            checks.extend(_forecast_check(conn, name, cfg, now, settings))
             current = consent.state(conn, name, cfg)
             if current != "granted":
                 checks.append(
@@ -306,6 +312,20 @@ def _state_checks(providers: Mapping[str, Provider]) -> list[Check]:
                     )
                 )
     return checks
+
+
+def _forecast_check(
+    conn: sqlite3.Connection, name: str, cfg: Provider, now: datetime,
+    settings: ForecastCfg | None,
+) -> list[Check]:  # fmt: skip
+    """A provider running low on quota; a paused one is reported by its pause instead."""
+    if settings is None or health.get(conn, name).is_open(now):
+        return []
+    found = forecast.provider_forecast(conn, name, cfg, now, settings)
+    if found is None or not found.low:
+        return []
+    message = t("doctor.forecast_low", text=forecast.describe(found))
+    return [Check(f"provider:{name}", "warn", message, {"forecast": forecast.to_dict(found)})]
 
 
 async def _price_checks(config: Config, environ: Mapping[str, str]) -> list[Check]:
@@ -436,7 +456,7 @@ async def run_doctor(
         )  # fmt: skip
         for provider_checks in per_provider:
             checks.extend(provider_checks)
-        checks.extend(_state_checks(loaded.config.providers))
+        checks.extend(_state_checks(loaded.config.providers, loaded.config.forecast))
         checks.extend(await _price_checks(loaded.config, env))
     checks.append(_check_tool("git", which, probe, required=True))
     if platform == "win32" and which("git") is not None:

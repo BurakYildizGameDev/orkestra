@@ -27,7 +27,7 @@ from orkestra.errors import OrkestraError, QueueBusy, UsageError
 from orkestra.i18n import t
 from orkestra.notify import notify
 from orkestra.queue import store
-from orkestra.state import db, health
+from orkestra.state import db, forecast, health
 from orkestra.tasks import batch, runner, spec
 
 ItemStatus = Literal["done", "failed", "skipped"]
@@ -159,6 +159,9 @@ def run_with_notify(
         notify.with_quota(
             notify.counts_text(report.finished, len(report.failed), skipped=len(report.skipped)),
             health.new_quota_pauses(conn, before, db.local_now()),
+            low=forecast.low_now(
+                conn, config, db.local_now(), skip=health.paused_names(conn, db.local_now())
+            ),
         ),
     )
     return report, deliveries

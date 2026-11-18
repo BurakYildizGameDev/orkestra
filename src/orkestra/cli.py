@@ -20,11 +20,14 @@ from orkestra import __version__, doctor, envelope, i18n
 from orkestra.cache import responses
 from orkestra.chief import execute as executor
 from orkestra.chief import finder as file_finder
+from orkestra.chief import limits as chief_limits
 from orkestra.chief import reader as file_reader
 from orkestra.chief import status
 from orkestra.chief import tokens as token_map
 from orkestra.config import loader
 from orkestra.config.schema import Config, Provider
+from orkestra.console import read_stdin
+from orkestra.console import safe_streams as _safe_streams
 from orkestra.errors import ExitCode, OrkestraError, UsageError, exit_code_for
 from orkestra.handoff import brief as handoff_brief
 from orkestra.handoff import check as handoff_check_service
@@ -272,7 +275,7 @@ def _run_batch(
     if notify_on:
         deliveries = notify.send_batch(
             config.notify, len(document.results), document.totals.ok,
-            paused=batch.quota_pauses(document),
+            paused=batch.quota_pauses(document), low=batch.quota_low(config),
         )  # fmt: skip
         for line in notify.delivery_lines(deliveries, config.notify):
             typer.echo(line, err=True)
@@ -498,6 +501,8 @@ def build_app() -> typer.Typer:
     app.add_typer(plan_app)
     handoff_app = typer.Typer(name="handoff", help=t("cli.handoff.help"), no_args_is_help=True)
     app.add_typer(handoff_app)
+    statusline_app = typer.Typer(name="statusline", help=t("cli.statusline.help"))
+    app.add_typer(statusline_app)
 
     @providers_app.command("list", help=t("cli.providers.list.help"))
     def providers_list(
@@ -1208,6 +1213,31 @@ def build_app() -> typer.Typer:
         if result.exit_code:
             raise typer.Exit(code=result.exit_code)
 
+    @statusline_app.callback(invoke_without_command=True)
+    def statusline_command(ctx: typer.Context) -> None:
+        if ctx.invoked_subcommand is not None:
+            return
+        config_path = ctx.ensure_object(_State).config_path
+        typer.echo(chief_limits.run_statusline(
+            read_stdin(), load_config=lambda: loader.load_config(config_path).config,
+            connect=db.connect, now=db.local_now(),
+        ))  # fmt: skip
+
+    @statusline_app.command("hook", help=t("cli.statusline.hook.help"))
+    def statusline_hook(ctx: typer.Context) -> None:
+        config_path = ctx.ensure_object(_State).config_path
+        output = chief_limits.run_hook(
+            read_stdin(), load_config=lambda: loader.load_config(config_path).config,
+            now=db.local_now(),
+        )  # fmt: skip
+        if output is not None:
+            typer.echo(output)
+
+    @statusline_app.command("config", help=t("cli.statusline.config.help"))
+    def statusline_config() -> None:
+        typer.echo(t("statusline.config.where"), err=True)
+        typer.echo(chief_limits.settings_snippet())
+
     @handoff_app.command("install-hook", help=t("cli.handoff.install_hook.help"))
     def handoff_install_hook() -> None:
         result = handoff_launch.install_hook(Path.cwd())
@@ -1615,33 +1645,6 @@ def _report_error(exc: OrkestraError, *, as_json: bool) -> None:
     typer.echo(t("errors.prefix", message=message), err=True)
     for detail in exc.details:
         typer.echo(f"  - {detail}", err=True)
-
-
-def _safe_streams() -> None:
-    """Redirected output is UTF-8; no stream ever crashes on text it cannot encode.
-
-    Redirected output on Windows defaults to the ANSI code page (e.g. cp1254), but whoever
-    reads a pipe or a file (Claude Code, Git Bash, an editor) expects UTF-8, so Turkish
-    letters arrived broken (D-049). An explicit ``PYTHONIOENCODING`` still wins. A legacy
-    console keeps its code page. Characters a stream cannot encode (an emoji on a legacy
-    console, a git path decoded with ``surrogateescape``) become ``?`` instead of raising
-    ``UnicodeEncodeError`` after a successful run; the full text is always in ``output.md``.
-    """
-    chosen = bool(os.environ.get("PYTHONIOENCODING"))
-    for stream in (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is None:
-            continue
-        encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "")
-        try:
-            to_utf8 = encoding != "utf8" and not chosen and not stream.isatty()
-        except (ValueError, OSError):
-            continue  # detached or closed: leave it
-        with contextlib.suppress(ValueError, OSError):
-            if to_utf8:
-                reconfigure(encoding="utf-8", errors="replace")
-            else:
-                reconfigure(errors="replace")
 
 
 def app(argv: Sequence[str] | None = None) -> None:

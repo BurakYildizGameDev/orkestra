@@ -41,12 +41,42 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13i-a – Bağlam süzgeci: `orkestra exec` (ek, ana kaldıraç) | ✅ | 2026-11-17 | kısa çıktı olduğu gibi; pytest/ruff/pyright/derleyici kurallarla (`dosya:satır`, test adı düşmez); diğerleri sohbet modeli özeti; çıkış kodu korunur; skill kuralı (D-088) |
 | 13i-b – Bağlam süzgeci: `read` / `find` + proje fihristi (ek) | ✅ | 2026-11-17 | `read` işaretçileri dosyaya karşı denetler; `find` modelsiz, çok sonuç fihrist özetiyle gruplanır; `map --install-hook` (D-090) |
 | 13j – Kısa oturum disiplini (ek) | ✅ | 2026-11-17 | aynı şefe devir (`handoff to claude`), `status`/`tokens`'ta eşik önerisi (bağlam − yeni başlangıç) × okuma ağırlığı; skill kuralı (D-092) |
-| 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ⏳ | | kesintisizlik, 13f'nin devamı |
+| 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ✅ | 2026-11-18 | hız × bilinen/öğrenilen sınır → "~40 dk içinde biter" (`status`, `doctor`, bildirim); router azalanı kademesinde sona alır; `orkestra statusline` + kanca: Claude'un penceresi %85'i geçince şef devir dosyasını bir kez günceller (D-094); kod denetimi (D-095) |
 | 13l – İşe göre model ve bilgisayar yükü (ek) | ⏳ | | hafif işler küçük/ücretsiz modele |
 | 13m – Toplu devretme ve çapraz denetim (ek) | ⏳ | | yazma devrinin sabit yükünü düşürmek |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 13k (PR #34), 2026-11-18
+`/code-review` 9 bulgu; hepsi düzeltildi (D-095). Önce 10 kırmızı test.
+- ✅ Kancanın "bir kez" işareti atomik ayrı dosya (durum satırı yazışı geri alamıyor, iki kanca tek not); `resets_at` olmayan pencere yeniden soruluyor.
+- ✅ Tahmin bütçeyle aynı günü sayıyor; durum satırı/kanca ev klasörü yokken ve bozuk satırda çökmüyor; taşma yok.
+- ✅ Router duraklatılmış sağlayıcıya tahmin yapmıyor, kullanım tek sorguda; duraklatma kuralı tek yerde; öğrenilen sınırda sıfırlar elenmeden önce `LIMIT` yok; durum satırı metinleri çevrili.
+
+Testler: **1682 geçti** (1672 + 10). ruff, ruff format, pyright temiz.
+
+### Faz 13k – Kota tahmini ve otomatik devir hazırlığı (2026-11-18)
+**Yapılanlar (D-094):**
+- `state/forecast.py`: son saatin hızı × sınır. Bilinen sınır `budget`; öğrenilen sınır migration 5 `quota_events`'ten (her biten kota pencere başından beri kullanımı yazar; son 5'in ortancası). "Azalıyor" = 1 saat içinde bitecek ya da %10 kaldı (`forecast:` ayarları).
+- `status` (`forecast` bölümü), `doctor` uyarısı, `batch/queue --notify` satırı; router azalan sağlayıcıyı kademesinde sona alır (`quota_low`, D-031'e istisna).
+- `orkestra statusline` (Claude Code `rate_limits` → `Claude 5h 72% (~40 dk) · 7d 40% | orkestra: … | devir: orkestra handoff to agy`), `statusline hook` (pencere başına bir kez şefe "devir dosyasını güncelle" notu), `statusline config` (settings.json parçası); `status`'ta `chief_quota` bölümü.
+- Konsol betiği `orkestra.entry:main`: `statusline` ve `hook` ağır CLI'yi yüklemiyor (1,35 sn → ~0,3 sn).
+- README "Before it runs out" / "Bitmeden önce"; Mimari §4.1, §6, §6.2, §7, §19.
+
+**Kabul kriterleri:**
+- ✅ Tahmin hesabının sahte saatle testleri (`tests/unit/test_forecast.py`: bilinen/öğrenilen sınır, gece yarısı, pencere, ortanca, 30 gün; `tests/unit/test_chief_limits.py`: hız, pencere yenilenmesi, eşik, bir kez sorma).
+- ✅ Sıralama testi: azalan sağlayıcı kademesinde sona, kademe kuralı bozulmadan (`test_a_provider_running_low_goes_last_inside_its_tier`).
+- ✅ `status`/`doctor`/bildirim/`statusline` uçtan uca (`tests/integration/test_quota_forecast_cli.py`), hafif giriş yolu (`tests/unit/test_entry.py`).
+- ✅ Elle: gerçek config'te `status` agy için `runs 0/10` tahmini, uyarı yok; `statusline config` parçası.
+- ✅ ruff, pyright, pytest temiz.
+
+**Ertelenen / bilinen:**
+- Durum satırı ve kanca kullanıcının Claude Code ayarına elle eklenmeli (`orkestra statusline config`); Orkestra ayar dosyasına yazmıyor.
+- Öğrenilen sınır günlük varsayar; 5 saatlik/haftalık kotalarda kaba (yalnız sıralar ve uyarır, engellemez).
+- Hızlı bir batch bütçeli bir API'yi erken "azalıyor" sayıp yerele kaydırabilir (istenen davranış; `forecast.enabled: false` kapatır).
+
+Testler: **1672 geçti** (1603 + 69). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 13j (PR #33), 2026-11-17
 `/code-review` 10 bulgu; hepsi düzeltildi (D-093). Önce 8 kırmızı test.

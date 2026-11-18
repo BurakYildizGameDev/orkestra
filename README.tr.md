@@ -377,6 +377,42 @@ providers:
   görevde kotası biten bir ajan → **10/10 görev biter**, 4–10 Ollama'da; ajan 4 kez başlatılır,
   kota mesajından sonra bir daha hiç; geçişin bedeli bir başarısız ajan koşusu, bekleme yok.
 
+### Bitmeden önce
+
+Orkestra ileriye de bakar. Her sağlayıcının son bir saatteki hızını sınırıyla karşılaştırır
+ve sınıra ne zaman varılacağını söyler:
+
+- **Bilinen sınırlar** senin `budget`'ındır (`daily_runs` …). **Öğrenilen sınırlar** kimsenin
+  yazmadığı kotalar içindir, örneğin bir ajanın aboneliği: her biten kota, penceresinin
+  başından beri ne kadar kullanıldığını kaydeder; son 5'inin ortancası sınır olur.
+- Bir saat içinde bitecekse ya da sınırın %10'u veya daha azı kaldıysa sağlayıcının
+  **kotası azalıyor** demektir. `status`, `doctor` ve `--notify` mesajları bunu söyler
+  ("kotası azalanlar: agy: ~40 dk (runs 18/20)"). Router da onu **kendi kademesinde en sona**
+  alır: kota bitmeden iş ötekilere kayar, hiçbir şey engellenmez. `--dry-run --json`
+  `quota_low` gösterir.
+
+```yaml
+forecast:
+  enabled: true        # false: uyarı yok, sıra değişmez
+  window_s: 3600       # hız bu süre üzerinden okunur
+  warn_within_s: 3600  # sınır bu kadar yakınsa "azalıyor"
+  low_share: 0.1       # ... ya da sınırın bu payı kaldıysa
+  learn_events: 5      # öğrenilen sınır, son bu kadar biten kotanın ortancası
+```
+
+**Şefin kendi kotası.** Claude Code kullanım pencerelerini (5 saat, 7 gün) durum satırı
+komutuna verir. Orkestra'nın satırını ve kancasını bir kez bağla:
+
+```bash
+orkestra statusline config   # ~/.claude/settings.json'a girecek parçayı yazdırır
+```
+
+Satır şöyle görünür: `Claude 5h 72% (~40 dk) · 7d 40% | orkestra: agy ~20 dk (runs 18/20)`. Bir
+pencere `handoff.prepare_at_percent`'i (varsayılan 85) geçince ya da bir saat içinde bitecekse
+kanca Claude'a, pencere başına bir kez, devir dosyasını güncelleyip commit etmesini söyler.
+Sınır sonra biterse yalnız `orkestra handoff to agy` yazarsın. İki komut da yaklaşık 0,3 sn'de
+açılır, çünkü CLI'nin geri kalanını yüklemezler.
+
 ## Batch: birçok görev birden
 
 ```yaml

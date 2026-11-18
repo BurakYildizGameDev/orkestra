@@ -5,7 +5,9 @@ for 5 minutes, so an offline or broken provider is skipped instead of being wait
 time. An authentication failure opens it for an hour. A used-up quota (Faz 13f) opens it at
 once until the quota resets: the reset time in the provider's message, else its
 ``quota_pause_s`` (at least a minute, at most a week). Any success, or ``providers enable``,
-closes it. A missing model (``ProviderModelNotFound``) is about the request and not counted.
+closes it. A used-up quota is also kept in ``quota_events`` (Faz 13k), so
+``state.forecast`` can learn a limit nobody wrote down. A missing model
+(``ProviderModelNotFound``) is about the request and not counted.
 
 ``reason`` says why it is paused (``quota``, ``auth``, ``errors``), for what users read.
 """
@@ -26,6 +28,7 @@ from orkestra.errors import (
     ProviderTransient,
     ProviderUnavailable,
 )
+from orkestra.state import forecast
 from orkestra.state.db import transaction
 
 FAILURE_THRESHOLD = 3
@@ -110,6 +113,7 @@ def record_failure(
             updated = Health(
                 provider, failures, now + _quota_pause(error.pause_s), message, "quota"
             )
+            forecast.record_event(conn, provider, now, updated.open_until)  # Faz 13k: learn
         elif isinstance(error, ProviderAuthError):
             updated = Health(provider, failures, now + AUTH_OPEN, message, "auth")
         elif isinstance(error, _TRANSIENT):
@@ -138,6 +142,14 @@ def quota_paused(conn: sqlite3.Connection, now: datetime) -> list[Health]:
         "FROM health WHERE open_reason = 'quota' ORDER BY provider"
     ).fetchall()
     return [h for row in rows if (h := _health(row)).is_open(now)]
+
+
+def paused_names(conn: sqlite3.Connection, now: datetime) -> set[str]:
+    """Providers paused right now, for any reason."""
+    rows = conn.execute(
+        "SELECT provider, consecutive_failures, open_until, last_error, open_reason FROM health"
+    ).fetchall()
+    return {h.provider for row in rows if (h := _health(row)).is_open(now)}
 
 
 def quota_snapshot(conn: sqlite3.Connection, now: datetime) -> dict[str, datetime | None]:
