@@ -23,6 +23,10 @@ Delege etme (kendin yap):
 - Doğrulama yöntemi olmayan işler (test, şema veya net dosya kuralı yazamıyorsan).
 - Kullanıcıyla yoğun etkileşim gerektiren işler.
 
+**Yazmayı devretmenin sabit bir bedeli var** (görevi yazmak, sonucu okumak: iş başına binlerce token). Bu yüzden:
+- Tek küçük işi devretme. 5+ dosyalık ya da ~100+ satırlık mekanik işi **tek seferde** devret: tek bir batch dosyası ya da `orkestra run --template` (her dosya bir görev), tek tek değil.
+- Doğrulayıcı olarak projenin kendi testlerini ve linter'ını kullan (`type: command`); işe özel denetim betiği yazma, o betik işin kendisinden pahalıya gelir.
+
 Emin değilsen bir kez kullanıcıya sor.
 
 ## 2. Oturum başı ve ilk kullanım
@@ -211,17 +215,20 @@ orkestra show <run_id> --json     # zarfı tekrar al
 ## 6. Denetim (atlanamaz)
 
 `status: ok` olsa bile:
-1. Diff büyükse önce ön inceleme al, sonra sadece işaretli kısımları oku:
-   `orkestra review <run_id> --json` → `orkestra show <run_id> --diff --only-flagged`.
-   `risk: high` veya `unknown` ise, ya da değişiklik güvenlik, kimlik doğrulama veya veri silme ile ilgiliyse diff'in **tamamını** satır satır oku.
-   `review` sadece danışman niteliğinde bir ön incelemedir; `risk: low` diff'i okumama izni değildir. `review` hata verirse (ör. kod 3: inceleme modeli yok ya da hata verdi) diff'in tamamını kendin oku.
-   Diff'i incele. Doğrulayıcıların yakalayamayacağı şeylere bak: mantık hatası, gereksiz değişiklik, stil uyumsuzluğu, güvenlik, istenmeyen dosyalar.
+1. Önce başka bir AI'ya denetlet, sonra kısa raporu oku (diff'i değil):
+   `orkestra review <run_id> --json` → `orkestra show <run_id> --report`.
+   Denetimi değişikliği yazandan **başka** bir sağlayıcı yapar (`independent: true`; kimin denetleyeceğini kullanıcı `review.by` ile seçer). Rapor ne yapıldığını, neyin denetlendiğini, riski, bakılacak `dosya:satır`'ları ve sıradaki komutu verir.
+   - `risk: low`, `independent: true`, doğrulama geçmiş ve değişiklik güvenlik, kimlik doğrulama, veri silme ya da yapılandırma ile ilgili değilse diff'i okumadan uygula: `orkestra apply <run_id> --max-risk low` (koşullar tutmazsa komut reddeder, kod 2; o zaman diff'i oku).
+   - İşaret varsa yalnız işaretli kısımları oku: `orkestra show <run_id> --diff --only-flagged`.
+   - `risk: high` ya da `unknown`, `independent: false` ya da hassas bir konu: diff'in **tamamını** satır satır oku.
+   - `review` hata verirse (ör. kod 3: denetleyecek model yok ya da hata verdi) diff'in tamamını kendin oku.
+   Diff'i okuduğunda doğrulayıcıların yakalayamayacağı şeylere bak: mantık hatası, gereksiz değişiklik, stil uyumsuzluğu, güvenlik, istenmeyen dosyalar.
 2. Uygunsa: `orkestra apply <run_id>`. Değilse: `orkestra discard <run_id>` ve ya istemi iyileştirip tekrar çalıştır ya da kendin yap.
 3. `apply` çakışma verirse (kod 5) **hiçbir dosya** yazılmamıştır, çakışmayanlar da yazılmamıştır. Worktree durur. Hata `details` içinde sadece çakışan dosyaları listeler. Değişikliğin tamamı `orkestra show <run_id> --diff` içindedir. Diff'teki **her dosyayı** kendin uygula: çakışmayanları olduğu gibi, çakışanları kullanıcının son haliyle birleştirerek. Bütün dosyaları uyguladıktan sonra `orkestra discard <run_id>` çalıştır. Emin değilsen önce kullanıcıya sor.
 
 `apply` sadece `status: ok` koşuları uygular. `--force` (doğrulamayı geçmemiş değişikliği uygulamak) bayrağını kullanıcı açıkça istemeden **asla** kullanma.
 
-Batch'te her `ok` koşunun diff'ini yukarıdaki gibi denetle. Hepsi uygunsa `orkestra apply --batch <batch_id> --only-ok --json`: geçen koşular çalıştıkları sırayla uygulanır, geçmeyenler ve zaten uygulananlar atlanır (`skipped`). Uygun bulmadığın bir koşu varsa önce onu `orkestra discard <run_id>` ile at. Çakışmada (kod 5) durur: `applied` uygulananlar, `conflict` çakışan koşu (yukarıdaki gibi kendin uygula), `not_tried` denenmeyenler; çakışmayı çözdükten sonra aynı komutu tekrar çalıştır. Başka bir hatada da durur (`error`, kendi çıkış kodu); `applied` yine doğrudur. `--only-ok` olmadan, geçmeyen koşusu olan batch hiç uygulanmaz.
+Batch'te her `ok` koşuyu yukarıdaki gibi denetle (`orkestra review` koşu başına; `review.auto: true` ise her koşu kendiliğinden denetlenir). `orkestra apply --batch <batch_id> --only-ok --max-risk low --json` yalnız bağımsız denetimden düşük riskle geçenleri uygular, ötekiler `skipped` (nedeniyle) kalır: onların diff'ini oku. Hepsini kendin denetlediysen `orkestra apply --batch <batch_id> --only-ok --json`: geçen koşular çalıştıkları sırayla uygulanır, geçmeyenler ve zaten uygulananlar atlanır (`skipped`). Uygun bulmadığın bir koşu varsa önce onu `orkestra discard <run_id>` ile at. Çakışmada (kod 5) durur: `applied` uygulananlar, `conflict` çakışan koşu (yukarıdaki gibi kendin uygula), `not_tried` denenmeyenler; çakışmayı çözdükten sonra aynı komutu tekrar çalıştır. Başka bir hatada da durur (`error`, kendi çıkış kodu); `applied` yine doğrudur. `--only-ok` olmadan, geçmeyen koşusu olan batch hiç uygulanmaz.
 
 `status: escalate` veya `failed` ise: `verification` ve gerekirse `orkestra show <run_id> --log` ile nedenini anla, işi kendin yap ya da durumu kullanıcıya açıkla. Değişiklik bırakan başarısız koşunun worktree'si durur; işin bitince `orkestra discard <run_id>`. Aynı görevi değişiklik yapmadan tekrar çalıştırma.
 
@@ -287,7 +294,7 @@ bağlamda `orkestra handoff show --brief` okumanı, ya da bu oturumu kapatıp ke
 İş bitince kullanıcıya kısaca bildir: hangi işler delege edildi, hangi sağlayıcı/kademe, kaç deneme, maliyet (zarftaki `usage.cost_usd`; günlük toplam için `orkestra budget --json`), neyi kendin düzelttin. Uzun log yapıştırma. Kullanıcı hangi işçinin ne kadar başarılı olduğunu sorarsa: `orkestra stats --since 7d --json` (sağlayıcı ve etiket başına koşu, başarı oranı, deneme, token, maliyet, süre).
 
 ## Asla yapma
-- İşçi çıktısını incelemeden `apply` etme; `apply --force` kullanıcı istemeden yok.
+- İşçi çıktısını incelemeden `apply` etme (tek istisna: bağımsız denetimden `--max-risk low` ile geçen koşu); `apply --force` kullanıcı istemeden yok.
 - API anahtarlarını istem, görev dosyası veya bağlama koyma.
 - `.env`, anahtar dosyaları veya `.orkestraignore` kapsamındaki dosyaları bağlama ekleme.
 - Kullanıcının izni olmadan sağlayıcı onaylama (`--yes`), maliyet eşiğini geçme (`--yes-cost`) veya gizli bilgiyi uzağa gönderme (`--allow-secrets`).

@@ -581,6 +581,39 @@ asked. `edit` tasks and code agents' answers are never cached. `--no-cache` (on 
 many came back to the chief in envelopes, for the runs that passed. The chief's own use
 cannot be measured, so the line is always marked as an estimate.
 
+## A second AI reviews: cheaper writing for the chief
+
+Delegating writing has a fixed cost for the chief: writing the task and reading what came
+back. Orkestra keeps the reading short. Another provider reviews the worker's change, and the
+chief reads a few lines of report instead of the diff:
+
+```bash
+orkestra review RUN_ID --json        # reviewed by a provider other than the author
+orkestra show RUN_ID --report        # done / checked / changes / review / look at / next
+orkestra apply RUN_ID --max-risk low # only if an independent review said low
+```
+
+```yaml
+review:
+  auto: true            # every edit run that passes its checks is reviewed
+  independent: true     # never the author when another provider can review (default)
+  by:
+    ollama: [agy, openrouter]   # Ollama's changes: agy reviews, else OpenRouter
+    "*": [openrouter]           # everyone else's
+```
+
+- The reviewer is never the provider that wrote the change while another one can review. When
+  none can, the author reviews and the report says `independent: false`. Code agents can
+  review too (read-only sandbox).
+- `apply --max-risk low` applies only when the review exists, was independent and found the
+  change at most that risky (`unknown` never passes); otherwise it refuses with code 2 and the
+  chief reads the diff. `apply --batch ID --only-ok --max-risk low` applies the runs that
+  passed and lists the others as skipped.
+- `show --report` ends with the one command to run next: `apply --max-risk low`, the flagged
+  lines, the whole diff, or `review` when there is none yet.
+- The skill tells the chief not to delegate one small task, to hand over mechanical work in
+  one batch (or `run --template`), and to use the project's own tests as the check.
+
 ## Long command output: `orkestra exec`
 
 Test runs, linters and builds are the biggest thing that enters Claude's context (see the

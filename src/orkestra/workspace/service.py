@@ -143,16 +143,20 @@ def apply_run(
     *,
     redact: Callable[[str], str] = str,
     force: bool = False,
+    max_risk: str | None = None,
 ) -> Applied:
     """Apply a run's change to the user's working tree, then remove its worktree.
 
-    A run that did not pass its checks is applied only with ``force``.
+    A run that did not pass its checks is applied only with ``force``. With ``max_risk``
+    only a run whose review by another provider is at most that risky (Faz 13m).
 
     A conflict raises ``WorkspaceConflict`` (exit code 5) and keeps the worktree; nothing is
     saved then. After a successful apply ``changes.patch`` (redacted, for ``show --diff``)
     stays in the run directory.
     """
     run_dir = run_dir_for(run_id)
+    if max_risk is not None and (problem := risk_problem(run_id, run_dir, max_risk)):
+        raise UsageError(problem)
     wt = _active(run_id, run_dir)
     status = _status(run_dir)
     if status not in (None, "ok") and not force:
@@ -222,6 +226,30 @@ def _would_apply(row: sqlite3.Row, *, only_ok: bool) -> bool:
     return not row["applied"] and (row["status"] == "ok" or not only_ok)
 
 
+RISKS = ("low", "medium", "high")
+
+
+def risk_problem(run_id: str, run_dir: Path, max_risk: str) -> str | None:
+    """Why ``apply --max-risk`` does not trust this run's review; None when it does: the
+    review exists, was done by a provider other than the author, and its risk is at most
+    ``max_risk`` (``unknown`` never is)."""
+    if max_risk not in RISKS:
+        raise UsageError(t("apply.error.bad_max_risk", value=max_risk, allowed=", ".join(RISKS)))
+    try:
+        data = json.loads((run_dir / "envelope.json").read_bytes())
+    except (OSError, ValueError):
+        data = {}
+    review = data.get("review") if isinstance(data, dict) else None
+    if not isinstance(review, dict):
+        return t("apply.error.not_reviewed", run_id=run_id)
+    risk = review.get("risk")
+    if risk not in RISKS or RISKS.index(risk) > RISKS.index(max_risk):
+        return t("apply.error.too_risky", run_id=run_id, risk=risk, max_risk=max_risk)
+    if review.get("independent") is not True:
+        return t("apply.error.not_independent", run_id=run_id)
+    return None
+
+
 def apply_batch(
     conn: sqlite3.Connection,
     batch_id: str,
@@ -229,6 +257,7 @@ def apply_batch(
     only_ok: bool,
     redact: Callable[[str], str] = str,
     force: bool = False,
+    max_risk: str | None = None,
 ) -> BatchApplied:
     """Apply a batch's edit runs one by one (Mimari §12); stop at the first conflict.
 
@@ -257,7 +286,8 @@ def apply_batch(
             skipped.append(Skipped(run, t("apply.batch.reason.status", status=row["status"])))
             continue
         try:
-            applied.append((run, apply_run(conn, run.run_id, redact=redact, force=force)))
+            applied.append((run, apply_run(conn, run.run_id, redact=redact, force=force,
+                                           max_risk=max_risk)))  # fmt: skip
         except UsageError as exc:  # nothing to apply, discarded, worktree gone
             skipped.append(Skipped(run, exc.message))
         except OrkestraError as exc:  # a conflict, or git failing: stop, keep the report
