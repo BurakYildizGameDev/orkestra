@@ -43,10 +43,18 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13j – Kısa oturum disiplini (ek) | ✅ | 2026-11-17 | aynı şefe devir (`handoff to claude`), `status`/`tokens`'ta eşik önerisi (bağlam − yeni başlangıç) × okuma ağırlığı; skill kuralı (D-092) |
 | 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ✅ | 2026-11-18 | hız × bilinen/öğrenilen sınır → "~40 dk içinde biter" (`status`, `doctor`, bildirim); router azalanı kademesinde sona alır; `orkestra statusline` + kanca: Claude'un penceresi %85'i geçince şef devir dosyasını bir kez günceller (D-094); kod denetimi (D-095) |
 | 13l – İşe göre model ve bilgisayar yükü (ek) | ✅ | 2026-11-18 | `routing.by_kind` (iş türüne göre model tercihi, kademe içinde); yerel sağlayıcının `concurrency`'si süreçler arasında (tek ağır yerel model); `doctor` RAM/GPU'ya göre boyut önerisi (D-096); kod denetimi (D-097) |
-| 13m – Toplu devretme ve çapraz denetim (ek) | ✅ | 2026-11-18 | denetçi yazardan başka sağlayıcı (`review.by`, `review.independent`); `apply --max-risk low`; `show --report` (patrona rapor); skill: küçük işi devretme, toplu devret, projenin testleri doğrulayıcı (D-098) |
+| 13m – Toplu devretme ve çapraz denetim (ek) | ✅ | 2026-11-18 | denetçi yazardan başka sağlayıcı (`review.by`, `review.independent`); `apply --max-risk low`; `show --report` (patrona rapor); skill: küçük işi devretme, toplu devret, projenin testleri doğrulayıcı (D-098); kod denetimi (D-099) |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 13m (PR #36), 2026-11-18
+`/code-review` 10 bulgu; hepsi düzeltildi (D-099). Önce kırmızı testler.
+- ✅ `--max-risk` yalnız denetimleri geçmiş, işaretsiz, bağımsız denetlenmiş ve denetlenen yamayla aynı değişikliği uyguluyor; geçersiz değer batch'te de kod 2.
+- ✅ Büyük diff'te bağımsızlık her dosya için; denetçi bir kez seçiliyor; `review.by` ve eksik onay sessizce yazara düşmüyor; `doctor` bilinmeyen `review.by` adını uyarıyor.
+- ✅ Rapor: `next` yalnız gerçekten uygulanacaksa `--max-risk low`; bitmiş koşuda yok; çevrili; tek zarf/bayrak okuyucusu.
+
+Testler: **1755 geçti** (1742 + 13). ruff, ruff format, pyright temiz.
 
 ### Faz 13m – Toplu devretme ve çapraz denetim (2026-11-18)
 **Yapılanlar (D-098):**

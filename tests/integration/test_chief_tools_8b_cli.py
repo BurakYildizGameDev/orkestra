@@ -1007,7 +1007,8 @@ def test_review_auto_shares_the_run_slots_and_counts_in_its_duration(
     assert code == 0, err
     envelope = json.loads(out)
     assert envelope["review"] == {
-        "risk": "medium", "flags_count": 0, "by": None, "independent": None
+        "risk": "medium", "flags_count": 0, "by": None, "independent": None,
+        "patch_sha256": None,
     }  # fmt: skip
     assert envelope["duration_s"] >= 0.3
     assert isinstance(seen["slots"], ProviderSlots)

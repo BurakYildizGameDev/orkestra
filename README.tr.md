@@ -601,8 +601,11 @@ review:
 - Başka biri denetleyebildiği sürece denetçi, değişikliği yazan sağlayıcı olmaz. Kimse
   denetleyemezse yazar denetler ve rapor `independent: false` der. Kod ajanları da denetleyebilir
   (salt okunur).
-- `apply --max-risk low` yalnız denetim varsa, bağımsızsa ve değişikliği en çok o riskte
-  bulduysa uygular (`unknown` hiç geçmez); yoksa kod 2 ile reddeder ve şef diff'i okur.
+- `apply --max-risk low` yalnız denetimler koşup geçtiyse, bağımsız denetim değişikliği en çok o
+  riskte bulup hiçbir yeri işaretlemediyse (`unknown` hiç geçmez) ve değişiklik hâlâ denetlenenle
+  aynıysa uygular; yoksa kod 2 ile reddeder ve şef diff'i okur. `review.by`'da adı geçen
+  denetçiler ve eksik onaylar asla sessizce atlanmaz; `doctor` sağlayıcı olmayan `review.by`
+  adını uyarır.
   `apply --batch ID --only-ok --max-risk low` geçenleri uygular, ötekileri atlandı diye listeler.
 - `show --report` sıradaki tek komutla biter: `apply --max-risk low`, işaretli satırlar, diff'in
   tamamı ya da henüz denetim yoksa `review`.

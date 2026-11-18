@@ -117,3 +117,16 @@ def test_extract_flagged_lines_shows_nothing_for_files_without_flags() -> None:
     patch = "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-x\n+y\n"
     flags = [review.ReviewFlag(file="other.py", start_line=1, end_line=1)]
     assert review.extract_flagged_lines(patch, flags) == ""
+
+
+def test_a_merged_review_is_independent_only_if_every_part_was() -> None:
+    """Code review #36: one file reviewed by its own author makes the whole review not
+    independent, whatever reviewed the last file."""
+    parts = [
+        ("a.py", review.ReviewReport(risk="low", model="router/m", independent=True)),
+        ("b.py", review.ReviewReport(risk="low", model="ollama/c", independent=False)),
+        ("c.py", review.ReviewReport(risk="low", model="router/m", independent=True)),
+    ]
+    merged = review.merge_reports(parts)
+    assert merged.independent is False and merged.risk == "low"
+    assert review.merge_reports(parts[::2]).independent is True

@@ -7,6 +7,7 @@ baseline commit, state) and the ``workspace``/``worktree`` columns of its ``runs
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -127,13 +128,19 @@ def _active(run_id: str, run_dir: Path) -> gw.Worktree:
     return record.worktree
 
 
-def _status(run_dir: Path) -> str | None:
-    """The run's status from its envelope (``None`` when there is none)."""
+def envelope_data(run_dir: Path) -> dict[str, Any]:
+    """The run's stored envelope as data; ``{}`` when it is missing or unreadable. The one
+    reader for ``_status``, ``apply --max-risk`` and ``review`` (Faz 13m)."""
     try:
         data = json.loads((run_dir / _PART_FILES["envelope"]).read_bytes())
     except (OSError, ValueError):
-        return None
-    status = data.get("status") if isinstance(data, dict) else None
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _status(run_dir: Path) -> str | None:
+    """The run's status from its envelope (``None`` when there is none)."""
+    status = envelope_data(run_dir).get("status")
     return status if isinstance(status, str) else None
 
 
@@ -155,13 +162,21 @@ def apply_run(
     stays in the run directory.
     """
     run_dir = run_dir_for(run_id)
-    if max_risk is not None and (problem := risk_problem(run_id, run_dir, max_risk)):
-        raise UsageError(problem)
+    if max_risk is not None:
+        check_max_risk(max_risk)
+        if problem := risk_problem(run_id, run_dir, max_risk):
+            raise UsageError(problem)
     wt = _active(run_id, run_dir)
     status = _status(run_dir)
     if status not in (None, "ok") and not force:
         raise UsageError(t("apply.error.not_ok", run_id=run_id, status=status))
     change = gw.diff(wt)
+    review = envelope_data(run_dir).get("review")
+    if max_risk is not None and not patch_matches(
+        review if isinstance(review, dict) else {},
+        change.patch.decode("utf-8", errors="replace"),
+    ):
+        raise UsageError(t("apply.error.changed_since_review", run_id=run_id))
     result = gw.apply(wt, change)
     (run_dir / PATCH_FILE).write_bytes(
         redact(change.patch.decode("utf-8", errors="replace")).encode("utf-8")
@@ -229,17 +244,26 @@ def _would_apply(row: sqlite3.Row, *, only_ok: bool) -> bool:
 RISKS = ("low", "medium", "high")
 
 
-def risk_problem(run_id: str, run_dir: Path, max_risk: str) -> str | None:
-    """Why ``apply --max-risk`` does not trust this run's review; None when it does: the
-    review exists, was done by a provider other than the author, and its risk is at most
-    ``max_risk`` (``unknown`` never is)."""
+def check_max_risk(max_risk: str) -> None:
+    """A wrong ``--max-risk`` is a usage error at once, never "nothing qualified"."""
     if max_risk not in RISKS:
         raise UsageError(t("apply.error.bad_max_risk", value=max_risk, allowed=", ".join(RISKS)))
-    try:
-        data = json.loads((run_dir / "envelope.json").read_bytes())
-    except (OSError, ValueError):
-        data = {}
-    review = data.get("review") if isinstance(data, dict) else None
+
+
+def risk_problem(run_id: str, run_dir: Path, max_risk: str) -> str | None:
+    """Why ``apply --max-risk`` does not apply this run unread; None when it does: its checks
+    ran and passed, a provider other than the author reviewed it, found nothing to flag and
+    at most ``max_risk`` (``unknown`` never is). The patch itself is compared in
+    ``apply_run`` (``patch_matches``)."""
+    data = envelope_data(run_dir)
+    checks = data.get("verification")
+    if (
+        not isinstance(checks, list)
+        or not checks
+        or not all(isinstance(c, dict) and c.get("ok") is True for c in checks)
+    ):
+        return t("apply.error.unchecked", run_id=run_id)
+    review = data.get("review")
     if not isinstance(review, dict):
         return t("apply.error.not_reviewed", run_id=run_id)
     risk = review.get("risk")
@@ -247,7 +271,19 @@ def risk_problem(run_id: str, run_dir: Path, max_risk: str) -> str | None:
         return t("apply.error.too_risky", run_id=run_id, risk=risk, max_risk=max_risk)
     if review.get("independent") is not True:
         return t("apply.error.not_independent", run_id=run_id)
+    if review.get("flags_count"):
+        return t("apply.error.flagged", run_id=run_id, count=review.get("flags_count"))
     return None
+
+
+def patch_digest(patch: str) -> str:
+    return hashlib.sha256(patch.encode("utf-8", errors="surrogateescape")).hexdigest()
+
+
+def patch_matches(review: dict[str, Any], patch: str) -> bool:
+    """The review read exactly this patch (nothing changed in the worktree since)."""
+    digest = review.get("patch_sha256")
+    return isinstance(digest, str) and digest == patch_digest(patch)
 
 
 def apply_batch(
@@ -268,6 +304,8 @@ def apply_batch(
     first conflict, or any other error, stops: what was applied so far is still reported,
     with the run that stopped it and the later runs that would have been applied.
     """
+    if max_risk is not None:
+        check_max_risk(max_risk)
     rows = _batch_rows(conn, batch_id)
     failed = [
         r for r in rows if not r["applied"] and r["status"] != "ok" and _has_change(r["run_id"])

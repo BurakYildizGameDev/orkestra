@@ -605,9 +605,11 @@ review:
 - The reviewer is never the provider that wrote the change while another one can review. When
   none can, the author reviews and the report says `independent: false`. Code agents can
   review too (read-only sandbox).
-- `apply --max-risk low` applies only when the review exists, was independent and found the
-  change at most that risky (`unknown` never passes); otherwise it refuses with code 2 and the
-  chief reads the diff. `apply --batch ID --only-ok --max-risk low` applies the runs that
+- `apply --max-risk low` applies only when the checks ran and passed, an independent review
+  found the change at most that risky with nothing flagged (`unknown` never passes), and the
+  change is still the one that was reviewed; otherwise it refuses with code 2 and the chief
+  reads the diff. Reviewers named in `review.by` and missing consents are never skipped
+  silently; `doctor` warns about a `review.by` name that is no provider. `apply --batch ID --only-ok --max-risk low` applies the runs that
   passed and lists the others as skipped.
 - `show --report` ends with the one command to run next: `apply --max-risk low`, the flagged
   lines, the whole diff, or `review` when there is none yet.

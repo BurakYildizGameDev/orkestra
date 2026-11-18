@@ -1048,3 +1048,12 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Skill:** tek küçük işi devretme; 5+ dosya ya da ~100+ satırlık mekanik iş tek batch / `run --template` ile; doğrulayıcı projenin kendi testleri, işe özel denetim betiği yok; denetim akışı `review` → `show --report` → `apply --max-risk low`, aksi halde işaretli ya da tüm diff. "İncelemeden apply etme" kuralına tek istisna bu.
 - **Ölçüm** (Claude'un okuma tokenı ne kadar azaldı, denetçinin kaçırdığı hata) 13g'nin işi.
 - **Testler:** 1727 → 1742 (+15).
+
+## D-099 – Faz 13m kod denetimi düzeltmeleri (2026-11-18, Faz 13m)
+`/code-review` (PR #36): 10 bulgu, hepsi düzeltildi; önce kırmızı testler.
+- **Bağımsızlık bütün dosyalar için:** büyük diff dosya dosya denetlenince her parça ayrı damgalanır; birleşik rapor yalnız her dosyayı başka sağlayıcı denetlediyse `independent: true` (`review.merge_reports`). Denetçi `review_run` başına bir kez seçilir: yazar dışı kimse yoksa geri kalan dosyalar doğrudan yazara gider (dosya başına iki yönlendirme yok).
+- **Sessiz geri dönüş yok:** `review.by` açıkça yazılmışsa denetçi bulunamazsa hata verilir; eksik onay (`ConsentRequired`) her durumda kullanıcıya gider. Yalnız `review.by` yokken ve başka hiçbir sağlayıcı denetleyemezken yazar denetler (`independent: false`). `doctor` sağlayıcı olmayan `review.by` adlarını uyarır.
+- **`--max-risk` sıkılaştı:** denetimler koşmuş ve hepsi geçmiş olmalı, denetim işaret koymamış olmalı (`flags_count` 0) ve **denetlenen yama uygulanan yamayla aynı** olmalı (`review.patch_sha256`, worktree diff'iyle karşılaştırılır; eşleşmezse "yeniden denetle"). Geçersiz değer (`--max-risk lo`) batch'te de en başta kod 2.
+- **Rapor:** `next` yalnız `--max-risk low` gerçekten uygulayacaksa onu önerir (aynı `risk_problem`); uygulanmış ya da atılmış koşuda `next: null` ve "sıradaki: yok"; `ok`/`failed` çevrili, JSON'da `verified` `{type, ok}`.
+- **Tek okuyucu:** zarfı `service.envelope_data`, bayrakları `review.load_flags` okur (`_status`, `risk_problem`, `review._author`, rapor).
+- **Testler:** 1742 → 1755 (+13).

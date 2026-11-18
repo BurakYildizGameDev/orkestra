@@ -25,6 +25,7 @@ class EnvelopeReview(BaseModel):
     flags_count: int
     by: str | None = None  # the reviewer, provider/model (Faz 13m)
     independent: bool | None = None  # reviewed by a provider other than the author
+    patch_sha256: str | None = None  # the patch the review read (``apply --max-risk``)
 
 
 class Escalation(BaseModel):

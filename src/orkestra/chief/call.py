@@ -16,6 +16,7 @@ from orkestra import paths
 from orkestra.config.schema import CliAgentProvider, Config, WorkKind
 from orkestra.errors import (
     BudgetExhausted,
+    ConsentRequired,
     NoProviderAvailable,
     OrkestraError,
     ProviderError,
@@ -116,11 +117,14 @@ async def query_chief_model(
         if providers is not None:
             order = {name: index for index, name in enumerate(providers)}
             candidates.sort(key=lambda c: order[c.provider])  # stable: router order inside
-        if route_result.candidates and not candidates and (providers is not None or exclude):
-            raise NoProviderAvailable(t("chief.error.no_reviewer"), details=[
-                e.reason for e in route_result.eliminated
-                if providers is None or e.provider in providers
-            ])  # fmt: skip
+        if not candidates and (providers is not None or exclude):
+            wanted = [e for e in route_result.eliminated
+                      if e.provider not in exclude
+                      and (providers is None or e.provider in providers)]  # fmt: skip
+            details = [e.reason for e in wanted]
+            if any(e.consent for e in wanted):  # ask the user, never skip silently
+                raise ConsentRequired(t("select.consent_needed"), details=details)
+            raise NoProviderAvailable(t("chief.error.no_reviewer"), details=details)
         if route_result.candidates and not candidates:
             # Why the chat models are out (paused, no consent, …) says more than "none".
             chat = [
