@@ -22,6 +22,7 @@ from orkestra.chief import execute as executor
 from orkestra.chief import finder as file_finder
 from orkestra.chief import limits as chief_limits
 from orkestra.chief import reader as file_reader
+from orkestra.chief import report as run_report
 from orkestra.chief import status
 from orkestra.chief import tokens as token_map
 from orkestra.config import loader
@@ -847,8 +848,18 @@ def build_app() -> typer.Typer:
         ] = False,
         output: Annotated[bool, typer.Option("--output", help=t("cli.show.option.output"))] = False,
         log: Annotated[bool, typer.Option("--log", help=t("cli.show.option.log"))] = False,
+        report: Annotated[bool, typer.Option("--report", help=t("cli.show.option.report"))] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
+        if report:
+            if diff or only_flagged or output or log:
+                raise UsageError(t("show.error.one_part"))
+            found = run_report.build(run_id, service.run_dir_for(run_id))
+            if as_json:
+                _echo_json(found)
+            else:
+                typer.echo(run_report.render(found))
+            return
         chosen = [name for name, on in (("diff", diff), ("output", output), ("log", log)) if on]
         if only_flagged and (output or log):
             raise UsageError(t("show.error.one_part"))
@@ -893,6 +904,10 @@ def build_app() -> typer.Typer:
             bool, typer.Option("--only-ok", help=t("cli.apply.option.only_ok"))
         ] = False,
         force: Annotated[bool, typer.Option("--force", help=t("cli.apply.option.force"))] = False,
+        max_risk: Annotated[
+            str | None,
+            typer.Option("--max-risk", metavar="RISK", help=t("cli.apply.option.max_risk")),
+        ] = None,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         if (run_id is None) == (batch_id is None):
@@ -903,8 +918,9 @@ def build_app() -> typer.Typer:
         if batch_id is not None:
             with closing(db.connect()) as conn:
                 report = service.apply_batch(
-                    conn, batch_id, only_ok=only_ok, redact=redact, force=force
-                )
+                    conn, batch_id, only_ok=only_ok, redact=redact, force=force,
+                    max_risk=max_risk,
+                )  # fmt: skip
             _echo_batch_applied(report, as_json=as_json)
             if report.conflict is not None:
                 raise typer.Exit(int(ExitCode.CONFLICT))
@@ -913,7 +929,8 @@ def build_app() -> typer.Typer:
             return
         assert run_id is not None
         with closing(db.connect()) as conn:
-            done = service.apply_run(conn, run_id, redact=redact, force=force)
+            done = service.apply_run(conn, run_id, redact=redact, force=force,
+                                     max_risk=max_risk)  # fmt: skip
         if as_json:
             _echo_json(
                 {"run_id": run_id, "applied": True, "repo": str(done.repo),

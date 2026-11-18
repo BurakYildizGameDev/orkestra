@@ -1038,3 +1038,22 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **`by_kind`:** önce birebir eşleşme (`[` içeren model adı), sonra glob; hiçbir sağlayıcı/modelle eşleşmeyen desen için `doctor` uyarısı (`router.unmatched_preferences`).
 - `queue/service.py` süreç yardımcılarını `state.process`'ten alır; iş türü testi kaynak metne değil AST'ye bakar.
 - **Testler:** 1717 → 1727 (+10).
+
+## D-098 – Faz 13m: toplu devretme ve çapraz denetim (2026-11-18, Faz 13m)
+**Karar:**
+- **Çapraz denetim:** `review.by` (yazar sağlayıcı ya da `*` → denetçi listesi, sırayla; yazar listeden düşer) ve `review.independent` (varsayılan true; `by` yoksa yazar aday dışı). `query_chief_model(providers=, exclude=)` adayları süzer; süzgeç kimseyi bırakmazsa `NoProviderAvailable` → `review` yazarla yeniden dener ve `independent: false` yazar (kesintisizlik: denetimsiz kalmaktansa işaretli öz denetim). Sağlayıcı hatası (denetçi çöktü) yazara düşmez, eskisi gibi hata. Ajanlar denetçi olabilir (zaten salt okunur koşuyordu).
+- **Zarf:** `review.by` ve `review.independent` isteğe bağlı alanlar; sürüm 4 kaldı (eski zarflar yüklenir, alanlar `null`).
+- **"Risk düşükse diff'i okumadan uygula"** yalnız skill sözü olarak kalmasın diye `apply --max-risk low|medium|high`: denetim yoksa, bağımsız değilse (13m öncesi denetimler dahil) ya da riski üstündeyse (`unknown` hiç geçmez) kod 2; kontrol worktree'den önce. Batch'te bu koşular `skipped` (mevcut `UsageError` → atla yolu).
+- **Patrona rapor:** zarfın kendisi yerine `show RUN --report` (`--json`): yapılan (özetin ilk satırı), denetlenen, değişiklik, denetim (risk, denetçi, bağımsız mı), işaretçiler (en çok 5 bayrak `dosya:satır neden`), sıradaki tek komut. Zarf biçimi değişmedi (13d/13g ölçümleri ve var olan okuyucular bozulmasın).
+- **Skill:** tek küçük işi devretme; 5+ dosya ya da ~100+ satırlık mekanik iş tek batch / `run --template` ile; doğrulayıcı projenin kendi testleri, işe özel denetim betiği yok; denetim akışı `review` → `show --report` → `apply --max-risk low`, aksi halde işaretli ya da tüm diff. "İncelemeden apply etme" kuralına tek istisna bu.
+- **Ölçüm** (Claude'un okuma tokenı ne kadar azaldı, denetçinin kaçırdığı hata) 13g'nin işi.
+- **Testler:** 1727 → 1742 (+15).
+
+## D-099 – Faz 13m kod denetimi düzeltmeleri (2026-11-18, Faz 13m)
+`/code-review` (PR #36): 10 bulgu, hepsi düzeltildi; önce kırmızı testler.
+- **Bağımsızlık bütün dosyalar için:** büyük diff dosya dosya denetlenince her parça ayrı damgalanır; birleşik rapor yalnız her dosyayı başka sağlayıcı denetlediyse `independent: true` (`review.merge_reports`). Denetçi `review_run` başına bir kez seçilir: yazar dışı kimse yoksa geri kalan dosyalar doğrudan yazara gider (dosya başına iki yönlendirme yok).
+- **Sessiz geri dönüş yok:** `review.by` açıkça yazılmışsa denetçi bulunamazsa hata verilir; eksik onay (`ConsentRequired`) her durumda kullanıcıya gider. Yalnız `review.by` yokken ve başka hiçbir sağlayıcı denetleyemezken yazar denetler (`independent: false`). `doctor` sağlayıcı olmayan `review.by` adlarını uyarır.
+- **`--max-risk` sıkılaştı:** denetimler koşmuş ve hepsi geçmiş olmalı, denetim işaret koymamış olmalı (`flags_count` 0) ve **denetlenen yama uygulanan yamayla aynı** olmalı (`review.patch_sha256`, worktree diff'iyle karşılaştırılır; eşleşmezse "yeniden denetle"). Geçersiz değer (`--max-risk lo`) batch'te de en başta kod 2.
+- **Rapor:** `next` yalnız `--max-risk low` gerçekten uygulayacaksa onu önerir (aynı `risk_problem`); uygulanmış ya da atılmış koşuda `next: null` ve "sıradaki: yok"; `ok`/`failed` çevrili, JSON'da `verified` `{type, ok}`.
+- **Tek okuyucu:** zarfı `service.envelope_data`, bayrakları `review.load_flags` okur (`_status`, `risk_problem`, `review._author`, rapor).
+- **Testler:** 1742 → 1755 (+13).

@@ -405,3 +405,13 @@ def test_the_field_list_names_every_task_field_and_nothing_else(skill_text: str)
     named = {name.split(".")[0] for name in re.findall(r"`([a-z_][a-z_.]*)`", top_level)}
     fields = {info.alias or name for name, info in TaskSpec.model_fields.items()}
     assert named == fields
+
+
+def test_the_skill_teaches_bulk_delegation_and_cross_review(skill_text: str) -> None:
+    """Faz 13m (D-098): small work is not delegated, mechanical work goes in one batch, and
+    a change another provider reviewed as low risk is applied from the report."""
+    assert "orkestra run --template" in skill_text and "Tek küçük işi devretme" in skill_text
+    assert "işe özel denetim betiği yazma" in skill_text
+    assert "orkestra show <run_id> --report" in skill_text
+    assert "orkestra apply <run_id> --max-risk low" in skill_text
+    assert "--only-ok --max-risk low" in skill_text

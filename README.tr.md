@@ -577,6 +577,41 @@ görevleri ve kod ajanlarının cevapları asla önbelleğe alınmaz. `--no-cach
 token döndüğünü de gösterir (doğrulamayı geçen koşular için). Şefin kendi kullanımı
 ölçülemediği için satır her zaman tahmini olarak işaretlenir.
 
+## İkinci bir AI denetler: şef için daha ucuz yazma
+
+Yazmayı devretmenin şef için sabit bir bedeli var: görevi yazmak ve geleni okumak. Orkestra
+okumayı kısa tutar. İşçinin değişikliğini başka bir sağlayıcı denetler, şef diff yerine birkaç
+satırlık rapor okur:
+
+```bash
+orkestra review RUN_ID --json        # yazardan başka bir sağlayıcı denetler
+orkestra show RUN_ID --report        # yapılan / denetlenen / değişiklik / denetim / bak / sıradaki
+orkestra apply RUN_ID --max-risk low # yalnız bağımsız denetim "low" dediyse
+```
+
+```yaml
+review:
+  auto: true            # denetimi geçen her edit koşusu denetlenir
+  independent: true     # başka biri denetleyebiliyorsa asla yazar değil (varsayılan)
+  by:
+    ollama: [agy, openrouter]   # Ollama'nın değişikliklerini agy, yoksa OpenRouter denetler
+    "*": [openrouter]           # ötekilerin
+```
+
+- Başka biri denetleyebildiği sürece denetçi, değişikliği yazan sağlayıcı olmaz. Kimse
+  denetleyemezse yazar denetler ve rapor `independent: false` der. Kod ajanları da denetleyebilir
+  (salt okunur).
+- `apply --max-risk low` yalnız denetimler koşup geçtiyse, bağımsız denetim değişikliği en çok o
+  riskte bulup hiçbir yeri işaretlemediyse (`unknown` hiç geçmez) ve değişiklik hâlâ denetlenenle
+  aynıysa uygular; yoksa kod 2 ile reddeder ve şef diff'i okur. `review.by`'da adı geçen
+  denetçiler ve eksik onaylar asla sessizce atlanmaz; `doctor` sağlayıcı olmayan `review.by`
+  adını uyarır.
+  `apply --batch ID --only-ok --max-risk low` geçenleri uygular, ötekileri atlandı diye listeler.
+- `show --report` sıradaki tek komutla biter: `apply --max-risk low`, işaretli satırlar, diff'in
+  tamamı ya da henüz denetim yoksa `review`.
+- Skill şefe tek küçük işi devretmemesini, mekanik işi tek batch'le (ya da `run --template`)
+  vermesini ve doğrulayıcı olarak projenin kendi testlerini kullanmasını söyler.
+
 ## Uzun komut çıktısı: `orkestra exec`
 
 Test koşuları, linter'lar ve derlemeler Claude'un bağlamına giren en büyük şey (aşağıdaki

@@ -182,6 +182,11 @@ class HandoffCfg(_Model):
 class ReviewCfg(_Model):
     tier: Tier = 2
     auto: bool = False
+    # Faz 13m (D-098): another provider reviews a worker's change. ``by`` maps an author
+    # provider (or ``*``) to its reviewers in order; ``independent`` keeps the author out
+    # whenever another provider can review.
+    by: dict[str, list[str]] = Field(default_factory=dict)
+    independent: bool = True
 
 
 class MapCfg(_Model):

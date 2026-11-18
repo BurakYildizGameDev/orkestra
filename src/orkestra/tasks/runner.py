@@ -60,7 +60,6 @@ from orkestra.config.loader import dump_yaml
 from orkestra.config.schema import CliAgentProvider, Config, EditFormat, resolve_edit_format
 from orkestra.envelope import (
     Changes,
-    EnvelopeReview,
     EnvelopeUsage,
     Escalation,
     Failover,
@@ -1434,12 +1433,13 @@ class _TaskRun:
 
         try:
             report = await review.review_run(
-                self.run_id, self.prep.config, slots=self.slots, conn=self.conn
-            )
+                self.run_id, self.prep.config, slots=self.slots, conn=self.conn,
+                author=envelope.provider,
+            )  # fmt: skip
         except OrkestraError as exc:
             self.log.warning("automatic review failed: %s %s", type(exc).__name__, exc.message)
             return envelope.model_copy(update={"duration_s": self._duration()})
-        found = EnvelopeReview(risk=report.risk, flags_count=len(report.flags))
+        found = review.envelope_review(report)
         return envelope.model_copy(update={"review": found, "duration_s": self._duration()})
 
     def _checks_failed(self, answer: _Answer) -> TaskOutcome:

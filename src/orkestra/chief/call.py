@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +16,7 @@ from orkestra import paths
 from orkestra.config.schema import CliAgentProvider, Config, WorkKind
 from orkestra.errors import (
     BudgetExhausted,
+    ConsentRequired,
     NoProviderAvailable,
     OrkestraError,
     ProviderError,
@@ -70,6 +71,8 @@ async def query_chief_model(
     environ: Mapping[str, str] | None = None,
     agents: bool = True,
     work: WorkKind,
+    providers: Sequence[str] | None = None,
+    exclude: Collection[str] = (),
 ) -> tuple[str, str]:
     """Query a candidate model chosen by the router for a chief tool.
 
@@ -78,7 +81,8 @@ async def query_chief_model(
     none could be tried, the router's own error (``NoProviderAvailable``,
     ``ConsentRequired``) (D-062). ``agents=False`` leaves code agents out: summarising text
     does not need a whole agent run (``exec``, D-088). ``work`` names the kind of work for
-    ``routing.by_kind`` (Faz 13l, D-096): every tool passes its own.
+    ``routing.by_kind`` (Faz 13l, D-096): every tool passes its own. ``providers``: only
+    these, in this order; ``exclude``: never these (a cross-review, Faz 13m, D-098).
     """
     env = os.environ if environ is None else environ
     current_time = db.local_now() if now is None else now
@@ -106,8 +110,21 @@ async def query_chief_model(
         last_error: OrkestraError | None = None
         candidates = [
             c for c in route_result.candidates
-            if agents or not isinstance(c.config, CliAgentProvider)
+            if (agents or not isinstance(c.config, CliAgentProvider))
+            and c.provider not in exclude
+            and (providers is None or c.provider in providers)
         ]  # fmt: skip
+        if providers is not None:
+            order = {name: index for index, name in enumerate(providers)}
+            candidates.sort(key=lambda c: order[c.provider])  # stable: router order inside
+        if not candidates and (providers is not None or exclude):
+            wanted = [e for e in route_result.eliminated
+                      if e.provider not in exclude
+                      and (providers is None or e.provider in providers)]  # fmt: skip
+            details = [e.reason for e in wanted]
+            if any(e.consent for e in wanted):  # ask the user, never skip silently
+                raise ConsentRequired(t("select.consent_needed"), details=details)
+            raise NoProviderAvailable(t("chief.error.no_reviewer"), details=details)
         if route_result.candidates and not candidates:
             # Why the chat models are out (paused, no consent, …) says more than "none".
             chat = [

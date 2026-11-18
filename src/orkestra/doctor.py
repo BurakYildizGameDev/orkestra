@@ -453,6 +453,15 @@ async def run_doctor(
                   {"by_kind": kind, "pattern": pattern})
             for kind, pattern in unmatched_preferences(loaded.config)
         )  # fmt: skip
+        # Faz 13m (D-099): a review.by name that is no provider is a typo; reviews skip it.
+        known = set(loaded.config.providers)
+        checks.extend(
+            Check("config", "warn", t("doctor.review_by.unknown", name=name),
+                  {"review_by": name})
+            for author, names in loaded.config.review.by.items()
+            for name in [*([] if author == "*" else [author]), *names]
+            if name not in known
+        )  # fmt: skip
         # Providers are independent: check them at the same time, report in config order.
         defaults = loaded.config.defaults
         per_provider = await asyncio.gather(

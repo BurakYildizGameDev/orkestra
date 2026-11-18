@@ -27,7 +27,7 @@ from orkestra.chief.call import query_chief_model
 from orkestra.config.loader import read_yaml
 from orkestra.config.schema import Config
 from orkestra.envelope import ENVELOPE_VERSION, EnvelopeReview, ResultEnvelope, to_json
-from orkestra.errors import OrkestraError, UsageError
+from orkestra.errors import NoProviderAvailable, OrkestraError, UsageError
 from orkestra.i18n import t
 from orkestra.security.redact import Redactor, configured_secrets
 from orkestra.tasks.runner import ProviderSlots
@@ -56,7 +56,10 @@ class ReviewReport(BaseModel):
     risk: Risk
     flags: list[ReviewFlag] = Field(default_factory=list)
     summary: str = ""
-    model: str | None = None
+    model: str | None = None  # the reviewer, provider/model
+    author: str | None = None  # the provider whose change it is (Faz 13m)
+    independent: bool | None = None  # reviewed by a provider other than the author
+    patch_sha256: str | None = None  # the patch it read (``apply --max-risk`` compares)
 
 
 _SYSTEM_PROMPT = """\
@@ -121,14 +124,35 @@ class _Reviewer:
         task_prompt: str,
         slots: ProviderSlots | None,
         conn: sqlite3.Connection | None,
+        author: str | None = None,
     ) -> None:
         self.config = config
         self.run_id = run_id
         self.task_prompt = task_prompt
         self.slots = slots
         self.conn = conn
+        self.author = author
+        self.providers, self.exclude = reviewers(config, author)
+        self.fallback = False  # no other provider could review: the author does
 
     async def _ask(self, user: str) -> tuple[str, str]:
+        """Another provider (``review.by``, else anyone but the author). Without
+        ``review.by``, when no other provider can review at all, the author does it: the
+        report then says ``independent: false``; after that the rest of this review goes to
+        it directly. Reviewers the user named, and a missing consent, are never skipped
+        silently: their error is raised."""
+        if not self.fallback and (self.providers is not None or self.exclude):
+            try:
+                return await self._query(user, self.providers, self.exclude)
+            except NoProviderAvailable:
+                if self.providers is not None:  # the user named the reviewers
+                    raise
+                self.fallback = True
+        return await self._query(user, None, ())
+
+    async def _query(
+        self, user: str, providers: list[str] | None, exclude: set[str] | tuple[()]
+    ) -> tuple[str, str]:
         return await query_chief_model(
             self.config,
             tier=self.config.review.tier,
@@ -139,7 +163,16 @@ class _Reviewer:
             run_id=self.run_id,
             slots=self.slots,
             conn=self.conn,
+            providers=providers,
+            exclude=exclude,
         )
+
+    def stamp(self, report: ReviewReport) -> ReviewReport:
+        reviewer = (report.model or "").split("/", 1)[0] or None
+        independent = None if reviewer is None else (
+            self.author is not None and reviewer != self.author
+        )  # fmt: skip
+        return report.model_copy(update={"author": self.author, "independent": independent})
 
     async def review(self, patch: str) -> ReviewReport:
         """One patch: a bad answer gets one retry with feedback, then ``risk: unknown``.
@@ -157,10 +190,23 @@ class _Reviewer:
             try:
                 report = parse_review_response(answer)
             except ReviewFormatError:
-                return ReviewReport(
+                return self.stamp(ReviewReport(
                     risk="unknown", summary=t("review.unknown_fallback"), model=label
-                )
-        return report.model_copy(update={"model": label})
+                ))  # fmt: skip
+        return self.stamp(report.model_copy(update={"model": label}))
+
+
+def reviewers(config: Config, author: str | None) -> tuple[list[str] | None, set[str]]:
+    """Who reviews ``author``'s change: ``(providers in order, or None for the router's
+    choice; providers left out)``. ``review.by[author]`` (else ``review.by["*"]``) names
+    them; the author is dropped from that list, and without one it is left out, as long
+    as ``review.independent`` (Faz 13m, D-098)."""
+    if author is None:
+        return None, set()
+    listed = config.review.by.get(author, config.review.by.get("*"))
+    if listed is not None:
+        return [p for p in listed if p != author or not config.review.independent], set()
+    return None, ({author} if config.review.independent else set())
 
 
 async def review_run(
@@ -169,24 +215,34 @@ async def review_run(
     *,
     slots: ProviderSlots | None = None,
     conn: sqlite3.Connection | None = None,
+    author: str | None = None,
 ) -> ReviewReport:
     """Run code review for ``run_id``, save review.json, and update envelope.
 
     ``slots`` and ``conn`` are the running task's when ``review.auto`` calls it, so the
-    review waits for the same provider limits (D-062).
+    review waits for the same provider limits (D-062). ``author``: the provider whose change
+    it is (``review.auto`` knows it; otherwise the run's envelope says).
     """
     run_dir = service.run_dir_for(run_id)
     redact = Redactor(configured_secrets(config), passwords=False)
     # A saved patch was masked when it was written; mask again with today's keys anyway.
-    patch = redact(service.show(run_id, "diff"))
+    raw = service.show(run_id, "diff")
+    patch = redact(raw)
     if not patch.strip():
         report = ReviewReport(risk="low", summary=t("review.no_changes"))
     else:
-        reviewer = _Reviewer(config, run_id, _task_prompt(run_dir), slots, conn)
+        who = author if author is not None else _author(run_dir)
+        reviewer = _Reviewer(config, run_id, _task_prompt(run_dir), slots, conn, who)
         report = await _review_patch(reviewer, patch)
+        report = report.model_copy(update={"patch_sha256": service.patch_digest(raw)})
     _save_review(run_dir, report)
     _update_envelope(run_dir, report)
     return report
+
+
+def _author(run_dir: Path) -> str | None:
+    provider = service.envelope_data(run_dir).get("provider")
+    return provider if isinstance(provider, str) else None
 
 
 def _task_prompt(run_dir: Path) -> str:
@@ -202,13 +258,20 @@ async def _review_patch(reviewer: _Reviewer, patch: str) -> ReviewReport:
     files = patchparse.parse_patch(patch)
     if patch.count("\n") <= LARGE_DIFF_LINES or len(files) < 2:
         return await reviewer.review(patch)
-    reports = [(f.path, await reviewer.review(f.text)) for f in files]
+    return merge_reports([(f.path, await reviewer.review(f.text)) for f in files])
+
+
+def merge_reports(reports: Sequence[tuple[str, ReviewReport]]) -> ReviewReport:
+    """One review of several files: the worst risk, every flag, and independent only if
+    every file was reviewed by another provider than the author."""
     risks = {report.risk for _path, report in reports}
     return ReviewReport(
         risk=next(r for r in _RISK_ORDER if r in risks),
         flags=[flag for _path, report in reports for flag in report.flags],
         summary="; ".join(f"{path}: {r.summary}" for path, r in reports if r.summary),
         model=next((r.model for _path, r in reversed(reports) if r.model), None),
+        author=next((r.author for _path, r in reports if r.author), None),
+        independent=all(r.independent is True for _path, r in reports),
     )
 
 
@@ -235,10 +298,16 @@ def _update_envelope(run_dir: Path, report: ReviewReport) -> None:
     updated = envelope.model_copy(
         update={
             "envelope_version": ENVELOPE_VERSION,
-            "review": EnvelopeReview(risk=report.risk, flags_count=len(report.flags)),
+            "review": envelope_review(report),
         }
     )
     _write_atomic(env_path, to_json(updated))
+
+
+def envelope_review(report: ReviewReport) -> EnvelopeReview:
+    return EnvelopeReview(risk=report.risk, flags_count=len(report.flags), by=report.model,
+                          independent=report.independent,
+                          patch_sha256=report.patch_sha256)  # fmt: skip
 
 
 def load_flags(run_id: str, run_dir: Path) -> list[ReviewFlag]:
