@@ -117,7 +117,7 @@ def ask(
     answer, label = asyncio.run(
         query_chief_model(
             config, tier=config.read.tier, system=system, user=user, environ=environ,
-            agents=False,
+            agents=False, work="read",
         )
     )  # fmt: skip
     answer = answer.strip()

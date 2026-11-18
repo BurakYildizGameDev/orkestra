@@ -398,6 +398,7 @@ class _Summarizer:
             answer, label = await query_chief_model(
                 self.config,
                 tier=self.config.map.tier,
+                work="map",
                 system=_SYSTEM_PROMPT,
                 user=user,
                 privacy=self.config.map.privacy,

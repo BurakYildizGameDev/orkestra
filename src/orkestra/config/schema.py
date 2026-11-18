@@ -194,9 +194,22 @@ class CacheCfg(_Model):
     ttl_days: NonNegInt = 14
 
 
+# Faz 13l (D-096): the kinds of work ``routing.by_kind`` can name. ``summary`` is ``exec``,
+# ``read`` is ``read`` and ``find --ask``; ``ask``/``edit`` are task kinds.
+WorkKind = Literal["summary", "read", "map", "review", "plan", "ask", "edit"]
+
+
+class KindPrefs(_Model):
+    """Models this kind of work tries first, in this order, inside each tier: ``provider``,
+    ``provider/model`` or a glob of them (``openrouter/*:free``)."""
+
+    prefer: list[str] = Field(default_factory=list)
+
+
 class RoutingCfg(_Model):
     adaptive: bool = False
     min_samples: PosInt = 10
+    by_kind: dict[WorkKind, KindPrefs] = Field(default_factory=dict)
 
 
 class EstimateCfg(_Model):

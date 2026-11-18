@@ -110,6 +110,7 @@ from orkestra.routing.router import (
 from orkestra.security.redact import Redactor, configured_secrets
 from orkestra.security.secrets_scan import Finding, blocking, scan_text
 from orkestra.state import budget, consent, db, health
+from orkestra.state.slots import MachineSlots, server_key
 from orkestra.tasks import edit_format as ef
 from orkestra.tasks.context import Context, collect_context
 from orkestra.tasks.prompts import (
@@ -172,18 +173,70 @@ def new_run_id(now: datetime | None = None, token: str | None = None) -> str:
 class ProviderSlots:
     """Requests in flight per provider, at most its ``concurrency`` (Mimari §12).
 
-    One instance is shared by all tasks of a batch; a single run gets its own.
+    One instance is shared by all tasks of a batch; a single run gets its own. For a
+    ``local`` provider the limit holds across processes too (``state.slots``, Faz 13l): one
+    heavy local model at a time on this computer, whoever asks.
     """
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, machine: MachineSlots | None = None) -> None:
         self._limits = {name: provider.concurrency for name, provider in config.providers.items()}
+        # Local providers share the machine's slots of their server (``state.slots``).
+        self._servers = {
+            name: server_key(name, provider)
+            for name, provider in config.providers.items()
+            if provider.local
+        }
         self._slots: dict[str, asyncio.Semaphore] = {}
+        self._machine = machine or MachineSlots()
         self.prices = asyncio.Lock()  # price list fetches, one task at a time
 
-    def __call__(self, provider: str) -> asyncio.Semaphore:
+    def __call__(self, provider: str) -> Slot:
         if provider not in self._slots:
             self._slots[provider] = asyncio.Semaphore(self._limits.get(provider, 1))
-        return self._slots[provider]
+        server = self._servers.get(provider)
+        machine = self._machine if server is not None else None
+        return Slot(self._slots[provider], machine, server or provider,
+                    self._limits.get(provider, 1))  # fmt: skip
+
+
+class Slot:
+    """One request's place: the process's semaphore, then (local providers) the machine's.
+    Used as ``async with`` or with ``acquire()`` / ``release()`` on the same object."""
+
+    def __init__(
+        self, semaphore: asyncio.Semaphore, machine: MachineSlots | None, key: str,
+        limit: int,
+    ) -> None:  # fmt: skip
+        self._semaphore = semaphore
+        self._machine = machine
+        self._key = key
+        self._limit = limit
+        self._held: int | None = None
+
+    async def acquire(self, wait_s: float | None = None) -> None:
+        """``wait_s``: give up after that long on the machine's slot (``TimeoutError``); the
+        process's own place is given back then."""
+        await self._semaphore.acquire()
+        if self._machine is None:
+            return
+        try:
+            self._held = await self._machine.acquire(self._key, self._limit, wait_s=wait_s)
+        except BaseException:  # timed out or cancelled: give the process's place back
+            self._semaphore.release()
+            raise
+
+    def release(self) -> None:
+        if self._machine is not None:
+            held, self._held = self._held, None
+            self._machine.release(held)
+        self._semaphore.release()
+
+    async def __aenter__(self) -> Slot:
+        await self.acquire()
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        self.release()
 
 
 @dataclass(frozen=True)

@@ -77,14 +77,17 @@ def migrate(conn: sqlite3.Connection) -> int:
     return current
 
 
-def connect(path: Path | None = None) -> sqlite3.Connection:
+def connect(path: Path | None = None, *, migrate_schema: bool = True) -> sqlite3.Connection:
+    """Open state.db (WAL, busy timeout); ``migrate_schema=False`` skips the migration check
+    for a caller that already ran it in this process (the local slots' polls, Faz 13l)."""
     db_path = paths.state_db_path() if path is None else path
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path, timeout=BUSY_TIMEOUT_MS / 1000, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
     conn.execute("PRAGMA journal_mode = WAL")
-    migrate(conn)
+    if migrate_schema:
+        migrate(conn)
     return conn
 
 

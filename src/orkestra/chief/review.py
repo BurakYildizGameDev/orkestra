@@ -132,6 +132,7 @@ class _Reviewer:
         return await query_chief_model(
             self.config,
             tier=self.config.review.tier,
+            work="review",
             system=_SYSTEM_PROMPT,
             user=user,
             json_mode=True,

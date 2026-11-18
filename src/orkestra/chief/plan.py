@@ -149,6 +149,7 @@ async def expand_plan(
         resp, _ = await query_chief_model(
             config,
             tier=2,
+            work="plan",
             system=_SYSTEM_PROMPT,
             user=prompt_to_send,
         )

@@ -42,11 +42,41 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13i-b – Bağlam süzgeci: `read` / `find` + proje fihristi (ek) | ✅ | 2026-11-17 | `read` işaretçileri dosyaya karşı denetler; `find` modelsiz, çok sonuç fihrist özetiyle gruplanır; `map --install-hook` (D-090) |
 | 13j – Kısa oturum disiplini (ek) | ✅ | 2026-11-17 | aynı şefe devir (`handoff to claude`), `status`/`tokens`'ta eşik önerisi (bağlam − yeni başlangıç) × okuma ağırlığı; skill kuralı (D-092) |
 | 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ✅ | 2026-11-18 | hız × bilinen/öğrenilen sınır → "~40 dk içinde biter" (`status`, `doctor`, bildirim); router azalanı kademesinde sona alır; `orkestra statusline` + kanca: Claude'un penceresi %85'i geçince şef devir dosyasını bir kez günceller (D-094); kod denetimi (D-095) |
-| 13l – İşe göre model ve bilgisayar yükü (ek) | ⏳ | | hafif işler küçük/ücretsiz modele |
+| 13l – İşe göre model ve bilgisayar yükü (ek) | ✅ | 2026-11-18 | `routing.by_kind` (iş türüne göre model tercihi, kademe içinde); yerel sağlayıcının `concurrency`'si süreçler arasında (tek ağır yerel model); `doctor` RAM/GPU'ya göre boyut önerisi (D-096); kod denetimi (D-097) |
 | 13m – Toplu devretme ve çapraz denetim (ek) | ⏳ | | yazma devrinin sabit yükünü düşürmek |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – Faz 13l (PR #35), 2026-11-18
+`/code-review` 10 bulgu; hepsi düzeltildi (D-097). Önce kırmızı testler.
+- ✅ Şef araçları meşgul yerel modeli en çok 2 sn bekleyip sıradaki adaya geçiyor; bırakamadığı kendi satırını süreç geri alıyor; kilitli veritabanı sınırı atlatmıyor.
+- ✅ Yuva anahtarı yerel sunucu (aynı Ollama'ya iki ad tek sayaç); yoklama migrationsız ve olay döngüsü dışında.
+- ✅ Donanım önerisi küçük GPU + bol RAM'de doğru; model boyutu Hugging Face adlarından ve `8x22b`'den okunuyor.
+- ✅ `by_kind` birebir eşleşme önce; eşleşmeyen desen için `doctor` uyarısı; `queue/service.py` doğrudan `state.process`; iş türü testi AST ile.
+
+Testler: **1727 geçti** (1717 + 10). ruff, ruff format, pyright temiz.
+
+### Faz 13l – İşe göre model ve bilgisayar yükü (2026-11-18)
+**Yapılanlar (D-096):**
+- `routing.by_kind.<iş>.prefer`: `summary` (exec), `read` (read, find --ask), `map`, `review`, `plan`, `ask`, `edit`; desen sağlayıcı / `sağlayıcı/model` / glob; kademe içinde, kotası azalandan sonra, skordan önce. `query_chief_model(work=)` zorunlu.
+- Yerel sağlayıcılarda `concurrency` makine genelinde: migration 6 `local_slots`, `state/slots.py`, `runner.Slot`; ölü süreç / 6 saat → geri alınır; `state/process.py` (kuyruk kilidiyle ortak).
+- `doctor`: `hardware.py` (psutil RAM, `nvidia-smi` GPU) → "özet 1.5b-3b, kod ~14b'ye kadar"; daha büyük görünen yerel model uyarısı.
+- README "The right model for each kind of work" / "İşe göre model" + özellik tablosu satırı; Mimari §4.1, §6, §7, §12.
+
+**Kabul kriterleri:**
+- ✅ Yönlendirme tablo testi (`tests/unit/test_by_kind.py`: sıra, tür ayrımı, görev türüne düşme, kademe aşmama, kota önceliği, bilinmeyen tür, `prefer_rank`, her aracın türü).
+- ✅ Varsayılanlar README'de (önerilen `by_kind` örneği; varsayılan boş = davranış değişmez).
+- ✅ Süreçler arası yuva testleri (`tests/unit/test_local_slots.py`), donanım önerisi (`tests/unit/test_hardware.py`).
+- ⏳ 13g'de işçi seçimi satırları (yerel küçük / yerel büyük / OpenRouter ücretsiz) — 13g'nin işi.
+- ✅ Elle: bu makinede RAM 32 GB + GPU 12 GB → öneri 14b.
+- ✅ ruff, pyright, pytest temiz.
+
+**Ertelenen / bilinen:**
+- Yerel istek başına iki kısa SQLite bağlantısı: yerel sağlayıcıyı yoğun kullanan entegrasyon testlerinde ~%13 (59 → 67 sn, A/B); gerçek bir Ollama isteğinin yanında önemsiz. Tam test koşusu bu oturumda 263 → 430 sn uzadı; A/B'ye göre çoğu ortam (Defender taraması, ilk derleme).
+- GPU belleği yalnız NVIDIA (`nvidia-smi`); AMD/Intel'de RAM'in yarısı sayılır. Apple silicon'da RAM paylaşımlı, doğru.
+
+Testler: **1717 geçti** (1682 + 35). ruff, ruff format, pyright temiz.
 
 ### Kod denetimi – Faz 13k (PR #34), 2026-11-18
 `/code-review` 9 bulgu; hepsi düzeltildi (D-095). Önce 10 kırmızı test.

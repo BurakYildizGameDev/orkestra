@@ -1016,3 +1016,25 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Öğrenilen sınır:** sıfırlar SQL'de `LIMIT`'ten önce elenir; 30 gün sınırı `datetime` ile karşılaştırılır.
 - **i18n:** `Claude`, `5h`/`7d` `t()` ile (`statusline.claude`, `limits.window.*`; tr `5sa`/`7g`).
 - **Testler:** 1672 → 1682 (+10).
+
+## D-096 – Faz 13l: işe göre model ve bilgisayar yükü (2026-11-18, Faz 13l)
+**Karar:**
+- **`routing.by_kind.<iş>.prefer`** (desen listesi: sağlayıcı, `sağlayıcı/model`, glob). İş türleri sabit: `summary` (exec), `read` (read, find --ask), `map`, `review`, `plan`, görev türleri `ask`/`edit`; bilinmeyen tür config hatası. Router sırası: kademe → kotası azalan sona (D-094) → **tercih sırası** → skor → priority → config sırası. Kademe, bütçe, gizlilik kuralları önce; tercih kademe aşmaz. Varsayılan boş (davranış değişmez); önerilen ayarlar README'de. `--dry-run --json`'da `prefer_rank`.
+- **Plandan sapma:** plan `by_kind`'da "varsayılan kademe/model" diyordu. Kademe zaten araç başına ayarlı (`exec.tier`, `read.tier`, `map.tier`, `review.tier`); ikinci bir kademe ayarı çelişki yaratırdı. `by_kind` yalnız model tercihini taşır.
+- `query_chief_model(work=...)` zorunlu: her şef aracı kendi türünü verir (unutulursa pyright yakalar).
+- **Tek ağır yerel model:** plan "aynı anda tek ağır yerel model (`concurrency`)" diyordu; süreç içinde zaten öyleydi, süreçler arasında değildi (batch + şefin `exec`'i + kuyruk iki model yükleyebiliyordu). Yeni ayar yerine **var olan `concurrency` yerel sağlayıcılarda makine genelinde** uygulanır: migration 6 `local_slots`, `state/slots.py` (`BEGIN IMMEDIATE`, 0,5 sn yoklama; ölü süreç ya da 6 saat → geri alınır; state.db yoksa yalnız süreç içi sınır). `runner.Slot` iki yeri birlikte tutar. `process_alive`/`current_owner` `state/process.py`'ye taşındı (kuyruk kilidi de kullanıyor; `queue.store` → `tasks.batch` → `runner` döngüsünü önlemek için).
+- **`doctor` donanım önerisi** (`hardware.py`, yalnız yerel sağlayıcı varsa): RAM (psutil) ve en büyük NVIDIA GPU belleği (`nvidia-smi`, kabuksuz, 5 sn); GPU yoksa RAM'in yarısı. Kullanılabilir GB < 6 → 3b, < 10 → 7b, < 20 → 14b, < 40 → 32b, yoksa 70b; hafif işler için 1.5b-3b. Model adındaki boyut (`:14b`) önerilenden büyükse uyarı. Bu makinede 32 GB RAM + 12 GB GPU → 14b. Testlerde `nvidia-smi` hiç çalışmaz (conftest).
+- **Ağır işler gece kuyruğuna:** yeni kod yok; README `queue add`'i gösteriyor.
+- **Testler:** 1682 → 1717 (+35).
+
+## D-097 – Faz 13l kod denetimi düzeltmeleri (2026-11-18, Faz 13l)
+`/code-review` (PR #35): 10 bulgu, hepsi düzeltildi; önce kırmızı testler.
+- **Şef araçları beklemez:** `query_chief_model` yerel yuvayı en çok `LOCAL_WAIT_S` (2 sn) bekler, sonra sıradaki adaya geçer (`exec` özeti başka terminaldeki 30 dakikalık işin arkasında kalmaz). `MachineSlots.acquire(wait_s=)` → `TimeoutError`; `runner.Slot.acquire(wait_s=)` süreç içi yeri geri verir. Görevler (batch, kuyruk) eskisi gibi bekler.
+- **Kendini kilitleme yok:** bırakma meşgul veritabanında 3 kez denenir; yine olmazsa satır sürecin `_HELD` kümesinde olmadığı için aynı sürecin sonraki isteği onu geri alır.
+- **Kilitli veritabanı = dolu yuva:** "database is locked/busy" sınırı atlatmaz, beklenir; yalnız açılamayan veritabanı (başka hata, `OSError`) süreç içi sınırla sürdürür.
+- **Anahtar sunucu:** yuva sağlayıcı adına değil `base_url`'in host:port'una bağlı (`localhost` = `127.0.0.1`); aynı Ollama'ya iki ad (ya da iki projenin farklı adları) aynı yuvaları paylaşır. Adresi olmayan yerel sağlayıcı adıyla.
+- **Yoklama ucuz:** migration yalnız ilk bağlantıda (`db.connect(migrate_schema=False)`), SQLite işi `asyncio.to_thread`'de (olay döngüsü durmaz).
+- **Donanım:** kullanılabilir bellek = en büyüğü (GPU belleği, RAM'in yarısı); küçük GPU bol RAM'i gizlemez (4 GB GPU + 64 GB RAM → 32b). Model boyutu önce etiketten, yoksa addan (`hf.co/...-32B-...:Q4_K_M` → 32); `8x22b` → 176.
+- **`by_kind`:** önce birebir eşleşme (`[` içeren model adı), sonra glob; hiçbir sağlayıcı/modelle eşleşmeyen desen için `doctor` uyarısı (`router.unmatched_preferences`).
+- `queue/service.py` süreç yardımcılarını `state.process`'ten alır; iş türü testi kaynak metne değil AST'ye bakar.
+- **Testler:** 1717 → 1727 (+10).

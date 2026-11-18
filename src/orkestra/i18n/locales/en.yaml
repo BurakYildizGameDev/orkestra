@@ -812,3 +812,7 @@ cli.statusline.config.help: "Print the settings.json part that wires up the stat
 statusline.claude: "Claude"
 limits.window.five_hour: "5h"
 limits.window.seven_day: "7d"
+doctor.hardware.suggest: "this computer: RAM {ram} GB{gpu}; summaries and search on a {light} model, code models up to about {largest} (a suggestion; routing.by_kind picks per kind of work)"
+doctor.hardware.gpu: ", GPU {vram} GB"
+doctor.hardware.too_big: "{model} (~{size}b) may be too heavy for this computer (suggested up to {largest}); it may be slow or slow the computer down"
+doctor.by_kind.unmatched: "routing.by_kind.{kind}: '{pattern}' names no configured provider or model, so it is ignored"

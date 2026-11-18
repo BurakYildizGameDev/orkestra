@@ -42,6 +42,7 @@ of the whole output. When a provider is down, out of budget or offline, the next
 | One question to a worker model, with context files and an optional JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Routing with profiles, privacy and failover; see why each provider was chosen or skipped | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Adaptive routing: inside a tier, the model that did best on tasks with the same tag goes first (after `min_samples` runs); `--dry-run` shows the score | `routing.adaptive: true` |
+| Model by kind of work: summaries and search on a small or free model, code on a big one, inside each tier (`routing.by_kind`); one heavy local model at a time on the computer, across terminals; `doctor` suggests model sizes for your RAM/GPU | `routing.by_kind` |
 | When a provider's quota runs out (Codex, agy, OpenRouter, OpenAI, Ollama cloud): paused until it resets, the work goes on with the next one | `quota_pause_s`, see [When an AI runs out](#when-an-ai-runs-out) |
 | Task files (YAML/JSON): verify the answer, retry with feedback, move up a tier | `orkestra run task.yaml [--dry-run] [--json]` |
 | Edit tasks: a worker changes code in an isolated worktree, your tests decide | `orkestra run edit.yaml`, then `show --diff`, `apply` |
@@ -715,6 +716,37 @@ Two ways to take it, after updating the handoff file and committing: `/clear` in
 Code and read `orkestra handoff show --brief`, or close the session and run
 `orkestra handoff to claude` (a handoff to the same chief). The Claude skill suggests it at
 the end of a phase or subtask, never in the middle of one.
+
+## The right model for each kind of work
+
+Light work (digesting `exec` output, `read`, `find --ask`, file summaries for `map`) does not
+need the model that writes your code, and on your own computer a big model for a one-line
+summary only slows everything down. `routing.by_kind` says which models each kind of work
+tries first:
+
+```yaml
+routing:
+  by_kind:
+    summary: {prefer: ["ollama/qwen2.5:1.5b", "openrouter/*:free"]}  # orkestra exec
+    read:    {prefer: ["ollama/qwen2.5:3b"]}                         # read, find --ask
+    map:     {prefer: ["ollama/qwen2.5:1.5b"]}
+    edit:    {prefer: ["ollama/qwen2.5-coder:14b", "codex"]}
+```
+
+- Kinds: `summary` (`exec`), `read` (`read`, `find --ask`), `map`, `review`, `plan`, and the
+  task kinds `ask` and `edit`. A pattern is a provider (`codex`), a `provider/model`, or a
+  glob of them (`openrouter/*:free`); the first pattern that matches gives the place.
+- It orders **inside each tier** only: the tier rule, budgets, privacy and a provider running
+  low on quota come first; models it does not name follow in the usual order. Without
+  `by_kind` nothing changes. `--dry-run --json` shows `prefer_rank`.
+- **One heavy local model at a time.** A local provider's `concurrency` (default 1) now holds
+  across processes: a batch in one terminal, `orkestra exec` from the chief and the night
+  queue wait for each other instead of loading a second model next to the first. A slot
+  left by a crashed process is taken back. Heavy work can still go to the night queue
+  (`orkestra queue add`).
+- `orkestra doctor` suggests sizes for this computer when a local provider is configured
+  ("RAM 32 GB, GPU 12 GB: summaries on a 1.5b-3b model, code up to about 14b") and warns about
+  a configured local model that looks bigger. Only a suggestion.
 
 ## Worktrees: isolated changes
 

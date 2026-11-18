@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from orkestra import hardware
 from orkestra.config.loader import load_config
 from orkestra.config.schema import (
     CliAgentProvider,
@@ -36,6 +37,7 @@ from orkestra.providers.base import CompletionRequest
 from orkestra.providers.ollama import OllamaChat, has_model
 from orkestra.providers.openai_compat import OpenAICompatChat
 from orkestra.providers.registry import request_timeout
+from orkestra.routing.router import unmatched_preferences
 from orkestra.state import consent, db, forecast, health
 
 CheckStatus = Literal["ok", "warn", "fail", "info"]
@@ -425,6 +427,7 @@ async def run_doctor(
     agy_mcp_config: Path | None = None,
     git_config: GitConfig | None = None,
     platform: str = sys.platform,
+    machine: hardware.Machine | None = None,
 ) -> DoctorReport:
     env = os.environ if environ is None else environ
     checks: list[Check] = []
@@ -444,6 +447,12 @@ async def run_doctor(
         )
         if not loaded.config.providers:
             checks.append(Check("config", "warn", t("select.no_providers")))
+        # Faz 13l (D-097): routing ignores a by_kind pattern that names nothing; say so here.
+        checks.extend(
+            Check("config", "warn", t("doctor.by_kind.unmatched", kind=kind, pattern=pattern),
+                  {"by_kind": kind, "pattern": pattern})
+            for kind, pattern in unmatched_preferences(loaded.config)
+        )  # fmt: skip
         # Providers are independent: check them at the same time, report in config order.
         defaults = loaded.config.defaults
         per_provider = await asyncio.gather(
@@ -458,6 +467,9 @@ async def run_doctor(
             checks.extend(provider_checks)
         checks.extend(_state_checks(loaded.config.providers, loaded.config.forecast))
         checks.extend(await _price_checks(loaded.config, env))
+        if any(c.local and c.enabled for c in loaded.config.providers.values()):
+            # Faz 13l: which model sizes this computer runs comfortably (a suggestion only).
+            checks.extend(hardware.checks(loaded.config, machine or hardware.detect(which=which)))
     checks.append(_check_tool("git", which, probe, required=True))
     if platform == "win32" and which("git") is not None:
         checks.extend(_longpaths_check(git_config or read_git_config))

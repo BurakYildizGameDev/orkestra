@@ -42,6 +42,7 @@ verir. Bir sağlayıcı çöktüğünde, bütçesi bittiğinde veya internet olm
 | İşçi modele tek soru; bağlam dosyaları ve isteğe bağlı JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
 | Profil, gizlilik ve yedeğe geçişli yönlendirme; her sağlayıcının neden seçildiğini/elendiğini görme | `ask [--profile p] [--tier n] [--local-only] [--dry-run]` |
 | Öğrenen yönlendirme: aynı kademede, aynı etiketli görevlerde en başarılı model öne geçer (`min_samples` koşudan sonra); `--dry-run` skoru gösterir | `routing.adaptive: true` |
+| İşe göre model: özet ve arama küçük ya da ücretsiz modelde, kod büyük modelde, her kademe içinde (`routing.by_kind`); bilgisayarda aynı anda tek ağır yerel model, terminaller arasında da; `doctor` RAM/GPU'na göre model boyutu önerir | `routing.by_kind` |
 | Bir sağlayıcının kotası bitince (Codex, agy, OpenRouter, OpenAI, Ollama bulut): yenilenene kadar duraklatılır, iş sıradakiyle sürer | `quota_pause_s`, bkz. [Bir AI'nın kotası bitince](#bir-ainın-kotası-bitince) |
 | Görev dosyaları (YAML/JSON): cevabı doğrula, geri bildirimle tekrar dene, üst kademeye geç | `orkestra run gorev.yaml [--dry-run] [--json]` |
 | Düzenleme görevleri: işçi kodu yalıtılmış worktree'de değiştirir, karar senin testlerinin | `orkestra run duzenle.yaml`, sonra `show --diff`, `apply` |
@@ -711,6 +712,36 @@ Yeni oturum ilk isteğin bağlamından (sistem istemi, araçlar, CLAUDE.md) ve d
 ettikten sonra iki yol var: Claude Code'da `/clear` ve `orkestra handoff show --brief`'i
 okumak, ya da oturumu kapatıp `orkestra handoff to claude` (aynı şefe devir). Claude skill'i
 bunu bir fazın ya da alt görevin sonunda önerir, ortasında asla.
+
+## İşe göre model
+
+Hafif işler (`exec` çıktısının özeti, `read`, `find --ask`, `map` için dosya özetleri) kodunu
+yazan modele gerek duymaz; kendi bilgisayarında tek satırlık özet için büyük model her şeyi
+yavaşlatır. `routing.by_kind` her iş türünün önce hangi modelleri deneyeceğini söyler:
+
+```yaml
+routing:
+  by_kind:
+    summary: {prefer: ["ollama/qwen2.5:1.5b", "openrouter/*:free"]}  # orkestra exec
+    read:    {prefer: ["ollama/qwen2.5:3b"]}                         # read, find --ask
+    map:     {prefer: ["ollama/qwen2.5:1.5b"]}
+    edit:    {prefer: ["ollama/qwen2.5-coder:14b", "codex"]}
+```
+
+- Türler: `summary` (`exec`), `read` (`read`, `find --ask`), `map`, `review`, `plan` ve görev
+  türleri `ask` ile `edit`. Desen bir sağlayıcı (`codex`), `sağlayıcı/model` ya da bunların
+  glob'u (`openrouter/*:free`); eşleşen ilk desen sırayı verir.
+- Yalnız **her kademenin içinde** sıralar: kademe kuralı, bütçe, gizlilik ve kotası azalan
+  sağlayıcı önce gelir; adı geçmeyen modeller her zamanki sırayla arkadan. `by_kind` yoksa
+  hiçbir şey değişmez. `--dry-run --json` `prefer_rank` gösterir.
+- **Aynı anda tek ağır yerel model.** Yerel sağlayıcının `concurrency`'si (varsayılan 1) artık
+  süreçler arasında da geçerli: bir terminaldeki batch, şefin `orkestra exec`'i ve gece
+  kuyruğu ikinci bir modeli birincinin yanına yüklemek yerine birbirini bekler. Çöken bir
+  sürecin bıraktığı yer geri alınır. Ağır işler yine gece kuyruğuna gidebilir
+  (`orkestra queue add`).
+- `orkestra doctor`, yerel sağlayıcı tanımlıysa bu bilgisayar için boyut önerir ("RAM 32 GB,
+  GPU 12 GB: özet için 1.5b-3b, kod için yaklaşık 14b'ye kadar") ve daha büyük görünen
+  tanımlı yerel modeli uyarır. Yalnız öneri.
 
 ## Worktree'ler: yalıtılmış değişiklikler
 

@@ -812,3 +812,7 @@ cli.statusline.config.help: "Den settings.json-Teil ausgeben, der Statuszeile un
 statusline.claude: "Claude"
 limits.window.five_hour: "5h"
 limits.window.seven_day: "7T"
+doctor.hardware.suggest: "dieser Computer: RAM {ram} GB{gpu}; Zusammenfassungen und Suche mit einem {light}-Modell, Code-Modelle bis etwa {largest} (nur ein Vorschlag; routing.by_kind wählt je Art der Arbeit)"
+doctor.hardware.gpu: ", GPU {vram} GB"
+doctor.hardware.too_big: "{model} (~{size}b) ist für diesen Computer womöglich zu schwer (empfohlen bis {largest}); es kann langsam sein oder den Computer verlangsamen"
+doctor.by_kind.unmatched: "routing.by_kind.{kind}: '{pattern}' passt zu keinem konfigurierten Anbieter oder Modell und wird ignoriert"
