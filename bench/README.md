@@ -12,6 +12,7 @@ including the bad results.
 | B – Claude + Orkestra skill | Claude Code as chief, Orkestra workers | the same, with the Orkestra skill in the workspace (`.claude/skills/orkestra/SKILL.md`), permission to run `orkestra`, and a short hint to delegate when it fits, put before the task text |
 | C – Orkestra only (cheap) | Orkestra, no chief | `orkestra run <task> --profile cheap --json`; a passing run is applied with `orkestra apply` |
 | D – Claude + Orkestra, delegation asked | Claude Code as chief, Orkestra workers | like B, but the hint asks Claude to hand the work to an Orkestra worker and do it itself only when Orkestra cannot; not part of `--mode all`: choose it with `--mode d` or a list such as `--mode a,d` |
+| E – agy chief + Orkestra | Antigravity (`agy`) as chief, Orkestra workers | `agy --print` with the hint, Orkestra's chief guide (`prompts/chief_guide.md`, what `handoff to agy` gives) and the task in a prompt file; no `--sandbox` (in print mode it refuses every shell command, D-048); not part of `--mode all`. agy reports its own tokens (input, output, thinking), shown in their own line: they are not comparable 1:1 with Claude's. Uses agy's quota, none of Claude's; agy's quota message stops the run like Claude's limit |
 
 A, B and D use `--setting-sources project`, so personal settings, hooks and memory do not
 take part, and the same tool permissions: read, edit, write, search, `python`, `pytest`, `git`

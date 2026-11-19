@@ -1174,8 +1174,18 @@ def build_app() -> typer.Typer:
     def handoff_show(
         ctx: typer.Context,
         brief: Annotated[bool, typer.Option("--brief", help=t("cli.handoff.option.brief"))] = False,
+        guide: Annotated[bool, typer.Option("--guide", help=t("cli.handoff.option.guide"))] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
+        if guide:
+            if brief:
+                raise UsageError(t("handoff.error.guide_and_brief"))
+            lines = handoff_brief.guide_lines()  # needs no handoff file (Faz 13n)
+            if as_json:
+                _echo_json({"guide": "\n".join(lines), "lines": len(lines)})
+            else:
+                typer.echo("\n".join(lines))
+            return
         config, path = _handoff_target(ctx)
         if not path.exists():
             raise UsageError(t("handoff.error.missing", path=path))

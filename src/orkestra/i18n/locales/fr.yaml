@@ -893,3 +893,5 @@ providers.import.file_key: "OpenCode lit cette clé depuis un fichier ; Orkestra
 providers.import.key_file: "lue depuis un fichier par OpenCode"
 cli.providers.import.as: "Enregistrer le fournisseur importé sous ce nom."
 wizard.error.key_env: "Ce n'est pas un nom de variable (lettres, chiffres et _). Tape le NOM de la variable, jamais la clé ; '-' pour aucune clé."
+cli.handoff.option.guide: "Affiche seulement le guide avec lequel un chef autre que Claude apprend Orkestra (p. ex. pour agy ou codex)."
+handoff.error.guide_and_brief: "Utilise soit --guide soit --brief ; le résumé se termine déjà par le guide."

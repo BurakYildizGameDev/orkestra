@@ -44,11 +44,30 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ✅ | 2026-11-18 | hız × bilinen/öğrenilen sınır → "~40 dk içinde biter" (`status`, `doctor`, bildirim); router azalanı kademesinde sona alır; `orkestra statusline` + kanca: Claude'un penceresi %85'i geçince şef devir dosyasını bir kez günceller (D-094); kod denetimi (D-095) |
 | 13l – İşe göre model ve bilgisayar yükü (ek) | ✅ | 2026-11-18 | `routing.by_kind` (iş türüne göre model tercihi, kademe içinde); yerel sağlayıcının `concurrency`'si süreçler arasında (tek ağır yerel model); `doctor` RAM/GPU'ya göre boyut önerisi (D-096); kod denetimi (D-097) |
 | 13m – Toplu devretme ve çapraz denetim (ek) | ✅ | 2026-11-18 | denetçi yazardan başka sağlayıcı (`review.by`, `review.independent`); `apply --max-risk low`; `show --report` (patrona rapor); skill: küçük işi devretme, toplu devret, projenin testleri doğrulayıcı (D-098); kod denetimi (D-099) |
-| 13n – Claude dışı şef (ek) | ⏳ | | `chief_guide.md`'yi skill ile eşitleme + kopma testi, `handoff show --guide`, benchmark mod E (agy şef; token yerine geçme/süre) (ayrıntı: yerel YAPILIS_PLANI.md) |
+| 13n – Claude dışı şef (ek) | ✅ | 2026-11-19 | kılavuz skill'in özü (30 satır, kopma testi), `handoff show --guide`, benchmark mod E (agy şef; agy tokenı ayrı satırda); ilk koşu 2/2 (D-102) |
 | 13o – Sağlayıcı ekleme komutu (ek) | ✅ | 2026-11-19 | herhangi bir OpenAI uyumlu servis: `providers add` / `import opencode` / `remove`, `--check` (= doctor), sihirbazda "başka bir OpenAI uyumlu servis"; anahtar asla kopyalanmaz; EVREN ile canlı test geçti (D-100) |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13n – Claude dışı şef (2026-11-19)
+**Yapılanlar (D-102):**
+- `prompts/chief_guide.md` yeniden yazıldı: bağlam süzgeci, toplu devretme, denetim akışı ve `--max-risk low`, devir dosyası, onay kuralları; skill'in 22 üst komutunun hepsi.
+- `brief.guide_lines()`; `orkestra handoff show --guide [--json]` (devir dosyası gerekmez).
+- `bench/run_bench.py` mod E (agy şef + Orkestra): `AGENT_MODES`, `Record.agent`, `agent_tokens_per_task`, agy kota mesajı durdurur; `bench/README.md`.
+- i18n 5 dilde, README (en + tr), Mimari §17 notu.
+
+**Kabul kriterleri:**
+- ✅ Kılavuz–skill eşleşmesi, kılavuzdaki komut/bayraklar CLI'de, kural bayrakları, satır sınırı (`test_skill.py`).
+- ✅ Varsayılan `brief_max_lines` ile dolu bir projede bile kılavuz kesilmiyor (`test_handoff_brief.py`).
+- ✅ `handoff show --guide` metin ve `--json`; `--brief` ile kod 2 (`test_handoff_cli.py`).
+- ✅ Mod E: sahte agy ile kuru koşu, argümanlarda istem/satır sonu/tırnak yok, `--sandbox` yok, `claude: None`, agy tokenı kaydı, kota mesajı durdurur, eski sonuç dosyaları yükleniyor (`test_bench.py`).
+- ✅ Gerçek agy: görev 01 ve 02, 2/2 geçti, görev başına ~162 bin agy tokenı, ~6 dk (`bench/results/trial/2026-11-19-1622`). `orkestra --version` sandbox'sız print modunda çalıştı.
+- ⚠️ Elle `handoff to agy` ile kılavuzun kullanımı (agy'nin `read` / `exec` çağırması) bu fazda denenmedi: benchmark görevleri küçük olduğu için agy Orkestra'yı çağırmadı. Büyük işte denenecek (13g ile birlikte).
+- ✅ ruff, ruff format, pyright temiz; pytest **1822 geçti** (1810 + 12).
+
+**Bilinen sorunlar:**
+- Mod E'de istem klasörü agy'nin ikinci çalışma alanı oluyor; agy oraya düzenlediği dosyanın bir kopyasını yazabiliyor (değerlendirme ayrı klasörde, etkilemez).
 
 ### Kod denetimi – Faz 13o (PR #37), 2026-11-19
 `/code-review` 10 bulgu; hepsi düzeltildi (D-101). Önce kırmızı testler.

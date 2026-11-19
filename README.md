@@ -530,7 +530,10 @@ file is older than `handoff.stale_after_commits` commits (`--strict` exits 1, `-
 never fails and prints only warnings). `orkestra handoff show --brief` prints the short brief for the next chief: the
 file's key sections (including `In progress`, the next step) plus the real branch, `git status`, the last commits, unapplied runs and
 the remaining budget, never more than `handoff.brief_max_lines` lines (when it has to cut,
-the staleness warning and the Orkestra guide stay and project lines go first). Text written through
+the staleness warning and the Orkestra guide stay and project lines go first). A chief other than
+Claude learns Orkestra from that guide (the context filter, when to delegate, review and
+`apply --max-risk low`, the handoff file); `orkestra handoff show --guide` prints it alone, to give
+an agy or codex session you opened yourself. Text written through
 `update` is redacted, and `Done`/`Decisions` that outgrow `handoff.max_lines` move their
 oldest items to `.orkestra/HANDOFF.archive.md` (appended, never deleted).
 

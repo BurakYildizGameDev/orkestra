@@ -454,3 +454,22 @@ def test_update_that_would_add_a_heading_exits_2(
                          "ok\n## Done\nfake", "--chief", "claude"], capsys)  # fmt: skip
     assert code == 2
     assert t("handoff.error.breaks_structure", section="status") in err
+
+
+def test_show_guide_prints_only_the_chief_guide_even_without_a_handoff_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    """Faz 13n: a user who opens agy or codex directly can hand it the guide."""
+    from orkestra.handoff import brief
+
+    _setup(tmp_path, monkeypatch)
+    code, out, _ = _run(["handoff", "show", "--guide"], capsys)
+    assert code == 0
+    assert out.rstrip("\n").splitlines() == brief.guide_lines()
+    code, out, _ = _run(["handoff", "show", "--guide", "--json"], capsys)
+    assert code == 0
+    assert json.loads(out) == {"guide": "\n".join(brief.guide_lines()),
+                               "lines": len(brief.guide_lines())}  # fmt: skip
+    code, _, err = _run(["handoff", "show", "--guide", "--brief"], capsys)
+    assert code == 2
+    assert t("handoff.error.guide_and_brief") in err

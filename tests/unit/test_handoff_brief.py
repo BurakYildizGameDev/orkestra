@@ -328,9 +328,7 @@ def test_a_full_brief_keeps_the_stale_warning_and_the_guide(
     assert lines[0] == t("handoff.brief.goal")
     assert t("handoff.brief.stale", count=9) in lines
     assert t("handoff.brief.guide") in lines
-    guide_last = (
-        "- Never approve a provider or exceed a cost threshold without the user's permission."
-    )
+    guide_last = brief.guide_lines()[-1]
     assert lines[-2] == guide_last  # the whole guide fits, the cut is in the project content
     assert lines[-1].startswith("... (")
 
@@ -355,3 +353,14 @@ def test_the_cut_count_covers_every_line_that_is_not_shown(
     marker = next(line for line in cut if line.startswith("... ("))
     shown = len(cut) - 1
     assert marker == t("handoff.brief.more", count=len(full) - shown)
+
+
+def test_the_whole_chief_guide_fits_the_default_brief_beside_a_full_project(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    """Faz 13n: with the default limit the guide is never cut, however long the project part."""
+    log = "".join(f"commit number {n}\n" for n in range(8, 0, -1))
+    path = _document(tmp_path, done=40)
+    text = _build(path, _config(), conn, limit=HandoffCfg().brief_max_lines, git=_git_ok(log=log))
+    for line in brief.guide_lines():
+        assert line in text

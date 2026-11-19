@@ -150,7 +150,7 @@ def build(
     lines = _fit(
         prepare(lines),
         prepare(warning_lines(state, BRIEF_WARNING_KEYS)),
-        prepare(_guide()),
+        prepare(guide_lines()),
         config.handoff.brief_max_lines,
     )
     return Brief("\n".join(lines), lines, state)
@@ -213,7 +213,9 @@ def _budget_lines(
     return lines
 
 
-def _guide() -> list[str]:
+def guide_lines() -> list[str]:
+    """How a chief other than Claude learns Orkestra (``prompts/chief_guide.md``, Faz 13n):
+    its title and every non-empty line, as the brief shows them."""
     text = (
         resources.files("orkestra")
         .joinpath("prompts")
