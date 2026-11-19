@@ -234,6 +234,53 @@ def test_a_wrong_answer_is_asked_again_with_the_reason(english: None) -> None:
     assert t("wizard.error.number", value="abc") in script.shown
 
 
+def test_any_openai_compatible_service_can_be_added(english: None, tmp_path: Path) -> None:
+    script = Script(
+        "en",
+        _number_of(wizard.CUSTOM),
+        "openrouter",                           # offered by the wizard itself: asked again
+        "Evren",                                # not a valid provider name: asked again
+        "evren",
+        "ftp://x",                              # not http(s): asked again
+        "https://llm.example.test/v1",
+        "",                                     # key variable: the suggested EVREN_API_KEY
+        "deepseek-v4.1-flash",
+        "",                                     # tier default 2
+        "",                                     # budget default
+        "",                                     # project
+    )  # fmt: skip
+    answers = wizard.run_plain(script, _found(), set_language=i18n.set_language)
+    assert not script.answers
+    pick = answers.providers[0]
+    assert pick.name == "evren"
+    assert pick.settings["base_url"] == "https://llm.example.test/v1"
+    assert pick.settings["api_key_env"] == "EVREN_API_KEY"
+    assert pick.settings["models"] == [{"id": "deepseek-v4.1-flash", "tier": 2}]
+    assert t("wizard.error.custom_name_taken", name="openrouter") in script.shown
+    assert t("wizard.error.custom_name", value="Evren") in script.shown
+    assert t("wizard.error.base_url", value="ftp://x") in script.shown
+    assert t("wizard.providers.custom") in "\n".join(script.shown)
+    result = writer.save(tmp_path / "config.yaml",
+                         wizard.apply(writer.template_document(), answers, fresh=True))  # fmt: skip
+    assert result.config.providers["evren"].type == "openai_compat"
+
+
+def test_a_custom_service_can_go_without_a_key_but_never_with_a_pasted_one(
+    english: None,
+) -> None:
+    script = Script(
+        "en", _number_of(wizard.CUSTOM), "lab", "http://localhost:1234/v1",
+        "sk-live-PASTED",                       # not a variable name: asked again
+        "-",                                    # no key
+        "local-model", "", "", "",
+    )  # fmt: skip
+    answers = wizard.run_plain(script, _found(), set_language=i18n.set_language)
+    assert not script.answers
+    assert "api_key_env" not in answers.providers[0].settings
+    assert t("wizard.error.key_env") in script.shown
+    assert not any("sk-live-PASTED" in line for line in script.shown)
+
+
 def test_agy_stays_off_unless_the_user_turns_it_on(english: None) -> None:
     script = Script("en", _number_of("agy"), "n", "", "")  # enable?, chief, project
     answers = wizard.run_plain(script, _found(agents=("agy",)), set_language=i18n.set_language)

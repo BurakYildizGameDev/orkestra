@@ -1057,3 +1057,29 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Rapor:** `next` yalnız `--max-risk low` gerçekten uygulayacaksa onu önerir (aynı `risk_problem`); uygulanmış ya da atılmış koşuda `next: null` ve "sıradaki: yok"; `ok`/`failed` çevrili, JSON'da `verified` `{type, ok}`.
 - **Tek okuyucu:** zarfı `service.envelope_data`, bayrakları `review.load_flags` okur (`_status`, `risk_problem`, `review._author`, rapor).
 - **Testler:** 1742 → 1755 (+13).
+
+## D-100 – Faz 13o: herhangi bir OpenAI uyumlu sağlayıcıyı komutla ekleme (2026-11-19, Faz 13o)
+**Bağlam:** Kullanıcı EVREN API'yi (OpenAI uyumlu; DeepSeek V4.1 Flash, GLM-5.3) eklemek istedi ve bunun yalnız o servis için değil, her OpenAI uyumlu servis için genel bir yol olmasını istedi. Tek yol `config.yaml`'ı elle yazmaktı. Kullanıcı OpenCode kullanıyor; sağlayıcıları orada tanımlı. Plan: yerel YAPILIS_PLANI.md Faz 13o.
+**Karar:**
+- Servis koda gömülmez: `providers add` adres, model kimlikleri ve anahtar **değişkeninin adını** yazar (`type: openai_compat`). Varsayılan değişken `<AD>_API_KEY`; anahtarsız sunucu için `--no-key`. Varsayılan kademe 2 (sihirbazın API kademesi).
+- `providers import opencode`: `$OPENCODE_CONFIG` › `$XDG_CONFIG_HOME/opencode` › `~/.config/opencode` (`opencode.json`, yoksa `.jsonc`). Yalnız `@ai-sdk/openai-compatible` + `baseURL` + model listesi olan girdiler; diğerleri "alınamaz" diye listelenir. `apiKey: "{env:X}"` → `X`; düz anahtar okunur okunmaz atılır, kullanıcıya hangi değişkene koyacağı söylenir. Dosyada tek uygun girdi varsa doğrudan alınır, birden fazlaysa listelenir (`--name` ile seçilir, kod 0).
+- `--check` yeni kod değil, `doctor.check_one`: adres/anahtar/model kimliği. Başarısızsa girdi kalır, kod 3 (betikler anlasın); eksik model yalnız uyarı.
+- `providers remove`: girdiyi dosyadan siler; sağlayıcı başka dosyada (genel/proje) tanımlı değilse onayı da geri alınır. `usage` satırları kalır (istatistik ve öğrenen yönlendirme geçmişi).
+- Sihirbaz: sağlayıcı listesinin sonunda "başka bir OpenAI uyumlu servis" (`CUSTOM = "+openai_compat"`, geçerli bir sağlayıcı adı olamaz); ad (sihirbazın kendi adlarıyla ya da var olanla çakışamaz), adres, değişken, model, kademe, bütçe sorulur.
+**Plandan sapmalar:**
+- `add` eksik alanı sormaz; `--base-url` ve `--model` zorunlu. Etkileşimli yol sihirbazdır (`init --plain`, arayüzlü sihirbaz aynı akış). Gerekçe: tek soru akışı, iki yerde aynı doğrulama yok.
+- Arayüzün Sağlayıcılar sekmesine "ekle" düğmesi eklenmedi; arayüzlü sihirbaz bu adımı zaten içeriyor.
+- Yedek adı `config.yaml.bak-<tarih>` değil, writer'ın kuralı (`.bak`, `.bak.1` …; D-069).
+- `.jsonc` desteği yalnız tam satır `//` yorumları.
+- Kullanıcı isteğiyle düzeltme-fable'daki "Faz 13 bitene kadar yeni özellik yok" kuralına istisna.
+- **Testler:** 1755 → 1792 (+37; live testi ayrı: gerçek OpenCode config'indeki ilk uygun sağlayıcı geçici config'e alınıp kısa istek, 2026-11-19 EVREN ile geçti).
+
+## D-101 – Faz 13o kod denetimi düzeltmeleri (2026-11-19, Faz 13o)
+`/code-review` (PR #37): 10 bulgu, hepsi düzeltildi; önce kırmızı testler.
+- **Yapıştırılan anahtar yazılmaz:** `--api-key-env` ve sihirbazdaki değişken sorusu yalnız değişken adı kabul eder (`^[A-Za-z_][A-Za-z0-9_]*$`, notify ile aynı kural, D-075); aksi kod 2 ve değer hiçbir mesajda gösterilmez. Sihirbazda `-` = anahtarsız sunucu.
+- **Proje dosyasında genel config'teki ad reddedilir** (`--force` ile de): proje girdisi onunla yalnız birleşirdi (eski anahtar değişkeni, başlıklar, bütçe kalırdı).
+- **`remove` etkin config'e bakar:** etkin bütün dosyalar (genel + proje) silmeden sonraki haliyle birleştirilip doğrulanır; geçersiz kalacaksa (ör. projede yalnız `enabled: false` kalan girdi) hiçbir şey yazılmaz. Onay yalnız hiçbir dosya sağlayıcıyı tanımlamıyorsa geri alınır. Kural serviste (`RemoveOutcome`), CLI yalnız yazdırır.
+- **`import --as NAME`:** Orkestra'nın kabul etmediği ya da çakışan OpenCode adları başka adla alınır; geçersiz ad önerisiyle reddedilir (`My.Lab` → `my-lab`).
+- **OpenCode ayrıntıları:** `models.<id>.limit.context` → `context_window` (açık `--context-window` hepsini ezer); `{file:…}` anahtar "düz anahtar" sayılmaz, ayrı not; `{env:X}` `baseURL` ortamdan çözülür (adres gizli değil), yoksa alınamaz; `.jsonc` yorum satırları silinmez, boşaltılır (hata satır numarası doğru).
+- **Tek kaynak:** düz veriden ruamel düğümü `writer.to_yaml` (sihirbaz da kullanıyor), sağlayıcı adı kuralı `schema.PROVIDER_NAME`; anahtar değişkeni seçimi `from_flags` / `plan_import`'ta, içe aktarma notu `ImportPlan.key_note`'ta.
+- **Testler:** 1792 → 1810 (+18).

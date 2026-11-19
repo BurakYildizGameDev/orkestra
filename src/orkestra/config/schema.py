@@ -12,7 +12,7 @@ from orkestra.i18n import t
 
 CONFIG_VERSION = 1
 PROVIDER_TYPES = ("ollama", "openai_compat", "cli_agent")
-_PROVIDER_NAME = re.compile(r"^[a-z0-9_-]+$")
+PROVIDER_NAME = re.compile(r"^[a-z0-9_-]+$")
 _AGENT_SUFFIXES = (".cmd", ".exe", ".bat", ".ps1")
 
 Tier = Literal[1, 2, 3]
@@ -327,7 +327,7 @@ class Config(_Model):
     @classmethod
     def _provider_names(cls, value: dict[str, Any]) -> dict[str, Any]:
         for name in value:
-            if not _PROVIDER_NAME.match(name):
+            if not PROVIDER_NAME.match(name):
                 raise ValueError(t("config.validation.provider_name", name=name))
         return value
 

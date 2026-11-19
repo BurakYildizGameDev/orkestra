@@ -12,6 +12,7 @@ The setup wizard (``--plain`` now, the terminal interface in Faz 11b) writes onl
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
@@ -19,7 +20,7 @@ from typing import Any
 
 from pydantic import ValidationError
 from ruamel.yaml import YAML
-from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.error import YAMLError
 
 from orkestra.config import loader
@@ -47,6 +48,18 @@ def _yaml() -> YAML:
 def _represent_null(representer: Any, data: None) -> Any:
     """``model: null`` stays ``null``; ruamel would write an empty value."""
     return representer.represent_scalar("tag:yaml.org,2002:null", "null")
+
+
+def to_yaml(value: Any) -> Any:
+    """Plain data (dicts, lists, scalars) as ruamel nodes for a round-trip document."""
+    if isinstance(value, Mapping):
+        mapping = CommentedMap()
+        for key, item in value.items():
+            mapping[key] = to_yaml(item)
+        return mapping
+    if isinstance(value, list):
+        return CommentedSeq([to_yaml(item) for item in value])
+    return value
 
 
 def backup_path(path: Path) -> Path:
