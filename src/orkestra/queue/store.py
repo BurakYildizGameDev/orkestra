@@ -140,6 +140,18 @@ def remove(conn: sqlite3.Connection, item_id: int, *, alive: Alive | None = None
     return get(conn, item_id)
 
 
+def remove_finished(conn: sqlite3.Connection) -> list[QueueItem]:
+    """Hide every done or failed item (``queue remove --finished``); ``gc`` deletes the rows
+    later (D-104). Returns the items as they were, oldest first."""
+    marks = ", ".join("?" for _ in FINISHED)
+    with transaction(conn):
+        rows = conn.execute(
+            f"SELECT * FROM queue WHERE status IN ({marks}) ORDER BY id", FINISHED
+        ).fetchall()
+        conn.execute(f"UPDATE queue SET status = 'removed' WHERE status IN ({marks})", FINISHED)
+    return [_item(row) for row in rows]
+
+
 def counts(conn: sqlite3.Connection, *, failed_since: datetime | None = None) -> dict[str, int]:
     """Items per status; ``failed_since`` counts only failures that ended after it."""
     found: dict[str, int] = dict.fromkeys(("pending", "running", "failed", "done"), 0)

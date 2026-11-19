@@ -21,7 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # Desktop notifications (Faz 12a); without it they are skipped quietly.
-notify = ["desktop-notifier>=6.0"]
+notify = ["desktop-notifier>=6.0,<7"]
 
 [project.scripts]
 orkestra = "orkestra.entry:main"

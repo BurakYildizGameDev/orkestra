@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from pathlib import PureWindowsPath
 from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -226,6 +228,39 @@ class NotifyCfg(_Model):
     # The *name* of the environment variable, not the topic. A value that is not a variable
     # name is refused by notify (never used or shown) and by the interface (D-075).
     ntfy_topic_env: str | None = None
+    # A self-hosted ntfy server (düzeltme-fable a, D-104); ``https://`` only, plain
+    # ``http://`` only for a loopback or private-network address.
+    ntfy_url: str = "https://ntfy.sh"
+
+    @field_validator("ntfy_url")
+    @classmethod
+    def _ntfy_url(cls, value: str) -> str:
+        if not ntfy_url_ok(value):
+            raise ValueError(t("config.validation.ntfy_url"))  # never echo the value
+        return value
+
+
+def _local_host(host: str) -> bool:
+    if host == "localhost" or host.endswith((".localhost", ".local")):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private or address.is_link_local
+
+
+def ntfy_url_ok(value: str) -> bool:
+    """A base URL the topic is appended to: no credentials, query or fragment."""
+    try:
+        parts = urlsplit(value.strip())
+        host = parts.hostname or ""
+        _ = parts.port  # a broken port raises
+    except ValueError:
+        return False
+    if not host or parts.username or parts.password or parts.query or parts.fragment:
+        return False
+    return parts.scheme == "https" or (parts.scheme == "http" and _local_host(host.lower()))
 
 
 class QueueCfg(_Model):

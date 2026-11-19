@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from orkestra import hardware
+from orkestra import hardware, install
 from orkestra.config.loader import load_config
 from orkestra.config.schema import (
     CliAgentProvider,
@@ -43,6 +43,7 @@ from orkestra.state import consent, db, forecast, health
 CheckStatus = Literal["ok", "warn", "fail", "info"]
 VERSION_TIMEOUT_S = 10
 INFO_TOOLS = ("codex", "agy")
+MAIN_BRANCHES = ("main", "master")
 
 
 @dataclass(frozen=True)
@@ -400,6 +401,17 @@ def _longpaths_check(git_config: GitConfig) -> list[Check]:
     ]  # fmt: skip
 
 
+def install_check(info: install.InstallInfo | None) -> Check | None:
+    """Warn when the installed tool runs an editable checkout that is not on main (D-104).
+    The project's own environment (``uv run`` in the checkout) is development, not the tool."""
+    if info is None or info.prefix.resolve().is_relative_to(info.source.resolve()):
+        return None
+    if info.branch in MAIN_BRANCHES:
+        return None
+    message = t("doctor.install.branch", branch=info.branch or "HEAD", path=info.source)
+    return Check("install", "warn", message, {"source": str(info.source), "branch": info.branch})
+
+
 def _check_tool(tool: str, which: Which, probe: VersionProbe, *, required: bool) -> Check:
     path = which(tool)
     if path is None:
@@ -428,6 +440,7 @@ async def run_doctor(
     git_config: GitConfig | None = None,
     platform: str = sys.platform,
     machine: hardware.Machine | None = None,
+    install_info: Callable[[], install.InstallInfo | None] = install.detect,
 ) -> DoctorReport:
     env = os.environ if environ is None else environ
     checks: list[Check] = []
@@ -480,6 +493,8 @@ async def run_doctor(
             # Faz 13l: which model sizes this computer runs comfortably (a suggestion only).
             checks.extend(hardware.checks(loaded.config, machine or hardware.detect(which=which)))
     checks.append(_check_tool("git", which, probe, required=True))
+    if (installed := install_check(install_info())) is not None:
+        checks.append(installed)
     if platform == "win32" and which("git") is not None:
         checks.extend(_longpaths_check(git_config or read_git_config))
     configured_commands = (

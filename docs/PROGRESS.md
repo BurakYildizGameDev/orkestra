@@ -29,7 +29,9 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
-| düzeltme-fable – Genel bakış düzeltmeleri (ek) | ⏳ | | `gc` ile eski `runs`/`usage`/`queue` satırları, `desktop-notifier` üst sınırı, düzenlenebilir kurulum notu, `cli.py`/`runner.py` bölme, `notify.ntfy_url`, `queue remove --finished`, eski dal ve not dosyası temizliği; README güncelleme ve kısaltma (durum kutusu Faz 0–4'te kalmış), "Bilinen sınırlar" bölümü, gerçek modelle/terminalde elle kullanım turu (ayrıntı: yerel YAPILIS_PLANI.md) |
+| düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (ek) | ✅ | 2026-11-20 | `gc` eski `runs`/`usage`/`queue` satırlarını siler (en az 35 gün kalır), `queue remove --finished`, `notify.ntfy_url`, `desktop-notifier<7`, `doctor` düzenlenebilir kurulum uyarısı (D-104) |
+| düzeltme-fable b – `cli.py` / `runner.py` bölme (ek) | ⏳ | | davranış değişmez, var olan testler aynen geçer; hiçbir dosya ~800 satırı aşmaz |
+| düzeltme-fable c – README, bilinen sınırlar, elle kullanım turu, temizlik (ek) | ⏳ | | README kısalır (en + tr), durum kutusu ve sağlayıcı listesi güncel, komut denetimi testi, "Bilinen sınırlar"; gerçek modelle/terminalde elle tur; eski dallar (kullanıcı onayıyla) |
 | 13a – Benchmark aracı ve 20 görev | ✅ | 2026-11-15 | `bench/run_bench.py`, 20 görev (8/8/4) + gizli test + referans çözüm, sızıntı koruması, kuru koşu (D-076); kod denetimi (D-077) |
 | 13b – Kota korumaları (limit algılama, `--resume`, `--max-claude-runs`) | ✅ | 2026-11-15 | kod; kota harcamaz (D-078); kod denetimi (D-079) |
 | 13c – Deneme ve ölçüm (2 görev, 4 Claude oturumu) | ✅ | 2026-11-15 | 6/6 geçti; B delege etmedi; `/usage` payı kullanıcıdan bekleniyor (D-080); kod denetimi (D-081) |
@@ -49,6 +51,29 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (2026-11-20)
+Faz üçe bölündü (D-104): a kod düzeltmeleri, b büyük dosyaları bölme, c README + elle tur + temizlik.
+
+**Yapılanlar (D-104):**
+- `state/retention.py`: `gc` eski `runs` + onların `usage` satırlarını, koşusuz eski `usage` satırlarını ve bitmiş/çıkarılmış `queue` işlerini siler; satır kesimi `max(--older-than, 35 gün)`; worktree'si diskte duran koşu kalır. `gc` çıktısında ve JSON'da (`rows`) sayılar.
+- `queue remove --finished` (ID ile birlikte ya da hiçbiri yoksa kod 2).
+- `notify.ntfy_url` (varsayılan `https://ntfy.sh`; `http://` yalnız yerel/özel ağ; kullanıcı/sorgu reddedilir, hata mesajı değeri yazmaz).
+- `desktop-notifier>=6.0,<7`, `uv.lock`.
+- `orkestra/install.py` + `doctor` `install` uyarısı: araç düzenlenebilir kurulumla depoyu çalıştırıyor ve depo `main`'de değilse.
+- i18n 5 dilde; Mimari notları.
+
+**Kabul kriterleri:**
+- ✅ `gc`: eski satırlar siliniyor, 35 gün içindekiler ve `pending`/`running` işler kalıyor; `--dry-run` yalnız sayıyor; silmeden sonra `stats` ve öğrenen yönlendirme aynı sonucu veriyor; worktree'si duran koşu kalıyor (`test_retention.py`, `test_workspace_cli.py`).
+- ✅ `notify.ntfy_url`: özel adrese POST, `http://` uzak adres ve kullanıcı/sorgulu adres reddediliyor, varsayılan değişmedi (`test_notify.py`).
+- ✅ `queue remove --finished`: yalnız bitmişler çıkıyor, `running`/`pending` kalıyor; kullanım hatası kod 2 (`test_queue.py`, `test_queue_cli.py`).
+- ✅ `doctor` uyarısı: araç kurulumu + özellik dalı → uyarı; `main`/`master` ya da projenin kendi `.venv`'i → uyarı yok (`test_install_check.py`).
+- ✅ ruff, ruff format, pyright temiz; pytest **1870 geçti** (1836 + 34).
+
+**Ertelenenler:**
+- Arayüzün Ayarlar sekmesinde `ntfy_url` alanı (config dosyasından ayarlanır).
+- README'deki kurulum notu ("depoyu main'de bırak") düzeltme-fable c ile.
+
 
 ### Kod denetimi – Faz 13n (PR #38), 2026-11-19
 `/code-review` 10 bulgu; hepsi düzeltildi (D-103). Önce kırmızı testler.

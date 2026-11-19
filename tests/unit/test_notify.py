@@ -162,3 +162,52 @@ def test_a_value_that_is_not_a_variable_name_is_never_used_or_shown(value: str) 
     assert post.calls == []
     assert value not in "\n".join(notify.delivery_lines(deliveries, cfg))
     assert not notify.is_variable_name(value) and notify.is_variable_name("ORK_TOPIC_2")
+
+
+# --- notify.ntfy_url (düzeltme-fable a, D-104) ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "base", ["https://push.example.org", "https://push.example.org/", "https://h.example/sub"]
+)
+def test_a_custom_ntfy_server_gets_the_post(base: str) -> None:
+    post = Recorder()
+    cfg = NotifyCfg(desktop=False, ntfy_topic_env="ORK_TOPIC", ntfy_url=base)
+    deliveries = notify.send(cfg, "T", "m", environ={"ORK_TOPIC": "topic1"}, post=post)
+    assert _states(deliveries) == {"ntfy": "sent"}
+    assert post.calls == [(base.rstrip("/") + "/topic1", "T", "m")]
+
+
+def test_the_default_server_is_unchanged() -> None:
+    assert NotifyCfg().ntfy_url == "https://ntfy.sh"
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["http://localhost:8080", "http://127.0.0.1", "http://192.168.1.20:80", "http://[::1]:9"],
+)
+def test_plain_http_is_allowed_only_for_a_local_address(url: str) -> None:
+    assert NotifyCfg(ntfy_url=url).ntfy_url == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://push.example.org",
+        "http://8.8.8.8",
+        "ftp://push.example.org",
+        "push.example.org",
+        "https:///no-host",
+        "https://user:pw@push.example.org",
+        "https://push.example.org?x=1",
+    ],
+)
+def test_a_remote_plain_http_or_odd_url_is_refused_without_echoing_it(url: str) -> None:
+    from pydantic import ValidationError
+
+    from orkestra.config.loader import format_validation_error
+
+    with pytest.raises(ValidationError) as caught:
+        NotifyCfg(ntfy_url=url)
+    lines = format_validation_error(caught.value)
+    assert lines and all(url not in line for line in lines)

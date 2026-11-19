@@ -198,6 +198,28 @@ def test_gc(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert not orphan.path.exists() and not old.path.exists()
     assert not paths.run_dir(old_id).exists()
     assert keep.path.exists() and paths.run_dir(RUN).exists()
+
+
+def test_gc_removes_old_rows_but_never_inside_the_learning_window(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ancient_id = (datetime.now() - timedelta(days=90)).strftime("%Y%m%d-%H%M%S") + "-0002"
+    month_id = (datetime.now() - timedelta(days=20)).strftime("%Y%m%d-%H%M%S") + "-0003"
+    ancient = _fake_run(ancient_id, repo)  # its worktree goes too, so its row may go
+    _fake_run(month_id)
+    assert ancient is not None
+
+    code, out, _ = _run(["gc", "--older-than", "7", "--dry-run", "--json"], capsys)
+    assert code == 0
+    assert json.loads(out)["rows"] == {"runs": 1, "usage": 0, "queue": 0}
+    with closing(db.connect()) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 2
+
+    code, out, _ = _run(["--lang", "en", "gc", "--older-than", "7"], capsys)
+    assert code == 0 and "1 old run record" in out
+    with closing(db.connect()) as conn:
+        left = {row[0] for row in conn.execute("SELECT run_id FROM runs")}
+    assert left == {month_id}  # 20 days: inside the 30-day window learned routing reads
     with closing(db.connect()) as conn:
         assert budget.used(conn, "p", db.local_now()).requests == 0
 
