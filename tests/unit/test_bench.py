@@ -912,6 +912,217 @@ def test_help_says_b_and_d_can_use_the_second_model() -> None:
 def test_every_mode_is_described_in_one_place() -> None:
     for key, mode in rb.MODES.items():
         assert mode.label.startswith(key.upper() + " - ")
-        assert (mode.hint is not None) <= mode.skill  # a hint about the skill needs the skill
+        # A hint about Orkestra needs the skill (Claude) or the chief guide (an agent chief).
+        assert (mode.hint is not None) <= (mode.skill or mode.agent is not None)
         assert not (mode.skill and not mode.chief)
+        assert not (mode.agent and mode.chief)  # an agent chief is no Claude session
     assert rb.PLANNED_MODES == ("a", "b", "c") and rb.CHIEF_MODES == ("a", "b", "d")
+    assert rb.AGENT_MODES == ("e",)
+
+
+# --- mode E: agy is the chief (Faz 13n) -------------------------------------------------------
+
+AGY_JSON = {"conversation_id": "c-1", "status": "SUCCESS", "response": "done",
+            "duration_seconds": 31.0, "num_turns": 3,
+            "usage": {"input_tokens": 15591, "output_tokens": 864, "thinking_tokens": 770,
+                      "cache_read_tokens": 17232, "total_tokens": 16455}}  # fmt: skip
+
+
+class AgyRunner(FakeRunner):
+    """Plays ``agy`` as well: it reads the prompt file it is pointed at, then "solves"."""
+
+    def __init__(self, task: rb.Task, *, agy_out: str | None = None, agy_exit: int = 0,
+                 agy_err: str = "", solve: bool = True) -> None:  # fmt: skip
+        super().__init__(task, solve=solve)
+        self.agy_out = json.dumps(AGY_JSON) if agy_out is None else agy_out
+        self.agy_exit, self.agy_err = agy_exit, agy_err
+        self.prompts: list[str] = []
+
+    def __call__(
+        self, args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+        input_text: str | None = None,
+    ) -> rb.Completed:  # fmt: skip
+        if Path(args[0]).stem.lower() != "agy":
+            return super().__call__(args, cwd, env, timeout, input_text)
+        self.calls.append((list(args), cwd, dict(env)))
+        pointer = args[-1]
+        prompt_file = Path(pointer.split("Read the file ", 1)[1].split(" and follow", 1)[0])
+        self.prompts.append(prompt_file.read_text(encoding="utf-8"))
+        if self.solve and not self.agy_exit:
+            shutil.copytree(self.task.root / "solution", cwd, dirs_exist_ok=True)
+        return rb.Completed(self.agy_exit, self.agy_out, self.agy_err)
+
+
+def test_mode_e_runs_agy_as_chief_with_the_guide_and_records_its_tokens(tmp_path: Path) -> None:
+    from orkestra.handoff import brief
+
+    task = _task("14-bugfix-csv-line")
+    runner = AgyRunner(task)
+    record = rb.run_once(task, "e", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    args, cwd, env = runner.calls[0]
+    assert Path(args[0]).stem == "agy" and "--print" in args
+    assert "--sandbox" not in args  # print mode with a sandbox refuses shell commands (D-048)
+    assert "--output-format" in args and "json" in args
+    assert all("\n" not in arg and '"' not in arg for arg in args), args
+    assert task.prompt.strip() not in " ".join(args)
+    prompt = runner.prompts[0]
+    assert prompt.startswith(rb.AGENT_HINT)
+    assert all(line in prompt for line in brief.guide_lines())
+    assert task.prompt.strip() in prompt
+    assert not (cwd / ".claude").exists()
+    assert env["ORKESTRA_HOME"] == str(tmp_path / "home") and env["ORKESTRA_CHIEF"] == "agy"
+    assert record.passed and record.claude is None
+    assert record.agent == {
+        "name": "agy", "input_tokens": 15591, "output_tokens": 864, "thinking_tokens": 770,
+        "cache_read_tokens": 17232, "turns": 3,
+    }  # fmt: skip
+
+
+def test_mode_e_is_never_part_of_all() -> None:
+    assert "e" not in rb.parse_modes("all")
+    assert rb.parse_modes("e") == ["e"]
+    assert "e" not in rb.CHIEF_MODES  # it is no Claude session (--max-claude-runs)
+
+
+def test_an_agy_quota_message_stops_the_benchmark(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    runner = AgyRunner(task, agy_out="", agy_exit=1,
+                       agy_err="RESOURCE_EXHAUSTED: You have exhausted your capacity on this "
+                               "model. Your quota will reset after 5h19m.")  # fmt: skip
+    with pytest.raises(rb.UsageLimitReached):
+        rb.run_once(task, "e", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+
+
+def test_a_failed_agy_run_keeps_the_reason_and_no_token_count(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    runner = AgyRunner(task, agy_out="not json", agy_exit=2, agy_err="crashed", solve=False)
+    record = rb.run_once(task, "e", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    assert not record.passed and record.agent is None
+    assert record.error is not None and "agy exited with 2" in record.error
+
+
+def _agent_record(repeat: int, task_id: str, passed: bool) -> rb.Record:
+    record = _record("e", repeat, task_id, passed)
+    return dataclasses.replace(record, claude=None, agent={
+        "name": "agy", "input_tokens": 1000, "output_tokens": 200, "thinking_tokens": 50,
+        "cache_read_tokens": 3000, "turns": 2})  # fmt: skip
+
+
+def test_the_summary_and_table_show_the_agent_chiefs_tokens() -> None:
+    records = [_agent_record(1, "t1", True), _agent_record(1, "t2", False),
+               _record("a", 1, "t1", True), _record("a", 1, "t2", True)]  # fmt: skip
+    summary = rb.summarize(records)
+    assert summary["e"]["agent_tokens_per_task"] == pytest.approx(1250)
+    assert summary["e"]["claude_tokens_per_task"] is None
+    assert summary["a"]["agent_tokens_per_task"] is None
+    table = rb.markdown(summary, records)
+    assert "| E - agy chief + Orkestra |" in table
+    assert "agy (chief) tokens per task (E): 1,250" in table
+
+
+def test_old_results_without_the_agent_field_still_load() -> None:
+    data = dataclasses.asdict(_record("a", 1, "t1", True))
+    del data["agent"]
+    assert rb.Record(**data).agent is None
+
+
+# --- code review of PR #38 (D-103) -------------------------------------------------------------
+
+
+def test_no_hidden_test_is_left_behind_for_a_later_chief(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    settings = _settings(tmp_path)
+    rb.run_once(task, "a", 1, settings, runner=FakeRunner(task), home=tmp_path / "home")
+    left = [p for p in settings.work_dir.rglob("*") if "_hidden_tests" in p.parts]
+    assert left == []
+
+
+def test_an_agent_that_touched_the_hidden_tests_stops_the_benchmark(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+
+    class Peeking(AgyRunner):
+        def __call__(self, args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+                     input_text: str | None = None) -> rb.Completed:  # fmt: skip
+            done = super().__call__(args, cwd, env, timeout, input_text)
+            if Path(args[0]).stem.lower() == "agy":
+                log = Path(args[args.index("--log-file") + 1])
+                log.write_text("read ../../x-a-1/eval/_hidden_tests/test_x.py", encoding="utf-8")
+            return done
+
+    with pytest.raises(rb.LeakError):
+        rb.run_once(task, "e", 1, _settings(tmp_path), runner=Peeking(task),
+                    home=tmp_path / "home")  # fmt: skip
+
+
+@pytest.mark.parametrize("stderr", ["HTTP 429 Too Many Requests", "rate limit exceeded, retry"])
+def test_a_soft_rate_limit_of_agy_is_a_failed_run_not_a_stop(tmp_path: Path, stderr: str) -> None:
+    task = _task("01-docstring-geometry")
+    runner = AgyRunner(task, agy_out="", agy_exit=1, agy_err=stderr, solve=False)
+    record = rb.run_once(task, "e", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    assert not record.passed and record.error is not None
+
+
+def test_a_quota_message_with_exit_0_and_no_json_still_stops(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    runner = AgyRunner(task, agy_out="", agy_exit=0,
+                       agy_err="RESOURCE_EXHAUSTED: quota will reset after 5h19m.")  # fmt: skip
+    with pytest.raises(rb.UsageLimitReached):
+        rb.run_once(task, "e", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+
+
+def test_a_banner_line_before_agys_json_is_not_a_lost_result(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    runner = AgyRunner(task, agy_out="A new version is available.\n" + json.dumps(AGY_JSON))
+    record = rb.run_once(task, "e", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    assert record.error is None and record.agent is not None
+    assert record.agent["input_tokens"] == 15591
+
+
+def test_exit_0_without_a_result_is_an_error_with_a_reason(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+    runner = AgyRunner(task, agy_out="", agy_exit=0, solve=False)
+    record = rb.run_once(task, "e", 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    assert record.error is not None and "no status" in record.error
+
+
+def test_agy_times_out_by_itself_before_it_is_killed(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    args = rb.agent_args(settings, tmp_path / "p.md", tmp_path / "a.log")
+    own = int(args[args.index("--print-timeout") + 1].rstrip("s"))
+    assert 0 < own < settings.timeout_s
+
+
+def test_without_any_agent_usage_the_tokens_are_unknown_not_zero() -> None:
+    records = [dataclasses.replace(_agent_record(1, "t1", True), agent=None)]
+    summary = rb.summarize(records)["e"]
+    assert summary["agent_tokens_per_task"] is None
+    assert summary["agent_runs_without_usage"] == 1
+    assert "tokens per task (E)" not in rb.markdown(rb.summarize(records), records)
+    mixed = [_agent_record(1, "t1", True), records[0]]
+    table = rb.markdown(rb.summarize(mixed), mixed)
+    assert "1 run(s) without usage" in table
+
+
+def test_the_agent_prompt_uses_the_hint_of_its_mode() -> None:
+    mode = rb.MODES["e"]
+    assert rb.agent_prompt("do it", mode.hint or "").startswith(mode.hint or "")
+    assert rb.agent_prompt("do it", "OTHER HINT").startswith("OTHER HINT")
+
+
+def test_the_window_records_the_agent_version(tmp_path: Path) -> None:
+    task = _task("01-docstring-geometry")
+
+    class Versions(AgyRunner):
+        def __call__(self, args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+                     input_text: str | None = None) -> rb.Completed:  # fmt: skip
+            if list(args[1:]) == ["--version"]:
+                return rb.Completed(0, "1.5.12\n", "")
+            return super().__call__(args, cwd, env, timeout, input_text)
+
+    out = tmp_path / "results"
+    code = rb.main(["--mode", "e", "--tasks", "01", "--repeat", "1", "--out", str(out),
+                    "--work-dir", str(tmp_path / "work")],
+                   runner=Versions(task), which=lambda name: name)  # fmt: skip
+    assert code == 0
+    data = json.loads(next(out.glob("*.json")).read_text(encoding="utf-8"))
+    assert data["meta"]["windows"][0]["agy"] == "1.5.12"

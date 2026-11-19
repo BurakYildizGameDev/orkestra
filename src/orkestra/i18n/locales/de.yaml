@@ -893,3 +893,6 @@ providers.import.file_key: "OpenCode liest diesen Schlüssel aus einer Datei; Or
 providers.import.key_file: "von OpenCode aus einer Datei gelesen"
 cli.providers.import.as: "Den importierten Anbieter unter diesem Namen speichern."
 wizard.error.key_env: "Das ist kein Variablenname (Buchstaben, Ziffern und _). Gib den NAMEN der Variable ein, nie den Schlüssel; '-' für keinen Schlüssel."
+cli.handoff.option.guide: "Nur die Anleitung ausgeben, aus der ein anderer Chef als Claude Orkestra lernt (z. B. für agy oder codex)."
+handoff.error.guide_and_brief: "Verwende entweder --guide oder --brief; die Zusammenfassung endet bereits mit der Anleitung."
+handoff.brief.guide_pointer: "Orkestra-Anleitung (hier kein Platz): 'orkestra handoff show --guide' ausführen"

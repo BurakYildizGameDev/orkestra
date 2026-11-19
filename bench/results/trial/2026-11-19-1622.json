@@ -1,0 +1,147 @@
+{
+  "meta": {
+    "date": "2026-11-19T16:22+03:00",
+    "machine": "Windows 11, Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "python": "3.12.13",
+    "modes": "e",
+    "task_ids": [
+      "01-docstring-geometry",
+      "02-typehints-text"
+    ],
+    "tasks": 2,
+    "ollama_model": "qwen2.5-coder:14b",
+    "ollama_model_2": null,
+    "claude_model": null,
+    "timeout_s": 900.0,
+    "windows": [
+      {
+        "date": "2026-11-19T16:22+03:00",
+        "claude": "-",
+        "orkestra": "orkestra 0.0.1",
+        "runs": 2
+      }
+    ],
+    "claude_tools": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(python:*)",
+      "Bash(pytest:*)",
+      "Bash(git:*)",
+      "Bash(cd:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(pwd:*)",
+      "PowerShell(python:*)",
+      "PowerShell(pytest:*)",
+      "PowerShell(git:*)",
+      "PowerShell(cd:*)",
+      "PowerShell(ls:*)",
+      "PowerShell(dir:*)",
+      "PowerShell(cat:*)",
+      "PowerShell(type:*)",
+      "PowerShell(pwd:*)",
+      "PowerShell(Get-Content:*)",
+      "PowerShell(Get-ChildItem:*)",
+      "PowerShell(Select-String:*)",
+      "PowerShell(Set-Location:*)",
+      "PowerShell(Get-Location:*)"
+    ],
+    "orkestra_tools": [
+      "Bash(orkestra:*)",
+      "PowerShell(orkestra:*)"
+    ],
+    "repeat": 1
+  },
+  "summary": {
+    "e": {
+      "label": "E - agy chief + Orkestra",
+      "tasks": 2,
+      "repeats": 1,
+      "complete_repeats": 1,
+      "partial_runs": 0,
+      "passed": {
+        "mean": 2.0,
+        "min": 2,
+        "max": 2
+      },
+      "by_difficulty": {
+        "easy": {
+          "tasks": 2,
+          "passed_mean": 2.0
+        }
+      },
+      "claude_tokens_per_task": null,
+      "claude_cache_read_per_task": null,
+      "claude_cost_per_task": null,
+      "runs_without_usage": null,
+      "agent_tokens_per_task": 162258.0,
+      "permission_denials": null,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 0.0,
+      "savings_estimate_per_task": 0.0,
+      "duration_per_task_s": 366.555,
+      "errors": 0
+    }
+  },
+  "records": [
+    {
+      "task": "01-docstring-geometry",
+      "difficulty": "easy",
+      "mode": "e",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 375.05,
+      "claude": null,
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.03s\n",
+      "agent": {
+        "name": "agy",
+        "input_tokens": 118289,
+        "output_tokens": 18506,
+        "thinking_tokens": 14867,
+        "cache_read_tokens": 855559,
+        "turns": 1
+      }
+    },
+    {
+      "task": "02-typehints-text",
+      "difficulty": "easy",
+      "mode": "e",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 358.06,
+      "claude": null,
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "...                                                                      [100%]\n3 passed in 0.02s\n",
+      "agent": {
+        "name": "agy",
+        "input_tokens": 148910,
+        "output_tokens": 14317,
+        "thinking_tokens": 9627,
+        "cache_read_tokens": 1452537,
+        "turns": 1
+      }
+    }
+  ]
+}

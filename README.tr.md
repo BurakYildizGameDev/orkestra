@@ -525,7 +525,10 @@ commit'ten daha eskiyse uyarır (`--strict` kod 1, `--warn-only` asla durdurmaz 
 `orkestra handoff show --brief` sıradaki şef için kısa özeti yazar: dosyanın kilit
 bölümleri (sıradaki adımın durduğu `In progress` dahil), gerçek dal, `git status`, son commit'ler, uygulanmamış koşular ve kalan bütçe; asla
 `handoff.brief_max_lines` satırı geçmez (kesmek gerekirse eskime uyarısı ve Orkestra
-kılavuzu kalır, önce proje satırları kesilir). `update` ile yazılan metin maskelenir; `Done`/
+kılavuzu kalır, önce proje satırları kesilir). Claude dışı bir şef Orkestra'yı bu kılavuzdan
+öğrenir (bağlam süzgeci, ne zaman devredilir, denetim ve `apply --max-risk low`, devir dosyası);
+`orkestra handoff show --guide` yalnız kılavuzu yazdırır, kendin açtığın agy ya da codex
+oturumuna vermek için. `update` ile yazılan metin maskelenir; `Done`/
 `Decisions` `handoff.max_lines`'ı aşınca en eski maddeler `.orkestra/HANDOFF.archive.md`'ye
 eklenir (silinmez).
 

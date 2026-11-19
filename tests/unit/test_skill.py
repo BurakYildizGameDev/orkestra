@@ -415,3 +415,80 @@ def test_the_skill_teaches_bulk_delegation_and_cross_review(skill_text: str) -> 
     assert "orkestra show <run_id> --report" in skill_text
     assert "orkestra apply <run_id> --max-risk low" in skill_text
     assert "--only-ok --max-risk low" in skill_text
+
+
+# --- the chief guide: what a chief other than Claude learns Orkestra from (Faz 13n) ---------
+
+GUIDE = Path(__file__).resolve().parents[2] / "src" / "orkestra" / "prompts" / "chief_guide.md"
+GUIDE_MAX_LINES = 30  # non-empty lines; with the default brief limit (60) at least 20 lines
+# of project content still fit beside it (D-066), and no line is wrapped (WRAP_WIDTH)
+# Flags that carry a rule of the skill: the guide must keep them, or a non-Claude chief
+# applies without review, reads whole diffs, or starts by scanning the project.
+RULE_FLAGS = ("--max-risk", "--report", "--only-flagged", "--only-ok", "--brief", "--dry-run")
+
+
+@pytest.fixture(scope="module")
+def guide_text() -> str:
+    return GUIDE.read_text(encoding="utf-8")
+
+
+def test_every_command_and_flag_in_the_chief_guide_exists(guide_text: str) -> None:
+    group = _cli()
+    problems = [
+        f"orkestra {' '.join(words)}: {problem}"
+        for words in _calls(guide_text, inline=False)
+        for problem in check_call(group, words)
+    ]
+    problems += [
+        f"`orkestra {' '.join(words)}`: {problem}"
+        for span in _inline_spans(guide_text)
+        for words in _invocations(span)
+        if words
+        for problem in check_mention(group, words)
+    ]
+    spans = [span for span in _inline_spans(guide_text) if "orkestra" not in _tokens(span)]
+    problems += [f"`{span}`: {p}" for span in spans for p in check_reference(group, span)]
+    assert problems == []
+
+
+def test_the_chief_guide_names_every_command_the_skill_names(
+    skill_text: str, guide_text: str
+) -> None:
+    in_skill = {words[0] for words in _calls(skill_text)}
+    in_guide = {words[0] for words in _calls(guide_text)}
+    assert sorted(in_skill - in_guide) == []
+
+
+def test_the_chief_guide_keeps_the_rule_flags_of_the_skill(
+    skill_text: str, guide_text: str
+) -> None:
+    for flag in RULE_FLAGS:
+        assert flag in skill_text, flag  # still a rule of the skill
+        assert flag in guide_text, flag
+
+
+def test_the_chief_guide_is_short(guide_text: str) -> None:
+    from orkestra.handoff.brief import WRAP_WIDTH
+
+    lines = [line for line in guide_text.splitlines() if line.strip()]
+    assert len(lines) <= GUIDE_MAX_LINES
+    assert [line for line in lines if len(line) > WRAP_WIDTH] == []
+
+
+def test_every_command_in_the_chief_guide_is_complete(guide_text: str) -> None:
+    """The guide has no code blocks: its inline commands are the ones a chief runs, so each
+    must also have its arguments (``orkestra review`` without a run id would fail)."""
+    group = _cli()
+    problems = [
+        f"`orkestra {' '.join(words)}`: {problem}"
+        for span in _inline_spans(guide_text)
+        for words in _invocations(span)
+        if words
+        for problem in check_call(group, words)
+    ]
+    assert problems == []
+
+
+def test_the_chief_guide_points_at_rules_a_chief_can_reach(guide_text: str) -> None:
+    assert "https://github.com/" in guide_text  # an installed package has no skill/ folder
+    assert "in the Orkestra repository" not in guide_text

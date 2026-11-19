@@ -7,6 +7,9 @@ Three modes run the same tasks, each in a fresh git workspace with the task's pr
   Orkestra home of its own (the bench config, cheap local workers, cache off).
 - **C - Orkestra only:** ``orkestra run --profile cheap`` with no chief; a passing run is
   applied. The lower bound without a chief.
+- **E - agy chief + Orkestra** (Faz 13n, never part of ``all``): ``agy --print`` is the chief,
+  told how to use Orkestra by the same guide a handoff gives (``prompts/chief_guide.md``). agy
+  reports its own tokens; no Claude quota is used.
 
 After a run the task's **hidden tests** decide pass/fail. They (and the reference solution)
 never enter a workspace, a prompt or an Orkestra task before the run ends: ``check_no_leak``
@@ -59,6 +62,8 @@ DIFFICULTIES = ("easy", "medium", "hard")
 DEFAULT_OLLAMA_MODEL = "qwen2.5-coder:14b"
 DEFAULT_TIMEOUT_S = 900
 EVAL_TIMEOUT_S = 300
+HIDDEN_DIR = "_hidden_tests"  # next to a copy of the result, only while it is evaluated
+AGENT_TIMEOUT_MARGIN_S = 60  # the agent stops itself (and prints its usage) before it is killed
 LEAK_LINE_CHARS = 30  # a hidden-test line this long quoted in a prompt is a leak
 # On Windows Claude Code also runs commands through its PowerShell tool and chains them
 # ("cd x; python ..."); every refusal costs turns, so the same commands are allowed in both
@@ -110,6 +115,12 @@ SKILL_HINT = (
     "worker (bulky, easy to check), delegate it with orkestra as the skill describes, review "
     "the result and apply it; do the rest yourself."
 )
+AGENT_HINT = (
+    "You are the chief for this task. Orkestra (the `orkestra` command) is available in this "
+    "project; the guide below says how to use it. When a part of this task suits a cheap "
+    "worker (bulky, easy to check), delegate it with orkestra, review the result and apply "
+    "it; do the rest yourself. Work in the current directory."
+)
 DELEGATE_HINT = (
     "Use the Orkestra skill for this task: hand the work to an Orkestra worker with "
     "`orkestra run` as the skill describes (lowest tier first), review the result and apply "
@@ -127,6 +138,7 @@ class Mode:
     skill: bool = False  # the skill in the workspace and permission to run orkestra
     hint: str | None = None  # put before the task text
     planned: bool = True  # part of --mode all
+    agent: str | None = None  # a code agent is the chief instead of Claude (Faz 13n)
 
 
 MODES: dict[str, Mode] = {
@@ -135,9 +147,12 @@ MODES: dict[str, Mode] = {
     "c": Mode("C - Orkestra only (cheap)", chief=False),
     "d": Mode("D - Claude + Orkestra, delegation asked", chief=True, skill=True,
               hint=DELEGATE_HINT, planned=False),
+    "e": Mode("E - agy chief + Orkestra", chief=False, hint=AGENT_HINT, planned=False,
+              agent="agy"),
 }  # fmt: skip
 PLANNED_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.planned)
-CHIEF_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.chief)
+CHIEF_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.chief)  # Claude sessions
+AGENT_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.agent)
 SKILL_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.skill)
 
 
@@ -252,7 +267,7 @@ def evaluate(task: Task, workspace: Path, eval_dir: Path) -> Evaluation:
     if eval_dir.exists():
         _rmtree(eval_dir)
     shutil.copytree(workspace, eval_dir, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-    hidden = eval_dir / "_hidden_tests"
+    hidden = eval_dir / HIDDEN_DIR
     shutil.copytree(task.root / "hidden", hidden)
     # The loop scope silences pytest-asyncio's warning without turning async tests off.
     (eval_dir / "_bench_pytest.ini").write_text(
@@ -260,7 +275,7 @@ def evaluate(task: Task, workspace: Path, eval_dir: Path) -> Evaluation:
     )
     args = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
             "-c", "_bench_pytest.ini", "--rootdir", ".",
-            "_hidden_tests"]  # fmt: skip
+            HIDDEN_DIR]  # fmt: skip
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     try:
         done = subprocess.run(
@@ -380,6 +395,7 @@ class Settings:
     claude_model: str | None
     timeout_s: float
     ollama_model_2: str | None = None
+    agy: str = "agy"
 
 
 @dataclass
@@ -395,6 +411,7 @@ class Record:
     error: str | None = None
     check_passed: bool | None = None
     output_tail: str = field(default="", repr=False)
+    agent: dict[str, Any] | None = None  # the agent chief's own usage (mode E)
 
 
 def claude_args(mode: str, settings: Settings, settings_file: Path) -> list[str]:
@@ -484,14 +501,21 @@ def run_once(
     run_dir = settings.work_dir / f"{task.id}-{mode}-{repeat}"
     extra = {".claude/skills/orkestra/SKILL.md": SKILL_FILE} if mode in SKILL_MODES else None
     workspace = prepare_workspace(task, run_dir / "ws", extra)
-    check_no_leak(task, workspace, prompt=task.prompt)
+    agent_name = MODES[mode].agent
+    prompt = agent_prompt(task.prompt, MODES[mode].hint or "") if agent_name else task.prompt
+    check_no_leak(task, workspace, prompt=prompt)
     env = _env(home)
+    if agent_name:
+        env["ORKESTRA_CHIEF"] = agent_name
     started_at = datetime.now().astimezone()
     started = time.monotonic()
     claude: dict[str, Any] | None = None
+    agent: dict[str, Any] | None = None
     error: str | None = None
     try:
-        if mode in CHIEF_MODES:
+        if agent_name:
+            agent, error = _run_agent(task, prompt, workspace, run_dir, settings, runner, env)
+        elif mode in CHIEF_MODES:
             claude, error = _run_claude(task, mode, workspace, run_dir, settings, runner, env)
         else:
             error = _run_orkestra(task, workspace, run_dir, settings, runner, env)
@@ -500,7 +524,12 @@ def run_once(
     except BenchError as exc:
         error = str(exc)
     duration = round(time.monotonic() - started, 2)
+    if agent_name:
+        check_agent_trace(task, run_dir)  # before the hidden tests exist anywhere again
     result = evaluate(task, workspace, run_dir / "eval")
+    # A chief without a sandbox (mode E) could read a sibling run's folder: no hidden test
+    # stays on disk after its evaluation (D-103).
+    _rmtree(run_dir / "eval" / HIDDEN_DIR)
     check_code, _ = run_check(task, workspace) if task.check else (0, "")
     return Record(
         task=task.id, difficulty=task.difficulty, mode=mode, repeat=repeat,
@@ -509,6 +538,7 @@ def run_once(
         error=None if error is None else Scrubber.for_run(settings.work_dir)(error),
         check_passed=(check_code == 0) if task.check else None,
         output_tail=clean_tail(result.output, 1500, Scrubber.for_run(settings.work_dir)),
+        agent=agent,
     )  # fmt: skip
 
 
@@ -587,6 +617,101 @@ def _run_claude(
         except BenchError:
             return None, error
     return parse_claude(done.stdout), None
+
+
+def agent_prompt(prompt: str, hint: str) -> str:
+    """What an agent chief reads: its mode's hint, Orkestra's chief guide, then the task."""
+    from orkestra.handoff.brief import guide_lines
+
+    return f"{hint}\n\n" + "\n".join(guide_lines()) + f"\n\n{prompt}\n"
+
+
+def agent_timeout(timeout_s: float) -> int:
+    """agy's own ``--print-timeout``: earlier than the runner's kill, so it still prints its
+    JSON (and the tokens it spent) when a task takes too long."""
+    return max(int(timeout_s - AGENT_TIMEOUT_MARGIN_S), int(timeout_s * 0.9), 1)
+
+
+def check_agent_trace(task: Task, run_dir: Path) -> None:
+    """An agent chief runs without a sandbox: if its log or output names the hidden tests or
+    the task's own folder (solution, hidden tests), the run is not a fair one (D-103)."""
+    texts = [path.read_text(encoding="utf-8", errors="replace")
+             for path in (run_dir / "agent" / "agy.log", run_dir / "agent-output.json")
+             if path.is_file()]  # fmt: skip
+    root = [part for part in re.split(r"[\\/]+", str(task.root)) if part]
+    root_pattern = re.compile(r"[\\/]+".join(re.escape(part) for part in root[-3:]),
+                              re.IGNORECASE)  # fmt: skip
+    for text in texts:
+        if HIDDEN_DIR in text or root_pattern.search(text):
+            raise LeakError(f"{task.id}: the agent chief's trace names the hidden tests or "
+                            "the task folder")  # fmt: skip
+
+
+def agent_args(settings: Settings, prompt_file: Path, log_file: Path) -> list[str]:
+    """``agy --print`` without ``--sandbox``: in print mode a sandbox refuses every shell
+    command (D-048), and the chief has to run ``orkestra`` and the tests. The prompt is in a
+    file the only argument points at (no newline or quote on a command line, D-077)."""
+    pointer = (f"Read the file {prompt_file} and follow the instructions in it exactly. "
+               "Work in the current directory.")  # fmt: skip
+    return [settings.agy, "--output-format", "json", "--disable-slash-commands",
+            "--print-timeout", f"{agent_timeout(settings.timeout_s)}s",
+            "--add-dir", str(prompt_file.parent), "--log-file", str(log_file),
+            "--print", pointer]  # fmt: skip
+
+
+def _agent_json(stdout: str) -> dict[str, Any]:
+    """agy's result object; a banner or update line before it is skipped."""
+    candidates = [stdout, *reversed([line for line in stdout.splitlines()
+                                     if line.lstrip().startswith("{")])]  # fmt: skip
+    for text in candidates:
+        try:
+            data = json.loads(text)
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            return data
+    return {}
+
+
+def parse_agent(stdout: str) -> dict[str, Any] | None:
+    """agy's own usage from ``--output-format json``; None when it printed none."""
+    data = _agent_json(stdout)
+    usage = data.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    return {
+        "name": "agy",
+        "input_tokens": int(usage.get("input_tokens") or 0),
+        "output_tokens": int(usage.get("output_tokens") or 0),
+        "thinking_tokens": int(usage.get("thinking_tokens") or 0),
+        "cache_read_tokens": int(usage.get("cache_read_tokens") or 0),
+        "turns": int(data.get("num_turns") or 0),
+    }
+
+
+def _run_agent(
+    task: Task, prompt: str, workspace: Path, run_dir: Path, settings: Settings, runner: Runner,
+    env: dict[str, str],
+) -> tuple[dict[str, Any] | None, str | None]:  # fmt: skip
+    """The agent chief's usage and an error; its quota running out stops the benchmark."""
+    from orkestra.providers import quota
+
+    prompt_file = run_dir / "agent" / "prompt.md"
+    prompt_file.parent.mkdir(parents=True, exist_ok=True)
+    prompt_file.write_text(prompt, encoding="utf-8")
+    args = agent_args(settings, prompt_file, run_dir / "agent" / "agy.log")
+    done = runner(args, workspace, env, settings.timeout_s)
+    (run_dir / "agent-output.json").write_text(done.stdout, encoding="utf-8")  # for debugging
+    status = str(_agent_json(done.stdout).get("status") or "")
+    failed = done.returncode != 0 or status != "SUCCESS"  # no result at all is a failure too
+    hit = quota.detect(f"{done.stdout}\n{done.stderr}") if failed else None
+    if hit is not None and hit.hard:  # a passing rate limit (429) is a failed run, no stop
+        raise UsageLimitReached(f"{task.id} agy: {(done.stderr or done.stdout)[:200]}")
+    usage = parse_agent(done.stdout)
+    if failed:
+        tail = clean_tail(done.stderr or done.stdout, 300, default_scrubber())
+        return usage, f"agy exited with {done.returncode} ({status or 'no status'}): {tail}"
+    return usage, None
 
 
 def _limit_text(done: Completed) -> str:
@@ -674,6 +799,12 @@ def _claude_tokens(record: Record) -> int:
                + c.get("cache_creation_input_tokens", 0))  # fmt: skip
 
 
+def _agent_tokens(record: Record) -> int:
+    a = record.agent or {}
+    return int(a.get("input_tokens", 0) + a.get("output_tokens", 0)
+               + a.get("thinking_tokens", 0))  # fmt: skip
+
+
 def _mean(values: Iterable[float]) -> float:
     found = list(values)
     return round(statistics.fmean(found), 3) if found else 0.0
@@ -713,6 +844,11 @@ def summarize(records: Sequence[Record]) -> dict[str, dict[str, Any]]:
                 if mode in CHIEF_MODES else None),
             "runs_without_usage": (sum(1 for r in mine if r.claude is None)
                                    if mode in CHIEF_MODES else None),
+            "agent_tokens_per_task": (
+                _mean(_agent_tokens(r) for r in mine if r.agent is not None)
+                if mode in AGENT_MODES and any(r.agent is not None for r in mine) else None),
+            "agent_runs_without_usage": (sum(1 for r in mine if r.agent is None)
+                                         if mode in AGENT_MODES else None),
             "permission_denials": _denials(mine) if mode in CHIEF_MODES else None,
             "worker_cost_per_task": _mean(r.workers.get("cost_usd", 0.0) for r in mine),
             "worker_runs_per_task": _mean(r.workers.get("runs", 0) for r in mine),
@@ -757,6 +893,13 @@ def markdown(summary: Mapping[str, Mapping[str, Any]], records: Sequence[Record]
             lines += ["", f"Claude tokens saved per task (A - {name}): {saved:,.0f}",
                       f"Orkestra's own estimate in {name} (`stats` savings) per task: "
                       f"{summary[other]['savings_estimate_per_task']:,.0f}"]  # fmt: skip
+    for mode in AGENT_MODES:
+        if mode in summary and summary[mode]["agent_tokens_per_task"] is not None:
+            missing = summary[mode]["agent_runs_without_usage"]
+            note = f"; {missing} run(s) without usage" if missing else ""
+            lines += ["", f"{MODES[mode].agent} (chief) tokens per task ({mode.upper()}): "
+                      f"{summary[mode]['agent_tokens_per_task']:,.0f} (input + output + "
+                      f"thinking; not comparable 1:1 with Claude's{note})"]  # fmt: skip
     denied = {m: s["permission_denials"] for m, s in summary.items() if s.get("permission_denials")}
     if denied:
         lines += ["", "Denied tool calls (permission): "
@@ -823,7 +966,8 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Orkestra benchmark (Faz 13).")
     parser.add_argument("--mode", default=None,
                         help="all (default: a, b, c), one mode, or a list such as a,d "
-                             "(d = delegation asked is never part of all)")  # fmt: skip
+                             "(d = delegation asked and e = agy chief are never part "
+                             "of all)")  # fmt: skip
     parser.add_argument("--repeat", type=int, default=None, help="default 3")
     parser.add_argument("--tasks", default="", help="comma-separated id prefixes (default: all)")
     parser.add_argument("--out", type=Path, default=RESULTS_DIR)
@@ -931,6 +1075,10 @@ def main(
         print(f"claude is not on PATH (needed for modes {', '.join(CHIEF_MODES)})",
               file=sys.stderr)  # fmt: skip
         return 2
+    agy = which("agy")
+    if any(m in AGENT_MODES for m in plan.modes) and agy is None:
+        print(f"agy is not on PATH (needed for modes {', '.join(AGENT_MODES)})", file=sys.stderr)
+        return 2
     meta = plan.meta
     settings = Settings(
         out_dir=plan.out, work_dir=opts.work_dir, claude=claude or "claude",
@@ -939,6 +1087,7 @@ def main(
         ollama_model_2=meta.get("ollama_model_2", opts.ollama_model_2),
         claude_model=meta.get("claude_model", opts.claude_model),
         timeout_s=meta.get("timeout_s", opts.timeout or DEFAULT_TIMEOUT_S),
+        agy=agy or "agy",
     )  # fmt: skip
     home = opts.work_dir / f"home-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}"
     setup_home(home, settings)
@@ -946,6 +1095,8 @@ def main(
         "date": datetime.now().astimezone().isoformat(timespec="minutes"),
         "claude": _version([settings.claude, "--version"], runner) if uses_claude else "-",
         "orkestra": _version([*settings.orkestra, "--version"], runner), "runs": 0,
+        "agy": (_version([settings.agy, "--version"], runner)
+                if any(m in AGENT_MODES for m in plan.modes) else "-"),
     }  # fmt: skip
     if not meta:
         meta.update({
@@ -960,10 +1111,11 @@ def main(
             "claude_tools": list(CLAUDE_TOOLS), "orkestra_tools": list(ORKESTRA_TOOLS),
         })  # fmt: skip
     windows = meta.setdefault("windows", [])
-    versions = (window["claude"], window["orkestra"])
-    if windows and (windows[-1]["claude"], windows[-1]["orkestra"]) != versions:
-        print(f"note: versions changed since the last window: claude {window['claude']}, "
-              f"orkestra {window['orkestra']} (recorded per window)", file=sys.stderr)  # fmt: skip
+    names = ("claude", "orkestra", "agy")
+    if windows and any(windows[-1].get(n, "-") != window[n] for n in names):
+        changed = ", ".join(f"{n} {window[n]}" for n in names)
+        print(f"note: versions changed since the last window: {changed} (recorded per window)",
+              file=sys.stderr)  # fmt: skip
     windows.append(window)
     meta["repeat"] = plan.repeat
     records = list(plan.records)
@@ -991,7 +1143,8 @@ def main(
                     print(f"STOPPED, the leak guard tripped: {exc}", file=sys.stderr)
                     return 3
                 except UsageLimitReached as exc:
-                    print(f"STOPPED, Claude's usage limit: {exc}", file=sys.stderr)
+                    print(f"STOPPED, a usage limit ({'agy' if mode in AGENT_MODES else 'Claude'}): "
+                          f"{exc}", file=sys.stderr)  # fmt: skip
                     _stop(records, plan, "this run is not recorded; wait for the limit to reset")
                     return 4
                 claude_runs += is_claude

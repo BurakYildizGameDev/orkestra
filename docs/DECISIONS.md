@@ -1083,3 +1083,27 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **OpenCode ayrıntıları:** `models.<id>.limit.context` → `context_window` (açık `--context-window` hepsini ezer); `{file:…}` anahtar "düz anahtar" sayılmaz, ayrı not; `{env:X}` `baseURL` ortamdan çözülür (adres gizli değil), yoksa alınamaz; `.jsonc` yorum satırları silinmez, boşaltılır (hata satır numarası doğru).
 - **Tek kaynak:** düz veriden ruamel düğümü `writer.to_yaml` (sihirbaz da kullanıyor), sağlayıcı adı kuralı `schema.PROVIDER_NAME`; anahtar değişkeni seçimi `from_flags` / `plan_import`'ta, içe aktarma notu `ImportPlan.key_note`'ta.
 - **Testler:** 1792 → 1810 (+18).
+
+## D-102 – Faz 13n: Claude dışı şef (2026-11-19, Faz 13n)
+**Bağlam:** Kullanıcı her zaman Claude'u şef yapmayacak. Claude Orkestra'yı skill'den öğreniyor; agy/codex ise yalnız devir özetindeki `prompts/chief_guide.md`'yi (13 satır, Faz 10) görüyordu ve 13i–13m araçlarını bilmiyordu. Plan: yerel YAPILIS_PLANI.md Faz 13n.
+**Karar:**
+- **Kılavuz skill'in özü:** bağlam süzgeci (`exec`, `read`, `find`, `map`), yalnız büyük/toplu işi devretme, `review` → `show --report` → `apply --max-risk low` (işaretliyse `--only-flagged`, batch'te `--only-ok`), devir dosyası, onay/kota/gizli bilgi kuralları; son satır tam kuralların skill'de olduğunu söyler.
+- **Sınır 30 dolu satır, satır başına ≤ 120 karakter** (plan hedefi ≤ 25 idi): skill'in adını verdiği 22 üst komutun hepsi kılavuzda olmalı. 30 satır + başlıkla varsayılan 60 satırlık özette yanında en az 20 proje satırı kalıyor (D-066 kuralı); satırlar `WRAP_WIDTH`'i aşmadığı için hiçbiri sarılmıyor ve kesilmiyor.
+- **Kopma testi** (`test_skill.py`): skill'deki her üst komut kılavuzda da var; kılavuzdaki her komut, bayrak ve düzyazı bayrağı CLI'de var (skill'in denetleyicisi); kural bayrakları kılavuzda; uzunluk sınırı. Özet testi: varsayılan sınırda dolu bir projeyle bile kılavuzun her satırı özette.
+- **`handoff show --guide`:** devir dosyası olmadan da yalnız kılavuzu yazar (`--json`: `guide`, `lines`); `--brief` ile birlikte kod 2. Kendi açtığı agy/codex oturumuna kılavuzu vermek isteyen kullanıcı için. Proje dosyalarına (GEMINI.md, AGENTS.md) kendiliğinden yazılmaz; README bunu anlatır. `brief.guide_lines()` açık fonksiyon.
+- **Benchmark mod E – agy şef + Orkestra:** `agy --output-format json --print <işaretçi>`, istem dosyası = ipucu (`AGENT_HINT`) + kılavuz + görev; `ORKESTRA_CHIEF=agy`. **`--sandbox` yok:** print modunda sandbox her kabuk komutunu reddediyor (D-048), şefin `orkestra`'yı ve testleri çalıştırması gerek; sandbox'sız varsayılan modda `orkestra --version` çalıştı. **Plandan sapma:** agy kendi tokenını veriyor (input, output, thinking, cache_read), bu yüzden token "—" değil, ayrı satırda raporlanıyor (Claude'unkiyle 1:1 karşılaştırılmaz). agy kota mesajı (`quota.detect`) benchmark'ı Claude sınırı gibi durdurur. `--mode all` içinde değil, `--max-claude-runs` saymaz.
+- **İlk gerçek koşu** (`bench/results/trial/2026-11-19-1622`): görev 01 ve 02, 2/2 geçti, görev başına ~162 bin agy tokenı (input + output + thinking), ~6 dk; işçi koşusu 0 (küçük işler, kılavuz "kendin yap" diyor; Claude'un B modundaki davranışıyla aynı).
+- **Bilinen sorun:** istem klasörü `--add-dir` ile agy'nin ikinci çalışma alanı oluyor; agy oraya da düzenlediği dosyanın bir kopyasını yazdı (değerlendirmeyi etkilemez, çalışma alanı ayrı).
+- **Testler:** 1810 → 1822 (+12).
+
+## D-103 – Faz 13n kod denetimi düzeltmeleri (2026-11-19, Faz 13n)
+`/code-review` (PR #38): 10 bulgu, hepsi düzeltildi; önce kırmızı testler.
+- **Gizli testler diskte kalmaz:** sandbox'sız agy (mod E) yan klasördeki bir önceki koşunun `eval/_hidden_tests`'ini okuyabilirdi. Değerlendirmeden hemen sonra silinir (her mod). Ayrıca agy'nin günlüğü ve çıktısı `_hidden_tests` ya da görevin kendi klasörünü (`bench/tasks/<görev>`) anarsa benchmark `LeakError` ile durur (kod 3).
+- **Küçük özette kılavuz kaybolmaz:** 26 satırlık kılavuz ~48 satırdan küçük `brief_max_lines`'ta sığmıyordu; artık tek satır nerede olduğunu söyler (`orkestra handoff show --guide`).
+- **Yalnız gerçek kota durdurur:** mod E'de `quota.detect` sonucunda yalnız `hard` (kota bitti) benchmark'ı durdurur; 429 / "rate limit" başarısız koşudur. Mesaj hangi sınır olduğunu söyler (agy / Claude).
+- **agy kendi kendine zaman aşımına uğrar:** `--print-timeout` koşucunun öldürme süresinden önce (`max(t − 60, 0,9·t)`), böylece JSON'u ve harcadığı token yazılır.
+- **Sonuç yoksa başarı yok:** başarı yalnız çıkış 0 ve `status: SUCCESS`; çıkış 0 ama sonuç yoksa hata ("no status") ve kota denetimi yapılır. JSON'dan önceki sürüm/uyarı satırı atlanır.
+- **Token bilinmiyorsa 0 yazılmaz:** hiçbir koşu kullanım vermediyse `agent_tokens_per_task: null`, `agent_runs_without_usage` sayılır ve tabloda yazılır.
+- **Kılavuzdaki her komut tam:** kılavuzda kod bloğu yok, satır içi komutlar da argümanlarıyla denetlenir (`check_call`); `providers enable <name>`, `providers add <name> --base-url <url> --model <id>`, `plan expand <plan.md>`. Tam kurallar için kurulu pakette olmayan `skill/` yolu yerine depodaki SKILL.md adresi.
+- **Tek kaynak:** mod E'nin istemi `MODES[mode].hint`'ten (`agent_prompt(prompt, hint)`); her pencerede `agy --version` kaydedilir, sürüm değişince not düşülür.
+- **Testler:** 1822 → 1836 (+14).
