@@ -1575,13 +1575,15 @@ def _opencode_row(found: provider_entry.OpencodeProvider) -> dict[str, Any]:
         "npm": found.npm,
         "base_url": found.base_url,
         "models": list(found.models),
-        "key": {"env": found.key_env, "plain": found.plain_key},
+        "key": {"env": found.key_env, "plain": found.plain_key, "file": found.key_file},
     }
 
 
 def _opencode_line(found: provider_entry.OpencodeProvider) -> str:
     if found.key_env is not None:
         key = t("providers.import.key_env", var=found.key_env)
+    elif found.key_file:
+        key = t("providers.import.key_file")
     else:
         key = t("providers.import.key_plain" if found.plain_key else "providers.import.key_none")
     if not found.supported:
@@ -1641,12 +1643,9 @@ def _add_provider_entry_commands(providers_app: typer.Typer) -> None:
         check: Annotated[bool, _check_option()] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
-        if no_key and api_key_env is not None:
-            raise UsageError(t("providers.error.no_key_and_env"))
-        variable = None if no_key else (api_key_env or provider_entry.suggest_key_env(name))
-        api = provider_entry.ApiProvider(
-            name, base_url, variable, tuple(model or ()), tier, context_window
-        )
+        api = provider_entry.from_flags(name, base_url, model or (), api_key_env=api_key_env,
+                                        no_key=no_key, tier=tier,
+                                        context_window=context_window)  # fmt: skip
         target, base = _entry_target(ctx, project)
         result = provider_entry.add(target, api, force=force, base=base)
         _saved_entry(name, result, check=check, as_json=as_json)
@@ -1664,6 +1663,9 @@ def _add_provider_entry_commands(providers_app: typer.Typer) -> None:
         name: Annotated[
             str | None, typer.Option("--name", metavar="NAME", help=t("cli.providers.import.name"))
         ] = None,
+        new_name: Annotated[
+            str | None, typer.Option("--as", metavar="NAME", help=t("cli.providers.import.as"))
+        ] = None,
         api_key_env: Annotated[str | None, _key_env_option()] = None,
         tier: Annotated[int, _tier_option()] = provider_entry.DEFAULT_TIER,
         context_window: Annotated[int | None, _window_option()] = None,
@@ -1675,7 +1677,7 @@ def _add_provider_entry_commands(providers_app: typer.Typer) -> None:
         if source != "opencode":
             raise UsageError(t("providers.import.bad_source", value=source))
         file = path or provider_entry.opencode_path(os.environ, home=Path.home())
-        found = provider_entry.read_opencode(file)
+        found = provider_entry.read_opencode(file, os.environ)
         chosen = provider_entry.pick_opencode(found, name)
         if chosen is None:
             if as_json:
@@ -1687,15 +1689,15 @@ def _add_provider_entry_commands(providers_app: typer.Typer) -> None:
                 typer.echo(_opencode_line(entry))
             typer.echo(t("providers.import.choose"))
             return
-        api = provider_entry.from_opencode(
-            chosen, api_key_env=api_key_env, tier=tier, context_window=context_window
-        )
+        plan = provider_entry.plan_import(chosen, name=new_name, api_key_env=api_key_env,
+                                          tier=tier, context_window=context_window)  # fmt: skip
+        api = plan.provider
         target, base = _entry_target(ctx, project)
         result = provider_entry.add(target, api, force=force, base=base)
         notes = []
-        if chosen.plain_key and api_key_env is None:
-            notes.append(t("providers.import.plain_key", var=api.api_key_env, path=file))
-        extra = {"source": str(file), "imported": chosen.name, "plain_key": chosen.plain_key}
+        if plan.key_note is not None:
+            notes.append(t(f"providers.import.{plan.key_note}_key", var=api.api_key_env, path=file))
+        extra = {"source": str(file), "imported": chosen.name, "key_note": plan.key_note}
         _saved_entry(api.name, result, check=check, as_json=as_json, extra=extra, notes=notes)
 
     @providers_app.command("remove", help=t("cli.providers.remove.help"))
@@ -1706,14 +1708,15 @@ def _add_provider_entry_commands(providers_app: typer.Typer) -> None:
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         target, base = _entry_target(ctx, project)
-        result = provider_entry.remove(target, name, base=base)
-        revoked = False
-        if name not in result.config.providers:  # still defined elsewhere: consent stays
-            with closing(db.connect()) as conn:
-                revoked = consent.revoke(conn, name)
+        config_path = ctx.ensure_object(_State).config_path
+        sources = [source.path for source in loader.find_sources(config_path)]
+        with closing(db.connect()) as conn:
+            outcome = provider_entry.remove(target, name, base=base, sources=sources, conn=conn)
+        result, revoked = outcome.saved, outcome.consent_revoked
         if as_json:
             _echo_json({"name": name, "path": str(result.path),
                         "backup": str(result.backup) if result.backup else None,
+                        "still_defined": outcome.still_defined,
                         "consent_revoked": revoked})  # fmt: skip
             return
         typer.echo(t("providers.remove.done", name=name, path=result.path))

@@ -874,13 +874,16 @@ orkestra providers add myapi --base-url https://api.example.com/v1 \
 orkestra providers add lab --base-url http://localhost:1234/v1 --model m --no-key
 orkestra providers import opencode                   # from OpenCode's opencode.json
 orkestra providers import opencode --name myapi      # when the file has several
+orkestra providers import opencode --name My.Lab --as lab   # under another name
 orkestra providers remove myapi                      # and its consent
 orkestra providers enable myapi
 ```
 
 `import opencode` reads `@ai-sdk/openai-compatible` entries (`baseURL`, `models`). An
 `apiKey` of the form `{env:VAR}` gives the variable name; a key written in the file is not
-copied, and Orkestra says which variable to put it in. `init --plain` offers the same as
+copied, and Orkestra says which variable to put it in. A value given as the key variable
+must be a variable name, so a pasted key is refused and never shown. A model's `limit.context`
+becomes its context window. `init --plain` offers the same as
 "another OpenAI-compatible service". `--tier` (default 2), `--context-window` and `--project`
 work for `add` and `import`.
 

@@ -3,14 +3,29 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+import sqlite3
+from collections.abc import Iterator, Mapping
+from contextlib import closing
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from orkestra.config import provider_entry as entry
+from orkestra.config.loader import load_config
 from orkestra.config.schema import Config, OpenAICompatProvider
 from orkestra.errors import ConfigError, UsageError
+from orkestra.i18n import t
+from orkestra.state import consent, db
+
+NOW = datetime(2026, 11, 19, 12, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def conn(tmp_path: Path) -> Iterator[sqlite3.Connection]:
+    with closing(db.connect(tmp_path / "state.db")) as connection:
+        yield connection
+
 
 FAKE_KEY = "sk-FAKE-opencode-key-never-copied-0000000000000000"
 
@@ -133,8 +148,9 @@ def test_a_project_file_is_validated_with_the_base_config(tmp_path: Path) -> Non
 def test_remove_deletes_only_that_entry(tmp_path: Path) -> None:
     path = _user_file(tmp_path)
     entry.add(path, _api())
-    result = entry.remove(path, "evren")
-    assert set(result.config.providers) == {"ollama"}
+    outcome = entry.remove(path, "evren")
+    assert set(outcome.saved.config.providers) == {"ollama"}
+    assert outcome.still_defined is False
     assert path.read_text(encoding="utf-8") == USER_FILE
 
 
@@ -195,18 +211,18 @@ def test_opencode_providers_are_read_without_keeping_a_plain_key(tmp_path: Path)
 
 def test_an_opencode_provider_becomes_an_api_provider(tmp_path: Path) -> None:
     evren = next(p for p in entry.read_opencode(_opencode(tmp_path, OPENCODE)) if p.name == "evren")
-    api = entry.from_opencode(evren)
+    api = entry.plan_import(evren).provider
     assert api.api_key_env == "EVREN_API_KEY"  # suggested: the plain key is never copied
     assert api.models == ("deepseek-v4.1-flash", "glm-5.3")
     lab = next(p for p in entry.read_opencode(_opencode(tmp_path, OPENCODE)) if p.name == "lab")
-    assert entry.from_opencode(lab).api_key_env == "LAB_TOKEN"
-    assert entry.from_opencode(lab, api_key_env="OTHER").api_key_env == "OTHER"
+    assert entry.plan_import(lab).provider.api_key_env == "LAB_TOKEN"
+    assert entry.plan_import(lab, api_key_env="OTHER").provider.api_key_env == "OTHER"
 
 
 def test_the_plain_key_never_reaches_the_orkestra_config(tmp_path: Path) -> None:
     evren = next(p for p in entry.read_opencode(_opencode(tmp_path, OPENCODE)) if p.name == "evren")
     path = _user_file(tmp_path)
-    entry.add(path, entry.from_opencode(evren))
+    entry.add(path, entry.plan_import(evren).provider)
     assert FAKE_KEY not in path.read_text(encoding="utf-8")
 
 
@@ -247,3 +263,131 @@ def test_the_opencode_path_follows_its_environment_variable(tmp_path: Path) -> N
     assert entry.opencode_path({"XDG_CONFIG_HOME": str(xdg)}, home=tmp_path) == (
         xdg / "opencode" / "opencode.json"
     )
+
+
+# --- code review of PR #37 (D-101) -----------------------------------------------------------
+
+
+@pytest.mark.parametrize("value", ["sk-live-abc123", "my key", "1ABC", "EVREN-KEY", ""])
+def test_a_key_variable_must_be_a_variable_name_and_is_never_echoed(
+    tmp_path: Path, value: str
+) -> None:
+    path = _user_file(tmp_path)
+    with pytest.raises(UsageError) as info:
+        entry.add(path, _api(api_key_env=value))
+    if value:
+        assert value not in str(info.value)
+    assert path.read_text(encoding="utf-8") == USER_FILE
+
+
+def test_a_name_of_the_base_config_is_refused_in_a_project_file_even_with_force(
+    tmp_path: Path,
+) -> None:
+    base = _user_file(tmp_path)
+    project = tmp_path / "orkestra.yaml"
+    for force in (False, True):
+        with pytest.raises(UsageError) as info:
+            entry.add(project, _api("ollama"), base=base, force=force)
+        assert str(info.value) == t("providers.error.exists_in_base", name="ollama", path=base)
+    assert not project.exists()
+
+
+def test_removing_from_one_file_keeps_consent_when_another_still_defines_it(
+    tmp_path: Path, conn: sqlite3.Connection
+) -> None:
+    base = _user_file(tmp_path)
+    entry.add(base, _api())
+    project = tmp_path / "orkestra.yaml"
+    project.write_text(
+        "version: 1\nproviders:\n  evren:\n    type: openai_compat\n"
+        "    base_url: https://other.example.test/v1\n"
+        "    models:\n      - id: m\n        tier: 1\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(config_flag=base, cwd=tmp_path).config.providers["evren"]
+    consent.grant(conn, "evren", cfg, NOW)
+    outcome = entry.remove(base, "evren", sources=(base, project), conn=conn)
+    assert outcome.still_defined is True and outcome.consent_revoked is False
+    assert consent.revoke(conn, "evren") is True  # it was kept
+
+
+def test_removing_the_last_definition_revokes_consent(
+    tmp_path: Path, conn: sqlite3.Connection
+) -> None:
+    base = _user_file(tmp_path)
+    result = entry.add(base, _api())
+    consent.grant(conn, "evren", result.config.providers["evren"], NOW)
+    outcome = entry.remove(base, "evren", sources=(base,), conn=conn)
+    assert outcome.still_defined is False and outcome.consent_revoked is True
+
+
+def test_a_removal_that_leaves_a_broken_override_is_refused(tmp_path: Path) -> None:
+    base = _user_file(tmp_path)
+    entry.add(base, _api())
+    before = base.read_text(encoding="utf-8")
+    project = tmp_path / "orkestra.yaml"
+    project.write_text("version: 1\nproviders:\n  evren:\n    enabled: false\n", encoding="utf-8")
+    with pytest.raises(ConfigError):
+        entry.remove(base, "evren", sources=(base, project))
+    assert base.read_text(encoding="utf-8") == before
+
+
+def test_jsonc_comment_lines_keep_the_line_numbers_of_an_error(tmp_path: Path) -> None:
+    path = tmp_path / "opencode.jsonc"
+    path.write_text("{\n" + "  // note\n" * 10 + '  "provider": {,}\n}\n', encoding="utf-8")
+    with pytest.raises(ConfigError) as info:
+        entry.read_opencode(path)
+    assert str(info.value) == t("providers.import.bad_json", path=path, line=12)
+
+
+def test_opencode_context_limits_become_context_windows(tmp_path: Path) -> None:
+    source = _opencode(tmp_path, {"lab": {
+        "npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "http://localhost:1/v1"},
+        "models": {"big": {"limit": {"context": 128000, "output": 8000}}, "small": {}},
+    }})  # fmt: skip
+    plan = entry.plan_import(entry.read_opencode(source)[0])
+    result = entry.add(_user_file(tmp_path), plan.provider)
+    models = {m.id: m.context_window for m in _chat(result.config, "lab").models}
+    assert models == {"big": 128000, "small": 8192}
+    forced = entry.plan_import(entry.read_opencode(source)[0], context_window=64000)
+    result = entry.add(tmp_path / "forced.yaml", forced.provider)
+    assert {m.context_window for m in _chat(result.config, "lab").models} == {64000}
+
+
+def test_opencode_file_and_env_references(tmp_path: Path) -> None:
+    source = _opencode(tmp_path, {"lab": {
+        "npm": "@ai-sdk/openai-compatible",
+        "options": {"baseURL": "{env:LAB_URL}", "apiKey": "{file:~/.secrets/lab}"},
+        "models": {"m": {}},
+    }})  # fmt: skip
+    found = entry.read_opencode(source, environ={"LAB_URL": "https://lab.example.test/v1"})[0]
+    assert found.supported and found.base_url == "https://lab.example.test/v1"
+    assert found.plain_key is False and found.key_file is True
+    plan = entry.plan_import(found)
+    assert plan.key_note == "file"
+    missing = entry.read_opencode(source, environ={})[0]
+    assert missing.supported is False
+
+
+def test_an_import_can_be_renamed_and_a_bad_name_suggests_one(tmp_path: Path) -> None:
+    source = _opencode(tmp_path, {"My.Lab": {
+        "npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "http://localhost:1/v1"},
+        "models": {"m": {}},
+    }})  # fmt: skip
+    found = entry.read_opencode(source)[0]
+    with pytest.raises(UsageError) as info:
+        entry.plan_import(found)
+    assert str(info.value) == t("providers.import.bad_name", name="My.Lab", suggestion="my-lab")
+    plan = entry.plan_import(found, name="lab2")
+    assert plan.provider.name == "lab2" and plan.provider.api_key_env == "LAB2_API_KEY"
+
+
+def test_the_flags_of_providers_add_become_a_provider() -> None:
+    api = entry.from_flags("evren", "https://x.test/v1", ["m"], api_key_env=None, no_key=False)
+    assert api.api_key_env == "EVREN_API_KEY"
+    assert (
+        entry.from_flags("lab", "http://x/v1", ["m"], api_key_env=None, no_key=True).api_key_env
+        is None
+    )
+    with pytest.raises(UsageError):
+        entry.from_flags("lab", "http://x/v1", ["m"], api_key_env="X", no_key=True)

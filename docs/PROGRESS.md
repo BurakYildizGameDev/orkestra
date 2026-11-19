@@ -50,6 +50,16 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 13o (PR #37), 2026-11-19
+`/code-review` 10 bulgu; hepsi düzeltildi (D-101). Önce kırmızı testler.
+- ✅ `--api-key-env` / sihirbaz: yalnız değişken adı; yapıştırılan anahtar kod 2, hiçbir çıktıda yok; sihirbazda `-` = anahtarsız.
+- ✅ `--project` ile genel config'teki ad reddediliyor; `remove` etkin bütün dosyalara bakıyor (projede tanımlıysa onay kalıyor; config geçersiz kalacaksa yazmıyor).
+- ✅ `import --as`, geçersiz ada öneri; OpenCode `limit.context`, `{file:…}` anahtarı, `{env:X}` adresi; `.jsonc` hata satırı doğru.
+- ✅ Tek kaynak: `writer.to_yaml`, `schema.PROVIDER_NAME`; kurallar serviste (`from_flags`, `plan_import`, `RemoveOutcome`).
+
+Testler: **1810 geçti** (1792 + 18). ruff, ruff format, pyright temiz.
+
+
 ### Faz 13o – Sağlayıcı ekleme komutu (2026-11-19)
 **Yapılanlar (D-100):**
 - `config/provider_entry.py`: `add`, `remove`, `read_opencode`, `from_opencode`, `pick_opencode`, `suggest_key_env`; yazma `config/writer.py` ile (yorum/girinti korunur, `.bak`, doğrulanmadan yazılmaz).

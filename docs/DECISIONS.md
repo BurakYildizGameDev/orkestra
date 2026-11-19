@@ -1073,3 +1073,13 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - `.jsonc` desteği yalnız tam satır `//` yorumları.
 - Kullanıcı isteğiyle düzeltme-fable'daki "Faz 13 bitene kadar yeni özellik yok" kuralına istisna.
 - **Testler:** 1755 → 1792 (+37; live testi ayrı: gerçek OpenCode config'indeki ilk uygun sağlayıcı geçici config'e alınıp kısa istek, 2026-11-19 EVREN ile geçti).
+
+## D-101 – Faz 13o kod denetimi düzeltmeleri (2026-11-19, Faz 13o)
+`/code-review` (PR #37): 10 bulgu, hepsi düzeltildi; önce kırmızı testler.
+- **Yapıştırılan anahtar yazılmaz:** `--api-key-env` ve sihirbazdaki değişken sorusu yalnız değişken adı kabul eder (`^[A-Za-z_][A-Za-z0-9_]*$`, notify ile aynı kural, D-075); aksi kod 2 ve değer hiçbir mesajda gösterilmez. Sihirbazda `-` = anahtarsız sunucu.
+- **Proje dosyasında genel config'teki ad reddedilir** (`--force` ile de): proje girdisi onunla yalnız birleşirdi (eski anahtar değişkeni, başlıklar, bütçe kalırdı).
+- **`remove` etkin config'e bakar:** etkin bütün dosyalar (genel + proje) silmeden sonraki haliyle birleştirilip doğrulanır; geçersiz kalacaksa (ör. projede yalnız `enabled: false` kalan girdi) hiçbir şey yazılmaz. Onay yalnız hiçbir dosya sağlayıcıyı tanımlamıyorsa geri alınır. Kural serviste (`RemoveOutcome`), CLI yalnız yazdırır.
+- **`import --as NAME`:** Orkestra'nın kabul etmediği ya da çakışan OpenCode adları başka adla alınır; geçersiz ad önerisiyle reddedilir (`My.Lab` → `my-lab`).
+- **OpenCode ayrıntıları:** `models.<id>.limit.context` → `context_window` (açık `--context-window` hepsini ezer); `{file:…}` anahtar "düz anahtar" sayılmaz, ayrı not; `{env:X}` `baseURL` ortamdan çözülür (adres gizli değil), yoksa alınamaz; `.jsonc` yorum satırları silinmez, boşaltılır (hata satır numarası doğru).
+- **Tek kaynak:** düz veriden ruamel düğümü `writer.to_yaml` (sihirbaz da kullanıyor), sağlayıcı adı kuralı `schema.PROVIDER_NAME`; anahtar değişkeni seçimi `from_flags` / `plan_import`'ta, içe aktarma notu `ImportPlan.key_note`'ta.
+- **Testler:** 1792 → 1810 (+18).

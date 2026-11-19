@@ -132,7 +132,7 @@ async def test_live_opencode_import_answers(tmp_path: Path) -> None:
     found = [p for p in provider_entry.read_opencode(source) if p.supported]
     if not found:
         pytest.skip("the OpenCode config has no OpenAI-compatible provider")
-    api = provider_entry.from_opencode(found[0])
+    api = provider_entry.plan_import(found[0]).provider
     if api.api_key_env is not None and not os.environ.get(api.api_key_env):
         pytest.skip(f"{api.api_key_env} is not set")
     result = provider_entry.add(tmp_path / "config.yaml", api)

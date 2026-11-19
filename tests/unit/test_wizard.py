@@ -265,6 +265,22 @@ def test_any_openai_compatible_service_can_be_added(english: None, tmp_path: Pat
     assert result.config.providers["evren"].type == "openai_compat"
 
 
+def test_a_custom_service_can_go_without_a_key_but_never_with_a_pasted_one(
+    english: None,
+) -> None:
+    script = Script(
+        "en", _number_of(wizard.CUSTOM), "lab", "http://localhost:1234/v1",
+        "sk-live-PASTED",                       # not a variable name: asked again
+        "-",                                    # no key
+        "local-model", "", "", "",
+    )  # fmt: skip
+    answers = wizard.run_plain(script, _found(), set_language=i18n.set_language)
+    assert not script.answers
+    assert "api_key_env" not in answers.providers[0].settings
+    assert t("wizard.error.key_env") in script.shown
+    assert not any("sk-live-PASTED" in line for line in script.shown)
+
+
 def test_agy_stays_off_unless_the_user_turns_it_on(english: None) -> None:
     script = Script("en", _number_of("agy"), "n", "", "")  # enable?, chief, project
     answers = wizard.run_plain(script, _found(agents=("agy",)), set_language=i18n.set_language)

@@ -869,13 +869,16 @@ orkestra providers add myapi --base-url https://api.example.com/v1 \
 orkestra providers add lab --base-url http://localhost:1234/v1 --model m --no-key
 orkestra providers import opencode                   # OpenCode'un opencode.json dosyasından
 orkestra providers import opencode --name myapi      # dosyada birden fazla varsa
+orkestra providers import opencode --name My.Lab --as lab   # başka bir adla
 orkestra providers remove myapi                      # onayıyla birlikte
 orkestra providers enable myapi
 ```
 
 `import opencode`, `@ai-sdk/openai-compatible` girdilerini (`baseURL`, `models`) okur.
 `{env:DEĞİŞKEN}` biçimindeki `apiKey` değişken adını verir; dosyaya düz yazılmış anahtar
-kopyalanmaz, Orkestra onu hangi değişkene koyman gerektiğini söyler. `init --plain` aynısını
+kopyalanmaz, Orkestra onu hangi değişkene koyman gerektiğini söyler. Anahtar değişkeni olarak
+verilen değer bir değişken adı olmalı; yapıştırılan anahtar reddedilir ve hiç gösterilmez. Bir
+modelin `limit.context` değeri bağlam uzunluğu olur. `init --plain` aynısını
 "başka bir OpenAI uyumlu servis" olarak sunar. `--tier` (varsayılan 2), `--context-window` ve
 `--project`, `add` ve `import` için geçerlidir.
 

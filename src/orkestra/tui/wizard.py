@@ -24,7 +24,6 @@ and a model keeps its other fields when only its tier changes.
 from __future__ import annotations
 
 import math
-import re
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import closing
 from dataclasses import dataclass, field
@@ -38,6 +37,7 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from orkestra.config import loader, provider_entry, writer
 from orkestra.config.schema import (
     CONFIG_VERSION,
+    PROVIDER_NAME,
     CliAgentProvider,
     Config,
     OllamaProvider,
@@ -57,8 +57,8 @@ LOCAL_TIER = 1
 API_TIER = 2
 AGENT_TIER = 3
 API_DAILY_USD = 2.0
+NO_KEY = "-"  # the answer for "this server needs no key"
 CUSTOM = "+openai_compat"  # "another OpenAI-compatible service"; never a valid provider name
-_PROVIDER_NAME = re.compile(r"^[a-z0-9_-]+$")
 TIERS = ("1", "2", "3")
 # Keys that say *which* provider an entry is; an existing entry keeps its own (only a missing
 # one is filled in), so a custom address or command path survives a re-run.
@@ -322,7 +322,7 @@ def _custom_pick(ask: Prompter, existing: Mapping[str, Provider]) -> ProviderPic
     """Any other OpenAI-compatible service: name, address, key variable, model (Faz 13o)."""
     while True:
         name = _required(ask, t("wizard.ask.custom_name"), None).strip()
-        if not _PROVIDER_NAME.match(name):
+        if not PROVIDER_NAME.match(name):
             ask.say(t("wizard.error.custom_name", value=name))
         elif name in _offered_names() or name in existing:
             ask.say(t("wizard.error.custom_name_taken", name=name))
@@ -333,8 +333,7 @@ def _custom_pick(ask: Prompter, existing: Mapping[str, Provider]) -> ProviderPic
         if provider_entry.valid_base_url(url):
             break
         ask.say(t("wizard.error.base_url", value=url))
-    variable = _required(ask, t("wizard.ask.key_env", name=name),
-                         provider_entry.suggest_key_env(name)).strip()  # fmt: skip
+    variable = _key_variable(ask, name)
     model = _required(ask, t("wizard.ask.api_model", name=name), None)
     tier = _tier(ask, t("wizard.ask.tier", model=model), API_TIER)
     usd = _number(ask, t("wizard.ask.daily_usd", name=name), API_DAILY_USD, integer=False)
@@ -343,6 +342,19 @@ def _custom_pick(ask: Prompter, existing: Mapping[str, Provider]) -> ProviderPic
     )
     settings["budget"] = {"daily_usd": usd}
     return ProviderPick(name, settings)
+
+
+def _key_variable(ask: Prompter, name: str) -> str | None:
+    """The key's variable name, or None for ``-`` (a server without a key). A value that is
+    no variable name may be the key itself: it is refused and never shown (D-101)."""
+    while True:
+        answer = _required(ask, t("wizard.ask.key_env", name=name),
+                           provider_entry.suggest_key_env(name)).strip()  # fmt: skip
+        if answer == NO_KEY:
+            return None
+        if provider_entry.valid_key_env(answer):
+            return answer
+        ask.say(t("wizard.error.key_env"))
 
 
 def _ollama_models(
@@ -496,11 +508,11 @@ def _apply_pick(entry: CommentedMap, pick: ProviderPick, *, fresh: bool) -> None
         if key == "models" and isinstance(entry.get("models"), list) and not fresh:
             entry["models"] = _merge_models(entry["models"], value)
         elif key == "budget" and fresh:
-            entry["budget"] = _yaml_value(value)  # the example's limits are not choices
+            entry["budget"] = writer.to_yaml(value)  # the example's limits are not choices
         elif isinstance(value, Mapping) and isinstance(entry.get(key), CommentedMap):
             _merge(entry[key], value)
         else:
-            entry[key] = _yaml_value(value)
+            entry[key] = writer.to_yaml(value)
     if pick.enabled and "enabled" in entry:
         entry["enabled"] = True
 
@@ -513,7 +525,7 @@ def _merge_models(existing: list[Any], picked: list[dict[str, Any]]) -> Commente
     for model in picked:
         known = by_id.get(model["id"])
         if known is None:
-            merged.append(_yaml_value(model))
+            merged.append(writer.to_yaml(model))
             continue
         _merge(known, model)
         merged.append(known)
@@ -535,18 +547,7 @@ def _merge(target: CommentedMap, values: Mapping[str, Any]) -> None:
         if isinstance(value, Mapping) and isinstance(current, CommentedMap):
             _merge(current, value)
         else:
-            target[key] = _yaml_value(value)
-
-
-def _yaml_value(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        mapping = CommentedMap()
-        for key, item in value.items():
-            mapping[key] = _yaml_value(item)
-        return mapping
-    if isinstance(value, list):
-        return CommentedSeq([_yaml_value(item) for item in value])
-    return value
+            target[key] = writer.to_yaml(value)
 
 
 def _global_builtins_to_turn_off(answers: Answers, base: Path) -> list[str]:

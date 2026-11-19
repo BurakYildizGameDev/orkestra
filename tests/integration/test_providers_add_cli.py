@@ -210,8 +210,8 @@ def test_import_opencode_lists_when_there_is_a_choice(
     listed = json.loads(out)
     assert listed["imported"] is None
     rows = {row["name"]: row for row in listed["providers"]}
-    assert rows["lab"]["key"] == {"env": "LAB_TOKEN", "plain": False}
-    assert rows["evren"]["key"] == {"env": None, "plain": True}
+    assert rows["lab"]["key"] == {"env": "LAB_TOKEN", "plain": False, "file": False}
+    assert rows["evren"]["key"] == {"env": None, "plain": True, "file": False}
     assert rows["claude"]["supported"] is False
     assert FAKE_KEY not in out
     assert "lab" not in load_config().config.providers
@@ -263,3 +263,51 @@ def test_remove_an_unknown_provider(home: Path, capsys: pytest.CaptureFixture[st
     code, _, err = _run(["providers", "remove", "evren"], capsys)
     assert code == 2
     assert t("providers.error.not_in_file", name="evren", path=home / "config.yaml") in err
+
+
+def test_import_as_another_name(
+    home: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = _opencode(tmp_path)
+    code, _, _ = _run(["providers", "import", "opencode", "--path", str(source),
+                       "--as", "evren2"], capsys)  # fmt: skip
+    assert code == 0
+    assert _chat("evren2").api_key_env == "EVREN2_API_KEY"
+
+
+def test_a_pasted_key_is_refused_and_not_echoed(
+    home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pasted = "sk-live-PASTEDKEY000000000000"
+    code, out, err = _run([*ADD, "--api-key-env", pasted], capsys)
+    assert code == 2
+    assert pasted not in out + err + _config_text(home)
+
+
+PROJECT_LAB = """\
+version: 1
+providers:
+  lab:
+    type: openai_compat
+    base_url: http://localhost:1/v1
+    models:
+      - id: m
+        tier: 1
+"""
+
+
+def test_remove_keeps_consent_while_the_project_file_still_defines_it(
+    home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run(ADD, capsys)
+    (Path.cwd() / "orkestra.yaml").write_text(
+        PROJECT_LAB,
+        encoding="utf-8",
+    )
+    _run(["providers", "add", "lab", "--base-url", "http://localhost:2/v1", "--model", "m",
+          "--no-key"], capsys)  # fmt: skip
+    assert _run(["providers", "enable", "lab", "--yes"], capsys)[0] == 0
+    code, out, _ = _run(["providers", "remove", "lab"], capsys)
+    assert code == 0
+    assert t("consent.revoked", name="lab") not in out
+    assert "lab" in load_config().config.providers
