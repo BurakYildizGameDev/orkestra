@@ -19,13 +19,15 @@ from urllib.request import url2pathname
 
 DISTRIBUTION = "orkestra-cli"
 GIT_TIMEOUT_S = 5
+DETACHED = "HEAD"  # shown for a detached HEAD
+SYMREF_DETACHED = 1  # ``git symbolic-ref --quiet``: HEAD is not a branch; 128: no repository
 
 
 @dataclass(frozen=True)
 class InstallInfo:
     source: Path  # the editable source directory
     prefix: Path  # the environment that runs it
-    branch: str | None  # None: detached HEAD or not a git checkout
+    branch: str | None  # DETACHED, or None: not a git checkout / git missing or failing
 
 
 def _direct_url() -> str | None:
@@ -49,6 +51,8 @@ def _branch(repo: Path) -> str | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
+    if proc.returncode == SYMREF_DETACHED:
+        return DETACHED
     if proc.returncode != 0:
         return None
     return proc.stdout.strip() or None

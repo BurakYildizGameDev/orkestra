@@ -43,7 +43,7 @@ from orkestra.queue import service as queue_service
 from orkestra.queue import store as queue_store
 from orkestra.routing.router import Route, describe_candidates, resolve_profile
 from orkestra.security.redact import Redactor, config_for_display, configured_secrets
-from orkestra.state import consent, db, stats
+from orkestra.state import consent, db, retention, stats
 from orkestra.tasks import batch, runner, spec, templates
 from orkestra.tui import detect, wizard
 from orkestra.workspace import service
@@ -947,7 +947,11 @@ def build_app() -> typer.Typer:
     def stats_command(
         since: Annotated[
             str,
-            typer.Option("--since", metavar="DURATION", help=t("cli.stats.option.since")),
+            typer.Option(
+                "--since",
+                metavar="DURATION",
+                help=t("cli.stats.option.since", days=retention.MIN_KEEP.days),
+            ),
         ] = stats.DEFAULT_SINCE,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
@@ -1466,7 +1470,12 @@ def build_app() -> typer.Typer:
     def gc_command(
         older_than: Annotated[
             int,
-            typer.Option("--older-than", min=0, metavar="DAYS", help=t("cli.gc.option.older_than")),
+            typer.Option(
+                "--older-than",
+                min=0,
+                metavar="DAYS",
+                help=t("cli.gc.option.older_than", days=retention.MIN_KEEP.days),
+            ),
         ] = service.DEFAULT_KEEP.days,
         dry_run: Annotated[
             bool, typer.Option("--dry-run", help=t("cli.gc.option.dry_run"))

@@ -142,3 +142,51 @@ def test_stats_and_adaptive_are_unchanged_after_pruning(conn: sqlite3.Connection
     after = (stats.to_dict(stats.collect(conn, since=since, now=NOW)),
              adaptive.load_outcomes(conn, NOW))  # fmt: skip
     assert before == after
+
+
+# --- code review (PR #39) ---------------------------------------------------------------
+
+
+def _priced(conn: sqlite3.Connection, run_id: str, days_ago: float, cost: float) -> None:
+    started = NOW - timedelta(days=days_ago)
+    db.record_run_start(conn, run_id=run_id, task_id="t", kind="ask", started_at=started)
+    conn.execute(
+        "INSERT INTO usage (run_id, provider, model, day, prompt_tokens, completion_tokens, "
+        "cost_usd, requests, runs, estimated, kind, created_at) "
+        "VALUES (?, 'paid', 'm1', ?, 1000, 1000, ?, 1, 1, 0, 'actual', ?)",
+        (run_id, started.date().isoformat(), cost, started.isoformat()),
+    )
+    conn.commit()
+
+
+def test_the_learned_price_of_an_unused_model_survives(conn: sqlite3.Connection) -> None:
+    from orkestra.providers import pricing
+
+    _priced(conn, "cheap", 100, 0.001)
+    _priced(conn, "dear", 90, 0.004)
+    before = pricing._from_history(conn, "paid", "m1")  # pyright: ignore[reportPrivateUsage]
+    pruned = retention.prune(conn, NOW - timedelta(days=60), dry_run=False)
+    assert pruned.runs == 2 and pruned.usage == 1
+    after = pricing._from_history(conn, "paid", "m1")  # pyright: ignore[reportPrivateUsage]
+    assert before is not None and after == before
+
+
+def test_a_run_without_a_readable_start_and_its_usage_stay(conn: sqlite3.Connection) -> None:
+    _run(conn, "today", 0)
+    conn.execute("UPDATE runs SET started_at = NULL WHERE run_id = 'today'")
+    _run(conn, "garbled", 0)
+    conn.execute("UPDATE runs SET started_at = 'yesterday-ish' WHERE run_id = 'garbled'")
+    conn.commit()
+    pruned = retention.prune(conn, NOW - timedelta(days=60), dry_run=False)
+    assert pruned == retention.Pruned(runs=0, usage=0, queue=0)
+    assert _ids(conn, "usage", "run_id") == {"today", "garbled"}
+
+
+def test_a_dry_run_does_not_take_the_write_lock(conn: sqlite3.Connection) -> None:
+    _run(conn, "old", 100)
+    with closing(db.connect()) as writer:
+        writer.execute("BEGIN IMMEDIATE")  # a worker writing at the same time
+        conn.execute("PRAGMA busy_timeout = 0")
+        pruned = retention.prune(conn, NOW - timedelta(days=60), dry_run=True)
+        writer.execute("ROLLBACK")
+    assert pruned.runs == 1

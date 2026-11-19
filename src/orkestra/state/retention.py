@@ -8,6 +8,7 @@ its row: its change may not have been applied yet.
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -37,14 +38,14 @@ def row_cutoff(now: datetime, keep: timedelta) -> datetime:
 
 def _old_runs(conn: sqlite3.Connection, cutoff: datetime, removing: frozenset[Path]) -> list[str]:
     rows = conn.execute(
-        "SELECT run_id, started_at, worktree FROM runs WHERE started_at < ? OR started_at IS NULL",
+        "SELECT run_id, started_at, worktree FROM runs WHERE started_at < ?",
         ((cutoff + OFFSET_MARGIN).isoformat(),),
     ).fetchall()
     chosen: list[str] = []
     for run_id, started_at, worktree in rows:
         started = parse_started(started_at)
-        if started is not None and started >= cutoff:
-            continue
+        if started is None or started >= cutoff:
+            continue  # no readable start: its age is unknown, so it stays
         if worktree and Path(worktree).exists() and Path(worktree) not in removing:
             continue  # its change may still be applied
         chosen.append(run_id)
@@ -63,16 +64,34 @@ def _old_queue(conn: sqlite3.Connection, cutoff: datetime) -> list[int]:
     ]  # fmt: skip
 
 
+def _price_rows(conn: sqlite3.Connection) -> set[int]:
+    """Per (provider, model), the row ``pricing._from_history`` learns the price from (the
+    highest cost per token): it stays, or an unused paid model would lose its price."""
+    rows = conn.execute(
+        "SELECT id, provider, model, cost_usd * 1.0 / (prompt_tokens + completion_tokens) "
+        "FROM usage WHERE kind = 'actual' AND cost_usd > 0 "
+        "AND (prompt_tokens + completion_tokens) > 0"
+    ).fetchall()
+    best: dict[tuple[str, str], tuple[float, int]] = {}
+    for usage_id, provider, model, rate in rows:
+        key = (provider, model)
+        if key not in best or rate > best[key][0]:
+            best[key] = (rate, usage_id)
+    return {usage_id for _, usage_id in best.values()}
+
+
 def _old_usage(conn: sqlite3.Connection, cutoff: datetime, runs: list[str]) -> list[int]:
-    """Settled usage of the removed runs, and run-less usage of days before the cutoff.
-    Reservations are ``budget.purge_stale_reservations``' job."""
+    """Settled usage of days before the cutoff that belongs to a removed run or to none.
+    Reservations are ``budget.purge_stale_reservations``' job; a recent day always stays
+    (today's budget counts it)."""
     gone = set(runs)
     kept_runs = {row[0] for row in conn.execute("SELECT run_id FROM runs")} - gone
+    keep = _price_rows(conn)
     rows = conn.execute("SELECT id, run_id, day FROM usage WHERE kind = 'actual'").fetchall()
     first_day = cutoff.date().isoformat()
     return [
         usage_id for usage_id, run_id, day in rows
-        if run_id in gone or (run_id not in kept_runs and (day or "") < first_day)
+        if (day or "") < first_day and run_id not in kept_runs and usage_id not in keep
     ]  # fmt: skip
 
 
@@ -88,7 +107,8 @@ def prune(
     ``removing``: worktrees this ``gc`` removes; in a dry run they are still on disk but
     count as gone.
     """
-    with transaction(conn):
+    # A dry run only reads: no write lock that a running worker would wait for.
+    with contextlib.nullcontext(conn) if dry_run else transaction(conn):
         runs = _old_runs(conn, cutoff, removing)
         usage = _old_usage(conn, cutoff, runs)
         queue = _old_queue(conn, cutoff)

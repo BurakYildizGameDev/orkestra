@@ -52,6 +52,16 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – düzeltme-fable a (PR #39), 2026-11-20
+`/code-review` 6 bulgu; hepsi düzeltildi (D-105). Önce kırmızı testler.
+- ✅ `gc` öğrenilmiş fiyatın kaynağı olan kullanım satırını silmiyor (önemli).
+- ✅ Başlangıcı okunamayan koşu ve yeni günlü kullanım satırları kalıyor.
+- ✅ `doctor`: git yoksa ya da depo değilse uyarı yok; ayrık HEAD uyarı.
+- ✅ `gc --dry-run` yazma kilidi almıyor.
+- ✅ 35 gün yardım metinlerinde koddan; `stats --since` yardımı silme sınırını söylüyor.
+
+Testler: **1877 geçti** (1870 + 7). ruff, ruff format, pyright temiz.
+
 ### düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (2026-11-20)
 Faz üçe bölündü (D-104): a kod düzeltmeleri, b büyük dosyaları bölme, c README + elle tur + temizlik.
 

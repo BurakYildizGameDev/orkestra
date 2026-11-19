@@ -406,9 +406,9 @@ def install_check(info: install.InstallInfo | None) -> Check | None:
     The project's own environment (``uv run`` in the checkout) is development, not the tool."""
     if info is None or info.prefix.resolve().is_relative_to(info.source.resolve()):
         return None
-    if info.branch in MAIN_BRANCHES:
-        return None
-    message = t("doctor.install.branch", branch=info.branch or "HEAD", path=info.source)
+    if info.branch is None or info.branch in MAIN_BRANCHES:
+        return None  # None: not a git checkout, or git could not tell; nothing to warn about
+    message = t("doctor.install.branch", branch=info.branch, path=info.source)
     return Check("install", "warn", message, {"source": str(info.source), "branch": info.branch})
 
 

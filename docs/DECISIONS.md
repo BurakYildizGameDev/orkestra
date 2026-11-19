@@ -1117,3 +1117,11 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **`queue remove --finished` (madde 6):** biten ve başarısız işleri `removed` yapar (satırları `gc` siler); ID ile birlikte ya da hiçbiri verilmezse kod 2.
 - Mimari: §4.1 `notify` örneği ve modeli, komut tablosunda `gc`, bütçe ve worktree notları, §21 kuyruk notu güncellendi.
 
+## D-105 – düzeltme-fable a kod denetimi düzeltmeleri (2026-11-20, düzeltme-fable a)
+`/code-review` (PR #39): 6 bulgu (1 önemli, 5 küçük), hepsi düzeltildi; önce kırmızı testler.
+- **Öğrenilmiş fiyat kalır (önemli):** `pricing._from_history` fiyatı bütün `usage` geçmişinin en yüksek maliyet/token oranından öğreniyor. `gc` her (sağlayıcı, model) için o satırı silmez; yoksa 35 gündür kullanılmayan ücretli model fiyatsız kalırdı.
+- **Başlangıcı okunamayan koşu kalır:** `started_at` boş ya da bozuksa yaşı bilinmez, silinmez. Kullanım satırı yalnız günü kesimden eskiyse silinir (bugünün bütçesi hiç eksilmez).
+- **`doctor` yanlış uyarı vermez:** dal `git symbolic-ref --quiet` çıkış koduyla okunur: 0 dal, 1 ayrık HEAD (uyarı), diğerleri (depo değil, git yok, zaman aşımı) bilinmez → uyarı yok.
+- **`gc --dry-run` yazma kilidi almaz** (`BEGIN IMMEDIATE` yok); çalışan bir işçiyi bekletmez.
+- **Gün sayısı tek kaynaktan:** `gc --older-than` ve `stats --since` yardımında `{days}` = `retention.MIN_KEEP.days`; `stats --since` yardımı `gc`'nin eski satırları sildiğini söylüyor.
+
