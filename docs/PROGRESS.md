@@ -45,10 +45,32 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13l – İşe göre model ve bilgisayar yükü (ek) | ✅ | 2026-11-18 | `routing.by_kind` (iş türüne göre model tercihi, kademe içinde); yerel sağlayıcının `concurrency`'si süreçler arasında (tek ağır yerel model); `doctor` RAM/GPU'ya göre boyut önerisi (D-096); kod denetimi (D-097) |
 | 13m – Toplu devretme ve çapraz denetim (ek) | ✅ | 2026-11-18 | denetçi yazardan başka sağlayıcı (`review.by`, `review.independent`); `apply --max-risk low`; `show --report` (patrona rapor); skill: küçük işi devretme, toplu devret, projenin testleri doğrulayıcı (D-098); kod denetimi (D-099) |
 | 13n – Claude dışı şef (ek) | ⏳ | | `chief_guide.md`'yi skill ile eşitleme + kopma testi, `handoff show --guide`, benchmark mod E (agy şef; token yerine geçme/süre) (ayrıntı: yerel YAPILIS_PLANI.md) |
-| 13o – Sağlayıcı ekleme komutu (ek) | ⏳ | | herhangi bir OpenAI uyumlu servis için `providers add` / `import opencode` / `remove`, `--check`, sihirbaz + arayüz; anahtar asla kopyalanmaz (ayrıntı: yerel YAPILIS_PLANI.md) |
+| 13o – Sağlayıcı ekleme komutu (ek) | ✅ | 2026-11-19 | herhangi bir OpenAI uyumlu servis: `providers add` / `import opencode` / `remove`, `--check` (= doctor), sihirbazda "başka bir OpenAI uyumlu servis"; anahtar asla kopyalanmaz; EVREN ile canlı test geçti (D-100) |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13o – Sağlayıcı ekleme komutu (2026-11-19)
+**Yapılanlar (D-100):**
+- `config/provider_entry.py`: `add`, `remove`, `read_opencode`, `from_opencode`, `pick_opencode`, `suggest_key_env`; yazma `config/writer.py` ile (yorum/girinti korunur, `.bak`, doğrulanmadan yazılmaz).
+- CLI: `providers add NAME --base-url URL --model ID… [--api-key-env VAR | --no-key] [--tier] [--context-window] [--project] [--force] [--check] [--json]`, `providers import opencode [--path] [--name] …`, `providers remove NAME [--project] [--json]`.
+- Sihirbaz: listenin sonunda "başka bir OpenAI uyumlu servis" (ad, adres, anahtar değişkeni, model, kademe, bütçe); arayüzlü sihirbaz aynı akışı kullanıyor.
+- i18n 5 dilde, README (en + tr) "Sağlayıcı ekleme" bölümü, skill'e bir madde, Mimari §22 notu.
+
+**Kabul kriterleri:**
+- ✅ `add`: alanlar doğru, yorumlar ve girinti korunuyor, anahtar hiçbir dosyada yok, çakışan ad kod 2, `config validate` geçiyor (`test_provider_entry.py`, `test_providers_add_cli.py`).
+- ✅ `import opencode`: `{env:X}` ve düz anahtar örnekleri; düz anahtar config'e, çıktıya, hata mesajına girmiyor; desteklenmeyen paket atlanıyor; birden fazlaysa listeleniyor.
+- ✅ `--check`: respx ile `/models` başarı (eksik model uyarı), 401 → kod 3 ve girdi kalıyor.
+- ✅ `remove`: girdi ve onayı gidiyor, başka sağlayıcılara dokunulmuyor; bilinmeyen ad kod 2.
+- ✅ Elle/canlı: `@pytest.mark.live` `test_live_opencode_import_answers` gerçek OpenCode config'indeki EVREN'i geçici config'e aldı ve `deepseek-v4.1-flash` cevap verdi. Ayrıca kullanıcının config'inde `orkestra ask --provider evren --model deepseek-v4.1-flash` → `OK` (17 sn).
+- ✅ ruff, ruff format, pyright temiz; pytest **1792 geçti** (1755 + 37).
+
+**Ertelenenler:**
+- Arayüzün Sağlayıcılar sekmesinde "ekle" düğmesi (arayüzlü sihirbaz bu adımı içeriyor).
+- `.jsonc`'te satır içi yorumlar.
+
+**Bilinen sorunlar:**
+- EVREN modellerinin bağlam uzunluğu bilinmiyor; kullanıcının config'inde 128000 tahmin (elle eklendi, 2026-11-19). Servisin gerçek sınırı öğrenilince düzeltilmeli.
 
 ### Kod denetimi – Faz 13m (PR #36), 2026-11-18
 `/code-review` 10 bulgu; hepsi düzeltildi (D-099). Önce kırmızı testler.

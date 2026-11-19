@@ -857,6 +857,28 @@ providers:
       daily_usd: 2.00
 ```
 
+### Sağlayıcı ekleme
+
+OpenAI uyumlu herhangi bir servis YAML yazmadan eklenebilir; belirli bir servise özel kod
+yoktur. Anahtarın kendisi asla yazılmaz, yalnız onu tutan ortam değişkeninin adı (varsayılan
+`<AD>_API_KEY`). Eklemek onay vermek değildir; ardından yine `providers enable` gerekir.
+
+```bash
+orkestra providers add myapi --base-url https://api.example.com/v1 \
+  --model some-model --model other-model --check     # --check sunucudan model listesini ister
+orkestra providers add lab --base-url http://localhost:1234/v1 --model m --no-key
+orkestra providers import opencode                   # OpenCode'un opencode.json dosyasından
+orkestra providers import opencode --name myapi      # dosyada birden fazla varsa
+orkestra providers remove myapi                      # onayıyla birlikte
+orkestra providers enable myapi
+```
+
+`import opencode`, `@ai-sdk/openai-compatible` girdilerini (`baseURL`, `models`) okur.
+`{env:DEĞİŞKEN}` biçimindeki `apiKey` değişken adını verir; dosyaya düz yazılmış anahtar
+kopyalanmaz, Orkestra onu hangi değişkene koyman gerektiğini söyler. `init --plain` aynısını
+"başka bir OpenAI uyumlu servis" olarak sunar. `--tier` (varsayılan 2), `--context-window` ve
+`--project`, `add` ve `import` için geçerlidir.
+
 Hatalar alanın tam yerini, seçili dilde gösterir:
 
 ```

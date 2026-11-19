@@ -59,6 +59,7 @@ orkestra providers list --json    # onay (consent), sağlık, kalan bütçe
 - Kullanmak istediğin sağlayıcının onayı eksikse **kullanıcıya sor**. En iyisi, kullanıcının `orkestra providers enable <ad>` komutunu **kendi terminalinde** çalıştırmasıdır. Komut, sağlayıcının neler yapabileceğini ve uyarıları gösterip etkileşimli olarak onay ister.
 - Komutu sen `--yes` olmadan çalıştırırsan terminal etkileşimli olmadığı için onay metnini yazdırır, sonra kod 2 ile `consent.not_interactive` hatası verir. Bu hata görev dosyasıyla ilgili değildir. Kullanıcı onayı senin vermeni isterse önce bu metni ona **olduğu gibi göster**. Ancak metni gördükten sonra açıkça kabul ederse `--yes` ile çalıştır. `--yes` bayrağını başka hiçbir durumda **asla** kullanma.
 - Hiç sağlayıcı yoksa (`orkestra init` ile config oluşturulmamış) kurulumu kullanıcıya bırak, işi kendin yap.
+- Kullanıcı yeni bir OpenAI uyumlu servis eklemek isterse: `orkestra providers add <ad> --base-url <adres> --model <id> --check` ya da OpenCode'da tanımlıysa `orkestra providers import opencode`. Anahtarı asla dosyaya ya da komuta yazma; yalnız değişken adı (`--api-key-env`). Eklemek onay değildir, onay yine kullanıcının.
 - Bir görevin nereye gideceğini merak ediyorsan önce `--dry-run` ile bak; hiçbir şey göndermez, adayları ve elenen sağlayıcıları nedenleriyle listeler (`candidates`, `eliminated`).
 
 Çıkış kodları (her komut için aynı):

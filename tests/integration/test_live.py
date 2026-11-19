@@ -9,6 +9,7 @@ Environment:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import httpx
 import pytest
@@ -75,7 +76,6 @@ def test_live_codex_edit_and_apply(make_repo: object, monkeypatch: pytest.Monkey
     import shutil
     import sys
     from contextlib import closing
-    from pathlib import Path
 
     from orkestra.config.loader import load_config
     from orkestra.state import consent, db
@@ -119,3 +119,28 @@ def test_live_codex_edit_and_apply(make_repo: object, monkeypatch: pytest.Monkey
     with closing(db.connect()) as conn:
         service.apply_run(conn, outcome.envelope.run_id)
     assert "a + b" in (repo / "calc.py").read_bytes().decode()
+
+
+async def test_live_opencode_import_answers(tmp_path: Path) -> None:
+    """Faz 13o: the first OpenAI-compatible provider of the real OpenCode config, imported into
+    a temporary Orkestra config, answers a short request (its key variable must be set)."""
+    from orkestra.config import provider_entry
+
+    source = provider_entry.opencode_path(os.environ, home=Path.home())
+    if not source.exists():
+        pytest.skip(f"no OpenCode config at {source}")
+    found = [p for p in provider_entry.read_opencode(source) if p.supported]
+    if not found:
+        pytest.skip("the OpenCode config has no OpenAI-compatible provider")
+    api = provider_entry.from_opencode(found[0])
+    if api.api_key_env is not None and not os.environ.get(api.api_key_env):
+        pytest.skip(f"{api.api_key_env} is not set")
+    result = provider_entry.add(tmp_path / "config.yaml", api)
+    cfg = result.config.providers[api.name]
+    assert isinstance(cfg, OpenAICompatProvider)
+    reply = await OpenAICompatChat(api.name, cfg, os.environ).complete(
+        CompletionRequest(
+            model=api.models[0], system="", user="Reply with exactly: OK", max_output_tokens=20
+        )
+    )
+    assert reply.text.strip()
