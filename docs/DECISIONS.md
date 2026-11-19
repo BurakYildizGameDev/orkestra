@@ -1095,3 +1095,15 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **İlk gerçek koşu** (`bench/results/trial/2026-11-19-1622`): görev 01 ve 02, 2/2 geçti, görev başına ~162 bin agy tokenı (input + output + thinking), ~6 dk; işçi koşusu 0 (küçük işler, kılavuz "kendin yap" diyor; Claude'un B modundaki davranışıyla aynı).
 - **Bilinen sorun:** istem klasörü `--add-dir` ile agy'nin ikinci çalışma alanı oluyor; agy oraya da düzenlediği dosyanın bir kopyasını yazdı (değerlendirmeyi etkilemez, çalışma alanı ayrı).
 - **Testler:** 1810 → 1822 (+12).
+
+## D-103 – Faz 13n kod denetimi düzeltmeleri (2026-11-19, Faz 13n)
+`/code-review` (PR #38): 10 bulgu, hepsi düzeltildi; önce kırmızı testler.
+- **Gizli testler diskte kalmaz:** sandbox'sız agy (mod E) yan klasördeki bir önceki koşunun `eval/_hidden_tests`'ini okuyabilirdi. Değerlendirmeden hemen sonra silinir (her mod). Ayrıca agy'nin günlüğü ve çıktısı `_hidden_tests` ya da görevin kendi klasörünü (`bench/tasks/<görev>`) anarsa benchmark `LeakError` ile durur (kod 3).
+- **Küçük özette kılavuz kaybolmaz:** 26 satırlık kılavuz ~48 satırdan küçük `brief_max_lines`'ta sığmıyordu; artık tek satır nerede olduğunu söyler (`orkestra handoff show --guide`).
+- **Yalnız gerçek kota durdurur:** mod E'de `quota.detect` sonucunda yalnız `hard` (kota bitti) benchmark'ı durdurur; 429 / "rate limit" başarısız koşudur. Mesaj hangi sınır olduğunu söyler (agy / Claude).
+- **agy kendi kendine zaman aşımına uğrar:** `--print-timeout` koşucunun öldürme süresinden önce (`max(t − 60, 0,9·t)`), böylece JSON'u ve harcadığı token yazılır.
+- **Sonuç yoksa başarı yok:** başarı yalnız çıkış 0 ve `status: SUCCESS`; çıkış 0 ama sonuç yoksa hata ("no status") ve kota denetimi yapılır. JSON'dan önceki sürüm/uyarı satırı atlanır.
+- **Token bilinmiyorsa 0 yazılmaz:** hiçbir koşu kullanım vermediyse `agent_tokens_per_task: null`, `agent_runs_without_usage` sayılır ve tabloda yazılır.
+- **Kılavuzdaki her komut tam:** kılavuzda kod bloğu yok, satır içi komutlar da argümanlarıyla denetlenir (`check_call`); `providers enable <name>`, `providers add <name> --base-url <url> --model <id>`, `plan expand <plan.md>`. Tam kurallar için kurulu pakette olmayan `skill/` yolu yerine depodaki SKILL.md adresi.
+- **Tek kaynak:** mod E'nin istemi `MODES[mode].hint`'ten (`agent_prompt(prompt, hint)`); her pencerede `agy --version` kaydedilir, sürüm değişince not düşülür.
+- **Testler:** 1822 → 1836 (+14).

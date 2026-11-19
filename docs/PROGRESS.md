@@ -50,6 +50,16 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 13n (PR #38), 2026-11-19
+`/code-review` 10 bulgu; hepsi düzeltildi (D-103). Önce kırmızı testler.
+- ✅ Değerlendirmeden sonra hiçbir gizli test diskte kalmıyor; agy'nin izi gizli testleri ya da görev klasörünü anarsa benchmark duruyor.
+- ✅ Küçük `brief_max_lines`'ta kılavuz yerine tek satırlık işaretçi.
+- ✅ Mod E: yalnız gerçek kota durdurur (429 başarısız koşu), agy öldürülmeden önce kendisi durur, sonuçsuz çıkış 0 hata sayılır, JSON öncesi satır atlanır, kullanım yoksa token "bilinmiyor", agy sürümü pencerede.
+- ✅ Kılavuzdaki komutlar argümanlarıyla tam (`check_call`), tam kurallar için depo adresi.
+
+Testler: **1836 geçti** (1822 + 14). ruff, ruff format, pyright temiz.
+
+
 ### Faz 13n – Claude dışı şef (2026-11-19)
 **Yapılanlar (D-102):**
 - `prompts/chief_guide.md` yeniden yazıldı: bağlam süzgeci, toplu devretme, denetim akışı ve `--max-risk low`, devir dosyası, onay kuralları; skill'in 22 üst komutunun hepsi.

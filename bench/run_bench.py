@@ -62,6 +62,8 @@ DIFFICULTIES = ("easy", "medium", "hard")
 DEFAULT_OLLAMA_MODEL = "qwen2.5-coder:14b"
 DEFAULT_TIMEOUT_S = 900
 EVAL_TIMEOUT_S = 300
+HIDDEN_DIR = "_hidden_tests"  # next to a copy of the result, only while it is evaluated
+AGENT_TIMEOUT_MARGIN_S = 60  # the agent stops itself (and prints its usage) before it is killed
 LEAK_LINE_CHARS = 30  # a hidden-test line this long quoted in a prompt is a leak
 # On Windows Claude Code also runs commands through its PowerShell tool and chains them
 # ("cd x; python ..."); every refusal costs turns, so the same commands are allowed in both
@@ -265,7 +267,7 @@ def evaluate(task: Task, workspace: Path, eval_dir: Path) -> Evaluation:
     if eval_dir.exists():
         _rmtree(eval_dir)
     shutil.copytree(workspace, eval_dir, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-    hidden = eval_dir / "_hidden_tests"
+    hidden = eval_dir / HIDDEN_DIR
     shutil.copytree(task.root / "hidden", hidden)
     # The loop scope silences pytest-asyncio's warning without turning async tests off.
     (eval_dir / "_bench_pytest.ini").write_text(
@@ -273,7 +275,7 @@ def evaluate(task: Task, workspace: Path, eval_dir: Path) -> Evaluation:
     )
     args = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
             "-c", "_bench_pytest.ini", "--rootdir", ".",
-            "_hidden_tests"]  # fmt: skip
+            HIDDEN_DIR]  # fmt: skip
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     try:
         done = subprocess.run(
@@ -500,7 +502,7 @@ def run_once(
     extra = {".claude/skills/orkestra/SKILL.md": SKILL_FILE} if mode in SKILL_MODES else None
     workspace = prepare_workspace(task, run_dir / "ws", extra)
     agent_name = MODES[mode].agent
-    prompt = agent_prompt(task.prompt) if agent_name else task.prompt
+    prompt = agent_prompt(task.prompt, MODES[mode].hint or "") if agent_name else task.prompt
     check_no_leak(task, workspace, prompt=prompt)
     env = _env(home)
     if agent_name:
@@ -522,7 +524,12 @@ def run_once(
     except BenchError as exc:
         error = str(exc)
     duration = round(time.monotonic() - started, 2)
+    if agent_name:
+        check_agent_trace(task, run_dir)  # before the hidden tests exist anywhere again
     result = evaluate(task, workspace, run_dir / "eval")
+    # A chief without a sandbox (mode E) could read a sibling run's folder: no hidden test
+    # stays on disk after its evaluation (D-103).
+    _rmtree(run_dir / "eval" / HIDDEN_DIR)
     check_code, _ = run_check(task, workspace) if task.check else (0, "")
     return Record(
         task=task.id, difficulty=task.difficulty, mode=mode, repeat=repeat,
@@ -612,11 +619,32 @@ def _run_claude(
     return parse_claude(done.stdout), None
 
 
-def agent_prompt(prompt: str) -> str:
-    """What an agent chief reads: the hint, Orkestra's chief guide, then the task."""
+def agent_prompt(prompt: str, hint: str) -> str:
+    """What an agent chief reads: its mode's hint, Orkestra's chief guide, then the task."""
     from orkestra.handoff.brief import guide_lines
 
-    return f"{AGENT_HINT}\n\n" + "\n".join(guide_lines()) + f"\n\n{prompt}\n"
+    return f"{hint}\n\n" + "\n".join(guide_lines()) + f"\n\n{prompt}\n"
+
+
+def agent_timeout(timeout_s: float) -> int:
+    """agy's own ``--print-timeout``: earlier than the runner's kill, so it still prints its
+    JSON (and the tokens it spent) when a task takes too long."""
+    return max(int(timeout_s - AGENT_TIMEOUT_MARGIN_S), int(timeout_s * 0.9), 1)
+
+
+def check_agent_trace(task: Task, run_dir: Path) -> None:
+    """An agent chief runs without a sandbox: if its log or output names the hidden tests or
+    the task's own folder (solution, hidden tests), the run is not a fair one (D-103)."""
+    texts = [path.read_text(encoding="utf-8", errors="replace")
+             for path in (run_dir / "agent" / "agy.log", run_dir / "agent-output.json")
+             if path.is_file()]  # fmt: skip
+    root = [part for part in re.split(r"[\\/]+", str(task.root)) if part]
+    root_pattern = re.compile(r"[\\/]+".join(re.escape(part) for part in root[-3:]),
+                              re.IGNORECASE)  # fmt: skip
+    for text in texts:
+        if HIDDEN_DIR in text or root_pattern.search(text):
+            raise LeakError(f"{task.id}: the agent chief's trace names the hidden tests or "
+                            "the task folder")  # fmt: skip
 
 
 def agent_args(settings: Settings, prompt_file: Path, log_file: Path) -> list[str]:
@@ -626,17 +654,23 @@ def agent_args(settings: Settings, prompt_file: Path, log_file: Path) -> list[st
     pointer = (f"Read the file {prompt_file} and follow the instructions in it exactly. "
                "Work in the current directory.")  # fmt: skip
     return [settings.agy, "--output-format", "json", "--disable-slash-commands",
-            "--print-timeout", f"{int(settings.timeout_s)}s",
+            "--print-timeout", f"{agent_timeout(settings.timeout_s)}s",
             "--add-dir", str(prompt_file.parent), "--log-file", str(log_file),
             "--print", pointer]  # fmt: skip
 
 
 def _agent_json(stdout: str) -> dict[str, Any]:
-    try:
-        data = json.loads(stdout)
-    except ValueError:
-        return {}
-    return data if isinstance(data, dict) else {}
+    """agy's result object; a banner or update line before it is skipped."""
+    candidates = [stdout, *reversed([line for line in stdout.splitlines()
+                                     if line.lstrip().startswith("{")])]  # fmt: skip
+    for text in candidates:
+        try:
+            data = json.loads(text)
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            return data
+    return {}
 
 
 def parse_agent(stdout: str) -> dict[str, Any] | None:
@@ -669,8 +703,9 @@ def _run_agent(
     done = runner(args, workspace, env, settings.timeout_s)
     (run_dir / "agent-output.json").write_text(done.stdout, encoding="utf-8")  # for debugging
     status = str(_agent_json(done.stdout).get("status") or "")
-    failed = done.returncode != 0 or status not in ("", "SUCCESS")
-    if failed and quota.detect(f"{done.stdout}\n{done.stderr}") is not None:
+    failed = done.returncode != 0 or status != "SUCCESS"  # no result at all is a failure too
+    hit = quota.detect(f"{done.stdout}\n{done.stderr}") if failed else None
+    if hit is not None and hit.hard:  # a passing rate limit (429) is a failed run, no stop
         raise UsageLimitReached(f"{task.id} agy: {(done.stderr or done.stdout)[:200]}")
     usage = parse_agent(done.stdout)
     if failed:
@@ -811,7 +846,9 @@ def summarize(records: Sequence[Record]) -> dict[str, dict[str, Any]]:
                                    if mode in CHIEF_MODES else None),
             "agent_tokens_per_task": (
                 _mean(_agent_tokens(r) for r in mine if r.agent is not None)
-                if mode in AGENT_MODES else None),
+                if mode in AGENT_MODES and any(r.agent is not None for r in mine) else None),
+            "agent_runs_without_usage": (sum(1 for r in mine if r.agent is None)
+                                         if mode in AGENT_MODES else None),
             "permission_denials": _denials(mine) if mode in CHIEF_MODES else None,
             "worker_cost_per_task": _mean(r.workers.get("cost_usd", 0.0) for r in mine),
             "worker_runs_per_task": _mean(r.workers.get("runs", 0) for r in mine),
@@ -858,9 +895,11 @@ def markdown(summary: Mapping[str, Mapping[str, Any]], records: Sequence[Record]
                       f"{summary[other]['savings_estimate_per_task']:,.0f}"]  # fmt: skip
     for mode in AGENT_MODES:
         if mode in summary and summary[mode]["agent_tokens_per_task"] is not None:
+            missing = summary[mode]["agent_runs_without_usage"]
+            note = f"; {missing} run(s) without usage" if missing else ""
             lines += ["", f"{MODES[mode].agent} (chief) tokens per task ({mode.upper()}): "
                       f"{summary[mode]['agent_tokens_per_task']:,.0f} (input + output + "
-                      "thinking; not comparable 1:1 with Claude's)"]  # fmt: skip
+                      f"thinking; not comparable 1:1 with Claude's{note})"]  # fmt: skip
     denied = {m: s["permission_denials"] for m, s in summary.items() if s.get("permission_denials")}
     if denied:
         lines += ["", "Denied tool calls (permission): "
@@ -1056,6 +1095,8 @@ def main(
         "date": datetime.now().astimezone().isoformat(timespec="minutes"),
         "claude": _version([settings.claude, "--version"], runner) if uses_claude else "-",
         "orkestra": _version([*settings.orkestra, "--version"], runner), "runs": 0,
+        "agy": (_version([settings.agy, "--version"], runner)
+                if any(m in AGENT_MODES for m in plan.modes) else "-"),
     }  # fmt: skip
     if not meta:
         meta.update({
@@ -1070,10 +1111,11 @@ def main(
             "claude_tools": list(CLAUDE_TOOLS), "orkestra_tools": list(ORKESTRA_TOOLS),
         })  # fmt: skip
     windows = meta.setdefault("windows", [])
-    versions = (window["claude"], window["orkestra"])
-    if windows and (windows[-1]["claude"], windows[-1]["orkestra"]) != versions:
-        print(f"note: versions changed since the last window: claude {window['claude']}, "
-              f"orkestra {window['orkestra']} (recorded per window)", file=sys.stderr)  # fmt: skip
+    names = ("claude", "orkestra", "agy")
+    if windows and any(windows[-1].get(n, "-") != window[n] for n in names):
+        changed = ", ".join(f"{n} {window[n]}" for n in names)
+        print(f"note: versions changed since the last window: {changed} (recorded per window)",
+              file=sys.stderr)  # fmt: skip
     windows.append(window)
     meta["repeat"] = plan.repeat
     records = list(plan.records)
@@ -1101,7 +1143,8 @@ def main(
                     print(f"STOPPED, the leak guard tripped: {exc}", file=sys.stderr)
                     return 3
                 except UsageLimitReached as exc:
-                    print(f"STOPPED, Claude's usage limit: {exc}", file=sys.stderr)
+                    print(f"STOPPED, a usage limit ({'agy' if mode in AGENT_MODES else 'Claude'}): "
+                          f"{exc}", file=sys.stderr)  # fmt: skip
                     _stop(records, plan, "this run is not recorded; wait for the limit to reset")
                     return 4
                 claude_runs += is_claude

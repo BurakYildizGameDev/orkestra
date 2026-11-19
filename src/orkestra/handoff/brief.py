@@ -258,6 +258,12 @@ def _fit(body: list[str], warnings: list[str], guide: list[str], limit: int) -> 
     room = limit - len(warnings) - len(guide) - 1
     if room >= MIN_BODY_LINES:
         return [*body[:room], *warnings, *guide, _more(len(body) - room)]
+    # Too small for the whole guide: one line still says where it is (D-103).
+    pointer = [t("handoff.brief.guide_pointer")] if guide else []
+    room = limit - len(warnings) - len(pointer) - 1
+    if room >= 1:
+        shown = [*body[:room], *warnings, *pointer]
+        return [*shown, _more(len(body) - room + len(guide))]
     room = limit - len(warnings) - 1
     if room >= 1:
         return [*body[:room], *warnings, _more(len(body) - room + len(guide))]

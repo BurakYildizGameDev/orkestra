@@ -364,3 +364,13 @@ def test_the_whole_chief_guide_fits_the_default_brief_beside_a_full_project(
     text = _build(path, _config(), conn, limit=HandoffCfg().brief_max_lines, git=_git_ok(log=log))
     for line in brief.guide_lines():
         assert line in text
+
+
+def test_a_small_brief_keeps_a_pointer_to_the_guide(
+    tmp_path: Path, conn: sqlite3.Connection,
+) -> None:  # fmt: skip
+    """D-103: below the size the whole guide needs, the brief still says where the guide is."""
+    log = "".join(f"commit number {n}\n" for n in range(8, 0, -1))
+    text = _build(_document(tmp_path, done=40), _config(), conn, limit=40, git=_git_ok(log=log))
+    assert len(text.splitlines()) <= 40
+    assert t("handoff.brief.guide_pointer") in text

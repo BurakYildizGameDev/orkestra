@@ -473,3 +473,22 @@ def test_the_chief_guide_is_short(guide_text: str) -> None:
     lines = [line for line in guide_text.splitlines() if line.strip()]
     assert len(lines) <= GUIDE_MAX_LINES
     assert [line for line in lines if len(line) > WRAP_WIDTH] == []
+
+
+def test_every_command_in_the_chief_guide_is_complete(guide_text: str) -> None:
+    """The guide has no code blocks: its inline commands are the ones a chief runs, so each
+    must also have its arguments (``orkestra review`` without a run id would fail)."""
+    group = _cli()
+    problems = [
+        f"`orkestra {' '.join(words)}`: {problem}"
+        for span in _inline_spans(guide_text)
+        for words in _invocations(span)
+        if words
+        for problem in check_call(group, words)
+    ]
+    assert problems == []
+
+
+def test_the_chief_guide_points_at_rules_a_chief_can_reach(guide_text: str) -> None:
+    assert "https://github.com/" in guide_text  # an installed package has no skill/ folder
+    assert "in the Orkestra repository" not in guide_text
