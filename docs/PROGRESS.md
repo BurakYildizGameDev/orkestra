@@ -44,6 +44,8 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13k – Kota tahmini ve otomatik devir hazırlığı (ek) | ✅ | 2026-11-18 | hız × bilinen/öğrenilen sınır → "~40 dk içinde biter" (`status`, `doctor`, bildirim); router azalanı kademesinde sona alır; `orkestra statusline` + kanca: Claude'un penceresi %85'i geçince şef devir dosyasını bir kez günceller (D-094); kod denetimi (D-095) |
 | 13l – İşe göre model ve bilgisayar yükü (ek) | ✅ | 2026-11-18 | `routing.by_kind` (iş türüne göre model tercihi, kademe içinde); yerel sağlayıcının `concurrency`'si süreçler arasında (tek ağır yerel model); `doctor` RAM/GPU'ya göre boyut önerisi (D-096); kod denetimi (D-097) |
 | 13m – Toplu devretme ve çapraz denetim (ek) | ✅ | 2026-11-18 | denetçi yazardan başka sağlayıcı (`review.by`, `review.independent`); `apply --max-risk low`; `show --report` (patrona rapor); skill: küçük işi devretme, toplu devret, projenin testleri doğrulayıcı (D-098); kod denetimi (D-099) |
+| 13n – Claude dışı şef (ek) | ⏳ | | `chief_guide.md`'yi skill ile eşitleme + kopma testi, `handoff show --guide`, benchmark mod E (agy şef; token yerine geçme/süre) (ayrıntı: yerel YAPILIS_PLANI.md) |
+| 13o – Sağlayıcı ekleme komutu (ek) | ⏳ | | herhangi bir OpenAI uyumlu servis için `providers add` / `import opencode` / `remove`, `--check`, sihirbaz + arayüz; anahtar asla kopyalanmaz (ayrıntı: yerel YAPILIS_PLANI.md) |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
