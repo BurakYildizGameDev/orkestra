@@ -52,6 +52,11 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – düzeltme-fable b (PR #40), 2026-11-20
+`/code-review`: hata yok; 3 küçük not düzeltildi (D-107): komut modüllerinde `cli` çağrı anında içe aktarılıyor, tembel import yorumu, modüller arası alt çizgili adlar belgelendi.
+
+Testler: **1877 geçti** (değişmedi). ruff, ruff format, pyright temiz.
+
 ### düzeltme-fable b – `cli.py` / `runner.py` bölme (2026-11-20)
 **Yapılanlar (D-106):** yalnız taşıma. `cli.py` → `orkestra/commands/` (providers, setup, tasks, chief, handoff, tools, queue, common); `tasks/runner.py` → `tasks/prepare.py` + `tasks/run_record.py` (`RunRecord`) + `runner.py` (`_TaskRun`, `run_task`).
 

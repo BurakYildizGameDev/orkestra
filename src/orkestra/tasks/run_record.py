@@ -1,6 +1,10 @@
 """A run's state and its records: the envelope, usage, duration, the worktree's change and
 how a run ends (``ok`` / ``failed`` / ``escalate`` / ``error`` / crashed). ``runner._TaskRun``
-adds the attempts on top (düzeltme-fable b, D-106: moved out of ``runner.py``)."""
+adds the attempts on top (düzeltme-fable b, D-106: moved out of ``runner.py``).
+
+Shared with ``runner`` and ``prepare`` despite the underscore: ``_Answer`` and the
+``_Prepared`` / ``_cannot_do`` names it imports. Change them together.
+"""
 
 from __future__ import annotations
 
@@ -267,7 +271,7 @@ class RunRecord:
     async def _auto_review(self, envelope: ResultEnvelope) -> ResultEnvelope:
         """``review.auto``: review the change with this run's provider slots; the run stays
         ``ok`` without a review when that fails, and its duration includes it (D-062)."""
-        from orkestra.chief import review  # chief.review imports this module
+        from orkestra.chief import review  # review imports tasks.runner, which imports this
 
         try:
             report = await review.review_run(

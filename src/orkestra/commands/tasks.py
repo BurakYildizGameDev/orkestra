@@ -12,7 +12,7 @@ from typing import Annotated, Any
 
 import typer
 
-from orkestra import cli, envelope
+from orkestra import envelope
 from orkestra.chief import report as run_report
 from orkestra.commands.common import (
     _echo_json,
@@ -189,6 +189,8 @@ def _confirm_cost(costs: envelope.BatchEstimate, *, as_json: bool) -> None:
         typer.echo(stop, err=True)
         raise typer.Exit(int(ExitCode.USAGE))
     typer.echo(envelope.estimate_summary(costs))
+    from orkestra import cli  # at call time: tests replace the hook on ``cli``
+
     if not cli._interactive():
         typer.echo(stop, err=True)
         raise typer.Exit(int(ExitCode.USAGE))

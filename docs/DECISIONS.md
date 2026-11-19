@@ -1132,3 +1132,9 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 - En büyük dosyalar artık: `tui/app.py` 782, `tasks/runner.py` 780, `chief/tokens.py` 746 (hepsi ~800'ün altında).
 - Mimari dosya ağacı güncellendi.
 
+## D-107 – düzeltme-fable b kod denetimi düzeltmeleri (2026-11-20, düzeltme-fable b)
+`/code-review` (PR #40): hata yok (sözdizimi ağacı karşılaştırması: taşıma birebir); 3 küçük not, hepsi düzeltildi.
+- `commands/tasks.py` ve `commands/setup.py` `cli`'yi modül düzeyinde değil, kancayı kullanan fonksiyonun içinde içe aktarıyor (döngüsel import kırılganlığı yok).
+- `run_record._auto_review`'daki tembel import yorumu doğru modülü anıyor (review → runner → run_record).
+- `prepare.py` ve `run_record.py` belge dizgisi: alt çizgili adların (`_prepare`, `_route`, `_Prepared`, `_cannot_do`, `_Answer`) üç modül arasında paylaşıldığını söylüyor (yeniden adlandırma bu fazda yok: yalnız taşıma).
+

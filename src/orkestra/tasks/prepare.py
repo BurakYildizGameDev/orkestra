@@ -1,6 +1,11 @@
 """Before a task runs (Mimari §8, steps 1-2): options, run ids, provider slots, the
 prepared prompt and context, routing, ``--dry-run`` and cost estimates (düzeltme-fable b,
-D-106: moved out of ``runner.py``; ``runner`` re-exports the public names)."""
+D-106: moved out of ``runner.py``; ``runner`` re-exports the public names).
+
+The underscore names here (``_prepare``, ``_route``, ``_Prepared``, ``_cannot_do`` …) are
+internal to ``tasks.runner`` / ``tasks.run_record`` / this module, not file-local: change
+their callers there too.
+"""
 
 from __future__ import annotations
 

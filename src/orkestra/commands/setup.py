@@ -11,7 +11,7 @@ from typing import Annotated
 
 import typer
 
-from orkestra import cli, doctor, i18n
+from orkestra import doctor, i18n
 from orkestra.commands.common import (
     _echo_json,
     _echo_sources,
@@ -148,6 +148,8 @@ def register(app: typer.Typer, config_app: typer.Typer) -> None:
         if plain:
             _init_plain(state.config_path, project=project, force=force)
             return
+        from orkestra import cli  # at call time: tests replace the hook on ``cli``
+
         if not as_json and not force and cli._at_terminal():
             if target.exists():  # editing an existing file is "init --plain", never implicit
                 typer.echo(t("init.exists", path=target))
