@@ -1257,7 +1257,7 @@ def test_a_worker_agy_run_writes_no_ollama_model_and_refuses_ollama_flags(
     meta = _saved(tmp_path)["meta"]
     assert meta["worker"] == "agy" and meta["ollama_model"] is None
     md = next((tmp_path / "out").glob("*.md")).read_text(encoding="utf-8")
-    assert "ollama_model: -" in md and ", agy 9.9.9 (fake), 1 runs" in md  # agy's version
+    assert "ollama_model: -" in md and ", agy 9.9.9 (fake), skill " in md  # agy's version
 
 
 def test_a_delegating_run_without_any_worker_run_says_so(
@@ -1272,3 +1272,22 @@ def test_a_delegating_run_without_any_worker_run_says_so(
 
     _main(tmp_path, NoWorker())
     assert "no worker run" in capsys.readouterr().out
+
+
+def test_each_window_records_the_skill_and_a_change_is_noted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """PR #43 review (D-114): a resumed run must show when the skill changed between windows."""
+    assert _main(tmp_path, ManyTasks(limit_after=2)) == 4
+    [first] = (tmp_path / "out").glob("*.json")
+    capsys.readouterr()
+    other = tmp_path / "SKILL.md"
+    other.write_text("another skill", encoding="utf-8")
+    monkeypatch.setattr(rb, "SKILL_FILES", (other,))
+    assert rb.main(["--resume", str(first), "--work-dir", str(tmp_path / "work")],
+                   runner=ManyTasks(), which=lambda name: name) == 0  # fmt: skip
+    windows = _saved(tmp_path)["meta"]["windows"]
+    assert len({w["skill"] for w in windows}) == 2 and all(len(w["skill"]) == 12 for w in windows)
+    assert "skill" in capsys.readouterr().err
+    md = next((tmp_path / "out").glob("*.md")).read_text(encoding="utf-8")
+    assert f"skill {windows[-1]['skill']}" in md

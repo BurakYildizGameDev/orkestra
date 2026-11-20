@@ -24,4 +24,4 @@
 - Never approve a provider (`orkestra providers enable <name>`), pass a cost threshold or send secrets without
   the user's permission. A new service: `orkestra providers add <name> --base-url <url> --model <id>` (never write
   a key anywhere). Setup: `orkestra init`.
-- Full rules: https://github.com/BurakYildizGameDev/orkestra/blob/main/skill/orkestra/SKILL.md
+- Full rules: https://github.com/BurakYildizGameDev/orkestra/tree/main/skill/orkestra (SKILL.md, reference.md)

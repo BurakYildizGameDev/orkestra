@@ -982,7 +982,7 @@ def _meta_lines(meta: Mapping[str, Any]) -> list[str]:
         elif key == "windows":
             lines += [f"- window {w.get('date', '-')}: claude {w.get('claude', '-')}, "
                       f"orkestra {w.get('orkestra', '-')}, agy {w.get('agy', '-')}, "
-                      f"{w.get('runs', 0)} runs\n"
+                      f"skill {w.get('skill', '-')}, {w.get('runs', 0)} runs\n"
                       for w in value]  # fmt: skip
         elif key == "tasks":
             continue  # the ids above say it
@@ -994,6 +994,15 @@ def _meta_lines(meta: Mapping[str, Any]) -> list[str]:
 
 
 # --- command line -----------------------------------------------------------------------------
+
+
+def skill_hash() -> str:
+    """The skill files' content in 12 hex digits: a resumed run shows when the skill changed
+    between windows (D-114)."""
+    digest = hashlib.sha256()
+    for path in SKILL_FILES:
+        digest.update(path.name.encode("utf-8") + b"\0" + path.read_bytes() + b"\0")
+    return digest.hexdigest()[:12]
 
 
 def _version(args: Sequence[str], runner: Runner) -> str:
@@ -1168,10 +1177,12 @@ def main(
             "claude_tools": list(CLAUDE_TOOLS), "orkestra_tools": list(ORKESTRA_TOOLS),
         })  # fmt: skip
     windows = meta.setdefault("windows", [])
-    names = ("claude", "orkestra", "agy")
+    window["skill"] = skill_hash()
+    names = ("claude", "orkestra", "agy", "skill")
     if windows and any(windows[-1].get(n, "-") != window[n] for n in names):
         changed = ", ".join(f"{n} {window[n]}" for n in names)
-        print(f"note: versions changed since the last window: {changed} (recorded per window)",
+        print(f"note: versions or skill changed since the last window: {changed} "
+              "(recorded per window)",
               file=sys.stderr)  # fmt: skip
     windows.append(window)
     meta["repeat"] = plan.repeat

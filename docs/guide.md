@@ -742,9 +742,11 @@ mkdir -p .claude/skills && cp -r skill/orkestra .claude/skills/
 ```
 
 Then ask Claude, for example: *"Add docstrings to these 20 files with orkestra, and review the
-result."* The skill is in Turkish for now (it will be translated with the release) and covers
-every command that exists today, including `batch`, `map`, `review`, `plan expand` and the
-handoff file (`handoff update`, `show --brief`, `to --print-only`).
+result."* The skill is two files: `SKILL.md`, a short English core that Claude loads (when to
+delegate, how to run and review, the guardrails), and `reference.md`, the full details in Turkish
+that Claude reads only when needed. Together they cover every command that exists today, including
+`batch`, `map`, `review`, `plan expand` and the handoff file (`handoff update`, `show --brief`,
+`to --print-only`). Copy the whole folder.
 
 ## Configuration
 

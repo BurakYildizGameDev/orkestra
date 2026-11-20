@@ -29,6 +29,10 @@ verify:
     paths: ["tests/**"]
 ```
 
+Session start: `orkestra status --json`; review `unapplied` runs before new work.
+
+Exit codes: 1 = task failed; 2 = usage error, or a batch estimate with `needs_confirmation`: show it to the user and add `--yes-cost` only if they accept; 3 = no provider (budget, offline, secrets): tell the user, never change budget limits yourself; 4 = consent needed: the user runs `orkestra providers enable <name>`; 5 = apply conflict.
+
 Read only the result envelope: `status` (`ok`, `failed`, `escalate`, `error`), `run_id`, `summary`, `verification`, `changes`. Need more: `orkestra show <run_id> --log` (why it failed) or `--diff`.
 
 ## Review before applying (never skip)
@@ -49,5 +53,5 @@ Tell the user briefly what was delegated, to which provider, attempts, cost (`us
 
 ## Never
 - Apply without review (except `--max-risk low` from an independent reviewer); `--force` only when the user asks.
-- Put API keys or secrets in prompts, task files or context; pass `--allow-secrets` or approve a provider (`orkestra providers enable <name>`) without the user's permission. Secret files: `privacy: local_only`.
+- Put API keys or secrets in prompts, task files or context; pass `--allow-secrets` or `--yes-cost`, approve a provider (`orkestra providers enable <name>`) or change budget limits in the config without the user's permission. Secret files: `privacy: local_only`.
 - Run `orkestra queue run` yourself (it can take hours); suggest it to the user.
