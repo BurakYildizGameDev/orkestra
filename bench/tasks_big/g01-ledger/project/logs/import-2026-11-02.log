@@ -1,0 +1,1774 @@
+2026-11-02 02:00:00,250 INFO    ledger.job: nightly import started (host=batch-02, pid=48121)
+2026-11-02 02:00:00,316 INFO    ledger.job: config loaded: 3 profiles, retention 400 days
+2026-11-02 02:00:00,613 INFO    ledger.sync: fetched page 1/16 from northbank (100 rows)
+2026-11-02 02:00:00,891 INFO    ledger.sync: fetched page 2/16 from northbank (100 rows)
+2026-11-02 02:00:00,949 WARNING ledger.sync: slow response from northbank API (3.7 s)
+2026-11-02 02:00:01,194 INFO    ledger.sync: fetched page 3/16 from northbank (100 rows)
+2026-11-02 02:00:01,465 INFO    ledger.sync: fetched page 4/16 from northbank (100 rows)
+2026-11-02 02:00:01,513 WARNING ledger.sync: slow response from northbank API (2.7 s)
+2026-11-02 02:00:01,827 INFO    ledger.sync: fetched page 5/16 from northbank (100 rows)
+2026-11-02 02:00:01,889 WARNING ledger.sync: slow response from northbank API (3.1 s)
+2026-11-02 02:00:02,019 INFO    ledger.sync: fetched page 6/16 from northbank (100 rows)
+2026-11-02 02:00:02,130 WARNING ledger.sync: slow response from northbank API (4.8 s)
+2026-11-02 02:00:02,433 INFO    ledger.sync: fetched page 7/16 from northbank (100 rows)
+2026-11-02 02:00:02,676 INFO    ledger.sync: fetched page 8/16 from northbank (100 rows)
+2026-11-02 02:00:02,853 WARNING ledger.sync: slow response from northbank API (3.9 s)
+2026-11-02 02:00:03,181 INFO    ledger.sync: fetched page 9/16 from northbank (100 rows)
+2026-11-02 02:00:03,288 INFO    ledger.sync: fetched page 10/16 from northbank (100 rows)
+2026-11-02 02:00:03,663 INFO    ledger.sync: fetched page 11/16 from northbank (100 rows)
+2026-11-02 02:00:03,863 INFO    ledger.sync: fetched page 12/16 from northbank (100 rows)
+2026-11-02 02:00:03,989 INFO    ledger.sync: fetched page 13/16 from northbank (100 rows)
+2026-11-02 02:00:04,250 WARNING ledger.sync: slow response from northbank API (2.9 s)
+2026-11-02 02:00:04,255 INFO    ledger.sync: fetched page 14/16 from northbank (100 rows)
+2026-11-02 02:00:04,377 INFO    ledger.sync: fetched page 15/16 from northbank (100 rows)
+2026-11-02 02:00:04,508 INFO    ledger.sync: fetched page 16/16 from northbank (100 rows)
+2026-11-02 02:00:04,823 INFO    ledger.importer: importing northbank-2026-11-01.csv
+2026-11-02 02:00:04,893 DEBUG   ledger.importer: row 2: duplicate of an earlier transaction
+2026-11-02 02:00:05,080 DEBUG   ledger.importer: row 3: Kebab House -239.31 -> groceries
+2026-11-02 02:00:05,186 DEBUG   ledger.importer: row 6: Metro Card Topup -212.32 -> dining
+2026-11-02 02:00:05,281 DEBUG   ledger.importer: row 8: Uber Trip 77 -83.26 -> transport
+2026-11-02 02:00:05,471 DEBUG   ledger.importer: row 11: Metro Card Topup -102.56 -> groceries
+2026-11-02 02:00:05,611 DEBUG   ledger.importer: row 13: Water Utility -13.45 -> transport
+2026-11-02 02:00:05,787 DEBUG   ledger.importer: row 14: Bakery Ozdemir -22.01 -> dining
+2026-11-02 02:00:05,871 DEBUG   ledger.importer: row 17: duplicate of an earlier transaction
+2026-11-02 02:00:06,159 DEBUG   ledger.importer: row 20: City Pharmacy -41.68 -> dining
+2026-11-02 02:00:06,224 DEBUG   ledger.importer: row 23: Shell Fuel 8 -99.32 -> dining
+2026-11-02 02:00:06,255 DEBUG   ledger.importer: row 24: Carrefour Express -33.39 -> dining
+2026-11-02 02:00:06,327 DEBUG   ledger.importer: row 25: Kebab House -192.63 -> dining
+2026-11-02 02:00:06,590 DEBUG   ledger.importer: row 28: Water Utility -240.31 -> groceries
+2026-11-02 02:00:06,593 DEBUG   ledger.importer: row 29: Bakery Ozdemir -172.63 -> dining
+2026-11-02 02:00:06,918 DEBUG   ledger.importer: row 30: Netflix.com -116.07 -> other
+2026-11-02 02:00:06,950 DEBUG   ledger.importer: row 32: Bakery Ozdemir -115.20 -> transport
+2026-11-02 02:00:07,282 DEBUG   ledger.importer: row 33: Spotify AB -221.13 -> transport
+2026-11-02 02:00:07,637 DEBUG   ledger.importer: row 34: Landlord Ltd -226.36 -> groceries
+2026-11-02 02:00:07,823 DEBUG   ledger.importer: row 35: Water Utility -23.23 -> groceries
+2026-11-02 02:00:08,124 DEBUG   ledger.importer: row 37: Migros 0412 -211.13 -> dining
+2026-11-02 02:00:08,137 DEBUG   ledger.importer: row 39: ATM Withdrawal -178.17 -> transport
+2026-11-02 02:00:08,176 DEBUG   ledger.importer: row 40: ATM Withdrawal -130.98 -> groceries
+2026-11-02 02:00:08,531 DEBUG   ledger.importer: row 42: Landlord Ltd -150.97 -> transport
+2026-11-02 02:00:08,628 DEBUG   ledger.importer: row 43: Water Utility -73.60 -> other
+2026-11-02 02:00:08,823 DEBUG   ledger.importer: row 44: Carrefour Express -12.90 -> groceries
+2026-11-02 02:00:09,217 DEBUG   ledger.importer: row 49: Water Utility -81.30 -> dining
+2026-11-02 02:00:09,268 DEBUG   ledger.importer: row 50: Netflix.com -41.28 -> other
+2026-11-02 02:00:09,608 DEBUG   ledger.importer: row 52: Cafe Nero 22 -147.60 -> dining
+2026-11-02 02:00:09,691 WARNING ledger.importer: row 53: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:00:10,044 DEBUG   ledger.importer: row 54: Shell Fuel 8 -36.98 -> groceries
+2026-11-02 02:00:10,122 DEBUG   ledger.importer: row 56: Shell Fuel 8 -148.14 -> other
+2026-11-02 02:00:10,174 DEBUG   ledger.importer: row 57: Cafe Nero 22 -14.52 -> other
+2026-11-02 02:00:10,266 DEBUG   ledger.importer: row 58: Migros 0412 -124.77 -> other
+2026-11-02 02:00:10,403 DEBUG   ledger.importer: row 60: Bakery Ozdemir -244.12 -> transport
+2026-11-02 02:00:10,468 DEBUG   ledger.importer: row 61: Metro Card Topup -87.92 -> groceries
+2026-11-02 02:00:10,739 DEBUG   ledger.importer: row 62: Carrefour Express -67.76 -> groceries
+2026-11-02 02:00:10,780 DEBUG   ledger.importer: row 64: Migros 0412 -241.98 -> groceries
+2026-11-02 02:00:10,971 DEBUG   ledger.importer: row 66: duplicate of an earlier transaction
+2026-11-02 02:00:11,187 DEBUG   ledger.importer: row 67: duplicate of an earlier transaction
+2026-11-02 02:00:11,288 DEBUG   ledger.importer: row 69: Kebab House -65.31 -> other
+2026-11-02 02:00:11,371 WARNING ledger.importer: row 70: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:00:11,609 DEBUG   ledger.importer: row 72: ATM Withdrawal -219.47 -> other
+2026-11-02 02:00:11,620 DEBUG   ledger.importer: row 73: Spotify AB -102.64 -> dining
+2026-11-02 02:00:11,823 DEBUG   ledger.importer: row 74: City Pharmacy -8.54 -> dining
+2026-11-02 02:00:11,888 DEBUG   ledger.importer: row 76: Kebab House -88.35 -> groceries
+2026-11-02 02:00:12,249 DEBUG   ledger.importer: row 77: duplicate of an earlier transaction
+2026-11-02 02:00:12,394 DEBUG   ledger.importer: row 78: Spotify AB -5.68 -> transport
+2026-11-02 02:00:12,536 DEBUG   ledger.importer: row 81: Migros 0412 -30.07 -> transport
+2026-11-02 02:00:12,680 DEBUG   ledger.importer: row 83: Spotify AB -85.39 -> transport
+2026-11-02 02:00:12,787 DEBUG   ledger.importer: row 84: Spotify AB -150.91 -> groceries
+2026-11-02 02:00:13,097 DEBUG   ledger.importer: row 85: Cafe Nero 22 -182.14 -> dining
+2026-11-02 02:00:13,414 DEBUG   ledger.importer: row 89: City Pharmacy -152.32 -> groceries
+2026-11-02 02:00:13,426 DEBUG   ledger.importer: row 90: Metro Card Topup -150.30 -> dining
+2026-11-02 02:00:13,581 DEBUG   ledger.importer: row 92: Bakery Ozdemir -247.15 -> groceries
+2026-11-02 02:00:13,903 DEBUG   ledger.importer: row 94: Shell Fuel 8 -219.19 -> transport
+2026-11-02 02:00:14,005 DEBUG   ledger.importer: row 95: Landlord Ltd -180.47 -> groceries
+2026-11-02 02:00:14,132 DEBUG   ledger.importer: row 96: duplicate of an earlier transaction
+2026-11-02 02:00:14,424 DEBUG   ledger.importer: row 97: Shell Fuel 8 -119.09 -> dining
+2026-11-02 02:00:14,806 DEBUG   ledger.importer: row 98: Cafe Nero 22 -133.20 -> other
+2026-11-02 02:00:15,100 DEBUG   ledger.importer: row 99: Metro Card Topup -208.92 -> transport
+2026-11-02 02:00:15,346 DEBUG   ledger.importer: row 100: Water Utility -229.56 -> dining
+2026-11-02 02:00:15,573 DEBUG   ledger.importer: row 103: duplicate of an earlier transaction
+2026-11-02 02:00:15,601 DEBUG   ledger.importer: row 104: Migros 0412 -185.61 -> transport
+2026-11-02 02:00:15,987 DEBUG   ledger.importer: row 106: Bakery Ozdemir -94.37 -> other
+2026-11-02 02:00:16,236 DEBUG   ledger.importer: row 107: Landlord Ltd -143.50 -> transport
+2026-11-02 02:00:16,365 DEBUG   ledger.importer: row 109: Netflix.com -33.69 -> dining
+2026-11-02 02:00:16,662 DEBUG   ledger.importer: row 111: City Pharmacy -74.50 -> other
+2026-11-02 02:00:16,718 DEBUG   ledger.importer: row 115: Water Utility -99.18 -> transport
+2026-11-02 02:00:17,061 DEBUG   ledger.importer: row 116: Payroll ACME -35.82 -> dining
+2026-11-02 02:00:17,232 DEBUG   ledger.importer: row 117: Migros 0412 -146.53 -> other
+2026-11-02 02:00:17,547 DEBUG   ledger.importer: row 120: ATM Withdrawal -135.67 -> transport
+2026-11-02 02:00:17,714 DEBUG   ledger.importer: row 123: City Pharmacy -4.11 -> groceries
+2026-11-02 02:00:17,829 DEBUG   ledger.importer: row 124: Kebab House -112.28 -> transport
+2026-11-02 02:00:18,030 DEBUG   ledger.importer: row 125: Migros 0412 -10.79 -> transport
+2026-11-02 02:00:18,351 DEBUG   ledger.importer: row 126: Kebab House -172.76 -> dining
+2026-11-02 02:00:18,648 DEBUG   ledger.importer: row 127: Water Utility -4.27 -> groceries
+2026-11-02 02:00:18,708 DEBUG   ledger.importer: row 128: Migros 0412 -12.68 -> groceries
+2026-11-02 02:00:19,045 DEBUG   ledger.importer: row 133: Water Utility -249.87 -> other
+2026-11-02 02:00:19,114 DEBUG   ledger.importer: row 134: Carrefour Express -126.96 -> dining
+2026-11-02 02:00:19,230 DEBUG   ledger.importer: row 136: duplicate of an earlier transaction
+2026-11-02 02:00:19,435 DEBUG   ledger.importer: row 137: duplicate of an earlier transaction
+2026-11-02 02:00:19,770 DEBUG   ledger.importer: row 138: Cafe Nero 22 -176.83 -> transport
+2026-11-02 02:00:19,847 DEBUG   ledger.importer: row 139: duplicate of an earlier transaction
+2026-11-02 02:00:20,090 DEBUG   ledger.importer: row 140: Water Utility -7.82 -> dining
+2026-11-02 02:00:20,429 DEBUG   ledger.importer: row 142: Bakery Ozdemir -247.74 -> groceries
+2026-11-02 02:00:20,487 DEBUG   ledger.importer: row 143: Carrefour Express -210.90 -> other
+2026-11-02 02:00:20,686 DEBUG   ledger.importer: row 144: City Pharmacy -198.65 -> groceries
+2026-11-02 02:00:20,793 DEBUG   ledger.importer: row 145: Uber Trip 77 -191.23 -> dining
+2026-11-02 02:00:21,065 DEBUG   ledger.importer: row 146: City Pharmacy -207.99 -> transport
+2026-11-02 02:00:21,162 DEBUG   ledger.importer: row 147: duplicate of an earlier transaction
+2026-11-02 02:00:21,239 DEBUG   ledger.importer: row 148: duplicate of an earlier transaction
+2026-11-02 02:00:21,462 DEBUG   ledger.importer: row 149: Metro Card Topup -15.23 -> other
+2026-11-02 02:00:21,812 DEBUG   ledger.importer: row 151: Shell Fuel 8 -33.58 -> groceries
+2026-11-02 02:00:21,856 DEBUG   ledger.importer: row 152: Metro Card Topup -132.09 -> dining
+2026-11-02 02:00:21,876 DEBUG   ledger.importer: row 153: duplicate of an earlier transaction
+2026-11-02 02:00:22,188 DEBUG   ledger.importer: row 155: Water Utility -115.54 -> transport
+2026-11-02 02:00:22,411 DEBUG   ledger.importer: row 156: Migros 0412 -159.21 -> groceries
+2026-11-02 02:00:22,722 DEBUG   ledger.importer: row 157: ATM Withdrawal -98.03 -> dining
+2026-11-02 02:00:22,887 DEBUG   ledger.importer: row 158: Payroll ACME -197.58 -> other
+2026-11-02 02:00:23,244 DEBUG   ledger.importer: row 160: Uber Trip 77 -133.49 -> dining
+2026-11-02 02:00:23,492 DEBUG   ledger.importer: row 161: Cafe Nero 22 -153.05 -> dining
+2026-11-02 02:00:23,506 DEBUG   ledger.importer: row 162: duplicate of an earlier transaction
+2026-11-02 02:00:23,738 DEBUG   ledger.importer: row 163: Landlord Ltd -247.86 -> other
+2026-11-02 02:00:23,963 DEBUG   ledger.importer: row 164: Cafe Nero 22 -9.18 -> other
+2026-11-02 02:00:24,159 DEBUG   ledger.importer: row 166: Water Utility -227.24 -> dining
+2026-11-02 02:00:24,267 DEBUG   ledger.importer: row 167: duplicate of an earlier transaction
+2026-11-02 02:00:24,620 DEBUG   ledger.importer: row 173: duplicate of an earlier transaction
+2026-11-02 02:00:24,841 DEBUG   ledger.importer: row 174: duplicate of an earlier transaction
+2026-11-02 02:00:24,890 DEBUG   ledger.importer: row 175: Uber Trip 77 -229.37 -> transport
+2026-11-02 02:00:25,163 DEBUG   ledger.importer: row 176: Uber Trip 77 -234.18 -> other
+2026-11-02 02:00:25,531 DEBUG   ledger.importer: row 177: ATM Withdrawal -78.29 -> other
+2026-11-02 02:00:25,725 DEBUG   ledger.importer: row 178: Carrefour Express -121.90 -> groceries
+2026-11-02 02:00:25,947 DEBUG   ledger.importer: row 182: Uber Trip 77 -163.96 -> groceries
+2026-11-02 02:00:26,310 DEBUG   ledger.importer: row 183: duplicate of an earlier transaction
+2026-11-02 02:00:26,696 DEBUG   ledger.importer: row 184: Water Utility -31.19 -> other
+2026-11-02 02:00:26,974 DEBUG   ledger.importer: row 185: Metro Card Topup -101.78 -> dining
+2026-11-02 02:00:27,257 DEBUG   ledger.importer: row 186: Bakery Ozdemir -209.91 -> dining
+2026-11-02 02:00:27,567 DEBUG   ledger.importer: row 187: Payroll ACME -89.21 -> other
+2026-11-02 02:00:27,643 DEBUG   ledger.importer: row 190: Spotify AB -136.48 -> other
+2026-11-02 02:00:27,806 DEBUG   ledger.importer: row 192: duplicate of an earlier transaction
+2026-11-02 02:00:28,183 DEBUG   ledger.importer: row 193: Carrefour Express -193.91 -> other
+2026-11-02 02:00:28,275 DEBUG   ledger.importer: row 194: duplicate of an earlier transaction
+2026-11-02 02:00:28,508 DEBUG   ledger.importer: row 195: Netflix.com -126.59 -> other
+2026-11-02 02:00:28,583 DEBUG   ledger.importer: row 197: Landlord Ltd -133.02 -> other
+2026-11-02 02:00:28,653 DEBUG   ledger.importer: row 198: Cafe Nero 22 -207.82 -> transport
+2026-11-02 02:00:29,016 WARNING ledger.importer: row 200: category 'Food' unknown, guessed from payee
+2026-11-02 02:00:29,365 DEBUG   ledger.importer: row 201: Spotify AB -4.67 -> groceries
+2026-11-02 02:00:29,396 DEBUG   ledger.importer: row 202: duplicate of an earlier transaction
+2026-11-02 02:00:29,768 DEBUG   ledger.importer: row 203: Cafe Nero 22 -1.43 -> transport
+2026-11-02 02:00:29,860 DEBUG   ledger.importer: row 204: Shell Fuel 8 -31.27 -> dining
+2026-11-02 02:00:29,947 DEBUG   ledger.importer: row 205: Bakery Ozdemir -148.56 -> dining
+2026-11-02 02:00:29,977 DEBUG   ledger.importer: row 206: Landlord Ltd -6.18 -> groceries
+2026-11-02 02:00:30,290 WARNING ledger.importer: row 208: category 'Food' unknown, guessed from payee
+2026-11-02 02:00:30,493 DEBUG   ledger.importer: row 210: Metro Card Topup -233.57 -> groceries
+2026-11-02 02:00:30,581 DEBUG   ledger.importer: row 211: Metro Card Topup -37.39 -> transport
+2026-11-02 02:00:30,623 DEBUG   ledger.importer: row 213: Metro Card Topup -241.53 -> dining
+2026-11-02 02:00:30,867 DEBUG   ledger.importer: row 218: Netflix.com -22.60 -> groceries
+2026-11-02 02:00:30,940 DEBUG   ledger.importer: row 219: Water Utility -248.81 -> groceries
+2026-11-02 02:00:31,235 DEBUG   ledger.importer: row 220: duplicate of an earlier transaction
+2026-11-02 02:00:31,339 DEBUG   ledger.importer: row 222: Cafe Nero 22 -230.38 -> transport
+2026-11-02 02:00:31,369 DEBUG   ledger.importer: row 223: Spotify AB -137.45 -> transport
+2026-11-02 02:00:31,531 DEBUG   ledger.importer: row 225: Netflix.com -164.46 -> groceries
+2026-11-02 02:00:31,751 DEBUG   ledger.importer: row 227: Bakery Ozdemir -235.58 -> dining
+2026-11-02 02:00:32,031 DEBUG   ledger.importer: row 228: Carrefour Express -200.42 -> other
+2026-11-02 02:00:32,138 WARNING ledger.importer: row 230: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:00:32,322 DEBUG   ledger.importer: row 232: Metro Card Topup -113.81 -> groceries
+2026-11-02 02:00:32,566 DEBUG   ledger.importer: row 233: City Pharmacy -167.47 -> transport
+2026-11-02 02:00:32,737 DEBUG   ledger.importer: row 234: Cafe Nero 22 -31.65 -> transport
+2026-11-02 02:00:32,896 DEBUG   ledger.importer: row 236: Carrefour Express -199.06 -> dining
+2026-11-02 02:00:33,213 DEBUG   ledger.importer: row 239: Netflix.com -173.14 -> groceries
+2026-11-02 02:00:33,336 DEBUG   ledger.importer: row 242: City Pharmacy -192.66 -> other
+2026-11-02 02:00:33,464 DEBUG   ledger.importer: row 245: Migros 0412 -158.14 -> dining
+2026-11-02 02:00:33,650 DEBUG   ledger.importer: row 246: Water Utility -158.66 -> other
+2026-11-02 02:00:33,970 DEBUG   ledger.importer: row 248: Netflix.com -192.04 -> other
+2026-11-02 02:00:34,012 DEBUG   ledger.importer: row 249: Payroll ACME -182.72 -> other
+2026-11-02 02:00:34,201 DEBUG   ledger.importer: row 250: Uber Trip 77 -229.07 -> transport
+2026-11-02 02:00:34,301 DEBUG   ledger.importer: row 252: ATM Withdrawal -58.76 -> transport
+2026-11-02 02:00:34,374 DEBUG   ledger.importer: row 253: Bakery Ozdemir -30.72 -> transport
+2026-11-02 02:00:34,495 DEBUG   ledger.importer: row 254: Metro Card Topup -39.86 -> groceries
+2026-11-02 02:00:34,566 DEBUG   ledger.importer: row 255: Kebab House -78.55 -> other
+2026-11-02 02:00:34,665 DEBUG   ledger.importer: row 256: Shell Fuel 8 -12.32 -> other
+2026-11-02 02:00:34,984 DEBUG   ledger.importer: row 258: Cafe Nero 22 -13.12 -> dining
+2026-11-02 02:00:35,314 DEBUG   ledger.importer: row 259: Uber Trip 77 -143.80 -> other
+2026-11-02 02:00:35,587 DEBUG   ledger.importer: row 260: Migros 0412 -202.31 -> groceries
+2026-11-02 02:00:35,936 DEBUG   ledger.importer: row 262: Spotify AB -176.00 -> transport
+2026-11-02 02:00:36,021 DEBUG   ledger.importer: row 265: Carrefour Express -235.94 -> dining
+2026-11-02 02:00:36,297 DEBUG   ledger.importer: row 266: Payroll ACME -190.23 -> groceries
+2026-11-02 02:00:36,589 DEBUG   ledger.importer: row 267: City Pharmacy -88.11 -> groceries
+2026-11-02 02:00:36,728 DEBUG   ledger.importer: row 268: Carrefour Express -171.45 -> groceries
+2026-11-02 02:00:36,938 DEBUG   ledger.importer: row 270: Metro Card Topup -190.69 -> other
+2026-11-02 02:00:37,187 DEBUG   ledger.importer: row 275: Netflix.com -89.35 -> dining
+2026-11-02 02:00:37,261 DEBUG   ledger.importer: row 276: Cafe Nero 22 -169.76 -> groceries
+2026-11-02 02:00:37,460 DEBUG   ledger.importer: row 277: ATM Withdrawal -235.51 -> dining
+2026-11-02 02:00:37,628 DEBUG   ledger.importer: row 278: Netflix.com -41.94 -> other
+2026-11-02 02:00:37,821 DEBUG   ledger.importer: row 280: ATM Withdrawal -199.86 -> transport
+2026-11-02 02:00:38,178 DEBUG   ledger.importer: row 281: Migros 0412 -86.13 -> transport
+2026-11-02 02:00:38,548 DEBUG   ledger.importer: row 284: Water Utility -8.87 -> transport
+2026-11-02 02:00:38,811 DEBUG   ledger.importer: row 286: Bakery Ozdemir -86.21 -> groceries
+2026-11-02 02:00:38,960 DEBUG   ledger.importer: row 290: Shell Fuel 8 -19.84 -> transport
+2026-11-02 02:00:39,068 DEBUG   ledger.importer: row 292: ATM Withdrawal -145.38 -> transport
+2026-11-02 02:00:39,076 DEBUG   ledger.importer: row 293: Cafe Nero 22 -31.14 -> groceries
+2026-11-02 02:00:39,367 DEBUG   ledger.importer: row 294: Cafe Nero 22 -63.96 -> groceries
+2026-11-02 02:00:39,585 DEBUG   ledger.importer: row 296: Carrefour Express -203.96 -> other
+2026-11-02 02:00:39,891 DEBUG   ledger.importer: row 297: Water Utility -7.61 -> groceries
+2026-11-02 02:00:39,929 DEBUG   ledger.importer: row 298: Carrefour Express -68.87 -> dining
+2026-11-02 02:00:40,268 DEBUG   ledger.importer: row 299: ATM Withdrawal -187.27 -> transport
+2026-11-02 02:00:40,378 DEBUG   ledger.importer: row 302: City Pharmacy -126.00 -> transport
+2026-11-02 02:00:40,655 DEBUG   ledger.importer: row 303: Carrefour Express -23.60 -> transport
+2026-11-02 02:00:40,955 DEBUG   ledger.importer: row 304: duplicate of an earlier transaction
+2026-11-02 02:00:41,199 DEBUG   ledger.importer: row 305: Metro Card Topup -135.82 -> other
+2026-11-02 02:00:41,568 DEBUG   ledger.importer: row 306: duplicate of an earlier transaction
+2026-11-02 02:00:41,589 DEBUG   ledger.importer: row 307: duplicate of an earlier transaction
+2026-11-02 02:00:41,624 DEBUG   ledger.importer: row 309: Kebab House -199.68 -> dining
+2026-11-02 02:00:41,845 DEBUG   ledger.importer: row 310: Metro Card Topup -199.41 -> groceries
+2026-11-02 02:00:42,222 DEBUG   ledger.importer: row 311: Migros 0412 -187.91 -> groceries
+2026-11-02 02:00:42,229 DEBUG   ledger.importer: row 312: Bakery Ozdemir -90.42 -> other
+2026-11-02 02:00:42,582 DEBUG   ledger.importer: row 314: City Pharmacy -39.14 -> transport
+2026-11-02 02:00:42,848 DEBUG   ledger.importer: row 315: Water Utility -42.57 -> groceries
+2026-11-02 02:00:42,957 DEBUG   ledger.importer: row 316: City Pharmacy -250.45 -> transport
+2026-11-02 02:00:43,139 DEBUG   ledger.importer: row 317: City Pharmacy -166.60 -> other
+2026-11-02 02:00:43,413 DEBUG   ledger.importer: row 318: Cafe Nero 22 -214.96 -> other
+2026-11-02 02:00:43,653 DEBUG   ledger.importer: row 320: Uber Trip 77 -127.34 -> other
+2026-11-02 02:00:43,890 DEBUG   ledger.importer: row 321: Water Utility -60.88 -> other
+2026-11-02 02:00:44,036 DEBUG   ledger.importer: row 322: Water Utility -249.19 -> other
+2026-11-02 02:00:44,136 DEBUG   ledger.importer: row 323: Uber Trip 77 -137.16 -> dining
+2026-11-02 02:00:44,216 DEBUG   ledger.importer: row 324: Kebab House -195.49 -> transport
+2026-11-02 02:00:44,369 DEBUG   ledger.importer: row 326: Metro Card Topup -207.22 -> groceries
+2026-11-02 02:00:44,414 DEBUG   ledger.importer: row 328: Shell Fuel 8 -33.79 -> dining
+2026-11-02 02:00:44,510 DEBUG   ledger.importer: row 330: Migros 0412 -162.39 -> transport
+2026-11-02 02:00:44,524 DEBUG   ledger.importer: row 331: duplicate of an earlier transaction
+2026-11-02 02:00:44,738 DEBUG   ledger.importer: row 332: duplicate of an earlier transaction
+2026-11-02 02:00:44,805 DEBUG   ledger.importer: row 333: Landlord Ltd -248.85 -> dining
+2026-11-02 02:00:45,162 WARNING ledger.importer: row 334: category 'Food' unknown, guessed from payee
+2026-11-02 02:00:45,213 DEBUG   ledger.importer: row 335: Carrefour Express -8.68 -> other
+2026-11-02 02:00:45,328 DEBUG   ledger.importer: row 339: Shell Fuel 8 -224.03 -> transport
+2026-11-02 02:00:45,633 DEBUG   ledger.importer: row 340: ATM Withdrawal -69.78 -> transport
+2026-11-02 02:00:45,927 DEBUG   ledger.importer: row 341: Bakery Ozdemir -48.58 -> dining
+2026-11-02 02:00:46,051 WARNING ledger.importer: row 342: category 'Misc' unknown, guessed from payee
+2026-11-02 02:00:46,290 DEBUG   ledger.importer: row 343: Spotify AB -73.30 -> dining
+2026-11-02 02:00:46,636 DEBUG   ledger.importer: row 344: duplicate of an earlier transaction
+2026-11-02 02:00:46,902 DEBUG   ledger.importer: row 345: Shell Fuel 8 -81.42 -> groceries
+2026-11-02 02:00:46,905 DEBUG   ledger.importer: row 347: Cafe Nero 22 -215.30 -> dining
+2026-11-02 02:00:47,058 WARNING ledger.importer: row 348: category 'Food' unknown, guessed from payee
+2026-11-02 02:00:47,143 DEBUG   ledger.importer: row 349: Bakery Ozdemir -126.64 -> transport
+2026-11-02 02:00:47,451 DEBUG   ledger.importer: row 350: Shell Fuel 8 -82.19 -> dining
+2026-11-02 02:00:47,719 DEBUG   ledger.importer: row 351: Payroll ACME -102.50 -> other
+2026-11-02 02:00:48,098 DEBUG   ledger.importer: row 352: Metro Card Topup -55.00 -> transport
+2026-11-02 02:00:48,382 DEBUG   ledger.importer: row 353: Cafe Nero 22 -55.54 -> transport
+2026-11-02 02:00:48,561 DEBUG   ledger.importer: row 354: Kebab House -125.62 -> transport
+2026-11-02 02:00:48,619 DEBUG   ledger.importer: row 356: duplicate of an earlier transaction
+2026-11-02 02:00:48,995 DEBUG   ledger.importer: row 358: City Pharmacy -172.41 -> transport
+2026-11-02 02:00:49,284 DEBUG   ledger.importer: row 359: Kebab House -93.94 -> transport
+2026-11-02 02:00:49,470 DEBUG   ledger.importer: row 360: Kebab House -141.33 -> groceries
+2026-11-02 02:00:49,624 DEBUG   ledger.importer: row 361: City Pharmacy -249.45 -> dining
+2026-11-02 02:00:49,737 DEBUG   ledger.importer: row 362: Payroll ACME -72.60 -> groceries
+2026-11-02 02:00:50,057 DEBUG   ledger.importer: row 370: duplicate of an earlier transaction
+2026-11-02 02:00:50,237 DEBUG   ledger.importer: row 372: Uber Trip 77 -186.44 -> dining
+2026-11-02 02:00:50,349 DEBUG   ledger.importer: row 373: Water Utility -8.42 -> transport
+2026-11-02 02:00:50,376 DEBUG   ledger.importer: row 376: Carrefour Express -212.40 -> groceries
+2026-11-02 02:00:50,453 DEBUG   ledger.importer: row 377: City Pharmacy -85.13 -> other
+2026-11-02 02:00:50,586 DEBUG   ledger.importer: row 379: Shell Fuel 8 -117.01 -> dining
+2026-11-02 02:00:50,667 DEBUG   ledger.importer: row 382: Migros 0412 -187.18 -> transport
+2026-11-02 02:00:51,048 DEBUG   ledger.importer: row 383: City Pharmacy -39.03 -> groceries
+2026-11-02 02:00:51,093 DEBUG   ledger.importer: row 384: Kebab House -50.14 -> groceries
+2026-11-02 02:00:51,295 DEBUG   ledger.importer: row 385: duplicate of an earlier transaction
+2026-11-02 02:00:51,343 DEBUG   ledger.importer: row 388: Carrefour Express -166.58 -> dining
+2026-11-02 02:00:51,601 DEBUG   ledger.importer: row 389: Migros 0412 -217.48 -> other
+2026-11-02 02:00:51,730 DEBUG   ledger.importer: row 391: Kebab House -83.73 -> dining
+2026-11-02 02:00:51,960 WARNING ledger.importer: row 393: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:00:52,102 DEBUG   ledger.importer: row 394: duplicate of an earlier transaction
+2026-11-02 02:00:52,210 DEBUG   ledger.importer: row 395: Migros 0412 -93.80 -> groceries
+2026-11-02 02:00:52,575 DEBUG   ledger.importer: row 397: Netflix.com -109.54 -> other
+2026-11-02 02:00:52,632 DEBUG   ledger.importer: row 398: Uber Trip 77 -155.94 -> other
+2026-11-02 02:00:52,866 DEBUG   ledger.importer: row 399: Landlord Ltd -17.76 -> dining
+2026-11-02 02:00:53,260 DEBUG   ledger.importer: row 400: Payroll ACME -163.26 -> dining
+2026-11-02 02:00:53,484 DEBUG   ledger.importer: row 401: Water Utility -244.99 -> groceries
+2026-11-02 02:00:53,523 DEBUG   ledger.importer: row 402: Spotify AB -139.71 -> dining
+2026-11-02 02:00:53,613 DEBUG   ledger.importer: row 403: Cafe Nero 22 -231.31 -> other
+2026-11-02 02:00:53,643 DEBUG   ledger.importer: row 404: Shell Fuel 8 -58.53 -> other
+2026-11-02 02:00:54,000 DEBUG   ledger.importer: row 408: Water Utility -17.89 -> groceries
+2026-11-02 02:00:54,095 ERROR   ledger.importer: row 412 skipped (northbank): invalid amount '(45.00)'
+2026-11-02 02:00:54,464 DEBUG   ledger.importer: row 413: Water Utility -210.50 -> dining
+2026-11-02 02:00:54,493 DEBUG   ledger.importer: row 415: Metro Card Topup -213.95 -> transport
+2026-11-02 02:00:54,561 DEBUG   ledger.importer: row 416: duplicate of an earlier transaction
+2026-11-02 02:00:54,936 DEBUG   ledger.importer: row 417: ATM Withdrawal -100.48 -> other
+2026-11-02 02:00:55,303 DEBUG   ledger.importer: row 418: Landlord Ltd -220.58 -> dining
+2026-11-02 02:00:55,569 DEBUG   ledger.importer: row 422: Migros 0412 -180.10 -> dining
+2026-11-02 02:00:55,874 DEBUG   ledger.importer: row 425: Metro Card Topup -125.37 -> dining
+2026-11-02 02:00:55,993 DEBUG   ledger.importer: row 426: Migros 0412 -37.00 -> groceries
+2026-11-02 02:00:56,103 DEBUG   ledger.importer: row 428: Water Utility -17.62 -> transport
+2026-11-02 02:00:56,283 DEBUG   ledger.importer: row 429: Kebab House -86.73 -> other
+2026-11-02 02:00:56,527 DEBUG   ledger.importer: row 430: Netflix.com -76.91 -> transport
+2026-11-02 02:00:56,831 DEBUG   ledger.importer: row 431: Payroll ACME -174.12 -> other
+2026-11-02 02:00:56,897 DEBUG   ledger.importer: row 432: Spotify AB -30.69 -> groceries
+2026-11-02 02:00:57,082 DEBUG   ledger.importer: row 433: Netflix.com -8.30 -> dining
+2026-11-02 02:00:57,182 DEBUG   ledger.importer: row 435: Cafe Nero 22 -199.93 -> other
+2026-11-02 02:00:57,452 DEBUG   ledger.importer: row 436: Carrefour Express -86.57 -> dining
+2026-11-02 02:00:57,675 DEBUG   ledger.importer: row 437: Migros 0412 -99.64 -> other
+2026-11-02 02:00:57,895 DEBUG   ledger.importer: row 439: Spotify AB -115.46 -> transport
+2026-11-02 02:00:57,926 DEBUG   ledger.importer: row 440: City Pharmacy -22.08 -> groceries
+2026-11-02 02:00:58,048 DEBUG   ledger.importer: row 441: City Pharmacy -125.99 -> other
+2026-11-02 02:00:58,119 DEBUG   ledger.importer: row 443: Water Utility -219.31 -> other
+2026-11-02 02:00:58,326 DEBUG   ledger.importer: row 444: City Pharmacy -201.61 -> other
+2026-11-02 02:00:58,375 DEBUG   ledger.importer: row 447: duplicate of an earlier transaction
+2026-11-02 02:00:58,617 DEBUG   ledger.importer: row 448: Shell Fuel 8 -206.87 -> other
+2026-11-02 02:00:58,936 DEBUG   ledger.importer: row 449: Kebab House -35.77 -> other
+2026-11-02 02:00:59,181 DEBUG   ledger.importer: row 450: duplicate of an earlier transaction
+2026-11-02 02:00:59,388 DEBUG   ledger.importer: row 451: Netflix.com -66.97 -> groceries
+2026-11-02 02:00:59,619 DEBUG   ledger.importer: row 452: duplicate of an earlier transaction
+2026-11-02 02:00:59,740 DEBUG   ledger.importer: row 453: ATM Withdrawal -155.69 -> dining
+2026-11-02 02:00:59,955 DEBUG   ledger.importer: row 455: Metro Card Topup -3.26 -> dining
+2026-11-02 02:01:00,022 DEBUG   ledger.importer: row 457: Carrefour Express -213.54 -> other
+2026-11-02 02:01:00,333 DEBUG   ledger.importer: row 458: ATM Withdrawal -195.62 -> dining
+2026-11-02 02:01:00,395 DEBUG   ledger.importer: row 459: Shell Fuel 8 -144.89 -> groceries
+2026-11-02 02:01:00,691 DEBUG   ledger.importer: row 461: Carrefour Express -234.98 -> groceries
+2026-11-02 02:01:00,722 DEBUG   ledger.importer: row 462: Shell Fuel 8 -10.54 -> transport
+2026-11-02 02:01:00,943 DEBUG   ledger.importer: row 465: Landlord Ltd -184.36 -> transport
+2026-11-02 02:01:01,280 DEBUG   ledger.importer: row 466: Water Utility -81.03 -> dining
+2026-11-02 02:01:01,480 DEBUG   ledger.importer: row 467: ATM Withdrawal -176.85 -> dining
+2026-11-02 02:01:01,756 DEBUG   ledger.importer: row 469: duplicate of an earlier transaction
+2026-11-02 02:01:01,759 DEBUG   ledger.importer: row 470: Landlord Ltd -213.89 -> transport
+2026-11-02 02:01:01,951 DEBUG   ledger.importer: row 472: ATM Withdrawal -78.04 -> dining
+2026-11-02 02:01:02,136 DEBUG   ledger.importer: row 473: Shell Fuel 8 -64.13 -> groceries
+2026-11-02 02:01:02,413 DEBUG   ledger.importer: row 474: Payroll ACME -134.22 -> other
+2026-11-02 02:01:02,693 DEBUG   ledger.importer: row 475: duplicate of an earlier transaction
+2026-11-02 02:01:03,061 DEBUG   ledger.importer: row 478: Landlord Ltd -50.74 -> dining
+2026-11-02 02:01:03,102 DEBUG   ledger.importer: row 481: Uber Trip 77 -217.40 -> groceries
+2026-11-02 02:01:03,168 DEBUG   ledger.importer: row 482: Water Utility -131.00 -> dining
+2026-11-02 02:01:03,261 DEBUG   ledger.importer: row 483: Payroll ACME -168.09 -> transport
+2026-11-02 02:01:03,571 DEBUG   ledger.importer: row 485: Cafe Nero 22 -234.54 -> transport
+2026-11-02 02:01:03,815 DEBUG   ledger.importer: row 486: Migros 0412 -100.73 -> dining
+2026-11-02 02:01:03,947 DEBUG   ledger.importer: row 487: Payroll ACME -72.02 -> dining
+2026-11-02 02:01:04,280 DEBUG   ledger.importer: row 488: duplicate of an earlier transaction
+2026-11-02 02:01:04,435 DEBUG   ledger.importer: row 489: Water Utility -55.98 -> groceries
+2026-11-02 02:01:04,742 DEBUG   ledger.importer: row 492: Uber Trip 77 -224.63 -> dining
+2026-11-02 02:01:05,001 DEBUG   ledger.importer: row 493: City Pharmacy -155.49 -> other
+2026-11-02 02:01:05,171 DEBUG   ledger.importer: row 494: ATM Withdrawal -158.43 -> dining
+2026-11-02 02:01:05,327 DEBUG   ledger.importer: row 495: Shell Fuel 8 -107.87 -> transport
+2026-11-02 02:01:05,631 DEBUG   ledger.importer: row 496: Uber Trip 77 -54.92 -> dining
+2026-11-02 02:01:05,843 DEBUG   ledger.importer: row 497: duplicate of an earlier transaction
+2026-11-02 02:01:05,916 DEBUG   ledger.importer: row 498: City Pharmacy -1.80 -> other
+2026-11-02 02:01:06,158 DEBUG   ledger.importer: row 499: Water Utility -67.54 -> dining
+2026-11-02 02:01:06,397 DEBUG   ledger.importer: row 500: Payroll ACME -134.24 -> transport
+2026-11-02 02:01:06,763 DEBUG   ledger.importer: row 502: Metro Card Topup -207.62 -> other
+2026-11-02 02:01:06,992 DEBUG   ledger.importer: row 503: Migros 0412 -18.32 -> groceries
+2026-11-02 02:01:07,053 DEBUG   ledger.importer: row 504: Bakery Ozdemir -118.67 -> transport
+2026-11-02 02:01:07,176 DEBUG   ledger.importer: row 507: duplicate of an earlier transaction
+2026-11-02 02:01:07,505 DEBUG   ledger.importer: row 508: duplicate of an earlier transaction
+2026-11-02 02:01:07,847 DEBUG   ledger.importer: row 510: Payroll ACME -22.15 -> groceries
+2026-11-02 02:01:07,897 DEBUG   ledger.importer: row 513: Spotify AB -239.66 -> transport
+2026-11-02 02:01:08,291 DEBUG   ledger.importer: row 514: Metro Card Topup -62.13 -> other
+2026-11-02 02:01:08,627 DEBUG   ledger.importer: row 515: Water Utility -130.37 -> other
+2026-11-02 02:01:08,954 DEBUG   ledger.importer: row 516: Cafe Nero 22 -37.35 -> other
+2026-11-02 02:01:09,276 DEBUG   ledger.importer: row 517: Bakery Ozdemir -197.69 -> dining
+2026-11-02 02:01:09,307 DEBUG   ledger.importer: row 519: Shell Fuel 8 -165.84 -> transport
+2026-11-02 02:01:09,426 DEBUG   ledger.importer: row 520: ATM Withdrawal -208.93 -> transport
+2026-11-02 02:01:09,825 DEBUG   ledger.importer: row 522: Landlord Ltd -101.06 -> other
+2026-11-02 02:01:09,838 DEBUG   ledger.importer: row 523: duplicate of an earlier transaction
+2026-11-02 02:01:10,072 DEBUG   ledger.importer: row 525: Uber Trip 77 -218.61 -> dining
+2026-11-02 02:01:10,272 DEBUG   ledger.importer: row 527: Carrefour Express -164.99 -> groceries
+2026-11-02 02:01:10,291 DEBUG   ledger.importer: row 529: Bakery Ozdemir -245.11 -> groceries
+2026-11-02 02:01:10,665 DEBUG   ledger.importer: row 533: Cafe Nero 22 -37.98 -> groceries
+2026-11-02 02:01:10,920 DEBUG   ledger.importer: row 534: Landlord Ltd -231.91 -> dining
+2026-11-02 02:01:11,096 DEBUG   ledger.importer: row 535: Metro Card Topup -115.85 -> other
+2026-11-02 02:01:11,249 DEBUG   ledger.importer: row 536: duplicate of an earlier transaction
+2026-11-02 02:01:11,438 DEBUG   ledger.importer: row 538: ATM Withdrawal -148.91 -> groceries
+2026-11-02 02:01:11,690 DEBUG   ledger.importer: row 539: Payroll ACME -142.69 -> groceries
+2026-11-02 02:01:12,000 DEBUG   ledger.importer: row 540: Carrefour Express -136.25 -> other
+2026-11-02 02:01:12,085 DEBUG   ledger.importer: row 541: Water Utility -232.44 -> groceries
+2026-11-02 02:01:12,481 DEBUG   ledger.importer: row 542: Netflix.com -169.80 -> groceries
+2026-11-02 02:01:12,841 DEBUG   ledger.importer: row 543: Cafe Nero 22 -192.26 -> transport
+2026-11-02 02:01:13,079 DEBUG   ledger.importer: row 544: Water Utility -155.73 -> transport
+2026-11-02 02:01:13,321 DEBUG   ledger.importer: row 545: duplicate of an earlier transaction
+2026-11-02 02:01:13,693 DEBUG   ledger.importer: row 546: Metro Card Topup -97.83 -> other
+2026-11-02 02:01:13,923 DEBUG   ledger.importer: row 547: Netflix.com -188.41 -> dining
+2026-11-02 02:01:14,008 DEBUG   ledger.importer: row 548: Migros 0412 -67.55 -> groceries
+2026-11-02 02:01:14,068 DEBUG   ledger.importer: row 549: Landlord Ltd -125.40 -> groceries
+2026-11-02 02:01:14,467 DEBUG   ledger.importer: row 550: City Pharmacy -72.23 -> transport
+2026-11-02 02:01:14,658 DEBUG   ledger.importer: row 551: Shell Fuel 8 -95.31 -> other
+2026-11-02 02:01:14,935 DEBUG   ledger.importer: row 552: Migros 0412 -138.52 -> dining
+2026-11-02 02:01:15,275 DEBUG   ledger.importer: row 553: Netflix.com -69.84 -> groceries
+2026-11-02 02:01:15,306 DEBUG   ledger.importer: row 554: Payroll ACME -101.36 -> other
+2026-11-02 02:01:15,470 DEBUG   ledger.importer: row 558: Cafe Nero 22 -218.35 -> transport
+2026-11-02 02:01:15,612 DEBUG   ledger.importer: row 560: Water Utility -152.72 -> other
+2026-11-02 02:01:15,910 DEBUG   ledger.importer: row 562: ATM Withdrawal -246.66 -> other
+2026-11-02 02:01:16,145 DEBUG   ledger.importer: row 563: duplicate of an earlier transaction
+2026-11-02 02:01:16,168 DEBUG   ledger.importer: row 567: Kebab House -114.51 -> dining
+2026-11-02 02:01:16,217 DEBUG   ledger.importer: row 568: Kebab House -113.56 -> dining
+2026-11-02 02:01:16,560 DEBUG   ledger.importer: row 569: duplicate of an earlier transaction
+2026-11-02 02:01:16,621 DEBUG   ledger.importer: row 570: Payroll ACME -131.95 -> groceries
+2026-11-02 02:01:16,768 DEBUG   ledger.importer: row 571: Bakery Ozdemir -193.25 -> groceries
+2026-11-02 02:01:17,081 DEBUG   ledger.importer: row 574: Cafe Nero 22 -100.25 -> transport
+2026-11-02 02:01:17,192 DEBUG   ledger.importer: row 575: duplicate of an earlier transaction
+2026-11-02 02:01:17,311 DEBUG   ledger.importer: row 577: Carrefour Express -115.34 -> groceries
+2026-11-02 02:01:17,619 WARNING ledger.importer: row 578: category 'Food' unknown, guessed from payee
+2026-11-02 02:01:17,909 DEBUG   ledger.importer: row 579: Bakery Ozdemir -170.46 -> groceries
+2026-11-02 02:01:18,305 DEBUG   ledger.importer: row 580: Carrefour Express -129.86 -> other
+2026-11-02 02:01:18,606 DEBUG   ledger.importer: row 581: Landlord Ltd -16.31 -> other
+2026-11-02 02:01:18,906 DEBUG   ledger.importer: row 582: Carrefour Express -70.20 -> groceries
+2026-11-02 02:01:19,066 DEBUG   ledger.importer: row 583: Uber Trip 77 -134.89 -> dining
+2026-11-02 02:01:19,364 DEBUG   ledger.importer: row 584: Shell Fuel 8 -131.90 -> transport
+2026-11-02 02:01:19,450 DEBUG   ledger.importer: row 586: ATM Withdrawal -179.78 -> groceries
+2026-11-02 02:01:19,581 DEBUG   ledger.importer: row 587: duplicate of an earlier transaction
+2026-11-02 02:01:19,891 DEBUG   ledger.importer: row 588: Metro Card Topup -36.63 -> transport
+2026-11-02 02:01:20,145 DEBUG   ledger.importer: row 589: Uber Trip 77 -14.54 -> transport
+2026-11-02 02:01:20,163 DEBUG   ledger.importer: row 590: Netflix.com -215.47 -> groceries
+2026-11-02 02:01:20,369 DEBUG   ledger.importer: row 591: Shell Fuel 8 -80.05 -> groceries
+2026-11-02 02:01:20,641 DEBUG   ledger.importer: row 593: Migros 0412 -92.95 -> dining
+2026-11-02 02:01:20,945 DEBUG   ledger.importer: row 594: duplicate of an earlier transaction
+2026-11-02 02:01:21,220 DEBUG   ledger.importer: row 597: Metro Card Topup -140.59 -> other
+2026-11-02 02:01:21,228 DEBUG   ledger.importer: row 598: duplicate of an earlier transaction
+2026-11-02 02:01:21,628 DEBUG   ledger.importer: row 599: Carrefour Express -192.94 -> dining
+2026-11-02 02:01:21,769 DEBUG   ledger.importer: row 600: Shell Fuel 8 -193.82 -> groceries
+2026-11-02 02:01:22,145 DEBUG   ledger.importer: row 602: Payroll ACME -26.34 -> other
+2026-11-02 02:01:22,418 DEBUG   ledger.importer: row 603: Bakery Ozdemir -98.68 -> other
+2026-11-02 02:01:22,613 DEBUG   ledger.importer: row 604: Metro Card Topup -222.19 -> dining
+2026-11-02 02:01:22,756 DEBUG   ledger.importer: row 605: Migros 0412 -35.20 -> transport
+2026-11-02 02:01:22,991 DEBUG   ledger.importer: row 606: Carrefour Express -204.13 -> groceries
+2026-11-02 02:01:23,208 DEBUG   ledger.importer: row 608: Kebab House -190.92 -> groceries
+2026-11-02 02:01:23,435 DEBUG   ledger.importer: row 609: Uber Trip 77 -157.54 -> transport
+2026-11-02 02:01:23,772 DEBUG   ledger.importer: row 611: duplicate of an earlier transaction
+2026-11-02 02:01:24,086 DEBUG   ledger.importer: row 613: Migros 0412 -182.63 -> dining
+2026-11-02 02:01:24,199 DEBUG   ledger.importer: row 614: Kebab House -23.05 -> transport
+2026-11-02 02:01:24,539 DEBUG   ledger.importer: row 615: Metro Card Topup -175.16 -> dining
+2026-11-02 02:01:24,545 DEBUG   ledger.importer: row 617: Netflix.com -247.18 -> groceries
+2026-11-02 02:01:24,751 DEBUG   ledger.importer: row 618: Netflix.com -203.55 -> transport
+2026-11-02 02:01:25,108 DEBUG   ledger.importer: row 619: Landlord Ltd -28.52 -> transport
+2026-11-02 02:01:25,114 DEBUG   ledger.importer: row 620: Bakery Ozdemir -41.26 -> groceries
+2026-11-02 02:01:25,120 DEBUG   ledger.importer: row 621: Payroll ACME -83.24 -> groceries
+2026-11-02 02:01:25,132 DEBUG   ledger.importer: row 622: Shell Fuel 8 -9.35 -> groceries
+2026-11-02 02:01:25,276 DEBUG   ledger.importer: row 623: Payroll ACME -61.00 -> dining
+2026-11-02 02:01:25,625 DEBUG   ledger.importer: row 625: Landlord Ltd -94.24 -> other
+2026-11-02 02:01:25,988 DEBUG   ledger.importer: row 626: Uber Trip 77 -99.95 -> dining
+2026-11-02 02:01:26,244 DEBUG   ledger.importer: row 628: Landlord Ltd -176.54 -> groceries
+2026-11-02 02:01:26,457 DEBUG   ledger.importer: row 629: Cafe Nero 22 -141.52 -> other
+2026-11-02 02:01:26,569 DEBUG   ledger.importer: row 630: Migros 0412 -95.75 -> other
+2026-11-02 02:01:26,874 DEBUG   ledger.importer: row 631: Netflix.com -157.52 -> other
+2026-11-02 02:01:27,205 DEBUG   ledger.importer: row 632: Kebab House -18.34 -> transport
+2026-11-02 02:01:27,523 DEBUG   ledger.importer: row 633: Carrefour Express -179.70 -> groceries
+2026-11-02 02:01:27,885 DEBUG   ledger.importer: row 634: Cafe Nero 22 -159.47 -> dining
+2026-11-02 02:01:28,175 DEBUG   ledger.importer: row 635: Shell Fuel 8 -247.25 -> other
+2026-11-02 02:01:28,453 DEBUG   ledger.importer: row 638: duplicate of an earlier transaction
+2026-11-02 02:01:28,699 DEBUG   ledger.importer: row 642: Migros 0412 -103.83 -> transport
+2026-11-02 02:01:28,904 DEBUG   ledger.importer: row 646: duplicate of an earlier transaction
+2026-11-02 02:01:29,112 DEBUG   ledger.importer: row 647: Migros 0412 -144.91 -> other
+2026-11-02 02:01:29,501 DEBUG   ledger.importer: row 648: ATM Withdrawal -52.71 -> transport
+2026-11-02 02:01:29,643 DEBUG   ledger.importer: row 649: duplicate of an earlier transaction
+2026-11-02 02:01:29,919 DEBUG   ledger.importer: row 650: Landlord Ltd -65.77 -> groceries
+2026-11-02 02:01:29,971 DEBUG   ledger.importer: row 651: Netflix.com -17.20 -> other
+2026-11-02 02:01:30,054 DEBUG   ledger.importer: row 652: Carrefour Express -83.45 -> dining
+2026-11-02 02:01:30,372 DEBUG   ledger.importer: row 653: Migros 0412 -107.50 -> groceries
+2026-11-02 02:01:30,464 DEBUG   ledger.importer: row 656: Netflix.com -165.84 -> groceries
+2026-11-02 02:01:30,675 DEBUG   ledger.importer: row 659: Payroll ACME -32.75 -> transport
+2026-11-02 02:01:30,933 DEBUG   ledger.importer: row 661: Kebab House -230.28 -> groceries
+2026-11-02 02:01:31,206 DEBUG   ledger.importer: row 663: ATM Withdrawal -197.78 -> dining
+2026-11-02 02:01:31,381 DEBUG   ledger.importer: row 665: Netflix.com -30.19 -> dining
+2026-11-02 02:01:31,389 DEBUG   ledger.importer: row 667: Landlord Ltd -75.41 -> other
+2026-11-02 02:01:31,565 DEBUG   ledger.importer: row 669: Shell Fuel 8 -238.19 -> transport
+2026-11-02 02:01:31,938 DEBUG   ledger.importer: row 671: Payroll ACME -157.28 -> other
+2026-11-02 02:01:32,307 DEBUG   ledger.importer: row 672: Water Utility -140.68 -> transport
+2026-11-02 02:01:32,455 WARNING ledger.importer: row 673: category 'Misc' unknown, guessed from payee
+2026-11-02 02:01:32,662 DEBUG   ledger.importer: row 674: Cafe Nero 22 -156.01 -> transport
+2026-11-02 02:01:32,866 DEBUG   ledger.importer: row 678: Uber Trip 77 -86.87 -> transport
+2026-11-02 02:01:32,918 DEBUG   ledger.importer: row 679: Netflix.com -209.34 -> dining
+2026-11-02 02:01:33,235 DEBUG   ledger.importer: row 681: Carrefour Express -63.77 -> other
+2026-11-02 02:01:33,298 DEBUG   ledger.importer: row 685: ATM Withdrawal -132.25 -> dining
+2026-11-02 02:01:33,664 DEBUG   ledger.importer: row 686: Landlord Ltd -34.84 -> transport
+2026-11-02 02:01:33,820 DEBUG   ledger.importer: row 687: Cafe Nero 22 -122.29 -> transport
+2026-11-02 02:01:34,168 DEBUG   ledger.importer: row 693: Landlord Ltd -157.48 -> dining
+2026-11-02 02:01:34,277 DEBUG   ledger.importer: row 694: Migros 0412 -167.82 -> groceries
+2026-11-02 02:01:34,411 WARNING ledger.importer: row 697: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:01:34,686 DEBUG   ledger.importer: row 698: Migros 0412 -68.46 -> groceries
+2026-11-02 02:01:34,826 DEBUG   ledger.importer: row 704: Cafe Nero 22 -159.19 -> other
+2026-11-02 02:01:34,879 DEBUG   ledger.importer: row 705: duplicate of an earlier transaction
+2026-11-02 02:01:35,032 DEBUG   ledger.importer: row 706: Migros 0412 -163.40 -> other
+2026-11-02 02:01:35,037 DEBUG   ledger.importer: row 707: Metro Card Topup -28.45 -> other
+2026-11-02 02:01:35,338 DEBUG   ledger.importer: row 708: Uber Trip 77 -136.75 -> transport
+2026-11-02 02:01:35,405 DEBUG   ledger.importer: row 711: Netflix.com -202.78 -> transport
+2026-11-02 02:01:35,631 DEBUG   ledger.importer: row 713: Landlord Ltd -134.93 -> dining
+2026-11-02 02:01:35,790 DEBUG   ledger.importer: row 715: Cafe Nero 22 -177.65 -> groceries
+2026-11-02 02:01:35,918 DEBUG   ledger.importer: row 716: duplicate of an earlier transaction
+2026-11-02 02:01:35,951 DEBUG   ledger.importer: row 719: ATM Withdrawal -176.53 -> transport
+2026-11-02 02:01:36,130 DEBUG   ledger.importer: row 722: duplicate of an earlier transaction
+2026-11-02 02:01:36,444 DEBUG   ledger.importer: row 725: Uber Trip 77 -227.26 -> other
+2026-11-02 02:01:36,681 DEBUG   ledger.importer: row 726: Kebab House -245.58 -> transport
+2026-11-02 02:01:36,791 DEBUG   ledger.importer: row 727: Spotify AB -50.38 -> transport
+2026-11-02 02:01:36,923 DEBUG   ledger.importer: row 729: Carrefour Express -226.32 -> groceries
+2026-11-02 02:01:36,974 DEBUG   ledger.importer: row 730: Spotify AB -225.12 -> dining
+2026-11-02 02:01:37,100 DEBUG   ledger.importer: row 732: ATM Withdrawal -209.77 -> transport
+2026-11-02 02:01:37,318 DEBUG   ledger.importer: row 735: City Pharmacy -203.66 -> transport
+2026-11-02 02:01:37,551 DEBUG   ledger.importer: row 736: Cafe Nero 22 -56.19 -> other
+2026-11-02 02:01:37,575 DEBUG   ledger.importer: row 738: Cafe Nero 22 -66.73 -> dining
+2026-11-02 02:01:37,726 DEBUG   ledger.importer: row 739: Bakery Ozdemir -166.47 -> groceries
+2026-11-02 02:01:37,750 DEBUG   ledger.importer: row 740: Landlord Ltd -58.32 -> transport
+2026-11-02 02:01:37,968 WARNING ledger.importer: row 741: category 'Misc' unknown, guessed from payee
+2026-11-02 02:01:37,996 DEBUG   ledger.importer: row 743: duplicate of an earlier transaction
+2026-11-02 02:01:38,015 DEBUG   ledger.importer: row 744: duplicate of an earlier transaction
+2026-11-02 02:01:38,160 DEBUG   ledger.importer: row 746: Carrefour Express -186.65 -> groceries
+2026-11-02 02:01:38,361 DEBUG   ledger.importer: row 747: Metro Card Topup -169.13 -> transport
+2026-11-02 02:01:38,487 DEBUG   ledger.importer: row 750: ATM Withdrawal -159.07 -> other
+2026-11-02 02:01:38,803 DEBUG   ledger.importer: row 752: Uber Trip 77 -156.15 -> transport
+2026-11-02 02:01:38,818 DEBUG   ledger.importer: row 753: ATM Withdrawal -224.75 -> other
+2026-11-02 02:01:39,181 DEBUG   ledger.importer: row 754: Cafe Nero 22 -229.92 -> groceries
+2026-11-02 02:01:39,400 DEBUG   ledger.importer: row 756: Netflix.com -207.37 -> other
+2026-11-02 02:01:39,685 DEBUG   ledger.importer: row 757: Kebab House -149.24 -> other
+2026-11-02 02:01:39,806 DEBUG   ledger.importer: row 758: Spotify AB -37.88 -> groceries
+2026-11-02 02:01:40,140 DEBUG   ledger.importer: row 759: Migros 0412 -26.24 -> groceries
+2026-11-02 02:01:40,312 DEBUG   ledger.importer: row 762: Uber Trip 77 -87.39 -> transport
+2026-11-02 02:01:40,328 DEBUG   ledger.importer: row 764: Kebab House -80.85 -> transport
+2026-11-02 02:01:40,610 DEBUG   ledger.importer: row 765: Metro Card Topup -26.19 -> other
+2026-11-02 02:01:40,999 DEBUG   ledger.importer: row 767: Payroll ACME -250.06 -> groceries
+2026-11-02 02:01:41,010 DEBUG   ledger.importer: row 768: Shell Fuel 8 -208.38 -> groceries
+2026-11-02 02:01:41,275 DEBUG   ledger.importer: row 769: Water Utility -81.84 -> groceries
+2026-11-02 02:01:41,663 DEBUG   ledger.importer: row 770: duplicate of an earlier transaction
+2026-11-02 02:01:41,983 DEBUG   ledger.importer: row 771: Netflix.com -55.87 -> groceries
+2026-11-02 02:01:42,370 WARNING ledger.importer: row 772: category 'Food' unknown, guessed from payee
+2026-11-02 02:01:42,553 DEBUG   ledger.importer: row 773: Shell Fuel 8 -100.22 -> dining
+2026-11-02 02:01:42,861 DEBUG   ledger.importer: row 775: Bakery Ozdemir -179.23 -> other
+2026-11-02 02:01:42,878 DEBUG   ledger.importer: row 776: Kebab House -184.60 -> other
+2026-11-02 02:01:43,165 DEBUG   ledger.importer: row 777: Spotify AB -96.62 -> groceries
+2026-11-02 02:01:43,528 DEBUG   ledger.importer: row 778: Water Utility -97.78 -> other
+2026-11-02 02:01:43,541 DEBUG   ledger.importer: row 779: Bakery Ozdemir -157.54 -> dining
+2026-11-02 02:01:43,689 DEBUG   ledger.importer: row 780: Migros 0412 -206.81 -> other
+2026-11-02 02:01:43,787 DEBUG   ledger.importer: row 783: duplicate of an earlier transaction
+2026-11-02 02:01:43,982 WARNING ledger.importer: row 784: category 'Misc' unknown, guessed from payee
+2026-11-02 02:01:44,300 DEBUG   ledger.importer: row 785: Cafe Nero 22 -223.50 -> groceries
+2026-11-02 02:01:44,515 DEBUG   ledger.importer: row 786: Kebab House -159.58 -> other
+2026-11-02 02:01:44,612 WARNING ledger.importer: row 788: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:01:44,862 DEBUG   ledger.importer: row 790: Payroll ACME -147.91 -> other
+2026-11-02 02:01:45,230 DEBUG   ledger.importer: row 793: Carrefour Express -93.03 -> transport
+2026-11-02 02:01:45,281 WARNING ledger.importer: row 794: category 'Misc' unknown, guessed from payee
+2026-11-02 02:01:45,668 WARNING ledger.importer: row 796: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:01:45,680 DEBUG   ledger.importer: row 797: Spotify AB -226.72 -> dining
+2026-11-02 02:01:45,735 DEBUG   ledger.importer: row 801: Water Utility -194.70 -> groceries
+2026-11-02 02:01:45,842 DEBUG   ledger.importer: row 803: Uber Trip 77 -99.21 -> groceries
+2026-11-02 02:01:45,891 DEBUG   ledger.importer: row 804: Spotify AB -29.30 -> other
+2026-11-02 02:01:45,966 DEBUG   ledger.importer: row 806: City Pharmacy -176.69 -> groceries
+2026-11-02 02:01:46,311 DEBUG   ledger.importer: row 807: Payroll ACME -38.27 -> transport
+2026-11-02 02:01:46,652 DEBUG   ledger.importer: row 808: Spotify AB -182.16 -> dining
+2026-11-02 02:01:46,878 DEBUG   ledger.importer: row 809: Metro Card Topup -128.46 -> dining
+2026-11-02 02:01:47,049 DEBUG   ledger.importer: row 810: Shell Fuel 8 -138.71 -> transport
+2026-11-02 02:01:47,214 DEBUG   ledger.importer: row 812: Cafe Nero 22 -205.53 -> dining
+2026-11-02 02:01:47,598 DEBUG   ledger.importer: row 814: City Pharmacy -158.22 -> dining
+2026-11-02 02:01:47,850 DEBUG   ledger.importer: row 815: Cafe Nero 22 -131.05 -> transport
+2026-11-02 02:01:48,139 DEBUG   ledger.importer: row 817: Netflix.com -215.43 -> dining
+2026-11-02 02:01:48,183 DEBUG   ledger.importer: row 819: duplicate of an earlier transaction
+2026-11-02 02:01:48,560 DEBUG   ledger.importer: row 821: Shell Fuel 8 -32.20 -> groceries
+2026-11-02 02:01:48,826 DEBUG   ledger.importer: row 823: Bakery Ozdemir -141.99 -> other
+2026-11-02 02:01:49,159 DEBUG   ledger.importer: row 825: duplicate of an earlier transaction
+2026-11-02 02:01:49,264 DEBUG   ledger.importer: row 826: Spotify AB -72.72 -> other
+2026-11-02 02:01:49,277 DEBUG   ledger.importer: row 827: Metro Card Topup -187.43 -> dining
+2026-11-02 02:01:49,532 DEBUG   ledger.importer: row 828: Cafe Nero 22 -93.92 -> transport
+2026-11-02 02:01:49,603 DEBUG   ledger.importer: row 829: Migros 0412 -102.35 -> groceries
+2026-11-02 02:01:49,772 DEBUG   ledger.importer: row 830: Bakery Ozdemir -149.47 -> transport
+2026-11-02 02:01:49,819 DEBUG   ledger.importer: row 831: Spotify AB -47.34 -> transport
+2026-11-02 02:01:49,924 DEBUG   ledger.importer: row 832: Metro Card Topup -50.88 -> transport
+2026-11-02 02:01:49,990 WARNING ledger.importer: row 834: category 'Misc' unknown, guessed from payee
+2026-11-02 02:01:50,198 DEBUG   ledger.importer: row 835: Payroll ACME -90.95 -> transport
+2026-11-02 02:01:50,471 DEBUG   ledger.importer: row 836: Kebab House -35.04 -> groceries
+2026-11-02 02:01:50,740 DEBUG   ledger.importer: row 837: Metro Card Topup -185.26 -> other
+2026-11-02 02:01:50,866 DEBUG   ledger.importer: row 840: Metro Card Topup -23.73 -> groceries
+2026-11-02 02:01:51,107 DEBUG   ledger.importer: row 844: Water Utility -161.77 -> transport
+2026-11-02 02:01:51,412 DEBUG   ledger.importer: row 845: Landlord Ltd -227.16 -> dining
+2026-11-02 02:01:51,645 DEBUG   ledger.importer: row 846: Landlord Ltd -27.59 -> other
+2026-11-02 02:01:51,714 DEBUG   ledger.importer: row 848: Cafe Nero 22 -20.94 -> groceries
+2026-11-02 02:01:51,967 DEBUG   ledger.importer: row 851: Metro Card Topup -26.82 -> groceries
+2026-11-02 02:01:52,308 DEBUG   ledger.importer: row 853: Cafe Nero 22 -95.14 -> other
+2026-11-02 02:01:52,492 DEBUG   ledger.importer: row 854: Uber Trip 77 -183.64 -> transport
+2026-11-02 02:01:52,523 DEBUG   ledger.importer: row 856: duplicate of an earlier transaction
+2026-11-02 02:01:52,667 DEBUG   ledger.importer: row 857: Uber Trip 77 -202.27 -> other
+2026-11-02 02:01:52,975 DEBUG   ledger.importer: row 858: Cafe Nero 22 -26.50 -> other
+2026-11-02 02:01:53,300 DEBUG   ledger.importer: row 859: Cafe Nero 22 -128.68 -> dining
+2026-11-02 02:01:53,527 DEBUG   ledger.importer: row 860: Carrefour Express -249.85 -> groceries
+2026-11-02 02:01:53,667 DEBUG   ledger.importer: row 861: Payroll ACME -120.19 -> dining
+2026-11-02 02:01:53,755 DEBUG   ledger.importer: row 862: duplicate of an earlier transaction
+2026-11-02 02:01:53,777 DEBUG   ledger.importer: row 863: duplicate of an earlier transaction
+2026-11-02 02:01:54,157 DEBUG   ledger.importer: row 864: ATM Withdrawal -210.71 -> other
+2026-11-02 02:01:54,245 DEBUG   ledger.importer: row 865: Water Utility -65.59 -> dining
+2026-11-02 02:01:54,332 DEBUG   ledger.importer: row 867: duplicate of an earlier transaction
+2026-11-02 02:01:54,494 DEBUG   ledger.importer: row 869: Shell Fuel 8 -195.98 -> groceries
+2026-11-02 02:01:54,677 DEBUG   ledger.importer: row 870: Water Utility -185.00 -> dining
+2026-11-02 02:01:54,837 DEBUG   ledger.importer: row 871: Migros 0412 -97.89 -> other
+2026-11-02 02:01:55,049 DEBUG   ledger.importer: row 873: duplicate of an earlier transaction
+2026-11-02 02:01:55,406 DEBUG   ledger.importer: row 877: Spotify AB -75.34 -> dining
+2026-11-02 02:01:55,774 DEBUG   ledger.importer: row 878: City Pharmacy -102.11 -> groceries
+2026-11-02 02:01:56,060 DEBUG   ledger.importer: row 879: Cafe Nero 22 -229.16 -> transport
+2026-11-02 02:01:56,125 DEBUG   ledger.importer: row 880: Landlord Ltd -40.30 -> transport
+2026-11-02 02:01:56,499 DEBUG   ledger.importer: row 881: Migros 0412 -77.96 -> transport
+2026-11-02 02:01:56,886 DEBUG   ledger.importer: row 883: Cafe Nero 22 -75.64 -> dining
+2026-11-02 02:01:56,897 DEBUG   ledger.importer: row 885: City Pharmacy -110.36 -> other
+2026-11-02 02:01:56,941 DEBUG   ledger.importer: row 886: Migros 0412 -95.65 -> transport
+2026-11-02 02:01:57,079 DEBUG   ledger.importer: row 888: City Pharmacy -196.56 -> groceries
+2026-11-02 02:01:57,139 DEBUG   ledger.importer: row 893: Migros 0412 -57.16 -> other
+2026-11-02 02:01:57,267 DEBUG   ledger.importer: row 895: Spotify AB -212.00 -> groceries
+2026-11-02 02:01:57,294 DEBUG   ledger.importer: row 896: Payroll ACME -189.22 -> groceries
+2026-11-02 02:01:57,685 DEBUG   ledger.importer: row 897: Payroll ACME -232.57 -> dining
+2026-11-02 02:01:57,899 DEBUG   ledger.importer: row 902: Bakery Ozdemir -202.97 -> other
+2026-11-02 02:01:58,107 DEBUG   ledger.importer: row 903: Metro Card Topup -238.13 -> transport
+2026-11-02 02:01:58,321 DEBUG   ledger.importer: row 904: Uber Trip 77 -26.13 -> groceries
+2026-11-02 02:01:58,576 DEBUG   ledger.importer: row 905: Water Utility -74.36 -> transport
+2026-11-02 02:01:58,802 DEBUG   ledger.importer: row 907: Landlord Ltd -95.89 -> groceries
+2026-11-02 02:01:58,931 DEBUG   ledger.importer: row 908: Shell Fuel 8 -232.67 -> other
+2026-11-02 02:01:59,309 DEBUG   ledger.importer: row 910: Migros 0412 -89.41 -> other
+2026-11-02 02:01:59,428 DEBUG   ledger.importer: row 911: Netflix.com -190.03 -> other
+2026-11-02 02:01:59,478 DEBUG   ledger.importer: row 912: Uber Trip 77 -116.12 -> transport
+2026-11-02 02:01:59,731 DEBUG   ledger.importer: row 913: Metro Card Topup -86.05 -> transport
+2026-11-02 02:02:00,001 DEBUG   ledger.importer: row 916: ATM Withdrawal -123.22 -> other
+2026-11-02 02:02:00,298 DEBUG   ledger.importer: row 917: Migros 0412 -205.24 -> other
+2026-11-02 02:02:00,357 DEBUG   ledger.importer: row 918: Bakery Ozdemir -72.96 -> groceries
+2026-11-02 02:02:00,706 WARNING ledger.importer: row 920: category 'Food' unknown, guessed from payee
+2026-11-02 02:02:00,804 DEBUG   ledger.importer: row 922: City Pharmacy -177.88 -> groceries
+2026-11-02 02:02:00,915 DEBUG   ledger.importer: row 923: Shell Fuel 8 -186.31 -> dining
+2026-11-02 02:02:00,953 DEBUG   ledger.importer: row 924: Landlord Ltd -242.28 -> groceries
+2026-11-02 02:02:01,258 DEBUG   ledger.importer: row 925: Migros 0412 -217.90 -> dining
+2026-11-02 02:02:01,587 DEBUG   ledger.importer: row 928: Kebab House -20.94 -> dining
+2026-11-02 02:02:01,758 DEBUG   ledger.importer: row 930: Kebab House -137.65 -> transport
+2026-11-02 02:02:01,788 DEBUG   ledger.importer: row 933: duplicate of an earlier transaction
+2026-11-02 02:02:02,009 DEBUG   ledger.importer: row 934: ATM Withdrawal -239.76 -> other
+2026-11-02 02:02:02,044 DEBUG   ledger.importer: row 936: Cafe Nero 22 -169.25 -> groceries
+2026-11-02 02:02:02,088 DEBUG   ledger.importer: row 937: Payroll ACME -236.04 -> groceries
+2026-11-02 02:02:02,267 DEBUG   ledger.importer: row 939: duplicate of an earlier transaction
+2026-11-02 02:02:02,427 DEBUG   ledger.importer: row 940: Migros 0412 -149.01 -> groceries
+2026-11-02 02:02:02,826 DEBUG   ledger.importer: row 942: Netflix.com -93.49 -> other
+2026-11-02 02:02:02,987 DEBUG   ledger.importer: row 944: duplicate of an earlier transaction
+2026-11-02 02:02:03,155 DEBUG   ledger.importer: row 946: duplicate of an earlier transaction
+2026-11-02 02:02:03,437 DEBUG   ledger.importer: row 947: duplicate of an earlier transaction
+2026-11-02 02:02:03,621 DEBUG   ledger.importer: row 948: duplicate of an earlier transaction
+2026-11-02 02:02:03,953 DEBUG   ledger.importer: row 949: duplicate of an earlier transaction
+2026-11-02 02:02:04,332 DEBUG   ledger.importer: row 950: Spotify AB -213.83 -> groceries
+2026-11-02 02:02:04,430 DEBUG   ledger.importer: row 951: Spotify AB -177.29 -> groceries
+2026-11-02 02:02:04,797 DEBUG   ledger.importer: row 952: Metro Card Topup -80.55 -> groceries
+2026-11-02 02:02:04,881 DEBUG   ledger.importer: row 953: Bakery Ozdemir -188.98 -> dining
+2026-11-02 02:02:05,252 DEBUG   ledger.importer: row 955: Shell Fuel 8 -183.63 -> other
+2026-11-02 02:02:05,439 DEBUG   ledger.importer: row 957: Migros 0412 -5.06 -> transport
+2026-11-02 02:02:05,548 DEBUG   ledger.importer: row 958: Landlord Ltd -213.08 -> other
+2026-11-02 02:02:05,852 DEBUG   ledger.importer: row 960: Migros 0412 -163.27 -> transport
+2026-11-02 02:02:06,077 DEBUG   ledger.importer: row 961: Migros 0412 -83.65 -> groceries
+2026-11-02 02:02:06,300 DEBUG   ledger.importer: row 963: Migros 0412 -245.60 -> dining
+2026-11-02 02:02:06,432 DEBUG   ledger.importer: row 966: Migros 0412 -163.36 -> dining
+2026-11-02 02:02:06,593 DEBUG   ledger.importer: row 967: Landlord Ltd -72.79 -> dining
+2026-11-02 02:02:06,789 DEBUG   ledger.importer: row 968: Bakery Ozdemir -49.39 -> transport
+2026-11-02 02:02:07,104 DEBUG   ledger.importer: row 969: Cafe Nero 22 -88.72 -> other
+2026-11-02 02:02:07,474 DEBUG   ledger.importer: row 971: Kebab House -163.08 -> other
+2026-11-02 02:02:07,483 DEBUG   ledger.importer: row 972: duplicate of an earlier transaction
+2026-11-02 02:02:07,527 DEBUG   ledger.importer: row 973: Metro Card Topup -39.26 -> dining
+2026-11-02 02:02:07,787 DEBUG   ledger.importer: row 974: Spotify AB -223.88 -> dining
+2026-11-02 02:02:08,169 DEBUG   ledger.importer: row 975: Shell Fuel 8 -31.52 -> transport
+2026-11-02 02:02:08,462 DEBUG   ledger.importer: row 976: Carrefour Express -193.76 -> transport
+2026-11-02 02:02:08,732 ERROR   ledger.importer: row 977 skipped (northbank): invalid amount '1,250.00'
+2026-11-02 02:02:09,026 DEBUG   ledger.importer: row 978: Water Utility -51.60 -> transport
+2026-11-02 02:02:09,297 DEBUG   ledger.importer: row 980: Kebab House -213.34 -> other
+2026-11-02 02:02:09,309 DEBUG   ledger.importer: row 981: duplicate of an earlier transaction
+2026-11-02 02:02:09,344 DEBUG   ledger.importer: row 982: Cafe Nero 22 -164.16 -> transport
+2026-11-02 02:02:09,599 DEBUG   ledger.importer: row 984: duplicate of an earlier transaction
+2026-11-02 02:02:09,993 DEBUG   ledger.importer: row 988: Carrefour Express -162.78 -> transport
+2026-11-02 02:02:10,245 DEBUG   ledger.importer: row 989: Water Utility -140.94 -> transport
+2026-11-02 02:02:10,478 DEBUG   ledger.importer: row 990: Uber Trip 77 -142.86 -> transport
+2026-11-02 02:02:10,510 DEBUG   ledger.importer: row 991: Cafe Nero 22 -159.36 -> other
+2026-11-02 02:02:10,533 DEBUG   ledger.importer: row 993: Migros 0412 -120.83 -> groceries
+2026-11-02 02:02:10,664 DEBUG   ledger.importer: row 994: Payroll ACME -138.49 -> groceries
+2026-11-02 02:02:10,842 DEBUG   ledger.importer: row 996: Water Utility -66.88 -> groceries
+2026-11-02 02:02:11,188 DEBUG   ledger.importer: row 997: duplicate of an earlier transaction
+2026-11-02 02:02:11,561 DEBUG   ledger.importer: row 999: Landlord Ltd -209.61 -> dining
+2026-11-02 02:02:11,730 DEBUG   ledger.importer: row 1000: Shell Fuel 8 -197.71 -> other
+2026-11-02 02:02:11,889 WARNING ledger.importer: row 1001: category 'Food' unknown, guessed from payee
+2026-11-02 02:02:12,121 DEBUG   ledger.importer: row 1003: ATM Withdrawal -232.15 -> other
+2026-11-02 02:02:12,380 DEBUG   ledger.importer: row 1004: Kebab House -46.63 -> other
+2026-11-02 02:02:12,687 DEBUG   ledger.importer: row 1005: Shell Fuel 8 -94.62 -> groceries
+2026-11-02 02:02:12,991 DEBUG   ledger.importer: row 1008: Spotify AB -99.37 -> transport
+2026-11-02 02:02:13,243 DEBUG   ledger.importer: row 1009: Metro Card Topup -23.85 -> transport
+2026-11-02 02:02:13,302 DEBUG   ledger.importer: row 1010: Spotify AB -36.13 -> dining
+2026-11-02 02:02:13,351 DEBUG   ledger.importer: row 1011: Spotify AB -6.22 -> transport
+2026-11-02 02:02:13,708 DEBUG   ledger.importer: row 1012: Shell Fuel 8 -81.22 -> groceries
+2026-11-02 02:02:14,026 DEBUG   ledger.importer: row 1013: Bakery Ozdemir -151.53 -> groceries
+2026-11-02 02:02:14,283 DEBUG   ledger.importer: row 1015: Carrefour Express -63.89 -> other
+2026-11-02 02:02:14,645 DEBUG   ledger.importer: row 1017: Netflix.com -17.93 -> other
+2026-11-02 02:02:15,012 DEBUG   ledger.importer: row 1018: Landlord Ltd -55.10 -> dining
+2026-11-02 02:02:15,199 DEBUG   ledger.importer: row 1020: Spotify AB -75.42 -> dining
+2026-11-02 02:02:15,319 DEBUG   ledger.importer: row 1022: ATM Withdrawal -91.11 -> transport
+2026-11-02 02:02:15,341 DEBUG   ledger.importer: row 1023: Uber Trip 77 -242.77 -> transport
+2026-11-02 02:02:15,658 DEBUG   ledger.importer: row 1024: Uber Trip 77 -230.15 -> other
+2026-11-02 02:02:16,014 DEBUG   ledger.importer: row 1025: Netflix.com -103.76 -> other
+2026-11-02 02:02:16,306 DEBUG   ledger.importer: row 1026: Shell Fuel 8 -63.51 -> groceries
+2026-11-02 02:02:16,423 DEBUG   ledger.importer: row 1027: Bakery Ozdemir -179.55 -> dining
+2026-11-02 02:02:16,708 DEBUG   ledger.importer: row 1028: Netflix.com -219.21 -> groceries
+2026-11-02 02:02:16,817 DEBUG   ledger.importer: row 1030: duplicate of an earlier transaction
+2026-11-02 02:02:16,941 DEBUG   ledger.importer: row 1031: Payroll ACME -198.45 -> other
+2026-11-02 02:02:17,270 DEBUG   ledger.importer: row 1033: Water Utility -49.20 -> dining
+2026-11-02 02:02:17,399 WARNING ledger.importer: row 1034: category 'Food' unknown, guessed from payee
+2026-11-02 02:02:17,712 DEBUG   ledger.importer: row 1035: City Pharmacy -192.83 -> dining
+2026-11-02 02:02:17,745 DEBUG   ledger.importer: row 1037: Water Utility -184.25 -> groceries
+2026-11-02 02:02:18,003 DEBUG   ledger.importer: row 1038: Bakery Ozdemir -175.61 -> groceries
+2026-11-02 02:02:18,200 DEBUG   ledger.importer: row 1039: Payroll ACME -100.31 -> other
+2026-11-02 02:02:18,482 DEBUG   ledger.importer: row 1041: Netflix.com -40.56 -> groceries
+2026-11-02 02:02:18,527 DEBUG   ledger.importer: row 1044: Cafe Nero 22 -123.45 -> dining
+2026-11-02 02:02:18,718 DEBUG   ledger.importer: row 1046: Uber Trip 77 -141.98 -> other
+2026-11-02 02:02:18,807 DEBUG   ledger.importer: row 1048: Netflix.com -179.95 -> groceries
+2026-11-02 02:02:19,013 DEBUG   ledger.importer: row 1050: duplicate of an earlier transaction
+2026-11-02 02:02:19,367 DEBUG   ledger.importer: row 1051: ATM Withdrawal -62.95 -> groceries
+2026-11-02 02:02:19,726 DEBUG   ledger.importer: row 1052: duplicate of an earlier transaction
+2026-11-02 02:02:19,810 DEBUG   ledger.importer: row 1053: Bakery Ozdemir -54.33 -> groceries
+2026-11-02 02:02:19,833 WARNING ledger.importer: row 1054: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:02:19,839 DEBUG   ledger.importer: row 1058: Bakery Ozdemir -180.82 -> transport
+2026-11-02 02:02:19,905 DEBUG   ledger.importer: row 1060: Landlord Ltd -49.38 -> other
+2026-11-02 02:02:20,057 DEBUG   ledger.importer: row 1061: Cafe Nero 22 -126.61 -> dining
+2026-11-02 02:02:20,192 DEBUG   ledger.importer: row 1063: Shell Fuel 8 -92.46 -> transport
+2026-11-02 02:02:20,289 DEBUG   ledger.importer: row 1066: duplicate of an earlier transaction
+2026-11-02 02:02:20,540 DEBUG   ledger.importer: row 1067: Kebab House -77.78 -> dining
+2026-11-02 02:02:20,635 DEBUG   ledger.importer: row 1069: Bakery Ozdemir -40.11 -> other
+2026-11-02 02:02:20,776 DEBUG   ledger.importer: row 1070: ATM Withdrawal -225.30 -> groceries
+2026-11-02 02:02:21,053 DEBUG   ledger.importer: row 1071: Carrefour Express -191.11 -> groceries
+2026-11-02 02:02:21,426 DEBUG   ledger.importer: row 1075: Bakery Ozdemir -27.63 -> other
+2026-11-02 02:02:21,446 DEBUG   ledger.importer: row 1079: Spotify AB -100.58 -> dining
+2026-11-02 02:02:21,761 DEBUG   ledger.importer: row 1080: Bakery Ozdemir -53.64 -> transport
+2026-11-02 02:02:21,941 DEBUG   ledger.importer: row 1081: Kebab House -13.28 -> other
+2026-11-02 02:02:22,191 DEBUG   ledger.importer: row 1082: Kebab House -180.26 -> transport
+2026-11-02 02:02:22,380 DEBUG   ledger.importer: row 1085: Payroll ACME -104.85 -> dining
+2026-11-02 02:02:22,398 DEBUG   ledger.importer: row 1086: Uber Trip 77 -112.98 -> groceries
+2026-11-02 02:02:22,598 WARNING ledger.importer: row 1087: category 'Food' unknown, guessed from payee
+2026-11-02 02:02:22,766 DEBUG   ledger.importer: row 1088: Bakery Ozdemir -113.22 -> transport
+2026-11-02 02:02:22,971 DEBUG   ledger.importer: row 1090: Metro Card Topup -31.14 -> transport
+2026-11-02 02:02:23,216 DEBUG   ledger.importer: row 1092: Carrefour Express -140.50 -> transport
+2026-11-02 02:02:23,412 DEBUG   ledger.importer: row 1095: Bakery Ozdemir -65.18 -> groceries
+2026-11-02 02:02:23,575 WARNING ledger.importer: row 1096: category 'Food' unknown, guessed from payee
+2026-11-02 02:02:23,825 DEBUG   ledger.importer: row 1097: ATM Withdrawal -23.70 -> other
+2026-11-02 02:02:23,936 WARNING ledger.importer: row 1098: category 'Misc' unknown, guessed from payee
+2026-11-02 02:02:23,955 DEBUG   ledger.importer: row 1100: Kebab House -204.87 -> dining
+2026-11-02 02:02:24,330 DEBUG   ledger.importer: row 1101: Payroll ACME -218.60 -> transport
+2026-11-02 02:02:24,447 DEBUG   ledger.importer: row 1102: Kebab House -108.40 -> other
+2026-11-02 02:02:24,649 DEBUG   ledger.importer: row 1103: Shell Fuel 8 -237.68 -> groceries
+2026-11-02 02:02:25,039 DEBUG   ledger.importer: row 1106: Cafe Nero 22 -168.23 -> transport
+2026-11-02 02:02:25,243 DEBUG   ledger.importer: row 1111: Cafe Nero 22 -233.15 -> other
+2026-11-02 02:02:25,257 DEBUG   ledger.importer: row 1112: City Pharmacy -53.33 -> dining
+2026-11-02 02:02:25,635 DEBUG   ledger.importer: row 1113: Migros 0412 -136.40 -> dining
+2026-11-02 02:02:25,851 DEBUG   ledger.importer: row 1114: ATM Withdrawal -165.77 -> transport
+2026-11-02 02:02:26,160 DEBUG   ledger.importer: row 1116: duplicate of an earlier transaction
+2026-11-02 02:02:26,514 DEBUG   ledger.importer: row 1117: Kebab House -88.08 -> dining
+2026-11-02 02:02:26,723 DEBUG   ledger.importer: row 1118: Payroll ACME -185.24 -> other
+2026-11-02 02:02:26,864 DEBUG   ledger.importer: row 1119: Payroll ACME -135.58 -> transport
+2026-11-02 02:02:26,880 DEBUG   ledger.importer: row 1122: Kebab House -2.17 -> other
+2026-11-02 02:02:26,935 DEBUG   ledger.importer: row 1124: duplicate of an earlier transaction
+2026-11-02 02:02:27,052 DEBUG   ledger.importer: row 1125: Payroll ACME -63.40 -> transport
+2026-11-02 02:02:27,274 DEBUG   ledger.importer: row 1126: Carrefour Express -89.39 -> other
+2026-11-02 02:02:27,481 DEBUG   ledger.importer: row 1127: City Pharmacy -130.72 -> other
+2026-11-02 02:02:27,834 WARNING ledger.importer: row 1128: category 'Food' unknown, guessed from payee
+2026-11-02 02:02:27,845 DEBUG   ledger.importer: row 1129: City Pharmacy -211.39 -> groceries
+2026-11-02 02:02:28,037 DEBUG   ledger.importer: row 1130: Kebab House -101.91 -> transport
+2026-11-02 02:02:28,255 DEBUG   ledger.importer: row 1131: Netflix.com -207.50 -> groceries
+2026-11-02 02:02:28,638 DEBUG   ledger.importer: row 1132: Bakery Ozdemir -53.81 -> groceries
+2026-11-02 02:02:28,951 DEBUG   ledger.importer: row 1134: Kebab House -242.69 -> other
+2026-11-02 02:02:29,021 DEBUG   ledger.importer: row 1136: Carrefour Express -53.00 -> transport
+2026-11-02 02:02:29,061 DEBUG   ledger.importer: row 1137: Uber Trip 77 -119.36 -> dining
+2026-11-02 02:02:29,113 DEBUG   ledger.importer: row 1138: Kebab House -65.09 -> transport
+2026-11-02 02:02:29,417 DEBUG   ledger.importer: row 1139: Payroll ACME -179.51 -> other
+2026-11-02 02:02:29,635 DEBUG   ledger.importer: row 1145: Migros 0412 -17.07 -> dining
+2026-11-02 02:02:29,677 DEBUG   ledger.importer: row 1146: Cafe Nero 22 -242.10 -> other
+2026-11-02 02:02:30,040 DEBUG   ledger.importer: row 1147: Shell Fuel 8 -219.95 -> other
+2026-11-02 02:02:30,190 DEBUG   ledger.importer: row 1148: ATM Withdrawal -114.46 -> other
+2026-11-02 02:02:30,266 DEBUG   ledger.importer: row 1149: Migros 0412 -212.90 -> groceries
+2026-11-02 02:02:30,369 DEBUG   ledger.importer: row 1150: Metro Card Topup -54.06 -> transport
+2026-11-02 02:02:30,554 DEBUG   ledger.importer: row 1152: Carrefour Express -195.86 -> other
+2026-11-02 02:02:30,926 DEBUG   ledger.importer: row 1153: Bakery Ozdemir -113.43 -> other
+2026-11-02 02:02:30,932 DEBUG   ledger.importer: row 1155: Payroll ACME -79.42 -> groceries
+2026-11-02 02:02:31,278 DEBUG   ledger.importer: row 1156: City Pharmacy -144.78 -> dining
+2026-11-02 02:02:31,438 DEBUG   ledger.importer: row 1157: Netflix.com -236.96 -> dining
+2026-11-02 02:02:31,779 DEBUG   ledger.importer: row 1159: Bakery Ozdemir -119.47 -> dining
+2026-11-02 02:02:32,051 DEBUG   ledger.importer: row 1161: Kebab House -183.00 -> other
+2026-11-02 02:02:32,254 DEBUG   ledger.importer: row 1162: Uber Trip 77 -3.21 -> transport
+2026-11-02 02:02:32,262 DEBUG   ledger.importer: row 1163: duplicate of an earlier transaction
+2026-11-02 02:02:32,477 DEBUG   ledger.importer: row 1164: Spotify AB -193.39 -> other
+2026-11-02 02:02:32,673 DEBUG   ledger.importer: row 1165: Cafe Nero 22 -22.17 -> other
+2026-11-02 02:02:32,855 DEBUG   ledger.importer: row 1166: City Pharmacy -115.35 -> dining
+2026-11-02 02:02:32,961 DEBUG   ledger.importer: row 1170: Migros 0412 -6.17 -> other
+2026-11-02 02:02:33,008 DEBUG   ledger.importer: row 1171: Shell Fuel 8 -19.61 -> transport
+2026-11-02 02:02:33,075 DEBUG   ledger.importer: row 1173: City Pharmacy -144.22 -> groceries
+2026-11-02 02:02:33,245 WARNING ledger.importer: row 1175: category 'Food' unknown, guessed from payee
+2026-11-02 02:02:33,418 WARNING ledger.importer: row 1176: category 'Food' unknown, guessed from payee
+2026-11-02 02:02:33,533 DEBUG   ledger.importer: row 1177: duplicate of an earlier transaction
+2026-11-02 02:02:33,612 DEBUG   ledger.importer: row 1178: Netflix.com -39.28 -> dining
+2026-11-02 02:02:33,733 WARNING ledger.importer: row 1180: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:02:33,832 DEBUG   ledger.importer: row 1181: City Pharmacy -63.30 -> transport
+2026-11-02 02:02:33,860 DEBUG   ledger.importer: row 1182: Cafe Nero 22 -175.26 -> other
+2026-11-02 02:02:34,009 DEBUG   ledger.importer: row 1183: Water Utility -75.58 -> other
+2026-11-02 02:02:34,025 DEBUG   ledger.importer: row 1185: City Pharmacy -213.91 -> dining
+2026-11-02 02:02:34,170 DEBUG   ledger.importer: row 1186: Carrefour Express -10.60 -> groceries
+2026-11-02 02:02:34,350 DEBUG   ledger.importer: row 1190: Water Utility -243.90 -> groceries
+2026-11-02 02:02:34,705 DEBUG   ledger.importer: row 1191: Cafe Nero 22 -47.31 -> dining
+2026-11-02 02:02:34,998 DEBUG   ledger.importer: row 1192: Cafe Nero 22 -29.74 -> transport
+2026-11-02 02:02:35,111 DEBUG   ledger.importer: row 1195: Carrefour Express -125.71 -> groceries
+2026-11-02 02:02:35,283 DEBUG   ledger.importer: row 1198: Uber Trip 77 -147.45 -> other
+2026-11-02 02:02:35,657 DEBUG   ledger.importer: row 1199: duplicate of an earlier transaction
+2026-11-02 02:02:35,994 DEBUG   ledger.importer: row 1200: Bakery Ozdemir -142.44 -> other
+2026-11-02 02:02:36,163 DEBUG   ledger.importer: row 1201: duplicate of an earlier transaction
+2026-11-02 02:02:36,533 DEBUG   ledger.importer: row 1202: City Pharmacy -246.21 -> dining
+2026-11-02 02:02:36,551 DEBUG   ledger.importer: row 1203: Spotify AB -52.32 -> dining
+2026-11-02 02:02:36,751 DEBUG   ledger.importer: row 1204: duplicate of an earlier transaction
+2026-11-02 02:02:36,908 DEBUG   ledger.importer: row 1205: Bakery Ozdemir -76.43 -> other
+2026-11-02 02:02:37,117 DEBUG   ledger.importer: row 1206: Netflix.com -152.43 -> dining
+2026-11-02 02:02:37,378 DEBUG   ledger.importer: row 1208: City Pharmacy -91.59 -> groceries
+2026-11-02 02:02:37,698 DEBUG   ledger.importer: row 1209: Migros 0412 -198.76 -> groceries
+2026-11-02 02:02:37,827 DEBUG   ledger.importer: row 1212: duplicate of an earlier transaction
+2026-11-02 02:02:37,862 DEBUG   ledger.importer: row 1213: Landlord Ltd -109.08 -> dining
+2026-11-02 02:02:38,184 DEBUG   ledger.importer: row 1215: Netflix.com -169.92 -> groceries
+2026-11-02 02:02:38,508 DEBUG   ledger.importer: row 1216: Cafe Nero 22 -209.71 -> groceries
+2026-11-02 02:02:38,799 DEBUG   ledger.importer: row 1217: Bakery Ozdemir -78.65 -> groceries
+2026-11-02 02:02:38,994 DEBUG   ledger.importer: row 1221: duplicate of an earlier transaction
+2026-11-02 02:02:39,200 DEBUG   ledger.importer: row 1222: Kebab House -231.53 -> other
+2026-11-02 02:02:39,561 DEBUG   ledger.importer: row 1223: Water Utility -64.62 -> dining
+2026-11-02 02:02:39,913 DEBUG   ledger.importer: row 1225: Shell Fuel 8 -210.43 -> dining
+2026-11-02 02:02:40,108 DEBUG   ledger.importer: row 1227: duplicate of an earlier transaction
+2026-11-02 02:02:40,379 DEBUG   ledger.importer: row 1230: Spotify AB -126.42 -> dining
+2026-11-02 02:02:40,581 DEBUG   ledger.importer: row 1231: Bakery Ozdemir -79.07 -> other
+2026-11-02 02:02:40,668 DEBUG   ledger.importer: row 1233: Migros 0412 -217.75 -> other
+2026-11-02 02:02:41,035 DEBUG   ledger.importer: row 1235: Uber Trip 77 -165.97 -> dining
+2026-11-02 02:02:41,113 DEBUG   ledger.importer: row 1236: Bakery Ozdemir -193.28 -> transport
+2026-11-02 02:02:41,330 DEBUG   ledger.importer: row 1237: Metro Card Topup -106.27 -> groceries
+2026-11-02 02:02:41,479 DEBUG   ledger.importer: row 1238: Water Utility -126.39 -> other
+2026-11-02 02:02:41,603 DEBUG   ledger.importer: row 1239: Kebab House -104.47 -> transport
+2026-11-02 02:02:41,973 DEBUG   ledger.importer: row 1243: Water Utility -68.70 -> other
+2026-11-02 02:02:41,986 DEBUG   ledger.importer: row 1246: City Pharmacy -147.54 -> groceries
+2026-11-02 02:02:42,162 DEBUG   ledger.importer: row 1247: duplicate of an earlier transaction
+2026-11-02 02:02:42,252 DEBUG   ledger.importer: row 1249: Carrefour Express -152.29 -> other
+2026-11-02 02:02:42,278 DEBUG   ledger.importer: row 1250: Carrefour Express -4.21 -> transport
+2026-11-02 02:02:42,587 DEBUG   ledger.importer: row 1251: Cafe Nero 22 -2.65 -> groceries
+2026-11-02 02:02:42,662 DEBUG   ledger.importer: row 1255: City Pharmacy -140.11 -> other
+2026-11-02 02:02:42,767 DEBUG   ledger.importer: row 1256: Landlord Ltd -178.28 -> other
+2026-11-02 02:02:42,866 DEBUG   ledger.importer: row 1258: Spotify AB -169.89 -> transport
+2026-11-02 02:02:43,138 DEBUG   ledger.importer: row 1260: Spotify AB -48.59 -> dining
+2026-11-02 02:02:43,331 DEBUG   ledger.importer: row 1261: duplicate of an earlier transaction
+2026-11-02 02:02:43,334 DEBUG   ledger.importer: row 1264: Netflix.com -150.22 -> transport
+2026-11-02 02:02:43,451 DEBUG   ledger.importer: row 1265: Landlord Ltd -64.23 -> other
+2026-11-02 02:02:43,675 DEBUG   ledger.importer: row 1267: Shell Fuel 8 -90.36 -> transport
+2026-11-02 02:02:44,022 DEBUG   ledger.importer: row 1268: Landlord Ltd -236.28 -> other
+2026-11-02 02:02:44,369 DEBUG   ledger.importer: row 1271: Bakery Ozdemir -99.11 -> transport
+2026-11-02 02:02:44,718 DEBUG   ledger.importer: row 1272: Spotify AB -204.08 -> transport
+2026-11-02 02:02:45,118 DEBUG   ledger.importer: row 1273: City Pharmacy -22.28 -> dining
+2026-11-02 02:02:45,133 DEBUG   ledger.importer: row 1275: Uber Trip 77 -18.36 -> dining
+2026-11-02 02:02:45,459 DEBUG   ledger.importer: row 1276: Metro Card Topup -160.14 -> other
+2026-11-02 02:02:45,544 DEBUG   ledger.importer: row 1277: Water Utility -191.23 -> other
+2026-11-02 02:02:45,804 DEBUG   ledger.importer: row 1278: Payroll ACME -236.84 -> other
+2026-11-02 02:02:45,860 DEBUG   ledger.importer: row 1280: Uber Trip 77 -195.88 -> transport
+2026-11-02 02:02:46,122 DEBUG   ledger.importer: row 1282: duplicate of an earlier transaction
+2026-11-02 02:02:46,479 DEBUG   ledger.importer: row 1284: ATM Withdrawal -231.02 -> other
+2026-11-02 02:02:46,752 DEBUG   ledger.importer: row 1285: Cafe Nero 22 -9.55 -> other
+2026-11-02 02:02:47,069 DEBUG   ledger.importer: row 1287: City Pharmacy -110.07 -> other
+2026-11-02 02:02:47,265 DEBUG   ledger.importer: row 1288: Carrefour Express -196.46 -> other
+2026-11-02 02:02:47,658 DEBUG   ledger.importer: row 1289: Water Utility -202.78 -> groceries
+2026-11-02 02:02:47,787 DEBUG   ledger.importer: row 1292: Uber Trip 77 -211.06 -> dining
+2026-11-02 02:02:47,955 DEBUG   ledger.importer: row 1293: Water Utility -1.68 -> groceries
+2026-11-02 02:02:48,263 DEBUG   ledger.importer: row 1294: ATM Withdrawal -159.84 -> dining
+2026-11-02 02:02:48,316 DEBUG   ledger.importer: row 1295: ATM Withdrawal -52.22 -> dining
+2026-11-02 02:02:48,506 DEBUG   ledger.importer: row 1298: Uber Trip 77 -194.50 -> groceries
+2026-11-02 02:02:48,862 DEBUG   ledger.importer: row 1299: Shell Fuel 8 -246.64 -> transport
+2026-11-02 02:02:49,101 WARNING ledger.importer: row 1300: category 'Misc' unknown, guessed from payee
+2026-11-02 02:02:49,120 WARNING ledger.importer: row 1301: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:02:49,298 DEBUG   ledger.importer: row 1302: Carrefour Express -117.67 -> other
+2026-11-02 02:02:49,663 DEBUG   ledger.importer: row 1306: Metro Card Topup -26.05 -> transport
+2026-11-02 02:02:49,706 DEBUG   ledger.importer: row 1307: City Pharmacy -3.84 -> other
+2026-11-02 02:02:49,844 DEBUG   ledger.importer: row 1308: Metro Card Topup -235.69 -> other
+2026-11-02 02:02:49,981 DEBUG   ledger.importer: row 1309: Payroll ACME -223.04 -> other
+2026-11-02 02:02:50,293 ERROR   ledger.importer: row 1311 skipped (northbank): invalid amount '(1,045.20)'
+2026-11-02 02:02:50,348 DEBUG   ledger.importer: row 1312: duplicate of an earlier transaction
+2026-11-02 02:02:50,442 DEBUG   ledger.importer: row 1313: Netflix.com -55.48 -> groceries
+2026-11-02 02:02:50,764 DEBUG   ledger.importer: row 1315: Cafe Nero 22 -139.03 -> transport
+2026-11-02 02:02:50,813 DEBUG   ledger.importer: row 1317: Water Utility -22.22 -> groceries
+2026-11-02 02:02:50,894 DEBUG   ledger.importer: row 1319: Uber Trip 77 -222.53 -> groceries
+2026-11-02 02:02:51,223 WARNING ledger.importer: row 1321: category 'Misc' unknown, guessed from payee
+2026-11-02 02:02:51,282 DEBUG   ledger.importer: row 1323: Netflix.com -201.81 -> other
+2026-11-02 02:02:51,610 DEBUG   ledger.importer: row 1324: Spotify AB -103.67 -> groceries
+2026-11-02 02:02:51,942 DEBUG   ledger.importer: row 1325: Metro Card Topup -249.68 -> groceries
+2026-11-02 02:02:52,236 DEBUG   ledger.importer: row 1326: Kebab House -177.17 -> groceries
+2026-11-02 02:02:52,445 WARNING ledger.importer: row 1327: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:02:52,473 DEBUG   ledger.importer: row 1328: Spotify AB -9.93 -> groceries
+2026-11-02 02:02:52,588 DEBUG   ledger.importer: row 1329: Payroll ACME -11.75 -> dining
+2026-11-02 02:02:52,929 DEBUG   ledger.importer: row 1332: Uber Trip 77 -36.61 -> transport
+2026-11-02 02:02:52,987 DEBUG   ledger.importer: row 1334: Shell Fuel 8 -29.76 -> groceries
+2026-11-02 02:02:53,043 DEBUG   ledger.importer: row 1336: ATM Withdrawal -53.59 -> transport
+2026-11-02 02:02:53,167 DEBUG   ledger.importer: row 1338: Migros 0412 -217.88 -> transport
+2026-11-02 02:02:53,546 DEBUG   ledger.importer: row 1339: Metro Card Topup -97.96 -> transport
+2026-11-02 02:02:53,838 DEBUG   ledger.importer: row 1340: City Pharmacy -210.35 -> transport
+2026-11-02 02:02:53,926 DEBUG   ledger.importer: row 1343: Payroll ACME -244.00 -> other
+2026-11-02 02:02:54,104 DEBUG   ledger.importer: row 1346: Kebab House -224.67 -> dining
+2026-11-02 02:02:54,412 DEBUG   ledger.importer: row 1347: Spotify AB -192.13 -> dining
+2026-11-02 02:02:54,416 DEBUG   ledger.importer: row 1349: ATM Withdrawal -10.52 -> groceries
+2026-11-02 02:02:54,716 DEBUG   ledger.importer: row 1352: Kebab House -135.06 -> transport
+2026-11-02 02:02:54,921 DEBUG   ledger.importer: row 1353: Carrefour Express -184.66 -> dining
+2026-11-02 02:02:55,134 DEBUG   ledger.importer: row 1354: Shell Fuel 8 -214.61 -> transport
+2026-11-02 02:02:55,464 DEBUG   ledger.importer: row 1355: Netflix.com -149.88 -> dining
+2026-11-02 02:02:55,516 DEBUG   ledger.importer: row 1356: Kebab House -134.39 -> other
+2026-11-02 02:02:55,556 DEBUG   ledger.importer: row 1357: Kebab House -1.12 -> groceries
+2026-11-02 02:02:55,627 DEBUG   ledger.importer: row 1358: duplicate of an earlier transaction
+2026-11-02 02:02:55,794 DEBUG   ledger.importer: row 1360: Metro Card Topup -41.57 -> dining
+2026-11-02 02:02:56,143 DEBUG   ledger.importer: row 1361: Bakery Ozdemir -105.68 -> dining
+2026-11-02 02:02:56,214 DEBUG   ledger.importer: row 1362: Shell Fuel 8 -14.03 -> dining
+2026-11-02 02:02:56,304 DEBUG   ledger.importer: row 1363: Metro Card Topup -245.05 -> other
+2026-11-02 02:02:56,493 DEBUG   ledger.importer: row 1364: Carrefour Express -116.88 -> transport
+2026-11-02 02:02:56,585 DEBUG   ledger.importer: row 1367: Bakery Ozdemir -119.63 -> dining
+2026-11-02 02:02:56,621 DEBUG   ledger.importer: row 1368: City Pharmacy -225.21 -> other
+2026-11-02 02:02:56,998 DEBUG   ledger.importer: row 1369: City Pharmacy -224.17 -> dining
+2026-11-02 02:02:57,337 DEBUG   ledger.importer: row 1370: duplicate of an earlier transaction
+2026-11-02 02:02:57,586 DEBUG   ledger.importer: row 1371: Metro Card Topup -146.57 -> dining
+2026-11-02 02:02:57,778 DEBUG   ledger.importer: row 1377: Carrefour Express -141.05 -> dining
+2026-11-02 02:02:57,821 DEBUG   ledger.importer: row 1380: Bakery Ozdemir -190.54 -> other
+2026-11-02 02:02:58,066 DEBUG   ledger.importer: row 1381: Metro Card Topup -79.59 -> groceries
+2026-11-02 02:02:58,422 DEBUG   ledger.importer: row 1382: City Pharmacy -250.04 -> groceries
+2026-11-02 02:02:58,723 DEBUG   ledger.importer: row 1383: City Pharmacy -243.40 -> groceries
+2026-11-02 02:02:58,895 DEBUG   ledger.importer: row 1384: Water Utility -90.80 -> other
+2026-11-02 02:02:59,246 DEBUG   ledger.importer: row 1385: Bakery Ozdemir -47.31 -> other
+2026-11-02 02:02:59,435 DEBUG   ledger.importer: row 1386: Shell Fuel 8 -114.97 -> dining
+2026-11-02 02:02:59,558 DEBUG   ledger.importer: row 1387: duplicate of an earlier transaction
+2026-11-02 02:02:59,905 DEBUG   ledger.importer: row 1393: Carrefour Express -9.43 -> transport
+2026-11-02 02:03:00,253 DEBUG   ledger.importer: row 1394: Kebab House -158.34 -> groceries
+2026-11-02 02:03:00,532 DEBUG   ledger.importer: row 1395: duplicate of an earlier transaction
+2026-11-02 02:03:00,669 DEBUG   ledger.importer: row 1396: Netflix.com -149.68 -> transport
+2026-11-02 02:03:00,951 DEBUG   ledger.importer: row 1398: Water Utility -124.26 -> other
+2026-11-02 02:03:01,250 DEBUG   ledger.importer: row 1399: City Pharmacy -75.20 -> dining
+2026-11-02 02:03:01,483 DEBUG   ledger.importer: row 1400: ATM Withdrawal -239.77 -> groceries
+2026-11-02 02:03:01,839 DEBUG   ledger.importer: row 1401: duplicate of an earlier transaction
+2026-11-02 02:03:02,060 WARNING ledger.importer: row 1402: category 'Food' unknown, guessed from payee
+2026-11-02 02:03:02,395 DEBUG   ledger.importer: row 1403: Kebab House -114.46 -> groceries
+2026-11-02 02:03:02,791 DEBUG   ledger.importer: row 1404: Migros 0412 -231.77 -> transport
+2026-11-02 02:03:03,136 DEBUG   ledger.importer: row 1405: Uber Trip 77 -173.90 -> groceries
+2026-11-02 02:03:03,343 DEBUG   ledger.importer: row 1406: Spotify AB -135.16 -> transport
+2026-11-02 02:03:03,415 DEBUG   ledger.importer: row 1408: Carrefour Express -122.71 -> other
+2026-11-02 02:03:03,719 DEBUG   ledger.importer: row 1409: duplicate of an earlier transaction
+2026-11-02 02:03:04,024 DEBUG   ledger.importer: row 1412: ATM Withdrawal -63.75 -> transport
+2026-11-02 02:03:04,411 DEBUG   ledger.importer: row 1415: Kebab House -57.44 -> other
+2026-11-02 02:03:04,534 DEBUG   ledger.importer: row 1416: Bakery Ozdemir -191.36 -> other
+2026-11-02 02:03:04,600 WARNING ledger.importer: row 1419: category 'Misc' unknown, guessed from payee
+2026-11-02 02:03:04,982 DEBUG   ledger.importer: row 1420: Carrefour Express -175.01 -> groceries
+2026-11-02 02:03:05,157 DEBUG   ledger.importer: row 1421: Bakery Ozdemir -238.04 -> other
+2026-11-02 02:03:05,372 DEBUG   ledger.importer: row 1424: Cafe Nero 22 -86.56 -> transport
+2026-11-02 02:03:05,463 DEBUG   ledger.importer: row 1425: Netflix.com -179.57 -> other
+2026-11-02 02:03:05,738 DEBUG   ledger.importer: row 1427: duplicate of an earlier transaction
+2026-11-02 02:03:06,124 DEBUG   ledger.importer: row 1428: Shell Fuel 8 -184.62 -> other
+2026-11-02 02:03:06,501 DEBUG   ledger.importer: row 1429: Uber Trip 77 -66.67 -> other
+2026-11-02 02:03:06,889 DEBUG   ledger.importer: row 1430: Landlord Ltd -165.73 -> transport
+2026-11-02 02:03:07,020 DEBUG   ledger.importer: row 1431: Shell Fuel 8 -162.20 -> other
+2026-11-02 02:03:07,199 DEBUG   ledger.importer: row 1432: Carrefour Express -14.17 -> other
+2026-11-02 02:03:07,509 DEBUG   ledger.importer: row 1434: Metro Card Topup -189.31 -> dining
+2026-11-02 02:03:07,721 DEBUG   ledger.importer: row 1435: Landlord Ltd -102.16 -> dining
+2026-11-02 02:03:07,758 DEBUG   ledger.importer: row 1436: Payroll ACME -24.45 -> groceries
+2026-11-02 02:03:07,932 DEBUG   ledger.importer: row 1437: Uber Trip 77 -132.81 -> groceries
+2026-11-02 02:03:07,939 DEBUG   ledger.importer: row 1440: duplicate of an earlier transaction
+2026-11-02 02:03:08,258 DEBUG   ledger.importer: row 1441: Kebab House -141.62 -> dining
+2026-11-02 02:03:08,351 DEBUG   ledger.importer: row 1443: duplicate of an earlier transaction
+2026-11-02 02:03:08,623 DEBUG   ledger.importer: row 1444: Payroll ACME -154.76 -> other
+2026-11-02 02:03:08,650 DEBUG   ledger.importer: row 1445: Payroll ACME -126.85 -> transport
+2026-11-02 02:03:08,914 DEBUG   ledger.importer: row 1447: Water Utility -97.97 -> dining
+2026-11-02 02:03:09,272 DEBUG   ledger.importer: row 1453: Netflix.com -70.71 -> groceries
+2026-11-02 02:03:09,306 DEBUG   ledger.importer: row 1455: Carrefour Express -153.21 -> transport
+2026-11-02 02:03:09,549 DEBUG   ledger.importer: row 1456: City Pharmacy -109.62 -> dining
+2026-11-02 02:03:09,780 DEBUG   ledger.importer: row 1458: ATM Withdrawal -212.99 -> transport
+2026-11-02 02:03:09,791 DEBUG   ledger.importer: row 1459: City Pharmacy -151.74 -> groceries
+2026-11-02 02:03:10,126 DEBUG   ledger.importer: row 1460: Cafe Nero 22 -21.75 -> dining
+2026-11-02 02:03:10,328 DEBUG   ledger.importer: row 1462: City Pharmacy -92.58 -> groceries
+2026-11-02 02:03:10,447 DEBUG   ledger.importer: row 1463: Shell Fuel 8 -167.16 -> dining
+2026-11-02 02:03:10,631 DEBUG   ledger.importer: row 1464: Spotify AB -8.71 -> other
+2026-11-02 02:03:10,788 DEBUG   ledger.importer: row 1465: Migros 0412 -105.95 -> dining
+2026-11-02 02:03:10,886 DEBUG   ledger.importer: row 1468: Netflix.com -55.89 -> transport
+2026-11-02 02:03:11,272 DEBUG   ledger.importer: row 1469: Uber Trip 77 -153.62 -> groceries
+2026-11-02 02:03:11,663 DEBUG   ledger.importer: row 1470: Carrefour Express -88.42 -> transport
+2026-11-02 02:03:11,886 DEBUG   ledger.importer: row 1473: Bakery Ozdemir -212.10 -> groceries
+2026-11-02 02:03:11,954 DEBUG   ledger.importer: row 1474: Migros 0412 -247.84 -> transport
+2026-11-02 02:03:12,244 DEBUG   ledger.importer: row 1476: Kebab House -132.22 -> dining
+2026-11-02 02:03:12,614 DEBUG   ledger.importer: row 1477: Bakery Ozdemir -160.82 -> other
+2026-11-02 02:03:12,645 DEBUG   ledger.importer: row 1478: Bakery Ozdemir -94.52 -> transport
+2026-11-02 02:03:12,974 DEBUG   ledger.importer: row 1479: Bakery Ozdemir -23.17 -> dining
+2026-11-02 02:03:13,307 DEBUG   ledger.importer: row 1481: Shell Fuel 8 -66.31 -> dining
+2026-11-02 02:03:13,504 WARNING ledger.importer: row 1482: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:03:13,885 DEBUG   ledger.importer: row 1485: Bakery Ozdemir -75.02 -> groceries
+2026-11-02 02:03:14,068 DEBUG   ledger.importer: row 1486: Netflix.com -246.01 -> other
+2026-11-02 02:03:14,302 DEBUG   ledger.importer: row 1487: Migros 0412 -217.08 -> dining
+2026-11-02 02:03:14,682 DEBUG   ledger.importer: row 1488: Netflix.com -43.83 -> transport
+2026-11-02 02:03:14,761 DEBUG   ledger.importer: row 1490: Payroll ACME -69.13 -> other
+2026-11-02 02:03:15,094 WARNING ledger.importer: row 1491: category 'Food' unknown, guessed from payee
+2026-11-02 02:03:15,373 DEBUG   ledger.importer: row 1493: Payroll ACME -58.80 -> groceries
+2026-11-02 02:03:15,450 DEBUG   ledger.importer: row 1495: Bakery Ozdemir -248.04 -> groceries
+2026-11-02 02:03:15,713 DEBUG   ledger.importer: row 1496: ATM Withdrawal -30.29 -> dining
+2026-11-02 02:03:16,020 DEBUG   ledger.importer: row 1497: Netflix.com -110.59 -> other
+2026-11-02 02:03:16,278 DEBUG   ledger.importer: row 1498: Kebab House -15.82 -> other
+2026-11-02 02:03:16,437 DEBUG   ledger.importer: row 1499: Netflix.com -150.69 -> transport
+2026-11-02 02:03:16,504 DEBUG   ledger.importer: row 1500: Metro Card Topup -229.28 -> dining
+2026-11-02 02:03:16,747 DEBUG   ledger.importer: row 1501: duplicate of an earlier transaction
+2026-11-02 02:03:16,810 ERROR   ledger.importer: row 1502 skipped (northbank): invalid amount '(7.99)'
+2026-11-02 02:03:17,005 DEBUG   ledger.importer: row 1503: Netflix.com -210.98 -> groceries
+2026-11-02 02:03:17,335 DEBUG   ledger.importer: row 1505: Kebab House -211.13 -> dining
+2026-11-02 02:03:17,523 DEBUG   ledger.importer: row 1506: Uber Trip 77 -52.12 -> groceries
+2026-11-02 02:03:17,790 DEBUG   ledger.importer: row 1507: Migros 0412 -166.36 -> groceries
+2026-11-02 02:03:18,078 DEBUG   ledger.importer: row 1508: Migros 0412 -33.68 -> transport
+2026-11-02 02:03:18,432 DEBUG   ledger.importer: row 1509: Migros 0412 -73.65 -> groceries
+2026-11-02 02:03:18,622 DEBUG   ledger.importer: row 1511: Cafe Nero 22 -111.53 -> groceries
+2026-11-02 02:03:18,760 DEBUG   ledger.importer: row 1512: duplicate of an earlier transaction
+2026-11-02 02:03:18,779 DEBUG   ledger.importer: row 1513: duplicate of an earlier transaction
+2026-11-02 02:03:18,834 DEBUG   ledger.importer: row 1515: Cafe Nero 22 -79.23 -> dining
+2026-11-02 02:03:19,194 DEBUG   ledger.importer: row 1516: Bakery Ozdemir -191.47 -> other
+2026-11-02 02:03:19,241 DEBUG   ledger.importer: row 1517: Bakery Ozdemir -154.72 -> transport
+2026-11-02 02:03:19,517 DEBUG   ledger.importer: row 1518: duplicate of an earlier transaction
+2026-11-02 02:03:19,823 DEBUG   ledger.importer: row 1519: Bakery Ozdemir -155.96 -> dining
+2026-11-02 02:03:20,064 DEBUG   ledger.importer: row 1521: Landlord Ltd -196.93 -> other
+2026-11-02 02:03:20,385 DEBUG   ledger.importer: row 1522: Uber Trip 77 -176.45 -> other
+2026-11-02 02:03:20,476 DEBUG   ledger.importer: row 1523: Shell Fuel 8 -37.96 -> groceries
+2026-11-02 02:03:20,720 DEBUG   ledger.importer: row 1525: Water Utility -171.85 -> other
+2026-11-02 02:03:21,112 DEBUG   ledger.importer: row 1527: Netflix.com -103.24 -> dining
+2026-11-02 02:03:21,162 DEBUG   ledger.importer: row 1528: Spotify AB -205.16 -> dining
+2026-11-02 02:03:21,284 DEBUG   ledger.importer: row 1536: Bakery Ozdemir -65.60 -> transport
+2026-11-02 02:03:21,402 DEBUG   ledger.importer: row 1539: duplicate of an earlier transaction
+2026-11-02 02:03:21,532 DEBUG   ledger.importer: row 1540: duplicate of an earlier transaction
+2026-11-02 02:03:21,740 DEBUG   ledger.importer: row 1541: Metro Card Topup -238.88 -> groceries
+2026-11-02 02:03:21,987 DEBUG   ledger.importer: row 1542: Metro Card Topup -210.98 -> groceries
+2026-11-02 02:03:22,011 DEBUG   ledger.importer: row 1544: Shell Fuel 8 -75.50 -> other
+2026-11-02 02:03:22,223 DEBUG   ledger.importer: row 1545: Payroll ACME -224.96 -> transport
+2026-11-02 02:03:22,343 DEBUG   ledger.importer: row 1546: Netflix.com -238.70 -> groceries
+2026-11-02 02:03:22,528 DEBUG   ledger.importer: row 1547: duplicate of an earlier transaction
+2026-11-02 02:03:22,786 DEBUG   ledger.importer: row 1549: Uber Trip 77 -231.82 -> groceries
+2026-11-02 02:03:23,107 DEBUG   ledger.importer: row 1556: duplicate of an earlier transaction
+2026-11-02 02:03:23,418 DEBUG   ledger.importer: row 1557: Migros 0412 -166.10 -> groceries
+2026-11-02 02:03:23,483 DEBUG   ledger.importer: row 1559: Metro Card Topup -61.84 -> groceries
+2026-11-02 02:03:23,611 WARNING ledger.importer: row 1561: category 'Misc' unknown, guessed from payee
+2026-11-02 02:03:23,718 WARNING ledger.importer: row 1562: category 'Misc' unknown, guessed from payee
+2026-11-02 02:03:23,815 DEBUG   ledger.importer: row 1563: duplicate of an earlier transaction
+2026-11-02 02:03:24,049 DEBUG   ledger.importer: row 1564: Carrefour Express -214.51 -> other
+2026-11-02 02:03:24,370 DEBUG   ledger.importer: row 1566: Shell Fuel 8 -80.10 -> dining
+2026-11-02 02:03:24,684 DEBUG   ledger.importer: row 1568: Metro Card Topup -210.41 -> groceries
+2026-11-02 02:03:24,758 DEBUG   ledger.importer: row 1569: Carrefour Express -11.19 -> transport
+2026-11-02 02:03:24,781 DEBUG   ledger.importer: row 1572: Metro Card Topup -133.08 -> other
+2026-11-02 02:03:24,831 WARNING ledger.importer: row 1573: category 'Food' unknown, guessed from payee
+2026-11-02 02:03:25,027 DEBUG   ledger.importer: row 1576: duplicate of an earlier transaction
+2026-11-02 02:03:25,390 DEBUG   ledger.importer: row 1583: Spotify AB -30.14 -> transport
+2026-11-02 02:03:25,433 DEBUG   ledger.importer: row 1584: Landlord Ltd -151.26 -> other
+2026-11-02 02:03:25,731 DEBUG   ledger.importer: row 1585: Kebab House -12.57 -> transport
+2026-11-02 02:03:25,847 WARNING ledger.importer: row 1587: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:03:25,969 DEBUG   ledger.importer: row 1588: Shell Fuel 8 -145.91 -> other
+2026-11-02 02:03:25,995 DEBUG   ledger.importer: row 1590: Carrefour Express -16.04 -> transport
+2026-11-02 02:03:26,046 DEBUG   ledger.importer: row 1593: City Pharmacy -92.29 -> other
+2026-11-02 02:03:26,089 DEBUG   ledger.importer: row 1595: Bakery Ozdemir -202.85 -> dining
+2026-11-02 02:03:26,192 DEBUG   ledger.importer: row 1596: Uber Trip 77 -64.54 -> other
+2026-11-02 02:03:26,301 DEBUG   ledger.importer: row 1599: ATM Withdrawal -109.59 -> transport
+2026-11-02 02:03:26,415 DEBUG   ledger.importer: row 1600: City Pharmacy -107.40 -> other
+2026-11-02 02:03:26,688 DEBUG   ledger.importer: row 1601: duplicate of an earlier transaction
+2026-11-02 02:03:27,014 INFO    ledger.importer: import done (northbank): 1490 imported, 106 duplicates, 4 skipped
+2026-11-02 02:03:27,091 INFO    ledger.job: northbank: saved ledger (backup kept)
+2026-11-02 02:03:27,402 INFO    ledger.sync: fetched page 1/7 from cardco (100 rows)
+2026-11-02 02:03:27,792 INFO    ledger.sync: fetched page 2/7 from cardco (100 rows)
+2026-11-02 02:03:28,066 WARNING ledger.sync: slow response from cardco API (2.6 s)
+2026-11-02 02:03:28,389 INFO    ledger.sync: fetched page 3/7 from cardco (100 rows)
+2026-11-02 02:03:28,763 INFO    ledger.sync: fetched page 4/7 from cardco (100 rows)
+2026-11-02 02:03:29,018 WARNING ledger.sync: slow response from cardco API (1.7 s)
+2026-11-02 02:03:29,184 INFO    ledger.sync: fetched page 5/7 from cardco (100 rows)
+2026-11-02 02:03:29,543 WARNING ledger.sync: slow response from cardco API (4.4 s)
+2026-11-02 02:03:29,571 WARNING ledger.sync: retrying page 5 after HTTP 503
+2026-11-02 02:03:29,637 INFO    ledger.sync: fetched page 6/7 from cardco (100 rows)
+2026-11-02 02:03:29,647 WARNING ledger.sync: slow response from cardco API (2.4 s)
+2026-11-02 02:03:30,010 INFO    ledger.sync: fetched page 7/7 from cardco (100 rows)
+2026-11-02 02:03:30,151 INFO    ledger.importer: importing cardco-2026-11-01.csv
+2026-11-02 02:03:30,500 DEBUG   ledger.importer: row 2: duplicate of an earlier transaction
+2026-11-02 02:03:30,731 DEBUG   ledger.importer: row 3: Netflix.com -237.97 -> other
+2026-11-02 02:03:30,915 DEBUG   ledger.importer: row 7: Netflix.com -24.52 -> transport
+2026-11-02 02:03:30,980 DEBUG   ledger.importer: row 9: City Pharmacy -239.41 -> groceries
+2026-11-02 02:03:31,156 DEBUG   ledger.importer: row 11: duplicate of an earlier transaction
+2026-11-02 02:03:31,179 DEBUG   ledger.importer: row 12: duplicate of an earlier transaction
+2026-11-02 02:03:31,560 DEBUG   ledger.importer: row 13: Shell Fuel 8 -128.49 -> transport
+2026-11-02 02:03:31,800 DEBUG   ledger.importer: row 14: Bakery Ozdemir -20.20 -> groceries
+2026-11-02 02:03:31,919 DEBUG   ledger.importer: row 15: Netflix.com -59.20 -> dining
+2026-11-02 02:03:32,197 DEBUG   ledger.importer: row 16: Spotify AB -211.46 -> transport
+2026-11-02 02:03:32,327 DEBUG   ledger.importer: row 19: Cafe Nero 22 -225.68 -> transport
+2026-11-02 02:03:32,701 DEBUG   ledger.importer: row 20: Shell Fuel 8 -200.17 -> transport
+2026-11-02 02:03:32,758 DEBUG   ledger.importer: row 21: Shell Fuel 8 -177.06 -> groceries
+2026-11-02 02:03:33,113 WARNING ledger.importer: row 24: category 'Misc' unknown, guessed from payee
+2026-11-02 02:03:33,154 DEBUG   ledger.importer: row 25: Shell Fuel 8 -170.17 -> dining
+2026-11-02 02:03:33,487 DEBUG   ledger.importer: row 27: Kebab House -129.19 -> groceries
+2026-11-02 02:03:33,603 DEBUG   ledger.importer: row 29: Netflix.com -228.55 -> transport
+2026-11-02 02:03:33,832 DEBUG   ledger.importer: row 30: duplicate of an earlier transaction
+2026-11-02 02:03:33,913 DEBUG   ledger.importer: row 32: Cafe Nero 22 -39.96 -> transport
+2026-11-02 02:03:34,007 DEBUG   ledger.importer: row 33: Shell Fuel 8 -201.15 -> other
+2026-11-02 02:03:34,145 WARNING ledger.importer: row 35: category 'Misc' unknown, guessed from payee
+2026-11-02 02:03:34,407 DEBUG   ledger.importer: row 38: duplicate of an earlier transaction
+2026-11-02 02:03:34,487 DEBUG   ledger.importer: row 39: Water Utility -16.07 -> transport
+2026-11-02 02:03:34,865 DEBUG   ledger.importer: row 40: Netflix.com -131.15 -> transport
+2026-11-02 02:03:34,973 DEBUG   ledger.importer: row 43: Shell Fuel 8 -84.54 -> groceries
+2026-11-02 02:03:35,283 DEBUG   ledger.importer: row 46: Migros 0412 -47.98 -> other
+2026-11-02 02:03:35,675 DEBUG   ledger.importer: row 47: Landlord Ltd -168.07 -> transport
+2026-11-02 02:03:35,909 DEBUG   ledger.importer: row 49: Bakery Ozdemir -50.55 -> groceries
+2026-11-02 02:03:35,930 DEBUG   ledger.importer: row 50: Shell Fuel 8 -218.61 -> dining
+2026-11-02 02:03:36,142 DEBUG   ledger.importer: row 53: Spotify AB -135.93 -> dining
+2026-11-02 02:03:36,466 DEBUG   ledger.importer: row 54: Migros 0412 -192.66 -> dining
+2026-11-02 02:03:36,690 DEBUG   ledger.importer: row 57: Bakery Ozdemir -45.56 -> dining
+2026-11-02 02:03:36,709 DEBUG   ledger.importer: row 58: duplicate of an earlier transaction
+2026-11-02 02:03:37,087 DEBUG   ledger.importer: row 60: Payroll ACME -72.81 -> transport
+2026-11-02 02:03:37,178 DEBUG   ledger.importer: row 61: Uber Trip 77 -64.07 -> dining
+2026-11-02 02:03:37,298 DEBUG   ledger.importer: row 65: Netflix.com -203.13 -> transport
+2026-11-02 02:03:37,386 DEBUG   ledger.importer: row 66: Water Utility -14.68 -> groceries
+2026-11-02 02:03:37,414 DEBUG   ledger.importer: row 67: Landlord Ltd -141.09 -> other
+2026-11-02 02:03:37,510 DEBUG   ledger.importer: row 70: City Pharmacy -75.17 -> groceries
+2026-11-02 02:03:37,879 DEBUG   ledger.importer: row 72: Carrefour Express -85.19 -> dining
+2026-11-02 02:03:38,265 DEBUG   ledger.importer: row 76: Cafe Nero 22 -247.31 -> other
+2026-11-02 02:03:38,426 DEBUG   ledger.importer: row 78: Uber Trip 77 -127.02 -> other
+2026-11-02 02:03:38,628 DEBUG   ledger.importer: row 79: Netflix.com -211.24 -> groceries
+2026-11-02 02:03:38,726 DEBUG   ledger.importer: row 81: Kebab House -205.74 -> other
+2026-11-02 02:03:38,780 DEBUG   ledger.importer: row 82: Kebab House -150.84 -> other
+2026-11-02 02:03:38,975 DEBUG   ledger.importer: row 84: Landlord Ltd -185.05 -> dining
+2026-11-02 02:03:39,198 DEBUG   ledger.importer: row 85: Cafe Nero 22 -174.35 -> groceries
+2026-11-02 02:03:39,454 DEBUG   ledger.importer: row 87: Netflix.com -244.19 -> other
+2026-11-02 02:03:39,763 DEBUG   ledger.importer: row 90: Water Utility -176.04 -> other
+2026-11-02 02:03:40,163 DEBUG   ledger.importer: row 93: duplicate of an earlier transaction
+2026-11-02 02:03:40,208 DEBUG   ledger.importer: row 94: Spotify AB -130.75 -> transport
+2026-11-02 02:03:40,238 DEBUG   ledger.importer: row 95: Water Utility -109.23 -> other
+2026-11-02 02:03:40,557 DEBUG   ledger.importer: row 96: Migros 0412 -132.27 -> groceries
+2026-11-02 02:03:40,794 WARNING ledger.importer: row 97: category 'Food' unknown, guessed from payee
+2026-11-02 02:03:40,930 DEBUG   ledger.importer: row 99: Kebab House -14.62 -> groceries
+2026-11-02 02:03:40,941 DEBUG   ledger.importer: row 100: Uber Trip 77 -170.65 -> dining
+2026-11-02 02:03:40,999 DEBUG   ledger.importer: row 101: Netflix.com -235.54 -> transport
+2026-11-02 02:03:41,247 DEBUG   ledger.importer: row 102: Payroll ACME -32.47 -> transport
+2026-11-02 02:03:41,353 DEBUG   ledger.importer: row 103: Cafe Nero 22 -190.34 -> transport
+2026-11-02 02:03:41,399 DEBUG   ledger.importer: row 104: ATM Withdrawal -151.81 -> dining
+2026-11-02 02:03:41,772 DEBUG   ledger.importer: row 105: Metro Card Topup -86.90 -> transport
+2026-11-02 02:03:41,931 DEBUG   ledger.importer: row 110: Kebab House -62.14 -> dining
+2026-11-02 02:03:41,993 DEBUG   ledger.importer: row 111: Spotify AB -246.56 -> other
+2026-11-02 02:03:42,348 DEBUG   ledger.importer: row 113: Cafe Nero 22 -211.75 -> dining
+2026-11-02 02:03:42,710 DEBUG   ledger.importer: row 114: Uber Trip 77 -68.17 -> dining
+2026-11-02 02:03:42,753 DEBUG   ledger.importer: row 118: Kebab House -215.04 -> transport
+2026-11-02 02:03:42,830 DEBUG   ledger.importer: row 119: Landlord Ltd -138.09 -> other
+2026-11-02 02:03:43,110 DEBUG   ledger.importer: row 121: Kebab House -103.33 -> dining
+2026-11-02 02:03:43,169 DEBUG   ledger.importer: row 122: Carrefour Express -1.17 -> groceries
+2026-11-02 02:03:43,216 DEBUG   ledger.importer: row 124: Migros 0412 -9.14 -> transport
+2026-11-02 02:03:43,325 DEBUG   ledger.importer: row 125: Payroll ACME -193.92 -> other
+2026-11-02 02:03:43,597 DEBUG   ledger.importer: row 127: Migros 0412 -144.76 -> dining
+2026-11-02 02:03:43,879 DEBUG   ledger.importer: row 129: duplicate of an earlier transaction
+2026-11-02 02:03:44,222 DEBUG   ledger.importer: row 131: Carrefour Express -165.91 -> groceries
+2026-11-02 02:03:44,395 WARNING ledger.importer: row 133: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:03:44,450 DEBUG   ledger.importer: row 134: Landlord Ltd -187.07 -> transport
+2026-11-02 02:03:44,506 DEBUG   ledger.importer: row 138: Shell Fuel 8 -89.70 -> dining
+2026-11-02 02:03:44,822 DEBUG   ledger.importer: row 140: Payroll ACME -14.78 -> dining
+2026-11-02 02:03:44,826 DEBUG   ledger.importer: row 142: ATM Withdrawal -196.71 -> other
+2026-11-02 02:03:45,035 DEBUG   ledger.importer: row 144: ATM Withdrawal -37.88 -> other
+2026-11-02 02:03:45,381 DEBUG   ledger.importer: row 145: Kebab House -174.42 -> dining
+2026-11-02 02:03:45,438 DEBUG   ledger.importer: row 151: Landlord Ltd -57.86 -> other
+2026-11-02 02:03:45,501 DEBUG   ledger.importer: row 153: City Pharmacy -26.45 -> groceries
+2026-11-02 02:03:45,898 DEBUG   ledger.importer: row 154: Migros 0412 -206.05 -> transport
+2026-11-02 02:03:46,080 DEBUG   ledger.importer: row 155: Migros 0412 -235.88 -> groceries
+2026-11-02 02:03:46,465 DEBUG   ledger.importer: row 156: Landlord Ltd -7.07 -> transport
+2026-11-02 02:03:46,832 WARNING ledger.importer: row 158: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:03:47,202 DEBUG   ledger.importer: row 159: Metro Card Topup -136.12 -> groceries
+2026-11-02 02:03:47,215 DEBUG   ledger.importer: row 162: Spotify AB -29.98 -> other
+2026-11-02 02:03:47,552 DEBUG   ledger.importer: row 163: ATM Withdrawal -203.00 -> dining
+2026-11-02 02:03:47,626 WARNING ledger.importer: row 166: category 'Misc' unknown, guessed from payee
+2026-11-02 02:03:47,649 DEBUG   ledger.importer: row 169: Shell Fuel 8 -58.71 -> dining
+2026-11-02 02:03:47,902 DEBUG   ledger.importer: row 171: duplicate of an earlier transaction
+2026-11-02 02:03:48,038 DEBUG   ledger.importer: row 172: City Pharmacy -73.48 -> other
+2026-11-02 02:03:48,153 DEBUG   ledger.importer: row 174: duplicate of an earlier transaction
+2026-11-02 02:03:48,219 DEBUG   ledger.importer: row 176: duplicate of an earlier transaction
+2026-11-02 02:03:48,251 DEBUG   ledger.importer: row 177: duplicate of an earlier transaction
+2026-11-02 02:03:48,318 DEBUG   ledger.importer: row 179: Bakery Ozdemir -110.23 -> transport
+2026-11-02 02:03:48,580 DEBUG   ledger.importer: row 180: Cafe Nero 22 -129.04 -> dining
+2026-11-02 02:03:48,955 DEBUG   ledger.importer: row 181: Bakery Ozdemir -57.83 -> transport
+2026-11-02 02:03:49,048 DEBUG   ledger.importer: row 185: Landlord Ltd -8.44 -> transport
+2026-11-02 02:03:49,415 DEBUG   ledger.importer: row 186: Shell Fuel 8 -131.06 -> groceries
+2026-11-02 02:03:49,644 DEBUG   ledger.importer: row 188: Uber Trip 77 -145.61 -> dining
+2026-11-02 02:03:49,738 DEBUG   ledger.importer: row 189: duplicate of an earlier transaction
+2026-11-02 02:03:49,896 DEBUG   ledger.importer: row 191: Landlord Ltd -147.03 -> groceries
+2026-11-02 02:03:49,910 DEBUG   ledger.importer: row 192: duplicate of an earlier transaction
+2026-11-02 02:03:50,127 DEBUG   ledger.importer: row 193: Netflix.com -58.40 -> dining
+2026-11-02 02:03:50,326 DEBUG   ledger.importer: row 194: Water Utility -153.33 -> other
+2026-11-02 02:03:50,530 DEBUG   ledger.importer: row 196: ATM Withdrawal -31.22 -> groceries
+2026-11-02 02:03:50,786 WARNING ledger.importer: row 197: category 'Food' unknown, guessed from payee
+2026-11-02 02:03:51,070 WARNING ledger.importer: row 198: category 'Food' unknown, guessed from payee
+2026-11-02 02:03:51,400 DEBUG   ledger.importer: row 199: Carrefour Express -179.39 -> groceries
+2026-11-02 02:03:51,788 DEBUG   ledger.importer: row 202: Carrefour Express -199.91 -> other
+2026-11-02 02:03:52,028 DEBUG   ledger.importer: row 203: Landlord Ltd -38.73 -> dining
+2026-11-02 02:03:52,293 DEBUG   ledger.importer: row 204: City Pharmacy -128.29 -> other
+2026-11-02 02:03:52,642 DEBUG   ledger.importer: row 206: duplicate of an earlier transaction
+2026-11-02 02:03:52,767 DEBUG   ledger.importer: row 207: Bakery Ozdemir -13.12 -> groceries
+2026-11-02 02:03:53,060 DEBUG   ledger.importer: row 208: Uber Trip 77 -81.11 -> groceries
+2026-11-02 02:03:53,215 DEBUG   ledger.importer: row 211: ATM Withdrawal -95.22 -> transport
+2026-11-02 02:03:53,293 DEBUG   ledger.importer: row 212: Migros 0412 -19.44 -> dining
+2026-11-02 02:03:53,335 DEBUG   ledger.importer: row 214: Shell Fuel 8 -183.81 -> groceries
+2026-11-02 02:03:53,381 DEBUG   ledger.importer: row 215: Metro Card Topup -34.78 -> dining
+2026-11-02 02:03:53,489 DEBUG   ledger.importer: row 217: duplicate of an earlier transaction
+2026-11-02 02:03:53,669 DEBUG   ledger.importer: row 218: Migros 0412 -134.64 -> groceries
+2026-11-02 02:03:53,965 DEBUG   ledger.importer: row 220: Spotify AB -42.53 -> other
+2026-11-02 02:03:54,334 DEBUG   ledger.importer: row 223: Uber Trip 77 -108.98 -> dining
+2026-11-02 02:03:54,628 DEBUG   ledger.importer: row 224: Cafe Nero 22 -181.75 -> transport
+2026-11-02 02:03:54,670 DEBUG   ledger.importer: row 226: Uber Trip 77 -213.77 -> other
+2026-11-02 02:03:55,056 DEBUG   ledger.importer: row 227: Bakery Ozdemir -101.66 -> transport
+2026-11-02 02:03:55,246 DEBUG   ledger.importer: row 228: duplicate of an earlier transaction
+2026-11-02 02:03:55,290 DEBUG   ledger.importer: row 229: City Pharmacy -73.19 -> dining
+2026-11-02 02:03:55,514 DEBUG   ledger.importer: row 232: duplicate of an earlier transaction
+2026-11-02 02:03:55,784 ERROR   ledger.importer: row 233 skipped (cardco): invalid amount '2,300.00 EUR'
+2026-11-02 02:03:55,958 DEBUG   ledger.importer: row 234: Migros 0412 -203.66 -> transport
+2026-11-02 02:03:56,000 DEBUG   ledger.importer: row 235: Cafe Nero 22 -170.39 -> other
+2026-11-02 02:03:56,274 DEBUG   ledger.importer: row 236: Migros 0412 -61.15 -> groceries
+2026-11-02 02:03:56,582 DEBUG   ledger.importer: row 238: duplicate of an earlier transaction
+2026-11-02 02:03:56,654 DEBUG   ledger.importer: row 241: Netflix.com -13.26 -> groceries
+2026-11-02 02:03:56,825 DEBUG   ledger.importer: row 242: Spotify AB -109.74 -> other
+2026-11-02 02:03:56,984 DEBUG   ledger.importer: row 243: Cafe Nero 22 -184.44 -> other
+2026-11-02 02:03:57,025 DEBUG   ledger.importer: row 246: Landlord Ltd -190.47 -> dining
+2026-11-02 02:03:57,305 DEBUG   ledger.importer: row 248: City Pharmacy -134.47 -> other
+2026-11-02 02:03:57,645 DEBUG   ledger.importer: row 250: duplicate of an earlier transaction
+2026-11-02 02:03:57,837 DEBUG   ledger.importer: row 252: Spotify AB -82.63 -> transport
+2026-11-02 02:03:58,139 DEBUG   ledger.importer: row 253: Metro Card Topup -185.36 -> groceries
+2026-11-02 02:03:58,254 DEBUG   ledger.importer: row 254: Netflix.com -36.84 -> groceries
+2026-11-02 02:03:58,624 DEBUG   ledger.importer: row 256: Water Utility -243.53 -> other
+2026-11-02 02:03:58,649 DEBUG   ledger.importer: row 257: Kebab House -38.89 -> dining
+2026-11-02 02:03:58,980 DEBUG   ledger.importer: row 259: City Pharmacy -194.40 -> dining
+2026-11-02 02:03:59,244 DEBUG   ledger.importer: row 260: Netflix.com -78.27 -> other
+2026-11-02 02:03:59,326 DEBUG   ledger.importer: row 262: Payroll ACME -106.61 -> other
+2026-11-02 02:03:59,544 DEBUG   ledger.importer: row 263: ATM Withdrawal -31.34 -> transport
+2026-11-02 02:03:59,628 DEBUG   ledger.importer: row 264: duplicate of an earlier transaction
+2026-11-02 02:03:59,874 DEBUG   ledger.importer: row 265: City Pharmacy -240.92 -> groceries
+2026-11-02 02:03:59,932 DEBUG   ledger.importer: row 266: Payroll ACME -164.03 -> groceries
+2026-11-02 02:03:59,949 DEBUG   ledger.importer: row 267: Migros 0412 -28.48 -> dining
+2026-11-02 02:04:00,005 DEBUG   ledger.importer: row 268: Uber Trip 77 -231.41 -> groceries
+2026-11-02 02:04:00,194 DEBUG   ledger.importer: row 269: Water Utility -239.13 -> dining
+2026-11-02 02:04:00,265 DEBUG   ledger.importer: row 270: Carrefour Express -201.50 -> transport
+2026-11-02 02:04:00,346 DEBUG   ledger.importer: row 273: duplicate of an earlier transaction
+2026-11-02 02:04:00,683 DEBUG   ledger.importer: row 277: Metro Card Topup -137.27 -> other
+2026-11-02 02:04:00,872 DEBUG   ledger.importer: row 279: Bakery Ozdemir -232.76 -> transport
+2026-11-02 02:04:01,091 DEBUG   ledger.importer: row 280: ATM Withdrawal -184.57 -> dining
+2026-11-02 02:04:01,225 WARNING ledger.importer: row 281: category 'Food' unknown, guessed from payee
+2026-11-02 02:04:01,233 DEBUG   ledger.importer: row 282: Uber Trip 77 -88.37 -> other
+2026-11-02 02:04:01,418 DEBUG   ledger.importer: row 283: Landlord Ltd -210.46 -> groceries
+2026-11-02 02:04:01,468 DEBUG   ledger.importer: row 285: Netflix.com -15.59 -> other
+2026-11-02 02:04:01,528 DEBUG   ledger.importer: row 286: Landlord Ltd -33.10 -> dining
+2026-11-02 02:04:01,651 DEBUG   ledger.importer: row 287: Shell Fuel 8 -229.97 -> dining
+2026-11-02 02:04:01,875 DEBUG   ledger.importer: row 288: Shell Fuel 8 -224.12 -> transport
+2026-11-02 02:04:02,196 DEBUG   ledger.importer: row 289: Netflix.com -121.15 -> groceries
+2026-11-02 02:04:02,361 DEBUG   ledger.importer: row 290: Landlord Ltd -224.83 -> dining
+2026-11-02 02:04:02,479 DEBUG   ledger.importer: row 291: Migros 0412 -141.93 -> groceries
+2026-11-02 02:04:02,582 DEBUG   ledger.importer: row 294: Spotify AB -188.71 -> groceries
+2026-11-02 02:04:02,658 DEBUG   ledger.importer: row 296: Metro Card Topup -230.05 -> transport
+2026-11-02 02:04:03,013 DEBUG   ledger.importer: row 300: Water Utility -238.90 -> other
+2026-11-02 02:04:03,194 DEBUG   ledger.importer: row 301: Kebab House -110.08 -> other
+2026-11-02 02:04:03,459 DEBUG   ledger.importer: row 302: Shell Fuel 8 -166.94 -> groceries
+2026-11-02 02:04:03,568 DEBUG   ledger.importer: row 305: City Pharmacy -105.26 -> groceries
+2026-11-02 02:04:03,837 DEBUG   ledger.importer: row 308: Payroll ACME -9.37 -> groceries
+2026-11-02 02:04:03,938 DEBUG   ledger.importer: row 309: Migros 0412 -103.57 -> transport
+2026-11-02 02:04:04,279 DEBUG   ledger.importer: row 310: Uber Trip 77 -103.29 -> transport
+2026-11-02 02:04:04,287 DEBUG   ledger.importer: row 312: duplicate of an earlier transaction
+2026-11-02 02:04:04,554 DEBUG   ledger.importer: row 314: Netflix.com -2.23 -> groceries
+2026-11-02 02:04:04,919 DEBUG   ledger.importer: row 315: Carrefour Express -120.93 -> dining
+2026-11-02 02:04:05,011 DEBUG   ledger.importer: row 316: Kebab House -73.58 -> other
+2026-11-02 02:04:05,355 DEBUG   ledger.importer: row 317: Payroll ACME -54.19 -> groceries
+2026-11-02 02:04:05,464 DEBUG   ledger.importer: row 318: duplicate of an earlier transaction
+2026-11-02 02:04:05,560 DEBUG   ledger.importer: row 321: Cafe Nero 22 -194.80 -> dining
+2026-11-02 02:04:05,891 DEBUG   ledger.importer: row 322: duplicate of an earlier transaction
+2026-11-02 02:04:06,274 DEBUG   ledger.importer: row 323: Cafe Nero 22 -125.10 -> transport
+2026-11-02 02:04:06,473 DEBUG   ledger.importer: row 324: ATM Withdrawal -157.33 -> dining
+2026-11-02 02:04:06,780 DEBUG   ledger.importer: row 325: Bakery Ozdemir -117.64 -> groceries
+2026-11-02 02:04:07,080 DEBUG   ledger.importer: row 327: duplicate of an earlier transaction
+2026-11-02 02:04:07,365 WARNING ledger.importer: row 328: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:04:07,506 DEBUG   ledger.importer: row 329: Spotify AB -29.32 -> dining
+2026-11-02 02:04:07,581 DEBUG   ledger.importer: row 330: Water Utility -78.00 -> transport
+2026-11-02 02:04:07,774 DEBUG   ledger.importer: row 332: duplicate of an earlier transaction
+2026-11-02 02:04:08,067 DEBUG   ledger.importer: row 333: Carrefour Express -132.40 -> groceries
+2026-11-02 02:04:08,074 DEBUG   ledger.importer: row 334: Carrefour Express -193.01 -> transport
+2026-11-02 02:04:08,439 DEBUG   ledger.importer: row 335: duplicate of an earlier transaction
+2026-11-02 02:04:08,472 DEBUG   ledger.importer: row 336: duplicate of an earlier transaction
+2026-11-02 02:04:08,608 DEBUG   ledger.importer: row 337: Landlord Ltd -127.81 -> other
+2026-11-02 02:04:08,761 DEBUG   ledger.importer: row 338: Uber Trip 77 -122.07 -> dining
+2026-11-02 02:04:08,975 DEBUG   ledger.importer: row 339: Bakery Ozdemir -242.84 -> groceries
+2026-11-02 02:04:08,982 DEBUG   ledger.importer: row 342: Netflix.com -210.95 -> dining
+2026-11-02 02:04:09,343 DEBUG   ledger.importer: row 343: Payroll ACME -247.12 -> dining
+2026-11-02 02:04:09,506 DEBUG   ledger.importer: row 345: Metro Card Topup -147.98 -> transport
+2026-11-02 02:04:09,624 DEBUG   ledger.importer: row 349: Cafe Nero 22 -194.04 -> other
+2026-11-02 02:04:09,796 DEBUG   ledger.importer: row 350: Carrefour Express -99.71 -> groceries
+2026-11-02 02:04:09,923 DEBUG   ledger.importer: row 351: Shell Fuel 8 -124.85 -> transport
+2026-11-02 02:04:10,253 DEBUG   ledger.importer: row 352: Bakery Ozdemir -28.90 -> transport
+2026-11-02 02:04:10,329 DEBUG   ledger.importer: row 353: Landlord Ltd -185.68 -> transport
+2026-11-02 02:04:10,341 DEBUG   ledger.importer: row 354: Shell Fuel 8 -242.49 -> other
+2026-11-02 02:04:10,525 DEBUG   ledger.importer: row 355: Carrefour Express -40.40 -> dining
+2026-11-02 02:04:10,684 DEBUG   ledger.importer: row 356: Payroll ACME -108.45 -> groceries
+2026-11-02 02:04:10,929 DEBUG   ledger.importer: row 357: City Pharmacy -249.91 -> transport
+2026-11-02 02:04:11,263 DEBUG   ledger.importer: row 359: duplicate of an earlier transaction
+2026-11-02 02:04:11,361 DEBUG   ledger.importer: row 360: Migros 0412 -73.98 -> other
+2026-11-02 02:04:11,608 DEBUG   ledger.importer: row 361: Payroll ACME -135.65 -> dining
+2026-11-02 02:04:11,841 DEBUG   ledger.importer: row 362: duplicate of an earlier transaction
+2026-11-02 02:04:11,846 DEBUG   ledger.importer: row 363: Shell Fuel 8 -176.25 -> dining
+2026-11-02 02:04:11,882 DEBUG   ledger.importer: row 364: Migros 0412 -109.50 -> transport
+2026-11-02 02:04:12,058 DEBUG   ledger.importer: row 365: Migros 0412 -106.06 -> transport
+2026-11-02 02:04:12,456 DEBUG   ledger.importer: row 366: Shell Fuel 8 -19.65 -> other
+2026-11-02 02:04:12,791 DEBUG   ledger.importer: row 367: Kebab House -195.39 -> dining
+2026-11-02 02:04:12,804 DEBUG   ledger.importer: row 368: Shell Fuel 8 -123.75 -> other
+2026-11-02 02:04:13,151 DEBUG   ledger.importer: row 369: Water Utility -19.94 -> other
+2026-11-02 02:04:13,394 DEBUG   ledger.importer: row 370: Migros 0412 -144.26 -> other
+2026-11-02 02:04:13,646 DEBUG   ledger.importer: row 372: Carrefour Express -70.93 -> other
+2026-11-02 02:04:13,653 DEBUG   ledger.importer: row 373: Netflix.com -47.68 -> other
+2026-11-02 02:04:13,670 DEBUG   ledger.importer: row 374: Landlord Ltd -209.40 -> other
+2026-11-02 02:04:13,860 WARNING ledger.importer: row 375: category 'Food' unknown, guessed from payee
+2026-11-02 02:04:14,181 DEBUG   ledger.importer: row 377: Shell Fuel 8 -29.69 -> groceries
+2026-11-02 02:04:14,257 DEBUG   ledger.importer: row 378: ATM Withdrawal -158.99 -> other
+2026-11-02 02:04:14,646 DEBUG   ledger.importer: row 381: Landlord Ltd -179.87 -> other
+2026-11-02 02:04:14,657 DEBUG   ledger.importer: row 385: Netflix.com -34.00 -> dining
+2026-11-02 02:04:14,757 DEBUG   ledger.importer: row 387: Payroll ACME -169.71 -> other
+2026-11-02 02:04:14,947 DEBUG   ledger.importer: row 389: Water Utility -17.22 -> groceries
+2026-11-02 02:04:15,102 DEBUG   ledger.importer: row 392: Water Utility -138.51 -> groceries
+2026-11-02 02:04:15,423 DEBUG   ledger.importer: row 393: Netflix.com -228.16 -> transport
+2026-11-02 02:04:15,595 DEBUG   ledger.importer: row 394: Water Utility -169.63 -> dining
+2026-11-02 02:04:15,685 DEBUG   ledger.importer: row 395: Metro Card Topup -137.71 -> transport
+2026-11-02 02:04:15,706 DEBUG   ledger.importer: row 398: duplicate of an earlier transaction
+2026-11-02 02:04:16,067 DEBUG   ledger.importer: row 400: Kebab House -123.76 -> dining
+2026-11-02 02:04:16,167 DEBUG   ledger.importer: row 404: Landlord Ltd -243.27 -> transport
+2026-11-02 02:04:16,243 WARNING ledger.importer: row 405: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:04:16,489 DEBUG   ledger.importer: row 407: Migros 0412 -147.78 -> transport
+2026-11-02 02:04:16,711 DEBUG   ledger.importer: row 408: ATM Withdrawal -233.74 -> groceries
+2026-11-02 02:04:16,989 DEBUG   ledger.importer: row 409: Migros 0412 -137.50 -> transport
+2026-11-02 02:04:17,323 DEBUG   ledger.importer: row 410: Landlord Ltd -147.53 -> other
+2026-11-02 02:04:17,426 DEBUG   ledger.importer: row 413: Bakery Ozdemir -55.95 -> dining
+2026-11-02 02:04:17,627 DEBUG   ledger.importer: row 415: ATM Withdrawal -26.64 -> transport
+2026-11-02 02:04:17,736 DEBUG   ledger.importer: row 418: Uber Trip 77 -78.11 -> dining
+2026-11-02 02:04:17,818 DEBUG   ledger.importer: row 419: Bakery Ozdemir -101.41 -> groceries
+2026-11-02 02:04:17,837 DEBUG   ledger.importer: row 420: Shell Fuel 8 -174.68 -> groceries
+2026-11-02 02:04:17,883 DEBUG   ledger.importer: row 422: Shell Fuel 8 -214.59 -> other
+2026-11-02 02:04:17,904 DEBUG   ledger.importer: row 423: Metro Card Topup -137.04 -> other
+2026-11-02 02:04:18,180 DEBUG   ledger.importer: row 424: Spotify AB -245.54 -> groceries
+2026-11-02 02:04:18,523 DEBUG   ledger.importer: row 425: Bakery Ozdemir -52.01 -> other
+2026-11-02 02:04:18,821 DEBUG   ledger.importer: row 426: Water Utility -48.68 -> transport
+2026-11-02 02:04:18,847 DEBUG   ledger.importer: row 428: Migros 0412 -71.90 -> groceries
+2026-11-02 02:04:19,000 DEBUG   ledger.importer: row 429: ATM Withdrawal -238.44 -> other
+2026-11-02 02:04:19,172 DEBUG   ledger.importer: row 431: City Pharmacy -153.09 -> transport
+2026-11-02 02:04:19,523 DEBUG   ledger.importer: row 432: ATM Withdrawal -45.90 -> groceries
+2026-11-02 02:04:19,678 DEBUG   ledger.importer: row 433: Metro Card Topup -44.05 -> other
+2026-11-02 02:04:19,997 DEBUG   ledger.importer: row 434: Spotify AB -190.57 -> other
+2026-11-02 02:04:20,034 DEBUG   ledger.importer: row 437: duplicate of an earlier transaction
+2026-11-02 02:04:20,258 DEBUG   ledger.importer: row 438: Migros 0412 -7.29 -> other
+2026-11-02 02:04:20,500 DEBUG   ledger.importer: row 439: ATM Withdrawal -163.89 -> groceries
+2026-11-02 02:04:20,705 DEBUG   ledger.importer: row 440: Water Utility -20.50 -> other
+2026-11-02 02:04:21,016 DEBUG   ledger.importer: row 441: City Pharmacy -139.65 -> groceries
+2026-11-02 02:04:21,194 DEBUG   ledger.importer: row 445: duplicate of an earlier transaction
+2026-11-02 02:04:21,416 DEBUG   ledger.importer: row 447: Carrefour Express -69.93 -> dining
+2026-11-02 02:04:21,641 DEBUG   ledger.importer: row 450: Cafe Nero 22 -215.88 -> transport
+2026-11-02 02:04:21,939 DEBUG   ledger.importer: row 451: Carrefour Express -85.12 -> dining
+2026-11-02 02:04:21,974 DEBUG   ledger.importer: row 452: duplicate of an earlier transaction
+2026-11-02 02:04:22,108 DEBUG   ledger.importer: row 454: Spotify AB -143.01 -> transport
+2026-11-02 02:04:22,383 DEBUG   ledger.importer: row 455: duplicate of an earlier transaction
+2026-11-02 02:04:22,429 DEBUG   ledger.importer: row 456: Carrefour Express -214.64 -> dining
+2026-11-02 02:04:22,637 DEBUG   ledger.importer: row 458: Cafe Nero 22 -102.11 -> other
+2026-11-02 02:04:22,928 DEBUG   ledger.importer: row 459: Spotify AB -231.43 -> groceries
+2026-11-02 02:04:23,159 DEBUG   ledger.importer: row 460: duplicate of an earlier transaction
+2026-11-02 02:04:23,178 DEBUG   ledger.importer: row 461: Kebab House -210.99 -> groceries
+2026-11-02 02:04:23,494 DEBUG   ledger.importer: row 463: duplicate of an earlier transaction
+2026-11-02 02:04:23,646 DEBUG   ledger.importer: row 464: Landlord Ltd -1.75 -> other
+2026-11-02 02:04:23,907 DEBUG   ledger.importer: row 465: duplicate of an earlier transaction
+2026-11-02 02:04:24,135 DEBUG   ledger.importer: row 467: Landlord Ltd -182.88 -> other
+2026-11-02 02:04:24,388 DEBUG   ledger.importer: row 468: Spotify AB -101.55 -> dining
+2026-11-02 02:04:24,493 DEBUG   ledger.importer: row 469: duplicate of an earlier transaction
+2026-11-02 02:04:24,526 DEBUG   ledger.importer: row 470: Spotify AB -89.75 -> other
+2026-11-02 02:04:24,741 DEBUG   ledger.importer: row 471: Uber Trip 77 -75.92 -> other
+2026-11-02 02:04:24,886 WARNING ledger.importer: row 473: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:04:24,973 DEBUG   ledger.importer: row 474: Shell Fuel 8 -18.06 -> transport
+2026-11-02 02:04:25,339 DEBUG   ledger.importer: row 475: Migros 0412 -21.97 -> dining
+2026-11-02 02:04:25,615 DEBUG   ledger.importer: row 476: Uber Trip 77 -5.14 -> groceries
+2026-11-02 02:04:25,991 DEBUG   ledger.importer: row 478: Spotify AB -11.89 -> other
+2026-11-02 02:04:26,085 DEBUG   ledger.importer: row 479: duplicate of an earlier transaction
+2026-11-02 02:04:26,462 DEBUG   ledger.importer: row 480: duplicate of an earlier transaction
+2026-11-02 02:04:26,733 DEBUG   ledger.importer: row 481: ATM Withdrawal -51.63 -> transport
+2026-11-02 02:04:27,032 DEBUG   ledger.importer: row 482: Spotify AB -39.91 -> transport
+2026-11-02 02:04:27,387 DEBUG   ledger.importer: row 484: duplicate of an earlier transaction
+2026-11-02 02:04:27,613 DEBUG   ledger.importer: row 485: Netflix.com -202.69 -> transport
+2026-11-02 02:04:27,700 DEBUG   ledger.importer: row 486: Metro Card Topup -134.12 -> groceries
+2026-11-02 02:04:27,770 WARNING ledger.importer: row 487: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:04:28,011 DEBUG   ledger.importer: row 488: Migros 0412 -104.72 -> other
+2026-11-02 02:04:28,016 DEBUG   ledger.importer: row 489: Uber Trip 77 -2.25 -> other
+2026-11-02 02:04:28,327 DEBUG   ledger.importer: row 490: Payroll ACME -159.47 -> groceries
+2026-11-02 02:04:28,455 DEBUG   ledger.importer: row 492: Payroll ACME -24.41 -> other
+2026-11-02 02:04:28,465 DEBUG   ledger.importer: row 494: Landlord Ltd -115.54 -> groceries
+2026-11-02 02:04:28,556 DEBUG   ledger.importer: row 497: Uber Trip 77 -21.92 -> dining
+2026-11-02 02:04:28,847 DEBUG   ledger.importer: row 501: Cafe Nero 22 -14.67 -> transport
+2026-11-02 02:04:29,220 DEBUG   ledger.importer: row 504: Bakery Ozdemir -220.78 -> groceries
+2026-11-02 02:04:29,582 DEBUG   ledger.importer: row 505: Payroll ACME -13.39 -> transport
+2026-11-02 02:04:29,602 DEBUG   ledger.importer: row 506: Metro Card Topup -55.94 -> other
+2026-11-02 02:04:29,991 DEBUG   ledger.importer: row 509: Carrefour Express -151.69 -> dining
+2026-11-02 02:04:30,022 DEBUG   ledger.importer: row 510: Water Utility -41.33 -> transport
+2026-11-02 02:04:30,339 DEBUG   ledger.importer: row 511: Shell Fuel 8 -192.33 -> other
+2026-11-02 02:04:30,579 DEBUG   ledger.importer: row 512: Metro Card Topup -210.80 -> transport
+2026-11-02 02:04:30,672 DEBUG   ledger.importer: row 514: Cafe Nero 22 -12.30 -> groceries
+2026-11-02 02:04:30,689 DEBUG   ledger.importer: row 516: Cafe Nero 22 -56.69 -> other
+2026-11-02 02:04:30,738 DEBUG   ledger.importer: row 520: City Pharmacy -61.55 -> other
+2026-11-02 02:04:30,790 DEBUG   ledger.importer: row 523: Landlord Ltd -217.39 -> groceries
+2026-11-02 02:04:31,012 DEBUG   ledger.importer: row 524: Cafe Nero 22 -142.10 -> dining
+2026-11-02 02:04:31,074 DEBUG   ledger.importer: row 525: duplicate of an earlier transaction
+2026-11-02 02:04:31,165 DEBUG   ledger.importer: row 529: Kebab House -91.50 -> transport
+2026-11-02 02:04:31,291 DEBUG   ledger.importer: row 530: Metro Card Topup -37.13 -> transport
+2026-11-02 02:04:31,673 DEBUG   ledger.importer: row 531: Netflix.com -112.28 -> groceries
+2026-11-02 02:04:31,973 DEBUG   ledger.importer: row 532: Payroll ACME -54.45 -> dining
+2026-11-02 02:04:32,125 WARNING ledger.importer: row 534: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:04:32,406 DEBUG   ledger.importer: row 535: Migros 0412 -97.22 -> groceries
+2026-11-02 02:04:32,566 DEBUG   ledger.importer: row 536: Bakery Ozdemir -202.96 -> groceries
+2026-11-02 02:04:32,870 DEBUG   ledger.importer: row 537: Bakery Ozdemir -149.11 -> groceries
+2026-11-02 02:04:33,231 DEBUG   ledger.importer: row 538: ATM Withdrawal -1.66 -> dining
+2026-11-02 02:04:33,501 WARNING ledger.importer: row 539: category 'Misc' unknown, guessed from payee
+2026-11-02 02:04:33,629 DEBUG   ledger.importer: row 541: duplicate of an earlier transaction
+2026-11-02 02:04:33,810 WARNING ledger.importer: row 542: category 'Food' unknown, guessed from payee
+2026-11-02 02:04:33,894 DEBUG   ledger.importer: row 543: Shell Fuel 8 -40.42 -> dining
+2026-11-02 02:04:33,909 DEBUG   ledger.importer: row 545: Payroll ACME -67.03 -> transport
+2026-11-02 02:04:33,928 DEBUG   ledger.importer: row 548: City Pharmacy -66.09 -> groceries
+2026-11-02 02:04:34,128 DEBUG   ledger.importer: row 549: Migros 0412 -52.04 -> groceries
+2026-11-02 02:04:34,495 DEBUG   ledger.importer: row 550: duplicate of an earlier transaction
+2026-11-02 02:04:34,554 DEBUG   ledger.importer: row 556: Netflix.com -188.61 -> groceries
+2026-11-02 02:04:34,558 DEBUG   ledger.importer: row 557: duplicate of an earlier transaction
+2026-11-02 02:04:34,854 DEBUG   ledger.importer: row 558: ATM Withdrawal -127.22 -> transport
+2026-11-02 02:04:34,897 DEBUG   ledger.importer: row 559: Netflix.com -65.72 -> dining
+2026-11-02 02:04:35,095 DEBUG   ledger.importer: row 560: Water Utility -66.84 -> dining
+2026-11-02 02:04:35,481 DEBUG   ledger.importer: row 561: Netflix.com -15.67 -> dining
+2026-11-02 02:04:35,656 DEBUG   ledger.importer: row 562: Cafe Nero 22 -217.27 -> groceries
+2026-11-02 02:04:36,015 DEBUG   ledger.importer: row 564: Cafe Nero 22 -63.12 -> groceries
+2026-11-02 02:04:36,106 DEBUG   ledger.importer: row 566: Shell Fuel 8 -10.53 -> groceries
+2026-11-02 02:04:36,235 DEBUG   ledger.importer: row 567: Metro Card Topup -180.98 -> transport
+2026-11-02 02:04:36,514 DEBUG   ledger.importer: row 570: City Pharmacy -89.80 -> transport
+2026-11-02 02:04:36,602 DEBUG   ledger.importer: row 572: Bakery Ozdemir -29.85 -> groceries
+2026-11-02 02:04:36,794 DEBUG   ledger.importer: row 574: Water Utility -97.79 -> other
+2026-11-02 02:04:37,070 DEBUG   ledger.importer: row 575: Bakery Ozdemir -34.75 -> dining
+2026-11-02 02:04:37,213 DEBUG   ledger.importer: row 576: Shell Fuel 8 -77.38 -> transport
+2026-11-02 02:04:37,376 DEBUG   ledger.importer: row 579: Cafe Nero 22 -222.91 -> dining
+2026-11-02 02:04:37,662 DEBUG   ledger.importer: row 580: Cafe Nero 22 -64.87 -> dining
+2026-11-02 02:04:37,891 DEBUG   ledger.importer: row 581: ATM Withdrawal -114.50 -> transport
+2026-11-02 02:04:38,236 WARNING ledger.importer: row 582: category 'Misc' unknown, guessed from payee
+2026-11-02 02:04:38,400 WARNING ledger.importer: row 583: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:04:38,447 DEBUG   ledger.importer: row 584: duplicate of an earlier transaction
+2026-11-02 02:04:38,690 DEBUG   ledger.importer: row 587: Water Utility -163.49 -> other
+2026-11-02 02:04:39,030 DEBUG   ledger.importer: row 588: Netflix.com -140.30 -> dining
+2026-11-02 02:04:39,164 DEBUG   ledger.importer: row 589: Kebab House -200.71 -> groceries
+2026-11-02 02:04:39,529 DEBUG   ledger.importer: row 590: City Pharmacy -19.22 -> groceries
+2026-11-02 02:04:39,901 DEBUG   ledger.importer: row 594: Bakery Ozdemir -185.91 -> dining
+2026-11-02 02:04:40,229 DEBUG   ledger.importer: row 595: Water Utility -72.51 -> other
+2026-11-02 02:04:40,545 DEBUG   ledger.importer: row 596: Migros 0412 -146.49 -> transport
+2026-11-02 02:04:40,839 DEBUG   ledger.importer: row 597: Cafe Nero 22 -186.76 -> transport
+2026-11-02 02:04:41,198 WARNING ledger.importer: row 598: category 'Food' unknown, guessed from payee
+2026-11-02 02:04:41,281 DEBUG   ledger.importer: row 599: Cafe Nero 22 -41.91 -> other
+2026-11-02 02:04:41,322 DEBUG   ledger.importer: row 600: Carrefour Express -72.44 -> groceries
+2026-11-02 02:04:41,715 DEBUG   ledger.importer: row 603: Landlord Ltd -58.10 -> other
+2026-11-02 02:04:41,786 DEBUG   ledger.importer: row 604: Netflix.com -147.24 -> other
+2026-11-02 02:04:41,827 DEBUG   ledger.importer: row 605: Carrefour Express -63.26 -> groceries
+2026-11-02 02:04:42,114 DEBUG   ledger.importer: row 606: Uber Trip 77 -49.21 -> groceries
+2026-11-02 02:04:42,310 DEBUG   ledger.importer: row 608: ATM Withdrawal -57.48 -> other
+2026-11-02 02:04:42,382 DEBUG   ledger.importer: row 609: Cafe Nero 22 -193.05 -> dining
+2026-11-02 02:04:42,560 DEBUG   ledger.importer: row 610: Spotify AB -169.10 -> other
+2026-11-02 02:04:42,764 DEBUG   ledger.importer: row 613: Landlord Ltd -177.07 -> groceries
+2026-11-02 02:04:42,958 DEBUG   ledger.importer: row 614: duplicate of an earlier transaction
+2026-11-02 02:04:43,276 DEBUG   ledger.importer: row 617: Metro Card Topup -19.63 -> other
+2026-11-02 02:04:43,455 DEBUG   ledger.importer: row 618: ATM Withdrawal -222.59 -> transport
+2026-11-02 02:04:43,746 DEBUG   ledger.importer: row 619: Shell Fuel 8 -8.92 -> other
+2026-11-02 02:04:43,979 DEBUG   ledger.importer: row 622: Carrefour Express -7.55 -> transport
+2026-11-02 02:04:44,299 DEBUG   ledger.importer: row 624: Migros 0412 -23.02 -> groceries
+2026-11-02 02:04:44,328 DEBUG   ledger.importer: row 627: Uber Trip 77 -50.23 -> other
+2026-11-02 02:04:44,664 DEBUG   ledger.importer: row 629: duplicate of an earlier transaction
+2026-11-02 02:04:44,862 WARNING ledger.importer: row 630: category 'Misc' unknown, guessed from payee
+2026-11-02 02:04:45,213 DEBUG   ledger.importer: row 631: Carrefour Express -180.22 -> dining
+2026-11-02 02:04:45,333 DEBUG   ledger.importer: row 632: Water Utility -250.89 -> other
+2026-11-02 02:04:45,619 DEBUG   ledger.importer: row 633: Shell Fuel 8 -226.75 -> dining
+2026-11-02 02:04:45,823 DEBUG   ledger.importer: row 635: Metro Card Topup -185.62 -> other
+2026-11-02 02:04:45,839 DEBUG   ledger.importer: row 636: Spotify AB -214.14 -> dining
+2026-11-02 02:04:45,918 DEBUG   ledger.importer: row 637: duplicate of an earlier transaction
+2026-11-02 02:04:46,147 DEBUG   ledger.importer: row 638: Water Utility -65.29 -> dining
+2026-11-02 02:04:46,270 ERROR   ledger.importer: row 640 skipped (cardco): unknown account 'acct-9'
+2026-11-02 02:04:46,352 DEBUG   ledger.importer: row 644: Landlord Ltd -66.97 -> groceries
+2026-11-02 02:04:46,415 DEBUG   ledger.importer: row 645: Metro Card Topup -31.54 -> dining
+2026-11-02 02:04:46,529 DEBUG   ledger.importer: row 647: Spotify AB -111.08 -> dining
+2026-11-02 02:04:46,626 DEBUG   ledger.importer: row 648: Netflix.com -41.08 -> groceries
+2026-11-02 02:04:46,801 WARNING ledger.importer: row 649: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:04:46,968 DEBUG   ledger.importer: row 650: Landlord Ltd -131.06 -> dining
+2026-11-02 02:04:47,096 DEBUG   ledger.importer: row 651: Cafe Nero 22 -122.07 -> groceries
+2026-11-02 02:04:47,495 DEBUG   ledger.importer: row 653: duplicate of an earlier transaction
+2026-11-02 02:04:47,878 DEBUG   ledger.importer: row 655: Spotify AB -87.62 -> other
+2026-11-02 02:04:48,155 DEBUG   ledger.importer: row 657: Landlord Ltd -247.21 -> groceries
+2026-11-02 02:04:48,424 DEBUG   ledger.importer: row 658: ATM Withdrawal -189.36 -> dining
+2026-11-02 02:04:48,563 DEBUG   ledger.importer: row 659: Payroll ACME -58.24 -> transport
+2026-11-02 02:04:48,671 DEBUG   ledger.importer: row 660: Cafe Nero 22 -130.90 -> dining
+2026-11-02 02:04:48,712 DEBUG   ledger.importer: row 661: Shell Fuel 8 -208.64 -> groceries
+2026-11-02 02:04:49,007 DEBUG   ledger.importer: row 662: Spotify AB -98.23 -> groceries
+2026-11-02 02:04:49,023 DEBUG   ledger.importer: row 665: Bakery Ozdemir -23.88 -> groceries
+2026-11-02 02:04:49,053 DEBUG   ledger.importer: row 666: Landlord Ltd -168.04 -> groceries
+2026-11-02 02:04:49,332 DEBUG   ledger.importer: row 669: City Pharmacy -24.29 -> transport
+2026-11-02 02:04:49,469 DEBUG   ledger.importer: row 670: Payroll ACME -9.97 -> groceries
+2026-11-02 02:04:49,811 DEBUG   ledger.importer: row 671: Landlord Ltd -76.38 -> transport
+2026-11-02 02:04:50,112 DEBUG   ledger.importer: row 672: Netflix.com -120.83 -> transport
+2026-11-02 02:04:50,272 DEBUG   ledger.importer: row 677: Bakery Ozdemir -101.74 -> other
+2026-11-02 02:04:50,389 DEBUG   ledger.importer: row 678: Netflix.com -47.67 -> other
+2026-11-02 02:04:50,600 DEBUG   ledger.importer: row 679: City Pharmacy -189.73 -> transport
+2026-11-02 02:04:50,968 DEBUG   ledger.importer: row 680: Landlord Ltd -2.35 -> dining
+2026-11-02 02:04:50,992 DEBUG   ledger.importer: row 682: Water Utility -11.73 -> other
+2026-11-02 02:04:51,256 DEBUG   ledger.importer: row 685: Carrefour Express -2.28 -> groceries
+2026-11-02 02:04:51,378 DEBUG   ledger.importer: row 687: Spotify AB -50.41 -> dining
+2026-11-02 02:04:51,737 DEBUG   ledger.importer: row 688: duplicate of an earlier transaction
+2026-11-02 02:04:51,798 DEBUG   ledger.importer: row 690: Uber Trip 77 -199.32 -> dining
+2026-11-02 02:04:52,079 DEBUG   ledger.importer: row 692: Netflix.com -129.92 -> transport
+2026-11-02 02:04:52,321 DEBUG   ledger.importer: row 693: duplicate of an earlier transaction
+2026-11-02 02:04:52,465 DEBUG   ledger.importer: row 695: Migros 0412 -173.84 -> dining
+2026-11-02 02:04:52,858 DEBUG   ledger.importer: row 697: Spotify AB -89.23 -> transport
+2026-11-02 02:04:52,983 DEBUG   ledger.importer: row 698: Water Utility -116.42 -> transport
+2026-11-02 02:04:53,001 DEBUG   ledger.importer: row 699: City Pharmacy -103.29 -> dining
+2026-11-02 02:04:53,120 DEBUG   ledger.importer: row 700: Migros 0412 -67.02 -> other
+2026-11-02 02:04:53,362 INFO    ledger.importer: import done (cardco): 652 imported, 46 duplicates, 2 skipped
+2026-11-02 02:04:53,649 INFO    ledger.job: cardco: saved ledger (backup kept)
+2026-11-02 02:04:53,796 INFO    ledger.sync: fetched page 1/4 from eurosave (100 rows)
+2026-11-02 02:04:53,843 INFO    ledger.sync: fetched page 2/4 from eurosave (100 rows)
+2026-11-02 02:04:53,984 INFO    ledger.sync: fetched page 3/4 from eurosave (100 rows)
+2026-11-02 02:04:54,106 INFO    ledger.sync: fetched page 4/4 from eurosave (100 rows)
+2026-11-02 02:04:54,403 WARNING ledger.sync: slow response from eurosave API (2.5 s)
+2026-11-02 02:04:54,706 INFO    ledger.importer: importing eurosave-2026-11-01.csv
+2026-11-02 02:04:54,752 DEBUG   ledger.importer: row 2: Bakery Ozdemir -59.02 -> groceries
+2026-11-02 02:04:55,150 DEBUG   ledger.importer: row 3: Landlord Ltd -212.56 -> dining
+2026-11-02 02:04:55,455 DEBUG   ledger.importer: row 4: Payroll ACME -44.84 -> dining
+2026-11-02 02:04:55,740 DEBUG   ledger.importer: row 6: Uber Trip 77 -116.35 -> transport
+2026-11-02 02:04:55,902 DEBUG   ledger.importer: row 7: ATM Withdrawal -120.53 -> groceries
+2026-11-02 02:04:56,266 DEBUG   ledger.importer: row 9: duplicate of an earlier transaction
+2026-11-02 02:04:56,506 DEBUG   ledger.importer: row 10: Spotify AB -239.51 -> dining
+2026-11-02 02:04:56,615 DEBUG   ledger.importer: row 11: Uber Trip 77 -163.70 -> transport
+2026-11-02 02:04:56,737 DEBUG   ledger.importer: row 12: Bakery Ozdemir -97.36 -> groceries
+2026-11-02 02:04:56,885 DEBUG   ledger.importer: row 13: City Pharmacy -17.05 -> transport
+2026-11-02 02:04:57,011 WARNING ledger.importer: row 14: category 'Misc' unknown, guessed from payee
+2026-11-02 02:04:57,114 DEBUG   ledger.importer: row 16: Kebab House -237.66 -> transport
+2026-11-02 02:04:57,168 DEBUG   ledger.importer: row 20: Bakery Ozdemir -111.34 -> other
+2026-11-02 02:04:57,482 DEBUG   ledger.importer: row 21: Landlord Ltd -196.19 -> dining
+2026-11-02 02:04:57,796 DEBUG   ledger.importer: row 22: ATM Withdrawal -67.61 -> transport
+2026-11-02 02:04:57,900 WARNING ledger.importer: row 27: category 'Misc' unknown, guessed from payee
+2026-11-02 02:04:58,293 DEBUG   ledger.importer: row 28: Migros 0412 -39.57 -> dining
+2026-11-02 02:04:58,435 DEBUG   ledger.importer: row 30: Bakery Ozdemir -70.09 -> groceries
+2026-11-02 02:04:58,677 DEBUG   ledger.importer: row 31: duplicate of an earlier transaction
+2026-11-02 02:04:58,817 DEBUG   ledger.importer: row 32: duplicate of an earlier transaction
+2026-11-02 02:04:58,951 DEBUG   ledger.importer: row 35: Netflix.com -84.69 -> groceries
+2026-11-02 02:04:59,210 DEBUG   ledger.importer: row 36: Water Utility -39.13 -> groceries
+2026-11-02 02:04:59,313 DEBUG   ledger.importer: row 37: Landlord Ltd -47.03 -> other
+2026-11-02 02:04:59,600 DEBUG   ledger.importer: row 38: Uber Trip 77 -141.05 -> other
+2026-11-02 02:04:59,660 DEBUG   ledger.importer: row 39: Metro Card Topup -194.99 -> groceries
+2026-11-02 02:05:00,036 DEBUG   ledger.importer: row 42: Cafe Nero 22 -130.30 -> transport
+2026-11-02 02:05:00,202 DEBUG   ledger.importer: row 43: Uber Trip 77 -246.29 -> dining
+2026-11-02 02:05:00,416 DEBUG   ledger.importer: row 45: Cafe Nero 22 -210.16 -> groceries
+2026-11-02 02:05:00,495 DEBUG   ledger.importer: row 46: Payroll ACME -53.36 -> transport
+2026-11-02 02:05:00,567 DEBUG   ledger.importer: row 47: Uber Trip 77 -124.40 -> dining
+2026-11-02 02:05:00,839 DEBUG   ledger.importer: row 49: Migros 0412 -20.65 -> other
+2026-11-02 02:05:01,217 DEBUG   ledger.importer: row 51: Cafe Nero 22 -153.64 -> groceries
+2026-11-02 02:05:01,459 WARNING ledger.importer: row 53: category 'Food' unknown, guessed from payee
+2026-11-02 02:05:01,771 DEBUG   ledger.importer: row 54: Landlord Ltd -208.51 -> other
+2026-11-02 02:05:01,893 WARNING ledger.importer: row 55: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:05:01,977 DEBUG   ledger.importer: row 56: Shell Fuel 8 -77.13 -> other
+2026-11-02 02:05:02,049 DEBUG   ledger.importer: row 57: duplicate of an earlier transaction
+2026-11-02 02:05:02,179 DEBUG   ledger.importer: row 59: Migros 0412 -7.02 -> groceries
+2026-11-02 02:05:02,412 DEBUG   ledger.importer: row 60: Metro Card Topup -5.26 -> groceries
+2026-11-02 02:05:02,636 DEBUG   ledger.importer: row 61: Shell Fuel 8 -89.09 -> groceries
+2026-11-02 02:05:02,891 DEBUG   ledger.importer: row 62: Netflix.com -131.33 -> other
+2026-11-02 02:05:02,968 DEBUG   ledger.importer: row 63: Metro Card Topup -190.29 -> dining
+2026-11-02 02:05:03,339 DEBUG   ledger.importer: row 64: duplicate of an earlier transaction
+2026-11-02 02:05:03,418 DEBUG   ledger.importer: row 65: ATM Withdrawal -59.35 -> groceries
+2026-11-02 02:05:03,519 DEBUG   ledger.importer: row 67: Spotify AB -7.64 -> groceries
+2026-11-02 02:05:03,673 DEBUG   ledger.importer: row 68: duplicate of an earlier transaction
+2026-11-02 02:05:03,876 DEBUG   ledger.importer: row 70: duplicate of an earlier transaction
+2026-11-02 02:05:04,041 DEBUG   ledger.importer: row 71: Payroll ACME -245.07 -> groceries
+2026-11-02 02:05:04,224 DEBUG   ledger.importer: row 72: Payroll ACME -154.58 -> groceries
+2026-11-02 02:05:04,532 DEBUG   ledger.importer: row 73: Water Utility -97.24 -> dining
+2026-11-02 02:05:04,845 DEBUG   ledger.importer: row 74: duplicate of an earlier transaction
+2026-11-02 02:05:05,101 DEBUG   ledger.importer: row 76: Payroll ACME -178.88 -> transport
+2026-11-02 02:05:05,139 DEBUG   ledger.importer: row 77: Cafe Nero 22 -14.81 -> groceries
+2026-11-02 02:05:05,431 DEBUG   ledger.importer: row 79: Cafe Nero 22 -197.18 -> transport
+2026-11-02 02:05:05,700 DEBUG   ledger.importer: row 80: Migros 0412 -209.22 -> dining
+2026-11-02 02:05:05,759 DEBUG   ledger.importer: row 84: Bakery Ozdemir -55.83 -> groceries
+2026-11-02 02:05:06,102 DEBUG   ledger.importer: row 87: duplicate of an earlier transaction
+2026-11-02 02:05:06,464 ERROR   ledger.importer: row 88 skipped (eurosave): ValueError: invalid date '31.02.2026'
+2026-11-02 02:05:06,832 DEBUG   ledger.importer: row 89: duplicate of an earlier transaction
+2026-11-02 02:05:06,907 DEBUG   ledger.importer: row 91: City Pharmacy -48.52 -> dining
+2026-11-02 02:05:07,255 DEBUG   ledger.importer: row 92: Kebab House -63.48 -> other
+2026-11-02 02:05:07,424 DEBUG   ledger.importer: row 95: Bakery Ozdemir -201.50 -> transport
+2026-11-02 02:05:07,646 WARNING ledger.importer: row 96: category 'Food' unknown, guessed from payee
+2026-11-02 02:05:07,745 DEBUG   ledger.importer: row 99: Metro Card Topup -171.87 -> groceries
+2026-11-02 02:05:07,748 DEBUG   ledger.importer: row 101: Kebab House -163.48 -> other
+2026-11-02 02:05:08,016 DEBUG   ledger.importer: row 102: Metro Card Topup -80.83 -> dining
+2026-11-02 02:05:08,110 DEBUG   ledger.importer: row 104: Migros 0412 -84.10 -> transport
+2026-11-02 02:05:08,420 DEBUG   ledger.importer: row 106: Carrefour Express -220.96 -> other
+2026-11-02 02:05:08,723 DEBUG   ledger.importer: row 107: Water Utility -203.28 -> groceries
+2026-11-02 02:05:08,960 DEBUG   ledger.importer: row 109: Carrefour Express -121.95 -> transport
+2026-11-02 02:05:09,063 DEBUG   ledger.importer: row 110: duplicate of an earlier transaction
+2026-11-02 02:05:09,208 DEBUG   ledger.importer: row 111: duplicate of an earlier transaction
+2026-11-02 02:05:09,549 DEBUG   ledger.importer: row 114: Bakery Ozdemir -216.47 -> other
+2026-11-02 02:05:09,747 DEBUG   ledger.importer: row 115: Metro Card Topup -139.58 -> groceries
+2026-11-02 02:05:09,953 DEBUG   ledger.importer: row 116: Cafe Nero 22 -41.68 -> transport
+2026-11-02 02:05:10,243 DEBUG   ledger.importer: row 118: Shell Fuel 8 -142.30 -> other
+2026-11-02 02:05:10,555 DEBUG   ledger.importer: row 120: Spotify AB -77.29 -> transport
+2026-11-02 02:05:10,868 DEBUG   ledger.importer: row 121: Landlord Ltd -138.80 -> other
+2026-11-02 02:05:11,151 DEBUG   ledger.importer: row 124: Water Utility -24.22 -> groceries
+2026-11-02 02:05:11,210 WARNING ledger.importer: row 126: category 'Shopping' unknown, guessed from payee
+2026-11-02 02:05:11,442 DEBUG   ledger.importer: row 128: duplicate of an earlier transaction
+2026-11-02 02:05:11,607 DEBUG   ledger.importer: row 129: Cafe Nero 22 -127.34 -> transport
+2026-11-02 02:05:11,942 DEBUG   ledger.importer: row 131: Payroll ACME -226.61 -> groceries
+2026-11-02 02:05:12,055 DEBUG   ledger.importer: row 132: Carrefour Express -150.10 -> groceries
+2026-11-02 02:05:12,152 DEBUG   ledger.importer: row 134: ATM Withdrawal -237.69 -> groceries
+2026-11-02 02:05:12,293 DEBUG   ledger.importer: row 135: Migros 0412 -44.46 -> other
+2026-11-02 02:05:12,449 DEBUG   ledger.importer: row 136: Migros 0412 -205.33 -> groceries
+2026-11-02 02:05:12,718 DEBUG   ledger.importer: row 137: duplicate of an earlier transaction
+2026-11-02 02:05:13,056 DEBUG   ledger.importer: row 138: Kebab House -80.58 -> other
+2026-11-02 02:05:13,289 DEBUG   ledger.importer: row 139: Bakery Ozdemir -73.36 -> dining
+2026-11-02 02:05:13,355 DEBUG   ledger.importer: row 140: Shell Fuel 8 -18.20 -> dining
+2026-11-02 02:05:13,491 DEBUG   ledger.importer: row 141: Landlord Ltd -176.26 -> dining
+2026-11-02 02:05:13,746 DEBUG   ledger.importer: row 142: Bakery Ozdemir -222.57 -> dining
+2026-11-02 02:05:14,010 DEBUG   ledger.importer: row 143: ATM Withdrawal -17.18 -> groceries
+2026-11-02 02:05:14,334 DEBUG   ledger.importer: row 144: Payroll ACME -184.05 -> transport
+2026-11-02 02:05:14,675 DEBUG   ledger.importer: row 145: Metro Card Topup -106.88 -> other
+2026-11-02 02:05:14,698 DEBUG   ledger.importer: row 146: ATM Withdrawal -226.32 -> dining
+2026-11-02 02:05:15,034 DEBUG   ledger.importer: row 147: Metro Card Topup -31.87 -> groceries
+2026-11-02 02:05:15,312 DEBUG   ledger.importer: row 149: ATM Withdrawal -87.09 -> groceries
+2026-11-02 02:05:15,315 DEBUG   ledger.importer: row 151: Carrefour Express -75.50 -> groceries
+2026-11-02 02:05:15,625 DEBUG   ledger.importer: row 152: duplicate of an earlier transaction
+2026-11-02 02:05:15,947 DEBUG   ledger.importer: row 153: Bakery Ozdemir -189.80 -> groceries
+2026-11-02 02:05:16,168 DEBUG   ledger.importer: row 154: Payroll ACME -176.37 -> transport
+2026-11-02 02:05:16,251 DEBUG   ledger.importer: row 155: Landlord Ltd -165.07 -> transport
+2026-11-02 02:05:16,450 DEBUG   ledger.importer: row 157: Spotify AB -216.86 -> transport
+2026-11-02 02:05:16,771 DEBUG   ledger.importer: row 159: Spotify AB -133.93 -> groceries
+2026-11-02 02:05:16,786 DEBUG   ledger.importer: row 161: ATM Withdrawal -142.65 -> transport
+2026-11-02 02:05:16,936 DEBUG   ledger.importer: row 162: Carrefour Express -22.57 -> dining
+2026-11-02 02:05:17,227 DEBUG   ledger.importer: row 163: Shell Fuel 8 -156.35 -> groceries
+2026-11-02 02:05:17,580 DEBUG   ledger.importer: row 165: Cafe Nero 22 -199.75 -> groceries
+2026-11-02 02:05:17,816 DEBUG   ledger.importer: row 166: Bakery Ozdemir -2.74 -> transport
+2026-11-02 02:05:17,902 DEBUG   ledger.importer: row 167: Cafe Nero 22 -176.31 -> other
+2026-11-02 02:05:18,202 DEBUG   ledger.importer: row 169: duplicate of an earlier transaction
+2026-11-02 02:05:18,536 DEBUG   ledger.importer: row 170: Kebab House -227.18 -> other
+2026-11-02 02:05:18,703 DEBUG   ledger.importer: row 171: Bakery Ozdemir -134.25 -> other
+2026-11-02 02:05:18,728 DEBUG   ledger.importer: row 172: Cafe Nero 22 -62.46 -> transport
+2026-11-02 02:05:18,844 DEBUG   ledger.importer: row 179: Payroll ACME -92.18 -> other
+2026-11-02 02:05:19,143 DEBUG   ledger.importer: row 180: Payroll ACME -119.88 -> transport
+2026-11-02 02:05:19,240 DEBUG   ledger.importer: row 181: Cafe Nero 22 -32.86 -> groceries
+2026-11-02 02:05:19,351 DEBUG   ledger.importer: row 183: duplicate of an earlier transaction
+2026-11-02 02:05:19,488 DEBUG   ledger.importer: row 184: ATM Withdrawal -128.17 -> other
+2026-11-02 02:05:19,633 DEBUG   ledger.importer: row 188: Kebab House -94.33 -> dining
+2026-11-02 02:05:19,713 DEBUG   ledger.importer: row 189: Payroll ACME -219.79 -> transport
+2026-11-02 02:05:19,939 DEBUG   ledger.importer: row 192: duplicate of an earlier transaction
+2026-11-02 02:05:20,309 DEBUG   ledger.importer: row 195: Metro Card Topup -195.98 -> other
+2026-11-02 02:05:20,547 DEBUG   ledger.importer: row 197: Kebab House -250.17 -> groceries
+2026-11-02 02:05:20,835 DEBUG   ledger.importer: row 198: Netflix.com -207.80 -> dining
+2026-11-02 02:05:21,161 DEBUG   ledger.importer: row 199: Water Utility -106.34 -> groceries
+2026-11-02 02:05:21,341 DEBUG   ledger.importer: row 200: Spotify AB -95.93 -> transport
+2026-11-02 02:05:21,636 DEBUG   ledger.importer: row 201: Migros 0412 -246.76 -> dining
+2026-11-02 02:05:21,655 DEBUG   ledger.importer: row 203: duplicate of an earlier transaction
+2026-11-02 02:05:22,020 DEBUG   ledger.importer: row 204: Bakery Ozdemir -74.52 -> other
+2026-11-02 02:05:22,327 DEBUG   ledger.importer: row 205: Kebab House -1.13 -> groceries
+2026-11-02 02:05:22,449 DEBUG   ledger.importer: row 211: duplicate of an earlier transaction
+2026-11-02 02:05:22,700 DEBUG   ledger.importer: row 212: Payroll ACME -234.93 -> groceries
+2026-11-02 02:05:23,013 DEBUG   ledger.importer: row 215: ATM Withdrawal -233.43 -> transport
+2026-11-02 02:05:23,243 DEBUG   ledger.importer: row 217: Cafe Nero 22 -149.44 -> other
+2026-11-02 02:05:23,519 DEBUG   ledger.importer: row 219: Carrefour Express -45.54 -> groceries
+2026-11-02 02:05:23,752 DEBUG   ledger.importer: row 220: duplicate of an earlier transaction
+2026-11-02 02:05:23,953 DEBUG   ledger.importer: row 224: duplicate of an earlier transaction
+2026-11-02 02:05:24,189 DEBUG   ledger.importer: row 227: Bakery Ozdemir -79.77 -> transport
+2026-11-02 02:05:24,412 DEBUG   ledger.importer: row 228: Kebab House -53.07 -> dining
+2026-11-02 02:05:24,708 DEBUG   ledger.importer: row 229: Bakery Ozdemir -205.22 -> other
+2026-11-02 02:05:24,991 DEBUG   ledger.importer: row 230: Uber Trip 77 -70.60 -> groceries
+2026-11-02 02:05:25,378 DEBUG   ledger.importer: row 232: Metro Card Topup -224.60 -> groceries
+2026-11-02 02:05:25,383 DEBUG   ledger.importer: row 233: Migros 0412 -189.89 -> dining
+2026-11-02 02:05:25,428 DEBUG   ledger.importer: row 234: Migros 0412 -236.32 -> groceries
+2026-11-02 02:05:25,703 DEBUG   ledger.importer: row 235: ATM Withdrawal -136.15 -> other
+2026-11-02 02:05:25,858 DEBUG   ledger.importer: row 236: duplicate of an earlier transaction
+2026-11-02 02:05:26,063 DEBUG   ledger.importer: row 237: Bakery Ozdemir -127.27 -> other
+2026-11-02 02:05:26,358 DEBUG   ledger.importer: row 238: Shell Fuel 8 -201.66 -> groceries
+2026-11-02 02:05:26,692 DEBUG   ledger.importer: row 239: Cafe Nero 22 -90.67 -> dining
+2026-11-02 02:05:26,974 DEBUG   ledger.importer: row 241: Spotify AB -68.74 -> dining
+2026-11-02 02:05:27,173 DEBUG   ledger.importer: row 243: duplicate of an earlier transaction
+2026-11-02 02:05:27,190 DEBUG   ledger.importer: row 244: ATM Withdrawal -147.19 -> other
+2026-11-02 02:05:27,229 DEBUG   ledger.importer: row 245: Migros 0412 -1.60 -> transport
+2026-11-02 02:05:27,384 DEBUG   ledger.importer: row 246: Shell Fuel 8 -163.90 -> dining
+2026-11-02 02:05:27,537 DEBUG   ledger.importer: row 247: ATM Withdrawal -116.28 -> dining
+2026-11-02 02:05:27,852 DEBUG   ledger.importer: row 248: Landlord Ltd -135.23 -> other
+2026-11-02 02:05:27,861 DEBUG   ledger.importer: row 252: duplicate of an earlier transaction
+2026-11-02 02:05:28,227 DEBUG   ledger.importer: row 253: Metro Card Topup -9.76 -> groceries
+2026-11-02 02:05:28,572 DEBUG   ledger.importer: row 254: duplicate of an earlier transaction
+2026-11-02 02:05:28,659 DEBUG   ledger.importer: row 255: Spotify AB -1.96 -> dining
+2026-11-02 02:05:28,876 DEBUG   ledger.importer: row 257: Migros 0412 -201.17 -> transport
+2026-11-02 02:05:29,189 DEBUG   ledger.importer: row 258: Migros 0412 -237.80 -> dining
+2026-11-02 02:05:29,383 DEBUG   ledger.importer: row 259: Shell Fuel 8 -41.59 -> groceries
+2026-11-02 02:05:29,627 DEBUG   ledger.importer: row 261: Cafe Nero 22 -28.81 -> other
+2026-11-02 02:05:30,001 DEBUG   ledger.importer: row 262: duplicate of an earlier transaction
+2026-11-02 02:05:30,184 DEBUG   ledger.importer: row 263: Migros 0412 -138.92 -> groceries
+2026-11-02 02:05:30,249 DEBUG   ledger.importer: row 264: Cafe Nero 22 -42.76 -> transport
+2026-11-02 02:05:30,599 DEBUG   ledger.importer: row 265: duplicate of an earlier transaction
+2026-11-02 02:05:30,730 DEBUG   ledger.importer: row 266: City Pharmacy -160.69 -> other
+2026-11-02 02:05:31,088 DEBUG   ledger.importer: row 267: duplicate of an earlier transaction
+2026-11-02 02:05:31,113 DEBUG   ledger.importer: row 268: Spotify AB -180.36 -> transport
+2026-11-02 02:05:31,211 DEBUG   ledger.importer: row 269: City Pharmacy -78.43 -> other
+2026-11-02 02:05:31,605 DEBUG   ledger.importer: row 271: Bakery Ozdemir -68.22 -> transport
+2026-11-02 02:05:31,661 DEBUG   ledger.importer: row 273: Shell Fuel 8 -3.43 -> dining
+2026-11-02 02:05:31,722 DEBUG   ledger.importer: row 274: ATM Withdrawal -177.54 -> transport
+2026-11-02 02:05:31,877 DEBUG   ledger.importer: row 275: Bakery Ozdemir -130.47 -> other
+2026-11-02 02:05:31,913 DEBUG   ledger.importer: row 277: Carrefour Express -217.31 -> other
+2026-11-02 02:05:32,263 DEBUG   ledger.importer: row 280: duplicate of an earlier transaction
+2026-11-02 02:05:32,662 DEBUG   ledger.importer: row 281: Landlord Ltd -192.92 -> transport
+2026-11-02 02:05:32,883 DEBUG   ledger.importer: row 282: Metro Card Topup -184.55 -> other
+2026-11-02 02:05:33,217 DEBUG   ledger.importer: row 283: Metro Card Topup -8.01 -> transport
+2026-11-02 02:05:33,499 DEBUG   ledger.importer: row 285: Netflix.com -141.11 -> groceries
+2026-11-02 02:05:33,698 DEBUG   ledger.importer: row 287: Metro Card Topup -96.50 -> dining
+2026-11-02 02:05:33,710 DEBUG   ledger.importer: row 288: Netflix.com -9.20 -> transport
+2026-11-02 02:05:33,916 DEBUG   ledger.importer: row 289: Netflix.com -100.41 -> dining
+2026-11-02 02:05:34,086 DEBUG   ledger.importer: row 290: Spotify AB -53.49 -> dining
+2026-11-02 02:05:34,271 WARNING ledger.importer: row 291: category 'Food' unknown, guessed from payee
+2026-11-02 02:05:34,438 DEBUG   ledger.importer: row 292: duplicate of an earlier transaction
+2026-11-02 02:05:34,678 DEBUG   ledger.importer: row 294: Netflix.com -34.81 -> transport
+2026-11-02 02:05:34,925 DEBUG   ledger.importer: row 296: Water Utility -65.33 -> dining
+2026-11-02 02:05:34,958 WARNING ledger.importer: row 297: category 'Food' unknown, guessed from payee
+2026-11-02 02:05:35,240 ERROR   ledger.importer: row 301 skipped (eurosave): unknown account 'old-savings'
+2026-11-02 02:05:35,538 DEBUG   ledger.importer: row 302: Kebab House -40.70 -> other
+2026-11-02 02:05:35,855 DEBUG   ledger.importer: row 303: Payroll ACME -96.72 -> dining
+2026-11-02 02:05:36,175 DEBUG   ledger.importer: row 304: Kebab House -227.62 -> transport
+2026-11-02 02:05:36,244 DEBUG   ledger.importer: row 305: Uber Trip 77 -245.13 -> other
+2026-11-02 02:05:36,259 DEBUG   ledger.importer: row 308: Bakery Ozdemir -86.19 -> transport
+2026-11-02 02:05:36,325 DEBUG   ledger.importer: row 310: Kebab House -177.80 -> transport
+2026-11-02 02:05:36,715 DEBUG   ledger.importer: row 311: Landlord Ltd -22.84 -> transport
+2026-11-02 02:05:36,820 DEBUG   ledger.importer: row 312: Landlord Ltd -82.04 -> other
+2026-11-02 02:05:36,921 DEBUG   ledger.importer: row 313: Metro Card Topup -94.05 -> groceries
+2026-11-02 02:05:37,151 DEBUG   ledger.importer: row 315: Landlord Ltd -181.18 -> other
+2026-11-02 02:05:37,332 DEBUG   ledger.importer: row 316: Cafe Nero 22 -148.04 -> other
+2026-11-02 02:05:37,691 DEBUG   ledger.importer: row 320: ATM Withdrawal -242.12 -> other
+2026-11-02 02:05:37,845 DEBUG   ledger.importer: row 321: Cafe Nero 22 -37.96 -> transport
+2026-11-02 02:05:38,097 DEBUG   ledger.importer: row 323: Netflix.com -179.78 -> transport
+2026-11-02 02:05:38,145 WARNING ledger.importer: row 324: category 'Food' unknown, guessed from payee
+2026-11-02 02:05:38,329 DEBUG   ledger.importer: row 325: Migros 0412 -77.50 -> other
+2026-11-02 02:05:38,490 DEBUG   ledger.importer: row 326: ATM Withdrawal -153.56 -> transport
+2026-11-02 02:05:38,674 DEBUG   ledger.importer: row 327: Landlord Ltd -91.28 -> other
+2026-11-02 02:05:38,931 DEBUG   ledger.importer: row 328: Migros 0412 -80.38 -> transport
+2026-11-02 02:05:39,061 DEBUG   ledger.importer: row 330: Carrefour Express -98.22 -> dining
+2026-11-02 02:05:39,094 DEBUG   ledger.importer: row 332: Water Utility -137.30 -> dining
+2026-11-02 02:05:39,422 DEBUG   ledger.importer: row 333: duplicate of an earlier transaction
+2026-11-02 02:05:39,750 DEBUG   ledger.importer: row 334: Cafe Nero 22 -75.42 -> other
+2026-11-02 02:05:40,056 DEBUG   ledger.importer: row 337: Shell Fuel 8 -236.07 -> groceries
+2026-11-02 02:05:40,249 DEBUG   ledger.importer: row 338: Migros 0412 -129.23 -> groceries
+2026-11-02 02:05:40,404 DEBUG   ledger.importer: row 341: Migros 0412 -71.62 -> groceries
+2026-11-02 02:05:40,680 DEBUG   ledger.importer: row 342: Metro Card Topup -219.51 -> groceries
+2026-11-02 02:05:41,032 DEBUG   ledger.importer: row 343: Spotify AB -129.37 -> dining
+2026-11-02 02:05:41,048 DEBUG   ledger.importer: row 346: City Pharmacy -151.69 -> dining
+2026-11-02 02:05:41,118 DEBUG   ledger.importer: row 348: Cafe Nero 22 -106.34 -> other
+2026-11-02 02:05:41,423 DEBUG   ledger.importer: row 349: Migros 0412 -150.19 -> transport
+2026-11-02 02:05:41,677 DEBUG   ledger.importer: row 350: Carrefour Express -19.90 -> groceries
+2026-11-02 02:05:41,788 INFO    ledger.importer: import done (eurosave): 325 imported, 23 duplicates, 2 skipped
+2026-11-02 02:05:41,823 INFO    ledger.job: eurosave: saved ledger (backup kept)
+2026-11-02 02:05:42,118 DEBUG   ledger.cache: evicted month cache 2025-01 (lru)
+2026-11-02 02:05:42,190 DEBUG   ledger.cache: evicted month cache 2025-02 (lru)
+2026-11-02 02:05:42,555 DEBUG   ledger.cache: evicted month cache 2025-03 (lru)
+2026-11-02 02:05:42,760 DEBUG   ledger.cache: evicted month cache 2025-04 (lru)
+2026-11-02 02:05:42,770 DEBUG   ledger.cache: evicted month cache 2025-05 (lru)
+2026-11-02 02:05:43,076 DEBUG   ledger.cache: evicted month cache 2025-06 (lru)
+2026-11-02 02:05:43,128 DEBUG   ledger.cache: evicted month cache 2025-07 (lru)
+2026-11-02 02:05:43,183 DEBUG   ledger.cache: evicted month cache 2025-08 (lru)
+2026-11-02 02:05:43,288 DEBUG   ledger.cache: evicted month cache 2025-09 (lru)
+2026-11-02 02:05:43,368 DEBUG   ledger.cache: evicted month cache 2025-10 (lru)
+2026-11-02 02:05:43,748 DEBUG   ledger.cache: evicted month cache 2025-11 (lru)
+2026-11-02 02:05:43,770 DEBUG   ledger.cache: evicted month cache 2025-12 (lru)
+2026-11-02 02:05:44,008 DEBUG   ledger.cache: evicted month cache 2025-01 (lru)
+2026-11-02 02:05:44,216 DEBUG   ledger.cache: evicted month cache 2025-02 (lru)
+2026-11-02 02:05:44,563 DEBUG   ledger.cache: evicted month cache 2025-03 (lru)
+2026-11-02 02:05:44,774 DEBUG   ledger.cache: evicted month cache 2025-04 (lru)
+2026-11-02 02:05:44,885 DEBUG   ledger.cache: evicted month cache 2025-05 (lru)
+2026-11-02 02:05:45,237 DEBUG   ledger.cache: evicted month cache 2025-06 (lru)
+2026-11-02 02:05:45,457 DEBUG   ledger.cache: evicted month cache 2025-07 (lru)
+2026-11-02 02:05:45,751 DEBUG   ledger.cache: evicted month cache 2025-08 (lru)
+2026-11-02 02:05:45,766 DEBUG   ledger.cache: evicted month cache 2025-09 (lru)
+2026-11-02 02:05:46,051 DEBUG   ledger.cache: evicted month cache 2025-10 (lru)
+2026-11-02 02:05:46,270 DEBUG   ledger.cache: evicted month cache 2025-11 (lru)
+2026-11-02 02:05:46,541 DEBUG   ledger.cache: evicted month cache 2025-12 (lru)
+2026-11-02 02:05:46,787 DEBUG   ledger.cache: evicted month cache 2025-01 (lru)
+2026-11-02 02:05:46,889 DEBUG   ledger.cache: evicted month cache 2025-02 (lru)
+2026-11-02 02:05:47,145 DEBUG   ledger.cache: evicted month cache 2025-03 (lru)
+2026-11-02 02:05:47,290 DEBUG   ledger.cache: evicted month cache 2025-04 (lru)
+2026-11-02 02:05:47,539 DEBUG   ledger.cache: evicted month cache 2025-05 (lru)
+2026-11-02 02:05:47,722 DEBUG   ledger.cache: evicted month cache 2025-06 (lru)
+2026-11-02 02:05:47,988 DEBUG   ledger.cache: evicted month cache 2025-07 (lru)
+2026-11-02 02:05:48,234 DEBUG   ledger.cache: evicted month cache 2025-08 (lru)
+2026-11-02 02:05:48,510 DEBUG   ledger.cache: evicted month cache 2025-09 (lru)
+2026-11-02 02:05:48,534 DEBUG   ledger.cache: evicted month cache 2025-10 (lru)
+2026-11-02 02:05:48,830 DEBUG   ledger.cache: evicted month cache 2025-11 (lru)
+2026-11-02 02:05:49,223 DEBUG   ledger.cache: evicted month cache 2025-12 (lru)
+2026-11-02 02:05:49,526 DEBUG   ledger.cache: evicted month cache 2025-01 (lru)
+2026-11-02 02:05:49,687 DEBUG   ledger.cache: evicted month cache 2025-02 (lru)
+2026-11-02 02:05:49,835 DEBUG   ledger.cache: evicted month cache 2025-03 (lru)
+2026-11-02 02:05:50,200 DEBUG   ledger.cache: evicted month cache 2025-04 (lru)
+2026-11-02 02:05:50,365 INFO    ledger.job: nightly import finished in 14m 02s; 8 rows skipped, see ERROR lines

@@ -1,0 +1,60 @@
+id: g01-ledger
+difficulty: big
+category: realistic
+files: [ledger/money.py, ledger/store.py, ledger/reports.py, ledger/importer.py, ledger/cli.py, ledger/models.py]
+allow_new_files: true
+check: python -m pytest -q tests
+prompt: |
+  This is a small personal-ledger package (`ledger/`, tests in `tests/`). Do all of the
+  following; the existing tests must keep passing (`python -m pytest -q tests`).
+
+  1. Import bug. Last night's import job skipped rows; its log is
+     `logs/import-2026-11-02.log`. Some skips are bank-export amount formats that
+     `ledger.money.parse_amount` should accept; fix the parsing so those rows import. Skips for
+     bad data (unknown accounts, impossible dates) are correct and must stay skipped, and text
+     that is not an amount must still raise `AmountError`.
+
+  2. Budgets: new module `ledger/budget.py`.
+     - `Budget(category: str, monthly_limit: Decimal, rollover: bool = False)`, a frozen
+       dataclass.
+     - `BudgetStatus` frozen dataclass with fields `category`, `limit`, `spent`, `remaining`
+       (all `Decimal`) and `over` (bool).
+     - `check_budgets(ledger, budgets, month) -> list[BudgetStatus]`, sorted by category.
+       `spent` is the sum of the absolute values of the expenses (negative amounts) in that
+       category and month, on every account; income (positive amounts) in the category does not
+       reduce it. `remaining = limit - spent` (negative when overspent), `over` is
+       `spent > limit`. Without rollover `limit` is `monthly_limit`. With `rollover=True` the
+       unspent part of each earlier month carries over, starting from the first month that
+       has any transaction in the ledger: `limit(m) = monthly_limit + max(0, limit(m-1) -
+       spent(m-1))`; overspending is not carried. A month invalid for
+       `ledger.models.parse_month` raises `LedgerError`.
+
+  3. Recurring transactions: new module `ledger/recurring.py`.
+     - `RecurringRule(description, account, amount: Decimal, category, every, day)`, a frozen
+       dataclass. `every` is `"monthly"` (day of month 1-31; in shorter months the last day
+       of the month) or `"weekly"` (day is the weekday, 0 = Monday ... 6 = Sunday). A bad
+       `every` or `day` raises `LedgerError` when the rule is created.
+     - `occurrences(rule, start: date, end: date) -> list[date]`: every due date in
+       `[start, end]`, inclusive, ascending; empty when `end < start`.
+     - `apply_rules(ledger, rules, start, end) -> int`: adds a `Transaction` for each due date
+       of each rule and returns how many were added. Running it again over the same range
+       adds nothing.
+
+  4. CSV export: `ledger.reports.export_summary_csv(ledger, month, path) -> None` writes the
+     month's `monthly_summary(...).by_category` as CSV: header `category,total`, then one row
+     per category sorted by name, totals with exactly two decimals and no thousands
+     separator (e.g. `rent,-900.00`), `\n` line endings, UTF-8.
+
+  5. Command line: a new subcommand `python -m ledger.cli budget LEDGER BUDGETS --month
+     YYYY-MM`. `BUDGETS` is a JSON file: a list of objects with `category`, `monthly_limit`
+     (string) and optional `rollover` (bool). It prints one line per budget, sorted by
+     category: `<category>: spent <spent> of <limit>` with amounts as `format_amount` gives
+     them, and ` OVER` at the end of the line when over. Exit code 0, or 1 when any budget is
+     over.
+
+  6. Docstrings: every public function, method and class in `ledger/store.py` and
+     `ledger/reports.py` (names not starting with `_`, including methods and properties) gets
+     a docstring that says what it does.
+
+  7. Tests: add `tests/test_budget.py` and `tests/test_recurring.py`, each with at least 5
+     test functions covering the behaviour above (rollover and month-end clamping included).

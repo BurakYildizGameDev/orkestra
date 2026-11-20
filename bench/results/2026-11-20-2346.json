@@ -1,0 +1,330 @@
+{
+  "meta": {
+    "date": "2026-11-20T23:46+03:00",
+    "machine": "Windows 11, Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "python": "3.12.13",
+    "modes": "afg",
+    "task_ids": [
+      "g01-ledger"
+    ],
+    "tasks": 1,
+    "ollama_model": "qwen2.5-coder:14b",
+    "ollama_model_2": null,
+    "claude_model": null,
+    "timeout_s": 2700.0,
+    "worker": "agy",
+    "windows": [
+      {
+        "date": "2026-11-20T23:46+03:00",
+        "claude": "2.1.329 (Claude Code)",
+        "orkestra": "orkestra 0.0.1",
+        "runs": 6,
+        "agy": "1.5.13",
+        "skill": "b2d2eba2a206"
+      }
+    ],
+    "suite": "big",
+    "reviewer": "ollama",
+    "claude_tools": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(python:*)",
+      "Bash(pytest:*)",
+      "Bash(git:*)",
+      "Bash(cd:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(pwd:*)",
+      "PowerShell(python:*)",
+      "PowerShell(pytest:*)",
+      "PowerShell(git:*)",
+      "PowerShell(cd:*)",
+      "PowerShell(ls:*)",
+      "PowerShell(dir:*)",
+      "PowerShell(cat:*)",
+      "PowerShell(type:*)",
+      "PowerShell(pwd:*)",
+      "PowerShell(Get-Content:*)",
+      "PowerShell(Get-ChildItem:*)",
+      "PowerShell(Select-String:*)",
+      "PowerShell(Set-Location:*)",
+      "PowerShell(Get-Location:*)"
+    ],
+    "orkestra_tools": [
+      "Bash(orkestra:*)",
+      "PowerShell(orkestra:*)"
+    ],
+    "repeat": 2
+  },
+  "summary": {
+    "a": {
+      "label": "A - Claude only",
+      "tasks": 1,
+      "repeats": 2,
+      "complete_repeats": 2,
+      "partial_runs": 0,
+      "passed": {
+        "mean": 1.0,
+        "min": 1,
+        "max": 1
+      },
+      "by_difficulty": {
+        "big": {
+          "tasks": 1,
+          "passed_mean": 1.0
+        }
+      },
+      "claude_tokens_per_task": 87385.5,
+      "claude_cache_read_per_task": 1886246.5,
+      "claude_cost_per_task": 1.377,
+      "runs_without_usage": 0,
+      "agent_tokens_per_task": null,
+      "agent_runs_without_usage": null,
+      "permission_denials": 17,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 0.0,
+      "savings_estimate_per_task": 0.0,
+      "duration_per_task_s": 209.005,
+      "errors": 0
+    },
+    "f": {
+      "label": "F - Claude + context filter",
+      "tasks": 1,
+      "repeats": 2,
+      "complete_repeats": 2,
+      "partial_runs": 0,
+      "passed": {
+        "mean": 1.0,
+        "min": 1,
+        "max": 1
+      },
+      "by_difficulty": {
+        "big": {
+          "tasks": 1,
+          "passed_mean": 1.0
+        }
+      },
+      "claude_tokens_per_task": 76877.5,
+      "claude_cache_read_per_task": 1023615.5,
+      "claude_cost_per_task": 1.097,
+      "runs_without_usage": 0,
+      "agent_tokens_per_task": null,
+      "agent_runs_without_usage": null,
+      "permission_denials": 9,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 0.0,
+      "savings_estimate_per_task": 0.0,
+      "duration_per_task_s": 180.37,
+      "errors": 0
+    },
+    "g": {
+      "label": "G - Claude + filter + bulk delegation + cross review",
+      "tasks": 1,
+      "repeats": 2,
+      "complete_repeats": 2,
+      "partial_runs": 0,
+      "passed": {
+        "mean": 1.0,
+        "min": 1,
+        "max": 1
+      },
+      "by_difficulty": {
+        "big": {
+          "tasks": 1,
+          "passed_mean": 1.0
+        }
+      },
+      "claude_tokens_per_task": 76740.0,
+      "claude_cache_read_per_task": 1690094.5,
+      "claude_cost_per_task": 1.192,
+      "runs_without_usage": 0,
+      "agent_tokens_per_task": null,
+      "agent_runs_without_usage": null,
+      "permission_denials": 6,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 2.0,
+      "savings_estimate_per_task": 0.0,
+      "duration_per_task_s": 610.03,
+      "errors": 0
+    }
+  },
+  "records": [
+    {
+      "task": "g01-ledger",
+      "difficulty": "big",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 191.17,
+      "claude": {
+        "input_tokens": 62,
+        "output_tokens": 22955,
+        "cache_read_input_tokens": 1758287,
+        "cache_creation_input_tokens": 62421,
+        "cost_usd": 1.3103733999999998,
+        "turns": 47,
+        "permission_denials": 8
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....................................                                     [100%]\n36 passed in 0.98s\n",
+      "agent": null
+    },
+    {
+      "task": "g01-ledger",
+      "difficulty": "big",
+      "mode": "f",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 177.47,
+      "claude": {
+        "input_tokens": 42,
+        "output_tokens": 22365,
+        "cache_read_input_tokens": 975120,
+        "cache_creation_input_tokens": 53690,
+        "cost_usd": 1.072012,
+        "turns": 35,
+        "permission_denials": 5
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....................................                                     [100%]\n36 passed in 0.95s\n",
+      "agent": null
+    },
+    {
+      "task": "g01-ledger",
+      "difficulty": "big",
+      "mode": "g",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 1067.28,
+      "claude": {
+        "input_tokens": 84,
+        "output_tokens": 22059,
+        "cache_read_input_tokens": 2256909,
+        "cache_creation_input_tokens": 67413,
+        "cost_usd": 1.4322017999999996,
+        "turns": 11,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 4,
+        "ok": 4,
+        "cost_usd": 0.0,
+        "prompt_tokens": 8358,
+        "completion_tokens": 1154,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....................................                                     [100%]\n36 passed in 0.76s\n",
+      "agent": null
+    },
+    {
+      "task": "g01-ledger",
+      "difficulty": "big",
+      "mode": "a",
+      "repeat": 2,
+      "passed": true,
+      "duration_s": 226.84,
+      "claude": {
+        "input_tokens": 72,
+        "output_tokens": 27120,
+        "cache_read_input_tokens": 2014206,
+        "cache_creation_input_tokens": 62141,
+        "cost_usd": 1.4426572,
+        "turns": 56,
+        "permission_denials": 9
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....................................                                     [100%]\n36 passed in 0.94s\n",
+      "agent": null
+    },
+    {
+      "task": "g01-ledger",
+      "difficulty": "big",
+      "mode": "f",
+      "repeat": 2,
+      "passed": true,
+      "duration_s": 183.27,
+      "claude": {
+        "input_tokens": 48,
+        "output_tokens": 23945,
+        "cache_read_input_tokens": 1072111,
+        "cache_creation_input_tokens": 53665,
+        "cost_usd": 1.1228342000000002,
+        "turns": 40,
+        "permission_denials": 4
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....................................                                     [100%]\n36 passed in 0.82s\n",
+      "agent": null
+    },
+    {
+      "task": "g01-ledger",
+      "difficulty": "big",
+      "mode": "g",
+      "repeat": 2,
+      "passed": true,
+      "duration_s": 152.78,
+      "claude": {
+        "input_tokens": 50,
+        "output_tokens": 17993,
+        "cache_read_input_tokens": 1123280,
+        "cache_creation_input_tokens": 45881,
+        "cost_usd": 0.9517639999999999,
+        "turns": 29,
+        "permission_denials": 5
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....................................                                     [100%]\n36 passed in 0.74s\n",
+      "agent": null
+    }
+  ]
+}

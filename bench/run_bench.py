@@ -7,6 +7,10 @@ Three modes run the same tasks, each in a fresh git workspace with the task's pr
   Orkestra home of its own (the bench config, cheap local workers, cache off).
 - **C - Orkestra only:** ``orkestra run --profile cheap`` with no chief; a passing run is
   applied. The lower bound without a chief.
+- **F, G - the arms of Faz 13g** (never part of ``all``): F keeps Claude's context small with
+  ``orkestra exec/read/find`` and writes everything itself; G does that too and hands the bulky
+  parts to workers in one batch, with a cross reviewer (``--reviewer``). Meant for the big suite
+  (``--suite big``: one realistic task on a ~2,000-line project).
 - **E - agy chief + Orkestra** (Faz 13n, never part of ``all``): ``agy --print`` is the chief,
   told how to use Orkestra by the same guide a handoff gives (``prompts/chief_guide.md``). agy
   reports its own tokens; no Claude quota is used.
@@ -55,13 +59,16 @@ from orkestra.errors import OrkestraError
 BENCH_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BENCH_DIR.parent
 TASKS_DIR = BENCH_DIR / "tasks"
+BIG_TASKS_DIR = BENCH_DIR / "tasks_big"  # Faz 13g
+SUITES = {"small": TASKS_DIR, "big": BIG_TASKS_DIR}
 RESULTS_DIR = BENCH_DIR / "results"
 SKILL_FILE = REPO_ROOT / "skill" / "orkestra" / "SKILL.md"
 SKILL_FILES = (SKILL_FILE, SKILL_FILE.with_name("reference.md"))  # core + details (D-113)
 
-DIFFICULTIES = ("easy", "medium", "hard")
+DIFFICULTIES = ("easy", "medium", "hard", "big")
 DEFAULT_OLLAMA_MODEL = "qwen2.5-coder:14b"
 WORKERS = ("ollama", "agy")
+REVIEWERS = ("none", "ollama", "agy")  # "none": the default review settings
 DEFAULT_TIMEOUT_S = 900
 EVAL_TIMEOUT_S = 300
 HIDDEN_DIR = "_hidden_tests"  # next to a copy of the result, only while it is evaluated
@@ -134,6 +141,26 @@ DELEGATE_HINT = (
     "worker failed twice)."
 )
 
+# Faz 13g arms: (b) the context filter alone, (d) the filter plus bulk delegation and a cross
+# review. They tell Claude *how* to work, never anything about the solution.
+FILTER_HINT = (
+    "The Orkestra skill is available in this project. Keep your context small: run tests and "
+    "other long commands with `orkestra exec -- <command>`, and read big files and logs with "
+    '`orkestra read <file> "<question>"` or `orkestra find "<text>"` instead of reading '
+    "them whole, as the skill describes. Write all the code yourself: do not hand any work to "
+    "Orkestra workers."
+)
+FULL_HINT = (
+    "The Orkestra skill is available in this project. Keep your context small: run tests and "
+    "other long commands with `orkestra exec -- <command>`, and read big files and logs with "
+    '`orkestra read <file> "<question>"` or `orkestra find "<text>"` instead of reading '
+    "them whole. Hand the bulky, easy-to-check parts (tests, docstrings, boilerplate) to "
+    "Orkestra workers all at once in one batch, with the project's tests as the verifier. Let "
+    "another provider review them (`orkestra review`), read the short report "
+    "(`orkestra show <run_id> --report`) instead of the whole diff, and apply low-risk results "
+    "with `--max-risk low`. Write the core logic yourself."
+)
+
 
 @dataclass(frozen=True)
 class Mode:
@@ -153,10 +180,15 @@ MODES: dict[str, Mode] = {
     "c": Mode("C - Orkestra only (cheap)", chief=False),
     "d": Mode("D - Claude + Orkestra, delegation asked", chief=True, skill=True,
               hint=DELEGATE_HINT, planned=False),
+    "f": Mode("F - Claude + context filter", chief=True, skill=True, hint=FILTER_HINT,
+              planned=False),
+    "g": Mode("G - Claude + filter + bulk delegation + cross review", chief=True, skill=True,
+              hint=FULL_HINT, planned=False),
     "e": Mode("E - agy chief + Orkestra", chief=False, hint=AGENT_HINT, planned=False,
               agent="agy"),
 }  # fmt: skip
-DELEGATING_MODES = ("c", "d")  # a run here without any worker run means no worker was usable
+DELEGATING_MODES = ("c", "d", "g")  # modes that hand work to workers
+CHOOSING_MODES = ("g",)  # Claude decides what to hand over: no worker run can be a choice
 PLANNED_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.planned)
 CHIEF_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.chief)  # Claude sessions
 AGENT_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.agent)
@@ -404,6 +436,7 @@ class Settings:
     ollama_model_2: str | None = None
     agy: str = "agy"
     worker: str = "ollama"  # "agy": agy is the only worker, tier 1 (D-111)
+    reviewer: str | None = None  # another provider reviews the worker (Faz 13g)
 
 
 @dataclass
@@ -467,11 +500,21 @@ def parse_claude(stdout: str) -> dict[str, Any]:
     if data is None:
         raise BenchError(f"claude output is not JSON: {stdout[:200]!r}")
     usage = data.get("usage") or {}
+    # ``usage`` covers only the last loop of a session that went on after waiting for a
+    # background job; ``modelUsage`` (per model) and the cost cover the whole session (13g).
+    models = [m for m in (data.get("modelUsage") or {}).values() if isinstance(m, dict)]
+
+    def tokens(key: str, model_key: str) -> int:
+        whole = sum(int(m.get(model_key) or 0) for m in models)
+        return max(int(usage.get(key) or 0), whole)
+
     return {
-        "input_tokens": int(usage.get("input_tokens") or 0),
-        "output_tokens": int(usage.get("output_tokens") or 0),
-        "cache_read_input_tokens": int(usage.get("cache_read_input_tokens") or 0),
-        "cache_creation_input_tokens": int(usage.get("cache_creation_input_tokens") or 0),
+        "input_tokens": tokens("input_tokens", "inputTokens"),
+        "output_tokens": tokens("output_tokens", "outputTokens"),
+        "cache_read_input_tokens": tokens("cache_read_input_tokens", "cacheReadInputTokens"),
+        "cache_creation_input_tokens": tokens(
+            "cache_creation_input_tokens", "cacheCreationInputTokens"
+        ),
         "cost_usd": float(data.get("total_cost_usd") or 0.0),
         "turns": int(data.get("num_turns") or 0),
         # Tools Claude asked for and was refused: shows that the --settings permissions work.
@@ -490,12 +533,37 @@ def worker_stats(home: Path, since: datetime) -> dict[str, Any]:
 
     with closing(db.connect(path)) as conn:
         report = stats.collect(conn, since=since, now=db.local_now())
+        rows = conn.execute(
+            "SELECT provider, COUNT(*) FROM runs WHERE started_at >= ? GROUP BY provider "
+            "ORDER BY provider",
+            (since.isoformat(),),
+        ).fetchall()
     totals, saved = report.totals, report.savings
     return {
         "runs": totals.runs, "ok": totals.ok, "cost_usd": round(totals.cost_usd, 6),
         "prompt_tokens": totals.prompt_tokens, "completion_tokens": totals.completion_tokens,
         "savings_tokens": max(saved.worker_output_tokens - saved.envelope_tokens, 0),
+        # The reviewer is a routable provider at tier 2: an escalated run may be its work.
+        "by_provider": {str(name): int(count) for name, count in rows if name},
     }  # fmt: skip
+
+
+def reviewer_runs(record: Record, reviewer: str | None) -> int:
+    """Worker runs the cross reviewer wrote itself (an escalation reached tier 2)."""
+    if not reviewer:
+        return 0
+    return int((record.workers.get("by_provider") or {}).get(reviewer, 0))
+
+
+def run_mark(record: Record, reviewer: str | None) -> str:
+    """The progress line's verdict for one run."""
+    mark = "PASS" if record.passed else "fail"
+    if record.mode in DELEGATING_MODES and not record.workers.get("runs"):
+        mark += " - did not delegate" if record.mode in CHOOSING_MODES else " - no worker run"
+    wrote = reviewer_runs(record, reviewer)
+    if wrote:
+        mark += f" - reviewer {reviewer} wrote {wrote} run{'s' if wrote > 1 else ''}"
+    return mark
 
 
 def _env(home: Path) -> dict[str, str]:
@@ -808,11 +876,24 @@ def setup_home(home: Path, settings: Settings) -> None:
         if settings.ollama_model_2:
             models.append({"id": settings.ollama_model_2, "tier": 2})
         providers = {"ollama": {"type": "ollama", "models": models}}
-    document = {
+    document: dict[str, Any] = {
         "version": 1, "language": "en", "cache": {"enabled": False},
         "routing": {"adaptive": False}, "notify": {"desktop": False},
         "providers": providers,
     }  # fmt: skip
+    if settings.reviewer:  # tier 2: the router tries the worker first, the reviewer reviews it
+        if settings.reviewer == "ollama":
+            providers["ollama"] = {
+                "type": "ollama",
+                "models": [{"id": settings.ollama_model, "tier": 2}],
+            }
+        else:
+            providers["agy"] = {
+                "type": "cli_agent", "command": settings.agy, "kind": "agy", "tier": 2,
+                "experimental": True, "enabled": True,
+                "timeout_s": worker_timeout(settings.timeout_s),
+            }  # fmt: skip
+        document["review"] = {"by": {settings.worker: [settings.reviewer]}, "independent": True}
     (home / "config.yaml").write_text(loader.dump_yaml(document), encoding="utf-8")
 
     config = loader.load_config(home / "config.yaml", cwd=home, environ={}).config
@@ -905,7 +986,11 @@ def _num(value: float | None, pattern: str = "{:,.0f}") -> str:
     return "-" if value is None else pattern.format(value)
 
 
-def markdown(summary: Mapping[str, Mapping[str, Any]], records: Sequence[Record]) -> str:
+def markdown(
+    summary: Mapping[str, Mapping[str, Any]],
+    records: Sequence[Record],
+    reviewer: str | None = None,
+) -> str:
     lines = [
         "| Mode | Passed (mean, min-max) | Claude tokens / task | Claude cost / task "
         "| Worker cost / task | Worker runs / task | Time / task |",
@@ -922,10 +1007,11 @@ def markdown(summary: Mapping[str, Mapping[str, Any]], records: Sequence[Record]
             f"| {_num(s['worker_runs_per_task'], '{:.1f}')} "
             f"| {_num(s['duration_per_task_s'], '{:.0f} s')} |"
         )  # fmt: skip
-    lines += ["", "| Mode | " + " | ".join(DIFFICULTIES) + " |", "|---|---|---|---|"]
+    ran = [d for d in DIFFICULTIES if any(d in s["by_difficulty"] for s in summary.values())]
+    lines += ["", "| Mode | " + " | ".join(ran) + " |", "|---" * (len(ran) + 1) + "|"]
     for s in summary.values():
         cells = [f"{s['by_difficulty'][d]['passed_mean']:g}/{s['by_difficulty'][d]['tasks']}"
-                 if d in s["by_difficulty"] else "-" for d in DIFFICULTIES]  # fmt: skip
+                 if d in s["by_difficulty"] else "-" for d in ran]  # fmt: skip
         lines.append(f"| {s['label']} | " + " | ".join(cells) + " |")
     for other in SKILL_MODES:
         if "a" in summary and other in summary:
@@ -946,6 +1032,10 @@ def markdown(summary: Mapping[str, Mapping[str, Any]], records: Sequence[Record]
     if denied:
         lines += ["", "Denied tool calls (permission): "
                   + ", ".join(f"{m.upper()} {n}" for m, n in denied.items())]  # fmt: skip
+    wrote = {m: sum(reviewer_runs(r, reviewer) for r in records if r.mode == m) for m in summary}
+    if any(wrote.values()):
+        lines += ["", f"Worker runs written by the reviewer ({reviewer}): "
+                  + ", ".join(f"{m.upper()} {n}" for m, n in wrote.items() if n)]  # fmt: skip
     errors = [r for r in records if r.error]
     if errors:
         lines += ["", f"Runs with an error: {len(errors)} (see the JSON file)."]
@@ -962,7 +1052,9 @@ def write_results(
     clean = default_scrubber()  # every field and every record, resumed ones too
     json_path = _write_atomic(out_dir / f"{stamp}.json", clean(document))
     header = f"# Benchmark {stamp}\n\n" + "".join(_meta_lines(meta)) + "\n"
-    md_path = _write_atomic(out_dir / f"{stamp}.md", clean(header + markdown(summary, records)))
+    md_path = _write_atomic(
+        out_dir / f"{stamp}.md", clean(header + markdown(summary, records, meta.get("reviewer")))
+    )
     return json_path, md_path
 
 
@@ -1022,6 +1114,8 @@ def _parser() -> argparse.ArgumentParser:
                              "of all)")  # fmt: skip
     parser.add_argument("--repeat", type=int, default=None, help="default 3")
     parser.add_argument("--tasks", default="", help="comma-separated id prefixes (default: all)")
+    parser.add_argument("--suite", choices=tuple(SUITES), default=None,
+                        help="small (default: the 20 tasks) or big (Faz 13g)")  # fmt: skip
     parser.add_argument("--out", type=Path, default=RESULTS_DIR)
     parser.add_argument(
         "--work-dir", type=Path, default=Path(tempfile.gettempdir()) / "orkestra-bench"
@@ -1035,6 +1129,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--worker", choices=WORKERS, default=None,
                         help="who Orkestra hands the work to: ollama (default) or agy "
                              "(agy only, tier 1; for mode D, D-111)")  # fmt: skip
+    parser.add_argument("--reviewer", choices=REVIEWERS, default=None,
+                        help="another provider (tier 2) that reviews the worker's runs "
+                             "(review.by; Faz 13g arm G); default none")  # fmt: skip
     parser.add_argument("--timeout", type=float, default=None,
                         help=f"per run, default {DEFAULT_TIMEOUT_S} s")  # fmt: skip
     parser.add_argument(
@@ -1047,6 +1144,10 @@ def _parser() -> argparse.ArgumentParser:
                         help="start at most this many Claude sessions in this call; "
                              "runs that need no Claude still run, the rest wait for "
                              "--resume")  # fmt: skip
+    parser.add_argument("--rescore", type=Path, default=None,
+                        help="a results JSON file: read every Claude run's saved output in "
+                             "--work-dir again (fixes files measured before the whole-session "
+                             "token count); starts nothing")  # fmt: skip
     parser.add_argument("--dry-run", action="store_true",
                         help="check every task and the leak guard; start nothing")  # fmt: skip
     return parser
@@ -1063,14 +1164,16 @@ class Plan:
     stamp: str
     meta: dict[str, Any]
     records: list[Record]
+    suite: str = "small"
 
 
 def _plan(opts: argparse.Namespace) -> Plan:
     if opts.resume is None:
         modes = parse_modes(opts.mode)
-        tasks = load_tasks(TASKS_DIR, [p for p in opts.tasks.split(",") if p])
+        suite = opts.suite or "small"
+        tasks = load_tasks(SUITES[suite], [p for p in opts.tasks.split(",") if p])
         stamp = datetime.now().strftime("%Y-%m-%d-%H%M")
-        return Plan(modes, tasks, opts.repeat or 3, opts.out, stamp, {}, [])
+        return Plan(modes, tasks, opts.repeat or 3, opts.out, stamp, {}, [], suite)
     try:
         data = json.loads(opts.resume.read_text(encoding="utf-8"))
         meta = dict(data["meta"])
@@ -1080,29 +1183,72 @@ def _plan(opts: argparse.Namespace) -> Plan:
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise BenchError(f"cannot resume from {opts.resume}: not a results file of this "
                          f"version ({type(exc).__name__}: {exc})") from exc  # fmt: skip
+    suite = str(meta.get("suite", "small"))  # files from before Faz 13g
+    if opts.suite is not None and opts.suite != suite:
+        raise BenchError(f"--suite differs from the resumed run ({suite})")
+    folder = SUITES[suite]
     prefixes = [p for p in opts.tasks.split(",") if p]
-    if prefixes and [t.id for t in load_tasks(TASKS_DIR, prefixes)] != ids:
+    if prefixes and [t.id for t in load_tasks(folder, prefixes)] != ids:
         raise BenchError(f"--tasks differs from the resumed run ({', '.join(ids)})")
     for flag, key, value in (("--ollama-model", "ollama_model", opts.ollama_model),
                              ("--ollama-model-2", "ollama_model_2", opts.ollama_model_2),
                              ("--claude-model", "claude_model", opts.claude_model),
                              ("--worker", "worker", opts.worker),
-                             ("--timeout", "timeout_s", opts.timeout)):  # fmt: skip
+                             ("--timeout", "timeout_s", opts.timeout),
+                             ("--reviewer", "reviewer", _reviewer(opts.reviewer))):  # fmt: skip
+        if key == "reviewer" and opts.reviewer is not None and value != meta.get(key):
+            raise BenchError(f"{flag} differs from the resumed run ({meta.get(key) or 'none'})")
         if value is not None and value != meta.get(key):
             raise BenchError(f"{flag} differs from the resumed run ({meta.get(key)})")
     if opts.mode is not None and "".join(parse_modes(opts.mode)) != meta["modes"]:
         raise BenchError(f"--mode differs from the resumed run ({meta['modes']})")
-    tasks = [t for t in load_tasks(TASKS_DIR) if t.id in ids]
+    tasks = [t for t in load_tasks(folder) if t.id in ids]
     records = [Record(**r) for r in stored_records]
     repeat = max(opts.repeat or 0, int(meta["repeat"]))
     return Plan(list(meta["modes"]), tasks, repeat, opts.resume.parent, opts.resume.stem, meta,
-                records)  # fmt: skip
+                records, suite)  # fmt: skip
+
+
+def _reviewer(choice: str | None) -> str | None:
+    return None if choice in (None, "none") else choice
 
 
 def _stop(records: Sequence[Record], plan: Plan, reason: str) -> Path:
     json_path, _ = write_results(records, plan.out, stamp=plan.stamp, meta=plan.meta)
     print(f"{reason}\nresume with: uv run python bench/run_bench.py --resume {json_path}")
     return json_path
+
+
+RESCORED_FIELDS = ("input_tokens", "output_tokens", "cache_read_input_tokens",
+                   "cache_creation_input_tokens")  # fmt: skip
+
+
+def rescore(path: Path, work_dir: Path, mismatched: list[str] | None = None) -> int:
+    """Parse each Claude run's saved ``claude-output.json`` again; returns how many records
+    changed. Runs whose folder is gone, or holds another run's output (another cost), keep
+    their numbers; the latter are added to ``mismatched``."""
+    mismatched = [] if mismatched is None else mismatched
+    data = json.loads(path.read_text(encoding="utf-8"))
+    records = [Record(**r) for r in data["records"]]
+    changed = 0
+    for index, record in enumerate(records):
+        saved = work_dir / f"{record.task}-{record.mode}-{record.repeat}" / "claude-output.json"
+        if record.mode not in CHIEF_MODES or record.claude is None or not saved.is_file():
+            continue
+        try:
+            fresh = parse_claude(saved.read_text(encoding="utf-8"))
+        except BenchError:
+            continue
+        # Every call in the work dir reuses the folder name: only the same session (its
+        # cost always covered the whole session, D-116) may replace the numbers.
+        if abs(fresh["cost_usd"] - float(record.claude.get("cost_usd") or 0.0)) > 1e-9:
+            mismatched.append(f"{record.task} {record.mode} #{record.repeat}")
+            continue
+        if any(fresh[k] != record.claude.get(k) for k in RESCORED_FIELDS):
+            records[index] = Record(**{**asdict(record), "claude": {**record.claude, **fresh}})
+            changed += 1
+    write_results(records, path.parent, stamp=path.stem, meta=data["meta"])
+    return changed
 
 
 def main(
@@ -1112,10 +1258,31 @@ def main(
     which: Callable[[str], str | None] = shutil.which,
 ) -> int:
     opts = _parser().parse_args(argv)
+    if opts.rescore is not None:
+        try:
+            others: list[str] = []
+            changed = rescore(opts.rescore, opts.work_dir, others)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            print(f"cannot rescore {opts.rescore}: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return 2
+        print(f"{changed} record(s) changed in {opts.rescore}")
+        if others:
+            print(
+                f"{len(others)} left as they were: their saved output is another run's "
+                f"(another cost): {', '.join(others)}"
+            )
+        return 0
     try:
         plan = _plan(opts)
     except BenchError as exc:
         print(exc, file=sys.stderr)
+        return 2
+    meta = plan.meta
+    worker = meta.get("worker", opts.worker or "ollama")
+    reviewer = meta.get("reviewer", _reviewer(opts.reviewer))
+    if reviewer is not None and reviewer == worker:
+        print(f"--reviewer {reviewer} is the worker too: the reviewer must be another provider",
+              file=sys.stderr)  # fmt: skip
         return 2
     done = {(r.task, r.mode, r.repeat) for r in plan.records}
     total = len(plan.tasks) * len(plan.modes) * plan.repeat
@@ -1134,17 +1301,19 @@ def main(
         print(f"claude is not on PATH (needed for modes {', '.join(CHIEF_MODES)})",
               file=sys.stderr)  # fmt: skip
         return 2
-    meta = plan.meta
-    worker = meta.get("worker", opts.worker or "ollama")
-    if worker == "agy" and (opts.ollama_model or opts.ollama_model_2):
-        flag = "--ollama-model" if opts.ollama_model else "--ollama-model-2"
-        print(f"{flag} has no use with --worker agy (agy is the only worker)", file=sys.stderr)
+    unused = [flag for flag, value in (("--ollama-model", opts.ollama_model),
+                                       ("--ollama-model-2", opts.ollama_model_2))
+              if value and worker == "agy"
+              and (flag == "--ollama-model-2" or reviewer != "ollama")]  # fmt: skip
+    if unused:
+        print(f"{unused[0]} has no use with --worker agy (agy is the only worker; an ollama "
+              "reviewer uses --ollama-model only)", file=sys.stderr)  # fmt: skip
         return 2
     agy = which("agy")
-    needs_agy = worker == "agy" or any(m in AGENT_MODES for m in plan.modes)
+    needs_agy = "agy" in (worker, reviewer) or any(m in AGENT_MODES for m in plan.modes)
     if needs_agy and agy is None:
-        print(f"agy is not on PATH (needed for modes {', '.join(AGENT_MODES)} and --worker agy)",
-              file=sys.stderr)  # fmt: skip
+        print(f"agy is not on PATH (needed for modes {', '.join(AGENT_MODES)}, --worker agy "
+              "and --reviewer agy)", file=sys.stderr)  # fmt: skip
         return 2
     settings = Settings(
         out_dir=plan.out, work_dir=opts.work_dir, claude=claude or "claude",
@@ -1153,7 +1322,7 @@ def main(
         ollama_model_2=meta.get("ollama_model_2", opts.ollama_model_2),
         claude_model=meta.get("claude_model", opts.claude_model),
         timeout_s=meta.get("timeout_s", opts.timeout or DEFAULT_TIMEOUT_S),
-        agy=agy or "agy", worker=worker,
+        agy=agy or "agy", worker=worker, reviewer=reviewer,
     )  # fmt: skip
     home = opts.work_dir / f"home-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}"
     setup_home(home, settings)
@@ -1171,9 +1340,11 @@ def main(
             "python": platform.python_version(),
             "modes": "".join(plan.modes), "task_ids": [t.id for t in plan.tasks],
             "tasks": len(plan.tasks),
-            "ollama_model": None if settings.worker == "agy" else settings.ollama_model,
+            "ollama_model": (None if "ollama" not in (settings.worker, settings.reviewer)
+                             else settings.ollama_model),
             "ollama_model_2": settings.ollama_model_2, "claude_model": settings.claude_model,
             "timeout_s": settings.timeout_s, "worker": settings.worker, "windows": [],
+            "suite": plan.suite, "reviewer": settings.reviewer,
             "claude_tools": list(CLAUDE_TOOLS), "orkestra_tools": list(ORKESTRA_TOOLS),
         })  # fmt: skip
     windows = meta.setdefault("windows", [])
@@ -1214,9 +1385,7 @@ def main(
                 claude_runs += is_claude
                 window["runs"] += 1
                 records.append(record)
-                mark = "PASS" if record.passed else "fail"
-                if mode in DELEGATING_MODES and not record.workers.get("runs"):
-                    mark += " - no worker run"
+                mark = run_mark(record, reviewer)
                 print(f"[{len(records)}/{total}] {task.id} {mode} #{repeat}: {mark} "
                       f"({record.duration_s:.0f} s){' - ' + record.error if record.error else ''}",
                       flush=True)  # fmt: skip
