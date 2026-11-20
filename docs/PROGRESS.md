@@ -15,7 +15,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 5b – Worktree | ✅ | 2026-11-10 | worktree (kirli ağaç dahil), `show`, `apply`, `discard`, `gc` (D-040) |
 | 5c – API ile edit | ✅ | 2026-11-10 | tam dosya JSON, yol güvenliği, worktree'de doğrulama, kesilmede kademe 3 (D-042) |
 | 6 – CLI ajanları | ✅ | 2026-11-10 | codex, agy (deneysel), generic; süreç ağacı temizliği, dışarı yazma tespiti (D-044) |
-| 6b – MCP sınırları, Unity açık testleri (ek) | ⏳ | | agy MCP beklemesi düzeltildi (D-055, D-056); kalan: Unity açık elle testler, sonradan açılan Unity, `doctor --mcp` sondası |
+| 6b – MCP sınırları, Unity açık testleri (ek) | ⏳ | | agy MCP beklemesi düzeltildi (D-055, D-056); `doctor --mcp` sondası bitti (D-118, 2026-11-21); kalan: Unity açık elle testler, sonradan açılan Unity (kullanıcıyla) |
 | 7a – Batch motoru | ✅ | 2026-11-10 | `orkestra batch`, DAG, sağlayıcı semaforu, kesişen edit'ler sırayla (D-053) |
 | 7b – Tahmin, toplu apply, stats | ✅ | 2026-11-11 | `batch --estimate`/`--yes-cost`, `apply --batch --only-ok`, `stats`, skill'e batch (D-057) |
 | 8a – status, şablon, önbellek, sayaç | ✅ | 2026-11-11 | `status`, 6 şablon + proje şablonları, cevap önbelleği, tasarruf satırı (D-059) |
@@ -52,6 +52,14 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 6b (3. madde) – `doctor --mcp` (2026-11-21)
+
+- `providers/mcp_probe.py`: agy'nin `mcp_config.json`'ındaki etkin stdio sunucuları (URL ve `disabled` olanlar atlanır), Windows'ta `.cmd`/`.bat` `cmd.exe /d /c` ile; `initialize` el sıkışması, 15 sn sınır, süreç ağacı her durumda durdurulur; sunucular aynı anda yoklanır.
+- `doctor --mcp` (varsayılan kapalı): sunucu başına satır; cevap veren `ok`, hemen çıkan `info` (uygulaması kapalıyken koruma betiği: agy beklemez), zaman aşımı / bozuk çıktı / başlatılamama `warn`. Metinler 5 dilde. Rehber (en + tr), Mimari §5.5 (D-118).
+- Testler: 14 yeni (sahte stdio sunucular: el sıkışan, susan, hemen çıkan, bozuk JSON yazan; süreç ağacının öldüğü; bayraksız `doctor`'un hiçbir sunucu başlatmadığı).
+- Canlı deneme (kullanıcının makinesi, Unity kapalı): `blender` cevap veriyor (MCP for Blender), `unity` koruma betiği hemen çıktı (kod 1) → bilgi satırı. İlk sürüm bunu "cevap vermiyor" uyarısı yapıyordu, yanıltıcıydı; düzeltildi.
+- Kalan (kullanıcıyla): Unity açıkken elle testler, Unity'nin sonradan açılması (6b'nin 1. ve 2. maddeleri).
 
 ### Faz 13e – 2. ve 3. turlar, sonuçlar (2026-11-21)
 

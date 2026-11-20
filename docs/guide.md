@@ -247,7 +247,10 @@ providers:
   would hold every run until the timeout. Orkestra stops such a run once agy has waited
   `mcp_wait_s` (default 60 seconds; agy reports every 30 s; `0` never stops it) with an error
   naming the server and moves on to the next provider; `doctor` and `providers enable` warn
-  about `disabled` entries. To keep such a server for interactive use, start it through a small
+  about `disabled` entries. `orkestra doctor --mcp` starts each enabled stdio server, sends the
+  MCP `initialize` request and reports by name which answer, which time out (each agy run would
+  wait for them) and which exit at once (a guard script while its app is closed); it starts
+  your real servers, so it runs only when asked. To keep such a server for interactive use, start it through a small
   script that exits at once when its app is not running, e.g. on Windows
   (`command: "cmd.exe"`, `args: ["/d", "/c", "<script>.cmd", "--mcp"]`):
   ```bat
