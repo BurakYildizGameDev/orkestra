@@ -1152,3 +1152,22 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 - **PROGRESS tablosu:** düzeltme-fable c satırı yeniden dört hücre.
 - **Beş dil testi:** iki harfli parçalar yerine tablodaki `--lang en\|tr\|de\|es\|fr` aranıyor.
 
+## D-110 – Faz 13d: `--max-claude-runs` sınırında tur durmaz, Claude'suz koşular sürer (2026-11-20, Faz 13d)
+**Neden:** 13d'nin 60 koşusunun 40'ı Claude oturumu (kullanıcının abonelik kotası), 20'si mod C (yalnız Ollama). Eski davranış ilk fazla Claude oturumunda turu durduruyordu; `--max-claude-runs 0` ile mod C'yi Claude kotası harcamadan bitirmek mümkün değildi, `--resume` de mod listesinin aynı kalmasını istediği için C'yi ayrı dosyada koşmak 13d'yi iki dosyaya bölerdi.
+**Karar:** sınır dolunca yalnız Claude oturumları (`CHIEF_MODES`) atlanır; Claude'suz koşular (C, E) sürer. Tur sonunda "N Claude session(s) not started" ve `--resume` komutu yazılır, çıkış kodu 0. Atlanan oturumlar aynı sonuç dosyasına `--resume` ile eklenir. Kota dolunca durma (`UsageLimitReached`, kod 4) değişmedi.
+**Kullanım (13d):** önce `--mode all --repeat 1 --max-claude-runs 0` (20 mod C koşusu, Claude yok), sonra her 5 saatlik pencerede `--resume <dosya> --max-claude-runs N` (`/usage` önce/sonra).
+
+
+## D-111 – Faz 13d: bench'te işçi seçimi, `--worker agy` (2026-11-20, Faz 13d)
+**Neden:** 13d'de mod B 20 görevin hiçbirini devretmedi; bench'in işçisi yalnız Ollama 14b idi ve tek başına 9/20 çözüyordu (mod C). Patron–çalışan düzeninin Claude tokenını azaltıp azaltmadığını görmek için güçlü bir işçiyle (agy) zorunlu devir (mod D) ölçülmeli.
+**Karar:** `run_bench.py --worker ollama|agy` (varsayılan `ollama`, eski davranış). `agy` seçilince bench'in Orkestra ayarında tek sağlayıcı agy olur (`cli_agent`, `kind: agy`, kademe 1, `experimental: true` ve açıkça `enabled: true` — yoksa router deneysel sağlayıcıyı atlar; zaman aşımı bench'inki); Ollama eklenmez, böylece "en düşük kademe" agy'dir. Seçim sonuç dosyasının `meta.worker` alanına yazılır; `--resume` farklı bir `--worker` reddeder (eski dosyalar `ollama` sayılır). agy PATH'te yoksa koşu başlamaz (kod 2). Mod C de bu ayarla agy'yi kullanır; 13d'nin `--worker agy` koşusu yalnız mod D içindir.
+**Sonuç (2026-11-20):** ilk deneme geçersiz (`enabled` yazılmamıştı, router agy'yi atladı, Claude işi kendisi yaptı; `bench/results/trial/2026-11-20-0709`). Düzeltilmiş koşu `bench/results/2026-11-20-0714`: 4/4 geçti, her görevde agy işi yaptı, Claude tokenı görev başına 28,1k (aynı görevlerde A: 13,5k). Claude'un çıktı tokenı bazı görevlerde düştü (ör. 18: 5,1k → 2,1k) ama `cache_creation` 2–3 kat arttı: skill (~28 KB) ve Orkestra komut çıktıları her oturumda ~15k token sabit ek yük. Küçük görevde devretmek Claude'a pahalı; kazanç ancak ek yükten büyük işlerde (13g) ya da ek yük küçültülünce (kısa skill) beklenir.
+
+## D-112 – Faz 13d: PR #42 kod denetimi düzeltmeleri (2026-11-20, Faz 13d)
+**Bulgular ve kararlar (6):**
+1. agy işçisinin zaman aşımı koşununkiyle aynıydı (900 s): işçi temiz biçimde zaman aşımına uğrayamıyor, mod D'de Claude oturumu öldürülüp tokenı kaybolabiliyordu. Artık `worker_timeout` = koşunun 2/3'ü (en az 1 s; 1 s altı `--timeout` artık çökmez).
+2. İşçinin kotası bitince bench durmuyordu, sıradan başarısızlık sayılıyordu. Orkestra kotayı `quota_events`'e yazıyor (Faz 13k); bench her koşudan sonra buna bakar ve kayıt varsa `UsageLimitReached` ile durur (kod 4, koşu kaydedilmez). Durma mesajı artık kimin limiti olduğunu söyler (`Claude`, `agy` ya da işçi adı). Denetim "Orkestra 3600 s bekler" dedi; bu doğru değil: `quota_pause_s` sağlayıcıyı duraklatır, süreç beklemez. Bu yüzden `quota_pause_s` değiştirilmedi.
+3. `--worker agy` ile `--ollama-model`/`--ollama-model-2` sessizce yok sayılıyordu. Artık reddedilir (kod 2) ve `meta.ollama_model` boş yazılır. Eski `2026-11-20-0714` dosyası olduğu gibi kaldı (geçmiş kayıt).
+4. Mod C/D'de hiç işçi koşusu olmazsa ilerleme satırı `no worker run` der (geçersiz ilk deneme fark edilmeden kalmasın). Geçersiz deneme dosyasının başına not eklendi.
+5. Pencere satırı agy sürümünü de yazar (önceden yalnız JSON'daydı).
+

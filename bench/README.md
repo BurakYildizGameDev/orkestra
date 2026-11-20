@@ -82,12 +82,13 @@ Modes A and B use your Claude Code quota: a full run is 120 Claude sessions, mor
 5-hour window. So a run can be split:
 
 ```bash
-uv run python bench/run_bench.py --mode all --repeat 1 --max-claude-runs 10   # this window
-uv run python bench/run_bench.py --resume bench/results/<date>.json --max-claude-runs 10
+uv run python bench/run_bench.py --mode all --repeat 1 --max-claude-runs 0    # mode C only, no quota
+uv run python bench/run_bench.py --resume bench/results/<date>.json --max-claude-runs 10   # next window
 uv run python bench/run_bench.py --resume bench/results/<date>.json --repeat 3  # add repeats
 ```
 
-- `--max-claude-runs N` starts at most N Claude sessions in this call, then stops cleanly.
+- `--max-claude-runs N` starts at most N Claude sessions in this call. The runs that need no
+  Claude (mode C) still run; the Claude sessions past the limit wait for `--resume` (D-110).
 - When Claude's usage limit (or an overload) stops a session, the benchmark stops with exit
   code 4 and that run is **not** recorded as a failure; resume after the limit resets.
 - `--resume <file>` skips the runs already in that file and appends to it. Tasks, modes,

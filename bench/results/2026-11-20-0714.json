@@ -1,0 +1,212 @@
+{
+  "meta": {
+    "date": "2026-11-20T07:14+03:00",
+    "machine": "Windows 11, Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "python": "3.12.13",
+    "modes": "d",
+    "task_ids": [
+      "17-registry-shapes",
+      "18-bank-transfer",
+      "19-rename-class-deprecated",
+      "20-cache-invalidation"
+    ],
+    "tasks": 4,
+    "ollama_model": "qwen2.5-coder:14b",
+    "ollama_model_2": null,
+    "claude_model": null,
+    "timeout_s": 900,
+    "worker": "agy",
+    "windows": [
+      {
+        "date": "2026-11-20T07:14+03:00",
+        "claude": "2.1.329 (Claude Code)",
+        "orkestra": "orkestra 0.0.1",
+        "runs": 4,
+        "agy": "1.5.12"
+      }
+    ],
+    "claude_tools": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(python:*)",
+      "Bash(pytest:*)",
+      "Bash(git:*)",
+      "Bash(cd:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(pwd:*)",
+      "PowerShell(python:*)",
+      "PowerShell(pytest:*)",
+      "PowerShell(git:*)",
+      "PowerShell(cd:*)",
+      "PowerShell(ls:*)",
+      "PowerShell(dir:*)",
+      "PowerShell(cat:*)",
+      "PowerShell(type:*)",
+      "PowerShell(pwd:*)",
+      "PowerShell(Get-Content:*)",
+      "PowerShell(Get-ChildItem:*)",
+      "PowerShell(Select-String:*)",
+      "PowerShell(Set-Location:*)",
+      "PowerShell(Get-Location:*)"
+    ],
+    "orkestra_tools": [
+      "Bash(orkestra:*)",
+      "PowerShell(orkestra:*)"
+    ],
+    "repeat": 1
+  },
+  "summary": {
+    "d": {
+      "label": "D - Claude + Orkestra, delegation asked",
+      "tasks": 4,
+      "repeats": 1,
+      "complete_repeats": 1,
+      "partial_runs": 0,
+      "passed": {
+        "mean": 4.0,
+        "min": 4,
+        "max": 4
+      },
+      "by_difficulty": {
+        "hard": {
+          "tasks": 4,
+          "passed_mean": 4.0
+        }
+      },
+      "claude_tokens_per_task": 28136.75,
+      "claude_cache_read_per_task": 348818.75,
+      "claude_cost_per_task": 0.336,
+      "runs_without_usage": 0,
+      "agent_tokens_per_task": null,
+      "agent_runs_without_usage": null,
+      "permission_denials": 8,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 1.0,
+      "savings_estimate_per_task": 0.0,
+      "duration_per_task_s": 310.382,
+      "errors": 0
+    }
+  },
+  "records": [
+    {
+      "task": "17-registry-shapes",
+      "difficulty": "hard",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 284.17,
+      "claude": {
+        "input_tokens": 28,
+        "output_tokens": 4773,
+        "cache_read_input_tokens": 461836,
+        "cache_creation_input_tokens": 26428,
+        "cost_usd": 0.3993632000000001,
+        "turns": 20,
+        "permission_denials": 2
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 548,
+        "completion_tokens": 68,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.06s\n",
+      "agent": null
+    },
+    {
+      "task": "18-bank-transfer",
+      "difficulty": "hard",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 129.77,
+      "claude": {
+        "input_tokens": 16,
+        "output_tokens": 2144,
+        "cache_read_input_tokens": 223969,
+        "cache_creation_input_tokens": 22754,
+        "cost_usd": 0.2697698,
+        "turns": 9,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 513,
+        "completion_tokens": 94,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "......                                                                   [100%]\n6 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "19-rename-class-deprecated",
+      "difficulty": "hard",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 627.89,
+      "claude": {
+        "input_tokens": 22,
+        "output_tokens": 3701,
+        "cache_read_input_tokens": 335864,
+        "cache_creation_input_tokens": 25455,
+        "cost_usd": 0.34492079999999997,
+        "turns": 16,
+        "permission_denials": 3
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 1213,
+        "completion_tokens": 180,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "......                                                                   [100%]\n6 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "20-cache-invalidation",
+      "difficulty": "hard",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 199.7,
+      "claude": {
+        "input_tokens": 24,
+        "output_tokens": 3128,
+        "cache_read_input_tokens": 373606,
+        "cache_creation_input_tokens": 24074,
+        "cost_usd": 0.3299692000000001,
+        "turns": 15,
+        "permission_denials": 3
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 582,
+        "completion_tokens": 95,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.01s\n",
+      "agent": null
+    }
+  ]
+}

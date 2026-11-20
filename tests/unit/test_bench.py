@@ -10,6 +10,8 @@ import json
 import os
 import shutil
 from collections.abc import Sequence
+from contextlib import closing
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -527,16 +529,34 @@ def test_resume_can_add_repeats(tmp_path: Path) -> None:
     assert len(data["records"]) == 12 and data["meta"]["repeat"] == 2
 
 
-def test_max_claude_runs_stops_before_the_next_claude_session(
+def test_max_claude_runs_skips_further_claude_sessions_but_runs_the_rest(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """Faz 13d (D-110): past the limit only Claude sessions wait; mode C still runs, and the
+    skipped sessions are left for ``--resume`` in the same results file."""
     runner = ManyTasks()
     code = _main(tmp_path, runner, "--max-claude-runs", "3")
     out = capsys.readouterr().out
     assert code == 0 and runner.claude_runs == 3
     modes = [(r["task"][:2], r["mode"]) for r in _saved(tmp_path)["records"]]
-    assert modes == [("01", "a"), ("01", "b"), ("01", "c"), ("09", "a")]
-    assert "--resume" in out
+    assert modes == [("01", "a"), ("01", "b"), ("01", "c"), ("09", "a"), ("09", "c")]
+    assert "1 Claude session" in out and "--resume" in out
+
+
+def test_max_claude_runs_zero_runs_only_what_needs_no_claude_then_resume_adds_the_rest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner = ManyTasks()
+    assert _main(tmp_path, runner, "--max-claude-runs", "0") == 0
+    assert runner.claude_runs == 0
+    assert [r["mode"] for r in _saved(tmp_path)["records"]] == ["c", "c"]
+    assert "4 Claude sessions" in capsys.readouterr().out
+    [first] = (tmp_path / "out").glob("*.json")
+    again = ManyTasks()
+    assert rb.main(["--resume", str(first), "--work-dir", str(tmp_path / "work")],
+                   runner=again, which=lambda name: name) == 0  # fmt: skip
+    assert again.claude_runs == 4
+    assert sorted(r["mode"] for r in _saved(tmp_path)["records"]) == ["a", "a", "b", "b", "c", "c"]
 
 
 def test_resume_refuses_another_task_set(
@@ -1126,3 +1146,128 @@ def test_the_window_records_the_agent_version(tmp_path: Path) -> None:
     assert code == 0
     data = json.loads(next(out.glob("*.json")).read_text(encoding="utf-8"))
     assert data["meta"]["windows"][0]["agy"] == "1.5.12"
+
+
+# --- Faz 13d: agy as the worker (D-111) -------------------------------------------------------
+
+
+def test_worker_agy_makes_agy_the_only_tier_1_worker(tmp_path: Path) -> None:
+    from contextlib import closing
+
+    from orkestra.config import loader
+    from orkestra.state import consent, db
+
+    settings = rb.Settings(out_dir=tmp_path, work_dir=tmp_path, claude="claude",
+                           orkestra=["orkestra"], ollama_model="qwen-test",
+                           claude_model=None, timeout_s=1, agy="agy-bin",
+                           worker="agy")  # fmt: skip
+    rb.setup_home(tmp_path / "home", settings)
+    config = loader.load_config(tmp_path / "home" / "config.yaml", cwd=tmp_path, environ={}).config
+    assert list(config.providers) == ["agy"]
+    agy = config.providers["agy"]
+    assert agy.type == "cli_agent" and agy.command == "agy-bin"  # type: ignore[union-attr]
+    assert agy.kind == "agy" and agy.tier == 1  # type: ignore[union-attr]
+    # experimental: the router skips it unless enabled is written out (router.py)
+    assert "enabled" in agy.model_fields_set and agy.enabled
+    with closing(db.connect(tmp_path / "home" / "state.db")) as conn:
+        assert consent.state(conn, "agy", agy) == "granted"
+
+
+def test_worker_defaults_to_ollama(tmp_path: Path) -> None:
+    assert _settings(tmp_path).worker == "ollama"
+    assert _main(tmp_path, ManyTasks()) == 0
+    assert _saved(tmp_path)["meta"]["worker"] == "ollama"
+
+
+def test_worker_agy_needs_agy_on_path(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    argv = ["--mode", "d", "--tasks", "01", "--repeat", "1", "--worker", "agy",
+            "--out", str(tmp_path / "out"), "--work-dir", str(tmp_path / "work")]  # fmt: skip
+    code = rb.main(argv, runner=ManyTasks(), which=lambda name: None if name == "agy" else name)
+    assert code == 2 and "agy" in capsys.readouterr().err
+
+
+def test_resume_refuses_another_worker(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert _main(tmp_path, ManyTasks()) == 0
+    [first] = (tmp_path / "out").glob("*.json")
+    code = rb.main(["--resume", str(first), "--work-dir", str(tmp_path / "work"),
+                    "--worker", "agy"], runner=ManyTasks(), which=lambda name: name)  # fmt: skip
+    assert code == 2 and "--worker" in capsys.readouterr().err
+
+
+# --- PR #42 review (D-112) --------------------------------------------------------------------
+
+
+def _agy_settings(tmp_path: Path, timeout_s: float = 900) -> rb.Settings:
+    return rb.Settings(out_dir=tmp_path / "results", work_dir=tmp_path / "work", claude="claude",
+                       orkestra=["orkestra"], ollama_model="qwen-test", claude_model=None,
+                       timeout_s=timeout_s, agy="agy", worker="agy")  # fmt: skip
+
+
+def _agy_config(tmp_path: Path, timeout_s: float) -> Any:
+    from orkestra.config import loader
+
+    rb.setup_home(tmp_path / "home", _agy_settings(tmp_path, timeout_s))
+    path = tmp_path / "home" / "config.yaml"
+    return loader.load_config(path, cwd=tmp_path, environ={}).config.providers["agy"]
+
+
+def test_the_agy_worker_times_out_well_before_the_run(tmp_path: Path) -> None:
+    assert _agy_config(tmp_path, 900).timeout_s == 600
+    assert _agy_config(tmp_path / "tiny", 0.5).timeout_s == 1  # no crash below 1 s
+
+
+def _quota_event(home: Path, provider: str) -> None:
+    from orkestra.state import db, forecast
+
+    with closing(db.connect(home / "state.db")) as conn, conn:
+        forecast.record_event(conn, provider, db.local_now(), None)
+
+
+def test_a_worker_quota_after_the_start_is_found(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    rb.setup_home(home, _agy_settings(tmp_path))
+    started = datetime.now().astimezone()
+    assert rb.worker_quota_hit(home, started) is None
+    _quota_event(home, "agy")
+    assert rb.worker_quota_hit(home, started) == "agy"
+    assert rb.worker_quota_hit(tmp_path / "nowhere", started) is None
+
+
+def test_a_worker_quota_stops_the_bench_labelled_with_the_worker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(rb, "worker_quota_hit", lambda home, since: "agy")
+    argv = ["--mode", "c", "--tasks", "01", "--repeat", "1", "--worker", "agy",
+            "--out", str(tmp_path / "out"), "--work-dir", str(tmp_path / "work")]  # fmt: skip
+    assert rb.main(argv, runner=ManyTasks(), which=lambda name: name) == 4
+    err = capsys.readouterr().err
+    assert "usage limit (agy)" in err and "Claude" not in err
+
+
+def test_a_worker_agy_run_writes_no_ollama_model_and_refuses_ollama_flags(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = ["--mode", "c", "--tasks", "01", "--repeat", "1", "--worker", "agy",
+            "--out", str(tmp_path / "out"), "--work-dir", str(tmp_path / "work")]  # fmt: skip
+    for extra in (["--ollama-model", "x"], ["--ollama-model-2", "y"]):
+        assert rb.main([*base, *extra], runner=ManyTasks(), which=lambda n: n) == 2, extra
+        assert extra[0] in capsys.readouterr().err
+    assert rb.main(base, runner=ManyTasks(), which=lambda n: n) == 0
+    meta = _saved(tmp_path)["meta"]
+    assert meta["worker"] == "agy" and meta["ollama_model"] is None
+    md = next((tmp_path / "out").glob("*.md")).read_text(encoding="utf-8")
+    assert "ollama_model: -" in md and ", agy 9.9.9 (fake), 1 runs" in md  # agy's version
+
+
+def test_a_delegating_run_without_any_worker_run_says_so(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    class NoWorker(ManyTasks):
+        def __call__(self, args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
+                     input_text: str | None = None) -> rb.Completed:  # fmt: skip
+            if "run" in args:  # the worker never ran: nothing applied
+                return rb.Completed(1, "", "no provider")
+            return super().__call__(args, cwd, env, timeout, input_text)
+
+    _main(tmp_path, NoWorker())
+    assert "no worker run" in capsys.readouterr().out
