@@ -989,7 +989,9 @@ def _parser() -> argparse.ArgumentParser:
         help="a results JSON file: skip its finished runs, append to it",
     )
     parser.add_argument("--max-claude-runs", type=int, default=None,
-                        help="start at most this many Claude sessions in this call")  # fmt: skip
+                        help="start at most this many Claude sessions in this call; "
+                             "runs that need no Claude still run, the rest wait for "
+                             "--resume")  # fmt: skip
     parser.add_argument("--dry-run", action="store_true",
                         help="check every task and the leak guard; start nothing")  # fmt: skip
     return parser
@@ -1120,6 +1122,7 @@ def main(
     meta["repeat"] = plan.repeat
     records = list(plan.records)
     claude_runs = 0
+    waiting = 0  # Claude sessions past --max-claude-runs: left for --resume (D-110)
     for repeat in range(1, plan.repeat + 1):
         for task in plan.tasks:
             for mode in plan.modes:
@@ -1131,12 +1134,8 @@ def main(
                     and opts.max_claude_runs is not None
                     and claude_runs >= opts.max_claude_runs
                 ):
-                    _stop(
-                        records,
-                        plan,
-                        f"stopped after {claude_runs} Claude sessions (--max-claude-runs)",
-                    )
-                    return 0
+                    waiting += 1  # the runs that need no Claude go on
+                    continue
                 try:
                     record = run_once(task, mode, repeat, settings, runner=runner, home=home)
                 except LeakError as exc:
@@ -1155,6 +1154,10 @@ def main(
                       f"({record.duration_s:.0f} s){' - ' + record.error if record.error else ''}",
                       flush=True)  # fmt: skip
                 write_results(records, plan.out, stamp=plan.stamp, meta=meta)  # survives a crash
+    if waiting:
+        sessions = "session" if waiting == 1 else "sessions"
+        _stop(records, plan, f"{waiting} Claude {sessions} not started (--max-claude-runs)")
+        return 0
     json_path, md_path = write_results(records, plan.out, stamp=plan.stamp, meta=meta)
     print(f"results: {json_path}\n         {md_path}")
     return 0

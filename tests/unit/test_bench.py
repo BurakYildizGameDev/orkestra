@@ -527,16 +527,34 @@ def test_resume_can_add_repeats(tmp_path: Path) -> None:
     assert len(data["records"]) == 12 and data["meta"]["repeat"] == 2
 
 
-def test_max_claude_runs_stops_before_the_next_claude_session(
+def test_max_claude_runs_skips_further_claude_sessions_but_runs_the_rest(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """Faz 13d (D-110): past the limit only Claude sessions wait; mode C still runs, and the
+    skipped sessions are left for ``--resume`` in the same results file."""
     runner = ManyTasks()
     code = _main(tmp_path, runner, "--max-claude-runs", "3")
     out = capsys.readouterr().out
     assert code == 0 and runner.claude_runs == 3
     modes = [(r["task"][:2], r["mode"]) for r in _saved(tmp_path)["records"]]
-    assert modes == [("01", "a"), ("01", "b"), ("01", "c"), ("09", "a")]
-    assert "--resume" in out
+    assert modes == [("01", "a"), ("01", "b"), ("01", "c"), ("09", "a"), ("09", "c")]
+    assert "1 Claude session" in out and "--resume" in out
+
+
+def test_max_claude_runs_zero_runs_only_what_needs_no_claude_then_resume_adds_the_rest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner = ManyTasks()
+    assert _main(tmp_path, runner, "--max-claude-runs", "0") == 0
+    assert runner.claude_runs == 0
+    assert [r["mode"] for r in _saved(tmp_path)["records"]] == ["c", "c"]
+    assert "4 Claude sessions" in capsys.readouterr().out
+    [first] = (tmp_path / "out").glob("*.json")
+    again = ManyTasks()
+    assert rb.main(["--resume", str(first), "--work-dir", str(tmp_path / "work")],
+                   runner=again, which=lambda name: name) == 0  # fmt: skip
+    assert again.claude_runs == 4
+    assert sorted(r["mode"] for r in _saved(tmp_path)["records"]) == ["a", "a", "b", "b", "c", "c"]
 
 
 def test_resume_refuses_another_task_set(

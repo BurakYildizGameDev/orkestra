@@ -1152,3 +1152,8 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 - **PROGRESS tablosu:** düzeltme-fable c satırı yeniden dört hücre.
 - **Beş dil testi:** iki harfli parçalar yerine tablodaki `--lang en\|tr\|de\|es\|fr` aranıyor.
 
+## D-110 – Faz 13d: `--max-claude-runs` sınırında tur durmaz, Claude'suz koşular sürer (2026-11-20, Faz 13d)
+**Neden:** 13d'nin 60 koşusunun 40'ı Claude oturumu (kullanıcının abonelik kotası), 20'si mod C (yalnız Ollama). Eski davranış ilk fazla Claude oturumunda turu durduruyordu; `--max-claude-runs 0` ile mod C'yi Claude kotası harcamadan bitirmek mümkün değildi, `--resume` de mod listesinin aynı kalmasını istediği için C'yi ayrı dosyada koşmak 13d'yi iki dosyaya bölerdi.
+**Karar:** sınır dolunca yalnız Claude oturumları (`CHIEF_MODES`) atlanır; Claude'suz koşular (C, E) sürer. Tur sonunda "N Claude session(s) not started" ve `--resume` komutu yazılır, çıkış kodu 0. Atlanan oturumlar aynı sonuç dosyasına `--resume` ile eklenir. Kota dolunca durma (`UsageLimitReached`, kod 4) değişmedi.
+**Kullanım (13d):** önce `--mode all --repeat 1 --max-claude-runs 0` (20 mod C koşusu, Claude yok), sonra her 5 saatlik pencerede `--resume <dosya> --max-claude-runs N` (`/usage` önce/sonra).
+
