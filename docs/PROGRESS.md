@@ -39,7 +39,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13p – Kısa skill: şefin sabit ek yükü (ek) | ✅ | 2026-11-20 | `SKILL.md` 28 KB → 4,1 KB İngilizce çekirdek + `reference.md` (D-113); mod D agy 17–20: Claude tokenı 28,1k → 14,8k/görev (A 13,5k), maliyet $0,336 → $0,189 (A $0,191): küçük görevde başa baş; kod denetimi 6 bulgu düzeltildi (D-114) |
 | 13e – 2. ve 3. turlar, sonuçlar, README tablosu | ⏳ | | `--resume`, 80 Claude oturumu |
 | 13f – Kota bitince kesintisiz devam (ek) | ✅ | 2026-11-17 | ajan ve API kota mesajı tanıma, yenilenene kadar duraklatma (`quota_pause_s`), aynı komutta sıradakine geçiş, batch/kuyrukta bir daha denememe, bildirim satırı; ağsız ölçüm 10/10 (D-084) |
-| 13g – %25 token deneyi: büyük işte bölmek kazandırıyor mu? (ek) | ⏳ | | hazırlık bitti (D-115): `--suite big`, görev `g01-ledger` (~1.200 satır + 160 KB log, 7 iş, 36 gizli test), kollar A / F (bağlam süzgeci) / G (+ toplu devir + çapraz denetim, `--reviewer`); ölçüm bekliyor; büyük gerçekçi görev; yalnız Claude vs Claude + Orkestra (okumayı ve toplu yazmayı devret, kısa rapor, başka bir AI'nın çapraz denetimi); başarı ölçütü Claude token'ında ≥ %25 azalma; ayrıntı yerel YAPILIS_PLANI.md |
+| 13g – %25 token deneyi: büyük işte bölmek kazandırıyor mu? (ek) | ✅ | 2026-11-21 | `--suite big`, görev `g01-ledger`, kollar A / F (bağlam süzgeci) / G (+ toplu devir + çapraz denetim) (D-115); oturumun tamamından token sayımı + `--rescore` (D-116); sonuç (`bench/results/2026-11-20-2346`, 2 tekrar, hepsi geçti): F Claude tokenında −%12, önbellekten okumada −%46, maliyette −%20; G −%12 / −%10 / −%13, iki koşudan yalnız birinde devretti ve o koşu A'dan pahalı. **%25 hedefi tutmadı**; kaldıraç bağlam süzgeci |
 | 13h – Token haritası: Claude'un tokenı nereye gidiyor (ek) | ✅ | 2026-11-17 | `orkestra tokens`: araç çağrısı başına maliyet, türlere göre pay, sabit başlangıç, önbellek kaçırma, ölçüye göre ölçekleme; bulgu: maliyetin ~%80'i bağlamın yeniden okunması (D-086) |
 | 13i-a – Bağlam süzgeci: `orkestra exec` (ek, ana kaldıraç) | ✅ | 2026-11-17 | kısa çıktı olduğu gibi; pytest/ruff/pyright/derleyici kurallarla (`dosya:satır`, test adı düşmez); diğerleri sohbet modeli özeti; çıkış kodu korunur; skill kuralı (D-088) |
 | 13i-b – Bağlam süzgeci: `read` / `find` + proje fihristi (ek) | ✅ | 2026-11-17 | `read` işaretçileri dosyaya karşı denetler; `find` modelsiz, çok sonuç fihrist özetiyle gruplanır; `map --install-hook` (D-090) |
@@ -52,6 +52,31 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13g – Büyük görevde bölmek kazandırıyor mu? (2026-11-21)
+
+**Yapılanlar**
+- `bench/run_bench.py --suite small|big`, `bench/tasks_big/g01-ledger`: ~1.200 satırlık defter paketi, 33 görünür test, 1.774 satırlık (160 KB) gece log'u; tek şartnamede 7 iş (log'dan hata, iki yeni modül, CSV, CLI komutu, toplu docstring, iki test dosyası); 36 gizli test (D-115).
+- Mod F (skill + `exec`/`read`/`find`, işçiye iş yok) ve mod G (F + tek batch'te devir, başka sağlayıcının denetimi, `show --report`, `--max-risk low`); `--reviewer none|ollama|agy` (`review.by`).
+- Ölçüm hatası düzeltildi: bekleyen oturumda `usage` yalnız son döngüyü sayıyordu; artık `modelUsage` toplamı. `--rescore` kayıtlı çıktılardan yeniden puanlar (D-116). 13e'nin 81 ve 13p'nin 4 oturumu etkilenmemiş.
+- Testler: 1929 → 1931 (+ bench testleri; tam koşu 1929 geçti, sonraki iki test hedefli koşuldu).
+
+**Sonuç** (`bench/results/2026-11-20-2346`, `--mode a,f,g --repeat 2 --worker agy --reviewer ollama`, 6/6 geçti)
+
+| Kol | Claude token / görev | Önbellekten okuma | Maliyet | Süre |
+|---|---|---|---|---|
+| A – yalnız Claude | 87,4k | 1,89M | $1,38 | 209 s |
+| F – bağlam süzgeci | 76,9k (−%12) | 1,02M (−%46) | $1,10 (−%20) | 180 s |
+| G – + toplu devir + çapraz denetim | 76,7k (−%12) | 1,69M (−%10) | $1,19 (−%13) | 610 s |
+
+- **Başarı ölçütü (Claude tokenında ≥ %25 azalma) tutmadı.** En iyi kol F: −%12 token, −%20 maliyet; asıl kazanç önbellekten okumada (−%46).
+- G koşu 1: 4 işçi koşusu (agy), hepsi geçti, ama Claude 1067 s bekledi ve bağlamı tekrar tekrar okudu: 89,6k token, $1,43 (A'dan pahalı). G koşu 2: hiç devretmedi (F gibi çalıştı): 63,9k, $0,95. Devretmek büyük görevde de Claude'a kazandırmadı.
+- Gizli testlerde kayıp yok (6/6). İzin reddi: A 17, F 9, G 6 (Claude izin listesi dışındaki komutları denedi; A'nın turlarını biraz şişirir).
+
+**Ertelenenler / bilinen sorunlar**
+- Kısa oturum kolu (planın c kolu) ayrı koşulmadı (D-115).
+- Uzun G oturumlarında `num_turns` yalnız son döngüyü sayar (D-116).
+- Tek görev, 2 tekrar: gürültü payı büyük; README'ye sonuç 13e'nin benchmark tablosuyla birlikte yazılacak.
 
 ### Kod denetimi – düzeltme-fable c (PR #41), 2026-11-20
 `/code-review` 6 bulgu; hepsi düzeltildi (D-109). Önce kırmızı testler.
