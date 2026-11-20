@@ -105,6 +105,24 @@ def test_remove_hides_a_pending_item_but_never_a_running_one(
         store.remove(conn, first.id)  # already removed
 
 
+def test_remove_finished_hides_done_and_failed_items_only(
+    conn: db.sqlite3.Connection, tmp_path: Path
+) -> None:
+    items = [store.add(conn, _task(tmp_path, f"f{n}.yaml"), now=START) for n in range(4)]
+    store.mark_running(conn, items[0].id, START)
+    store.mark_finished(conn, items[0].id, "done", START, result_ref="r1")
+    store.mark_running(conn, items[1].id, START)
+    store.mark_finished(conn, items[1].id, "failed", START, note="verify")
+    store.mark_running(conn, items[2].id, START)
+    removed = store.remove_finished(conn)
+    assert [item.id for item in removed] == [items[0].id, items[1].id]
+    assert [(item.id, item.status) for item in store.items(conn)] == [
+        (items[2].id, "running"),
+        (items[3].id, "pending"),
+    ]
+    assert store.remove_finished(conn) == []
+
+
 def test_counts_leave_removed_and_done_items_out_of_the_waiting_numbers(
     conn: db.sqlite3.Connection, tmp_path: Path
 ) -> None:

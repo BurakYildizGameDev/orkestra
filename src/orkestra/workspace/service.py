@@ -21,7 +21,7 @@ from typing import Any, Literal
 from orkestra import paths
 from orkestra.errors import OrkestraError, UsageError, WorkspaceConflict
 from orkestra.i18n import t
-from orkestra.state import budget, db
+from orkestra.state import budget, db, retention
 from orkestra.workspace import git_worktree as gw
 
 RUN_ID = re.compile(r"^(\d{8}-\d{6})-[0-9a-f]{4}$")
@@ -393,6 +393,7 @@ class GcReport:
     reservations: int
     dry_run: bool
     failed: tuple[tuple[Path, str], ...] = ()  # worktrees that could not be removed, and why
+    rows: retention.Pruned = retention.NOTHING  # old state.db rows (D-104)
 
 
 def _worktree_dirs() -> list[Path]:
@@ -449,9 +450,11 @@ def gc(
     keep: timedelta = DEFAULT_KEEP,
     dry_run: bool = False,
 ) -> GcReport:
-    """Remove abandoned worktrees, run directories older than ``keep`` and stale reservations.
+    """Remove abandoned worktrees, run directories older than ``keep``, stale reservations
+    and old ``runs``/``usage``/``queue`` rows.
 
-    ``runs`` rows stay (statistics); only files are removed.
+    Rows go only after ``retention.MIN_KEEP`` (statistics and learned routing read them),
+    and a run whose worktree could not be removed keeps its row (D-104).
     """
     naive_now = now.replace(tzinfo=None)
     cutoff = naive_now - keep
@@ -462,9 +465,11 @@ def gc(
         if runs_root.is_dir()
         else ()
     )
+    row_cutoff = retention.row_cutoff(now, keep)
     if dry_run:
         stale = len(budget.stale_reservations(conn, now))
-        return GcReport(worktrees, old_runs, stale, dry_run=True)
+        rows = retention.prune(conn, row_cutoff, dry_run=True, removing=frozenset(worktrees))
+        return GcReport(worktrees, old_runs, stale, dry_run=True, rows=rows)
     removed: list[Path] = []
     failed: list[tuple[Path, str]] = []
     for path in worktrees:  # one stuck worktree must not stop the rest
@@ -476,4 +481,5 @@ def gc(
     for run_id in old_runs:
         shutil.rmtree(paths.run_dir(run_id), ignore_errors=True)
     stale = budget.purge_stale_reservations(conn, now)
-    return GcReport(tuple(removed), old_runs, stale, dry_run=False, failed=tuple(failed))
+    rows = retention.prune(conn, row_cutoff, dry_run=False)
+    return GcReport(tuple(removed), old_runs, stale, dry_run=False, failed=tuple(failed), rows=rows)

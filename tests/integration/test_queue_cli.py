@@ -169,6 +169,30 @@ def test_queue_run_text_output_and_remove(
     assert code == 2 and "#1" in err
 
 
+def test_queue_remove_finished_and_its_usage_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fake: FakeOllama,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    work = _setup(tmp_path, monkeypatch)
+    _run(["queue", "add", str(_task(work, "one.json", "first"))], capsys)
+    code, _, err = _run(["queue", "run"], capsys)
+    assert code == 0, err
+    _run(["queue", "add", str(_task(work, "two.json", "second"))], capsys)
+    code, out, _ = _run(["queue", "remove", "--finished", "--json"], capsys)
+    assert code == 0
+    assert [item["id"] for item in json.loads(out)["removed"]] == [1]
+    code, out, _ = _run(["queue", "list", "--json"], capsys)
+    assert [item["id"] for item in json.loads(out)["items"]] == [2]
+    code, out, _ = _run(["queue", "remove", "--finished"], capsys)
+    assert code == 0 and t("queue.removed_finished", count=0) in out
+    code, _, err = _run(["queue", "remove"], capsys)
+    assert code == 2 and t("queue.error.remove_target") in err
+    code, _, err = _run(["queue", "remove", "2", "--finished"], capsys)
+    assert code == 2 and t("queue.error.remove_target") in err
+
+
 def test_a_second_queue_run_exits_with_code_5(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

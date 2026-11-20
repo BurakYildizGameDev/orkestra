@@ -43,7 +43,7 @@ from orkestra.queue import service as queue_service
 from orkestra.queue import store as queue_store
 from orkestra.routing.router import Route, describe_candidates, resolve_profile
 from orkestra.security.redact import Redactor, config_for_display, configured_secrets
-from orkestra.state import consent, db, stats
+from orkestra.state import consent, db, retention, stats
 from orkestra.tasks import batch, runner, spec, templates
 from orkestra.tui import detect, wizard
 from orkestra.workspace import service
@@ -947,7 +947,11 @@ def build_app() -> typer.Typer:
     def stats_command(
         since: Annotated[
             str,
-            typer.Option("--since", metavar="DURATION", help=t("cli.stats.option.since")),
+            typer.Option(
+                "--since",
+                metavar="DURATION",
+                help=t("cli.stats.option.since", days=retention.MIN_KEEP.days),
+            ),
         ] = stats.DEFAULT_SINCE,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
@@ -1466,7 +1470,12 @@ def build_app() -> typer.Typer:
     def gc_command(
         older_than: Annotated[
             int,
-            typer.Option("--older-than", min=0, metavar="DAYS", help=t("cli.gc.option.older_than")),
+            typer.Option(
+                "--older-than",
+                min=0,
+                metavar="DAYS",
+                help=t("cli.gc.option.older_than", days=retention.MIN_KEEP.days),
+            ),
         ] = service.DEFAULT_KEEP.days,
         dry_run: Annotated[
             bool, typer.Option("--dry-run", help=t("cli.gc.option.dry_run"))
@@ -1481,7 +1490,8 @@ def build_app() -> typer.Typer:
             _echo_json(
                 {"dry_run": report.dry_run, "worktrees": [str(p) for p in report.worktrees],
                  "runs": list(report.runs), "reservations": report.reservations,
-                 "failed": [str(p) for p, _ in report.failed]}
+                 "failed": [str(p) for p, _ in report.failed],
+                 "rows": asdict(report.rows)}
             )  # fmt: skip
             return
         for path in report.worktrees:
@@ -1493,6 +1503,8 @@ def build_app() -> typer.Typer:
         key = "gc.dry" if report.dry_run else "gc.summary"
         typer.echo(t(key, worktrees=len(report.worktrees), runs=len(report.runs),
                      reservations=report.reservations))  # fmt: skip
+        rows_key = "gc.rows_dry" if report.dry_run else "gc.rows"
+        typer.echo(t(rows_key, **asdict(report.rows)))
 
     @app.command("doctor", help=t("cli.doctor.help"))
     def doctor_command(
@@ -1778,11 +1790,27 @@ def _add_queue_commands(app: typer.Typer) -> None:
 
     @queue_app.command("remove", help=t("cli.queue.remove.help"))
     def queue_remove(
-        item_id: Annotated[int, typer.Argument(metavar="ID", help=t("cli.queue.remove.arg.id"))],
+        item_id: Annotated[
+            int | None, typer.Argument(metavar="ID", help=t("cli.queue.remove.arg.id"))
+        ] = None,
+        finished: Annotated[
+            bool, typer.Option("--finished", help=t("cli.queue.remove.option.finished"))
+        ] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
+        if (item_id is None) == (not finished):
+            raise UsageError(t("queue.error.remove_target"))
         with closing(db.connect()) as conn:
-            item = queue_store.remove(conn, item_id)
+            if item_id is None:
+                removed = queue_store.remove_finished(conn)
+            else:
+                item = queue_store.remove(conn, item_id)
+        if item_id is None:
+            if as_json:
+                _echo_json({"removed": [queue_display.item_json(i) for i in removed]})
+            else:
+                typer.echo(t("queue.removed_finished", count=len(removed)))
+            return
         if as_json:
             _echo_json(queue_display.item_json(item))
         else:

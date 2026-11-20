@@ -1107,3 +1107,21 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **Kılavuzdaki her komut tam:** kılavuzda kod bloğu yok, satır içi komutlar da argümanlarıyla denetlenir (`check_call`); `providers enable <name>`, `providers add <name> --base-url <url> --model <id>`, `plan expand <plan.md>`. Tam kurallar için kurulu pakette olmayan `skill/` yolu yerine depodaki SKILL.md adresi.
 - **Tek kaynak:** mod E'nin istemi `MODES[mode].hint`'ten (`agent_prompt(prompt, hint)`); her pencerede `agy --version` kaydedilir, sürüm değişince not düşülür.
 - **Testler:** 1822 → 1836 (+14).
+
+## D-104 – düzeltme-fable üçe bölündü; a: gc satırları, kuyruk, ntfy adresi, kurulum uyarısı (2026-11-20, düzeltme-fable a)
+**Bölünme:** plan tek ek faz diyordu; 9 maddesi birbirinden bağımsız ve büyük, tek PR'da denetimi zor. (a) kod düzeltmeleri (madde 1, 2, 3, 5, 6), (b) `cli.py` / `runner.py` bölme (madde 4, davranış değişmez), (c) README kısaltma + "Bilinen sınırlar" + elle kullanım turu + temizlik (madde 7, 8, 9).
+- **`gc` satır siler (madde 1):** yeni `state/retention.py`. `runs` + onların `usage` satırları, koşusuz `usage` satırları (gününe göre) ve `done`/`failed`/`removed` `queue` işleri. Satır kesimi `max(--older-than, 35 gün)`: öğrenen yönlendirme (`adaptive.WINDOW`) ve kota tahmini (`LEARN_DAYS`) 30 günü okur, `--older-than 7` dosyaları siler ama bu satırlara dokunmaz. Worktree'si diskte duran (silinemeyen ya da henüz uygulanmamış) koşunun satırı kalır; `--dry-run`'da bu `gc`'nin sileceği worktree'ler gitmiş sayılır. Rezervasyonlar eskisi gibi `purge_stale_reservations`'ta. `quota_events` ve `handoffs` silinmez (küçük, tahmin okur). Yeni migration gerekmedi. JSON'a `rows: {runs, usage, queue}`.
+- **`desktop-notifier>=6.0,<7` (madde 2).**
+- **`doctor` kurulum uyarısı (madde 3):** `orkestra/install.py` dağıtımın `direct_url.json`'undan düzenlenebilir kaynağı okur, dalı `git symbolic-ref` ile (`cwd=` kaynak). Çalışan ortam kaynağın içindeyse (`uv run`, projenin `.venv`'i) geliştirme sayılır, uyarı yok; değilse (ör. `uv tool install -e`) ve dal `main`/`master` değilse `install` uyarısı (ayrık HEAD dahil). Kalıcı çözüm Faz 14'ün normal kurulumu.
+- **`notify.ntfy_url` (madde 5):** varsayılan `https://ntfy.sh`; konu sona eklenir (sondaki `/` atılır). Şemada doğrulanır: `https://`, ya da yalnız yerel/özel ağ adresine (localhost, `.local`, loopback, özel/link-local IP) `http://`; kullanıcı adı/parola, sorgu, parça reddedilir. Hata mesajı değeri yazmaz. Arayüzde ayar yok (config dosyasından).
+- **`queue remove --finished` (madde 6):** biten ve başarısız işleri `removed` yapar (satırları `gc` siler); ID ile birlikte ya da hiçbiri verilmezse kod 2.
+- Mimari: §4.1 `notify` örneği ve modeli, komut tablosunda `gc`, bütçe ve worktree notları, §21 kuyruk notu güncellendi.
+
+## D-105 – düzeltme-fable a kod denetimi düzeltmeleri (2026-11-20, düzeltme-fable a)
+`/code-review` (PR #39): 6 bulgu (1 önemli, 5 küçük), hepsi düzeltildi; önce kırmızı testler.
+- **Öğrenilmiş fiyat kalır (önemli):** `pricing._from_history` fiyatı bütün `usage` geçmişinin en yüksek maliyet/token oranından öğreniyor. `gc` her (sağlayıcı, model) için o satırı silmez; yoksa 35 gündür kullanılmayan ücretli model fiyatsız kalırdı.
+- **Başlangıcı okunamayan koşu kalır:** `started_at` boş ya da bozuksa yaşı bilinmez, silinmez. Kullanım satırı yalnız günü kesimden eskiyse silinir (bugünün bütçesi hiç eksilmez).
+- **`doctor` yanlış uyarı vermez:** dal `git symbolic-ref --quiet` çıkış koduyla okunur: 0 dal, 1 ayrık HEAD (uyarı), diğerleri (depo değil, git yok, zaman aşımı) bilinmez → uyarı yok.
+- **`gc --dry-run` yazma kilidi almaz** (`BEGIN IMMEDIATE` yok); çalışan bir işçiyi bekletmez.
+- **Gün sayısı tek kaynaktan:** `gc --older-than` ve `stats --since` yardımında `{days}` = `retention.MIN_KEEP.days`; `stats --since` yardımı `gc`'nin eski satırları sildiğini söylüyor.
+

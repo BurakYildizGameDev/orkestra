@@ -25,7 +25,6 @@ from orkestra.config.schema import NotifyCfg
 from orkestra.i18n import t
 from orkestra.state import db, forecast, health
 
-NTFY_URL = "https://ntfy.sh/{topic}"
 TIMEOUT_S = 10.0
 EXTRA = "orkestra-cli[notify]"
 _TOPIC = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -95,7 +94,7 @@ def send(
         deliveries.append(Delivery("ntfy", "failed", "env_invalid"))
     elif config.ntfy_topic_env:
         deliveries.append(
-            _send_ntfy(post, env.get(config.ntfy_topic_env, "").strip(), title, message)
+            _send_ntfy(post, config, env.get(config.ntfy_topic_env, "").strip(), title, message)
         )
     return deliveries
 
@@ -110,13 +109,17 @@ def _send_desktop(desktop: DesktopSender, title: str, message: str) -> Delivery:
     return Delivery("desktop", "sent")
 
 
-def _send_ntfy(post: Poster, topic: str, title: str, message: str) -> Delivery:
+def ntfy_topic_url(base: str, topic: str) -> str:
+    return f"{base.strip().rstrip('/')}/{topic}"
+
+
+def _send_ntfy(post: Poster, config: NotifyCfg, topic: str, title: str, message: str) -> Delivery:
     if not topic:
         return Delivery("ntfy", "skipped", "topic_unset")
     if not _TOPIC.match(topic):
         return Delivery("ntfy", "failed", "topic_invalid")
     try:
-        post(NTFY_URL.format(topic=topic), title, message)
+        post(ntfy_topic_url(config.ntfy_url, topic), title, message)
     except Exception as exc:  # offline, rate limited: the work itself is done
         return Delivery("ntfy", "failed", type(exc).__name__)
     return Delivery("ntfy", "sent")
