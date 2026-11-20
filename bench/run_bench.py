@@ -60,6 +60,7 @@ SKILL_FILE = REPO_ROOT / "skill" / "orkestra" / "SKILL.md"
 
 DIFFICULTIES = ("easy", "medium", "hard")
 DEFAULT_OLLAMA_MODEL = "qwen2.5-coder:14b"
+WORKERS = ("ollama", "agy")
 DEFAULT_TIMEOUT_S = 900
 EVAL_TIMEOUT_S = 300
 HIDDEN_DIR = "_hidden_tests"  # next to a copy of the result, only while it is evaluated
@@ -396,6 +397,7 @@ class Settings:
     timeout_s: float
     ollama_model_2: str | None = None
     agy: str = "agy"
+    worker: str = "ollama"  # "agy": agy is the only worker, tier 1 (D-111)
 
 
 @dataclass
@@ -758,25 +760,34 @@ def _run_orkestra(
 
 
 def setup_home(home: Path, settings: Settings) -> None:
-    """Orkestra's config and consent for the bench: local Ollama only, the cache off (the same
-    task runs several times), adaptive routing off (every repeat routes the same way)."""
+    """Orkestra's config and consent for the bench: local Ollama only (or agy only with
+    ``--worker agy``, D-111), the cache off (the same task runs several times), adaptive routing
+    off (every repeat routes the same way)."""
     from orkestra.config import loader
     from orkestra.state import consent, db
 
     home.mkdir(parents=True, exist_ok=True)
-    models = [{"id": settings.ollama_model, "tier": 1}]
-    if settings.ollama_model_2:
-        models.append({"id": settings.ollama_model_2, "tier": 2})
+    if settings.worker == "agy":
+        providers: dict[str, Any] = {"agy": {
+            "type": "cli_agent", "command": settings.agy, "kind": "agy", "tier": 1,
+            "experimental": True, "enabled": True, "timeout_s": int(settings.timeout_s),
+        }}  # fmt: skip
+    else:
+        models = [{"id": settings.ollama_model, "tier": 1}]
+        if settings.ollama_model_2:
+            models.append({"id": settings.ollama_model_2, "tier": 2})
+        providers = {"ollama": {"type": "ollama", "models": models}}
     document = {
         "version": 1, "language": "en", "cache": {"enabled": False},
         "routing": {"adaptive": False}, "notify": {"desktop": False},
-        "providers": {"ollama": {"type": "ollama", "models": models}},
+        "providers": providers,
     }  # fmt: skip
     (home / "config.yaml").write_text(loader.dump_yaml(document), encoding="utf-8")
 
     config = loader.load_config(home / "config.yaml", cwd=home, environ={}).config
     with closing(db.connect(home / "state.db")) as conn:
-        consent.grant(conn, "ollama", config.providers["ollama"], db.local_now())
+        for name, provider in config.providers.items():
+            consent.grant(conn, name, provider, db.local_now())
 
 
 # --- results ----------------------------------------------------------------------------------
@@ -980,6 +991,9 @@ def _parser() -> argparse.ArgumentParser:
                              "use it (when Claude asks for tier 2): mode C runs the cheap "
                              "profile, tier 1")  # fmt: skip
     parser.add_argument("--claude-model", default=None)
+    parser.add_argument("--worker", choices=WORKERS, default=None,
+                        help="who Orkestra hands the work to: ollama (default) or agy "
+                             "(agy only, tier 1; for mode D, D-111)")  # fmt: skip
     parser.add_argument("--timeout", type=float, default=None,
                         help=f"per run, default {DEFAULT_TIMEOUT_S} s")  # fmt: skip
     parser.add_argument(
@@ -1019,6 +1033,7 @@ def _plan(opts: argparse.Namespace) -> Plan:
     try:
         data = json.loads(opts.resume.read_text(encoding="utf-8"))
         meta = dict(data["meta"])
+        meta.setdefault("worker", "ollama")  # files from before D-111
         ids = list(meta["task_ids"])
         stored_records = list(data["records"])
     except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -1030,6 +1045,7 @@ def _plan(opts: argparse.Namespace) -> Plan:
     for flag, key, value in (("--ollama-model", "ollama_model", opts.ollama_model),
                              ("--ollama-model-2", "ollama_model_2", opts.ollama_model_2),
                              ("--claude-model", "claude_model", opts.claude_model),
+                             ("--worker", "worker", opts.worker),
                              ("--timeout", "timeout_s", opts.timeout)):  # fmt: skip
         if value is not None and value != meta.get(key):
             raise BenchError(f"{flag} differs from the resumed run ({meta.get(key)})")
@@ -1077,11 +1093,14 @@ def main(
         print(f"claude is not on PATH (needed for modes {', '.join(CHIEF_MODES)})",
               file=sys.stderr)  # fmt: skip
         return 2
-    agy = which("agy")
-    if any(m in AGENT_MODES for m in plan.modes) and agy is None:
-        print(f"agy is not on PATH (needed for modes {', '.join(AGENT_MODES)})", file=sys.stderr)
-        return 2
     meta = plan.meta
+    worker = meta.get("worker", opts.worker or "ollama")
+    agy = which("agy")
+    needs_agy = worker == "agy" or any(m in AGENT_MODES for m in plan.modes)
+    if needs_agy and agy is None:
+        print(f"agy is not on PATH (needed for modes {', '.join(AGENT_MODES)} and --worker agy)",
+              file=sys.stderr)  # fmt: skip
+        return 2
     settings = Settings(
         out_dir=plan.out, work_dir=opts.work_dir, claude=claude or "claude",
         orkestra=[sys.executable, "-m", "orkestra"],
@@ -1089,7 +1108,7 @@ def main(
         ollama_model_2=meta.get("ollama_model_2", opts.ollama_model_2),
         claude_model=meta.get("claude_model", opts.claude_model),
         timeout_s=meta.get("timeout_s", opts.timeout or DEFAULT_TIMEOUT_S),
-        agy=agy or "agy",
+        agy=agy or "agy", worker=worker,
     )  # fmt: skip
     home = opts.work_dir / f"home-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}"
     setup_home(home, settings)
@@ -1097,8 +1116,7 @@ def main(
         "date": datetime.now().astimezone().isoformat(timespec="minutes"),
         "claude": _version([settings.claude, "--version"], runner) if uses_claude else "-",
         "orkestra": _version([*settings.orkestra, "--version"], runner), "runs": 0,
-        "agy": (_version([settings.agy, "--version"], runner)
-                if any(m in AGENT_MODES for m in plan.modes) else "-"),
+        "agy": _version([settings.agy, "--version"], runner) if needs_agy else "-",
     }  # fmt: skip
     if not meta:
         meta.update({
@@ -1109,7 +1127,7 @@ def main(
             "modes": "".join(plan.modes), "task_ids": [t.id for t in plan.tasks],
             "tasks": len(plan.tasks), "ollama_model": settings.ollama_model,
             "ollama_model_2": settings.ollama_model_2, "claude_model": settings.claude_model,
-            "timeout_s": settings.timeout_s, "windows": [],
+            "timeout_s": settings.timeout_s, "worker": settings.worker, "windows": [],
             "claude_tools": list(CLAUDE_TOOLS), "orkestra_tools": list(ORKESTRA_TOOLS),
         })  # fmt: skip
     windows = meta.setdefault("windows", [])

@@ -1144,3 +1144,49 @@ def test_the_window_records_the_agent_version(tmp_path: Path) -> None:
     assert code == 0
     data = json.loads(next(out.glob("*.json")).read_text(encoding="utf-8"))
     assert data["meta"]["windows"][0]["agy"] == "1.5.12"
+
+
+# --- Faz 13d: agy as the worker (D-111) -------------------------------------------------------
+
+
+def test_worker_agy_makes_agy_the_only_tier_1_worker(tmp_path: Path) -> None:
+    from contextlib import closing
+
+    from orkestra.config import loader
+    from orkestra.state import consent, db
+
+    settings = rb.Settings(out_dir=tmp_path, work_dir=tmp_path, claude="claude",
+                           orkestra=["orkestra"], ollama_model="qwen-test",
+                           claude_model=None, timeout_s=1, agy="agy-bin",
+                           worker="agy")  # fmt: skip
+    rb.setup_home(tmp_path / "home", settings)
+    config = loader.load_config(tmp_path / "home" / "config.yaml", cwd=tmp_path, environ={}).config
+    assert list(config.providers) == ["agy"]
+    agy = config.providers["agy"]
+    assert agy.type == "cli_agent" and agy.command == "agy-bin"  # type: ignore[union-attr]
+    assert agy.kind == "agy" and agy.tier == 1  # type: ignore[union-attr]
+    # experimental: the router skips it unless enabled is written out (router.py)
+    assert "enabled" in agy.model_fields_set and agy.enabled
+    with closing(db.connect(tmp_path / "home" / "state.db")) as conn:
+        assert consent.state(conn, "agy", agy) == "granted"
+
+
+def test_worker_defaults_to_ollama(tmp_path: Path) -> None:
+    assert _settings(tmp_path).worker == "ollama"
+    assert _main(tmp_path, ManyTasks()) == 0
+    assert _saved(tmp_path)["meta"]["worker"] == "ollama"
+
+
+def test_worker_agy_needs_agy_on_path(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    argv = ["--mode", "d", "--tasks", "01", "--repeat", "1", "--worker", "agy",
+            "--out", str(tmp_path / "out"), "--work-dir", str(tmp_path / "work")]  # fmt: skip
+    code = rb.main(argv, runner=ManyTasks(), which=lambda name: None if name == "agy" else name)
+    assert code == 2 and "agy" in capsys.readouterr().err
+
+
+def test_resume_refuses_another_worker(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert _main(tmp_path, ManyTasks()) == 0
+    [first] = (tmp_path / "out").glob("*.json")
+    code = rb.main(["--resume", str(first), "--work-dir", str(tmp_path / "work"),
+                    "--worker", "agy"], runner=ManyTasks(), which=lambda name: name)  # fmt: skip
+    assert code == 2 and "--worker" in capsys.readouterr().err
