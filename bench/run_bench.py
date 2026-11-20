@@ -499,11 +499,21 @@ def parse_claude(stdout: str) -> dict[str, Any]:
     if data is None:
         raise BenchError(f"claude output is not JSON: {stdout[:200]!r}")
     usage = data.get("usage") or {}
+    # ``usage`` covers only the last loop of a session that went on after waiting for a
+    # background job; ``modelUsage`` (per model) and the cost cover the whole session (13g).
+    models = [m for m in (data.get("modelUsage") or {}).values() if isinstance(m, dict)]
+
+    def tokens(key: str, model_key: str) -> int:
+        whole = sum(int(m.get(model_key) or 0) for m in models)
+        return max(int(usage.get(key) or 0), whole)
+
     return {
-        "input_tokens": int(usage.get("input_tokens") or 0),
-        "output_tokens": int(usage.get("output_tokens") or 0),
-        "cache_read_input_tokens": int(usage.get("cache_read_input_tokens") or 0),
-        "cache_creation_input_tokens": int(usage.get("cache_creation_input_tokens") or 0),
+        "input_tokens": tokens("input_tokens", "inputTokens"),
+        "output_tokens": tokens("output_tokens", "outputTokens"),
+        "cache_read_input_tokens": tokens("cache_read_input_tokens", "cacheReadInputTokens"),
+        "cache_creation_input_tokens": tokens(
+            "cache_creation_input_tokens", "cacheCreationInputTokens"
+        ),
         "cost_usd": float(data.get("total_cost_usd") or 0.0),
         "turns": int(data.get("num_turns") or 0),
         # Tools Claude asked for and was refused: shows that the --settings permissions work.
@@ -1098,6 +1108,10 @@ def _parser() -> argparse.ArgumentParser:
                         help="start at most this many Claude sessions in this call; "
                              "runs that need no Claude still run, the rest wait for "
                              "--resume")  # fmt: skip
+    parser.add_argument("--rescore", type=Path, default=None,
+                        help="a results JSON file: read every Claude run's saved output in "
+                             "--work-dir again (fixes files measured before the whole-session "
+                             "token count); starts nothing")  # fmt: skip
     parser.add_argument("--dry-run", action="store_true",
                         help="check every task and the leak guard; start nothing")  # fmt: skip
     return parser
@@ -1169,6 +1183,27 @@ def _stop(records: Sequence[Record], plan: Plan, reason: str) -> Path:
     return json_path
 
 
+def rescore(path: Path, work_dir: Path) -> int:
+    """Parse each Claude run's saved ``claude-output.json`` again; returns how many records
+    changed. Runs whose folder is gone keep their numbers."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    records = [Record(**r) for r in data["records"]]
+    changed = 0
+    for index, record in enumerate(records):
+        saved = work_dir / f"{record.task}-{record.mode}-{record.repeat}" / "claude-output.json"
+        if record.mode not in CHIEF_MODES or record.claude is None or not saved.is_file():
+            continue
+        try:
+            fresh = parse_claude(saved.read_text(encoding="utf-8"))
+        except BenchError:
+            continue
+        if fresh != record.claude:
+            records[index] = Record(**{**asdict(record), "claude": fresh})
+            changed += 1
+    write_results(records, path.parent, stamp=path.stem, meta=data["meta"])
+    return changed
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -1176,6 +1211,14 @@ def main(
     which: Callable[[str], str | None] = shutil.which,
 ) -> int:
     opts = _parser().parse_args(argv)
+    if opts.rescore is not None:
+        try:
+            changed = rescore(opts.rescore, opts.work_dir)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            print(f"cannot rescore {opts.rescore}: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return 2
+        print(f"{changed} record(s) changed in {opts.rescore}")
+        return 0
     try:
         plan = _plan(opts)
     except BenchError as exc:

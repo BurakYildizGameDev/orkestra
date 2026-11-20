@@ -1395,3 +1395,43 @@ def test_the_difficulty_table_shows_only_the_difficulties_that_ran() -> None:
     records = [dataclasses.replace(_record("a", 1, "g1", True), difficulty="big")]
     table = rb.markdown(rb.summarize(records), records)
     assert "| Mode | big |\n|---|---|\n| A - Claude only | 1/1 |" in table
+
+
+def test_claude_tokens_come_from_the_whole_session_not_the_last_loop() -> None:
+    """13g: a session that waited for a background job ended in several loops; ``usage`` held
+    only the last one, ``modelUsage`` (and the cost) the whole session."""
+    data = {**CLAUDE_JSON, "usage": {"input_tokens": 20, "output_tokens": 5042,
+                                     "cache_read_input_tokens": 659908,
+                                     "cache_creation_input_tokens": 13462},
+            "modelUsage": {
+                "claude-opus-x": {"inputTokens": 80, "outputTokens": 20000,
+                                  "cacheReadInputTokens": 2200000,
+                                  "cacheCreationInputTokens": 60000},
+                "claude-haiku-x": {"inputTokens": 4, "outputTokens": 2059,
+                                   "cacheReadInputTokens": 56909,
+                                   "cacheCreationInputTokens": 7413},
+            }}  # fmt: skip
+    parsed = rb.parse_claude(json.dumps(data))
+    assert (parsed["input_tokens"], parsed["output_tokens"]) == (84, 22059)
+    assert parsed["cache_read_input_tokens"] == 2256909
+    assert parsed["cache_creation_input_tokens"] == 67413
+
+
+def test_rescore_reads_the_saved_claude_output_again(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A results file measured with the old parser is fixed from the run folders (13g)."""
+    assert _main(tmp_path, ManyTasks()) == 0
+    [first] = (tmp_path / "out").glob("*.json")
+    saved = tmp_path / "work" / "09-bugfix-inventory-a-1" / "claude-output.json"
+    whole = {**CLAUDE_JSON, "modelUsage": {"m": {"inputTokens": 1200, "outputTokens": 9000,
+                                                 "cacheReadInputTokens": 70000,
+                                                 "cacheCreationInputTokens": 3000}}}  # fmt: skip
+    saved.write_text(json.dumps(whole), encoding="utf-8")
+    capsys.readouterr()
+    assert rb.main(["--rescore", str(first), "--work-dir", str(tmp_path / "work")]) == 0
+    assert "1 record(s) changed" in capsys.readouterr().out
+    records = {(r["task"], r["mode"]): r for r in _saved(tmp_path)["records"]}
+    assert records[("09-bugfix-inventory", "a")]["claude"]["output_tokens"] == 9000
+    assert records[("01-docstring-geometry", "a")]["claude"]["output_tokens"] == 800
+    assert records[("09-bugfix-inventory", "c")]["claude"] is None  # no Claude in mode C
