@@ -176,6 +176,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 |---|---|---|
 | 0–4 | İskelet, config, Ollama/OpenAI adapter'ları, bütçe, onay, devre kesici, yedeğe geçişli router | ✅ |
 | 5–6 | Görev dosyaları ve doğrulayıcılar, worktree'ler, düzenleme görevleri, kod ajanları (Codex, Antigravity) | ✅ |
+| 6b | MCP sınırları; Unity açıkken elle testler | ⏳ |
 | 7–8 | Batch, maliyet tahmini, `stats`; şef araçları (`status`, şablonlar, önbellek, `review`, `map`) | ✅ |
 | 9 | Claude skill; ucuz modeller için SEARCH/REPLACE düzenleme | ✅ |
 | 10 | Şef devri (Claude ↔ Codex ↔ Antigravity) | ✅ |
@@ -183,7 +184,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 | 12 | Gece kuyruğu, bildirimler, öğrenen yönlendirme | ✅ |
 | 13a–c | Benchmark aracı, 20 görev, ilk deneme | ✅ |
 | 13f–o | Kota kesintisizliği, token haritası, bağlam süzgeci (`exec`/`read`/`find`), kısa oturumlar, kota tahmini, işe göre model, çapraz denetim, Claude dışı şef, `providers add` | ✅ |
-| düzeltmeler | `gc` ile veritabanı temizliği, dosya bölme, bu README | ✅ |
+| düzeltmeler | `gc` ile veritabanı temizliği, dosya bölme ve bu README bitti; sırada gerçek modellerle elle kullanım turu | ⏳ |
 | 13d, 13e, 13g | Tam benchmark turları ve büyük görevde tasarruf deneyi | ⏳ |
 | 14 | Paketleme, belgeler, PyPI sürümü | ⏳ |
 

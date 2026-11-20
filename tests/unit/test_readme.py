@@ -37,10 +37,32 @@ def _commands(name: str) -> str:
 
 
 def _anchor(heading: str) -> str:
-    """GitHub's anchor for a heading: lower case, punctuation dropped, spaces to dashes."""
-    text = re.sub(r"[`*_]", "", heading.strip().lower())
-    text = re.sub(r"[^\w\- ]", "", text)
+    """GitHub's anchor for a heading: lower case (``İ`` keeps its combining dot), backticks
+    and ``*`` dropped, other punctuation dropped (``_`` and letters' marks stay), spaces to
+    dashes."""
+    text = re.sub(r"[`*]", "", heading.strip().lower())
+    marks = f"{chr(0x0300)}-{chr(0x036F)}"  # combining marks, e.g. the dot of lower-case İ
+    text = re.sub(rf"[^\w{marks}\- ]", "", text)
     return text.replace(" ", "-")
+
+
+def _anchors(body: str) -> set[str]:
+    """Every heading's anchor; a repeated one gets ``-1``, ``-2`` … like on GitHub."""
+    found: set[str] = set()
+    seen: dict[str, int] = {}
+    for heading in _HEADING.findall(body):
+        base = _anchor(heading)
+        count = seen.get(base, 0)
+        seen[base] = count + 1
+        found.add(base if count == 0 else f"{base}-{count}")
+    return found
+
+
+def test_anchors_follow_github() -> None:
+    dotted = "i" + chr(0x0307)  # what "İ".lower() gives; GitHub keeps both characters
+    assert _anchor("İşe göre model") == f"{dotted}şe-göre-model"
+    assert _anchor("`routing.by_kind` and more") == "routingby_kind-and-more"
+    assert _anchors("## A\n## A\n") == {"a", "a-1"}
 
 
 @pytest.mark.parametrize("name", DOCS)
@@ -60,6 +82,12 @@ def test_every_command_and_flag_in_the_docs_exists(name: str) -> None:
         for problem in check_mention(group, words)
     ]
     assert problems == []
+
+
+@pytest.mark.parametrize("name", DOCS)
+def test_no_install_line_needs_pypi_yet(name: str) -> None:
+    """Not on PyPI until Faz 14: an install line names the git URL, not the package."""
+    assert not re.search(r"uv tool install \"?orkestra-cli", _text(name))
 
 
 @pytest.mark.parametrize("name", READMES)
@@ -82,9 +110,7 @@ def test_the_readme_names_every_provider_kind_and_five_languages(name: str) -> N
     text = _text(name)
     for word in ("Ollama", "OpenAI", "Codex", "Antigravity", "cli_agent"):
         assert word in text, word
-    assert "--lang en|tr" not in text
-    for code in ("en", "tr", "de", "es", "fr"):
-        assert code in text
+    assert r"--lang en\|tr\|de\|es\|fr" in text  # the table cell escapes the pipes
 
 
 @pytest.mark.parametrize("name", DOCS)
@@ -102,7 +128,6 @@ def test_local_links_and_anchors_resolve(name: str) -> None:
             continue
         if anchor and linked.suffix == ".md":
             body = _FENCE.sub("", linked.read_text(encoding="utf-8"))
-            anchors = {_anchor(h) for h in _HEADING.findall(body)}
-            if anchor not in anchors:
+            if anchor not in _anchors(body):
                 problems.append(f"{target}: no such heading")
     assert problems == []

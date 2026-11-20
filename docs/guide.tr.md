@@ -14,12 +14,12 @@
 - [Batch: birçok görev birden](#batch-birçok-görev-birden)
 - [Gece kuyruğu ve bildirimler](#gece-kuyruğu-ve-bildirimler)
 - [Şef araçları](#şef-araçları)
-- [İkinci bir AI denetler: şef için daha ucuz yazma](#ikinci-bir-ai-denetler-şef-için-daha-ucuz-yazma)
+- [Çapraz denetim: ikinci bir AI, şef için daha ucuz yazma](#çapraz-denetim-ikinci-bir-ai-şef-için-daha-ucuz-yazma)
 - [Uzun komut çıktısı: `orkestra exec`](#uzun-komut-çıktısı-orkestra-exec)
 - [Bağlamı doldurmadan okumak ve aramak: `orkestra read`, `orkestra find`](#bağlamı-doldurmadan-okumak-ve-aramak-orkestra-read-orkestra-find)
 - [Claude'un tokenı nereye gidiyor?](#claudeun-tokenı-nereye-gidiyor)
 - [Kısa oturumlar: işe yaradığında yeni bağlam](#kısa-oturumlar-işe-yaradığında-yeni-bağlam)
-- [İşe göre model](#işe-göre-model)
+- [Her iş türüne uygun model](#her-iş-türüne-uygun-model)
 - [Worktree'ler: yalıtılmış değişiklikler](#worktreeler-yalıtılmış-değişiklikler)
 - [Claude skill](#claude-skill)
 - [Yapılandırma](#yapılandırma)
@@ -420,7 +420,7 @@ orkestra queue run --until 07:00 --notify                # terminali açık bır
   Windows Görev Zamanlayıcı: [`docs/recipes.tr.md`](recipes.tr.md).
 - Bildirimler (`queue run --notify`, `batch --notify`) yalnız sayıları içerir ("5 bitti,
   1 başarısız"), görev metni veya kod asla. Masaüstü bildirimi ek paket ister
-  (`uv tool install "orkestra-cli[notify]"`); yoksa sessizce atlanır. Telefon bildirimi
+  (`uv tool install git+https://github.com/BurakYildizGameDev/orkestra --with "desktop-notifier>=6.0,<7"`); yoksa sessizce atlanır. Telefon bildirimi
   [ntfy](https://ntfy.sh) ile: `notify.ntfy_topic_env`'e konu adını tutan ortam değişkeninin
   adını yaz. `orkestra notify test` her kanalı dener.
 - Sabah: `orkestra status` → `orkestra review` → `orkestra apply`.
@@ -496,7 +496,7 @@ görevleri ve kod ajanlarının cevapları asla önbelleğe alınmaz. `--no-cach
 token döndüğünü de gösterir (doğrulamayı geçen koşular için). Şefin kendi kullanımı
 ölçülemediği için satır her zaman tahmini olarak işaretlenir.
 
-## İkinci bir AI denetler: şef için daha ucuz yazma
+## Çapraz denetim: ikinci bir AI, şef için daha ucuz yazma
 
 Yazmayı devretmenin şef için sabit bir bedeli var: görevi yazmak ve geleni okumak. Orkestra
 okumayı kısa tutar. İşçinin değişikliğini başka bir sağlayıcı denetler, şef diff yerine birkaç
@@ -667,7 +667,7 @@ ettikten sonra iki yol var: Claude Code'da `/clear` ve `orkestra handoff show --
 okumak, ya da oturumu kapatıp `orkestra handoff to claude` (aynı şefe devir). Claude skill'i
 bunu bir fazın ya da alt görevin sonunda önerir, ortasında asla.
 
-## İşe göre model
+## Her iş türüne uygun model
 
 Hafif işler (`exec` çıktısının özeti, `read`, `find --ask`, `map` için dosya özetleri) kodunu
 yazan modele gerek duymaz; kendi bilgisayarında tek satırlık özet için büyük model her şeyi

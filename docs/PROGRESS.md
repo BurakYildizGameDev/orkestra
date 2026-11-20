@@ -31,7 +31,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (ek) | ✅ | 2026-11-20 | `gc` eski `runs`/`usage`/`queue` satırlarını siler (en az 35 gün kalır), `queue remove --finished`, `notify.ntfy_url`, `desktop-notifier<7`, `doctor` düzenlenebilir kurulum uyarısı (D-104) |
 | düzeltme-fable b – `cli.py` / `runner.py` bölme (ek) | ✅ | 2026-11-20 | `cli.py` 1964 → ~200 satır (`commands/` altında 7 grup), `runner.py` 1533 → ~780 (`prepare.py`, `run_record.py`); davranış ve testler aynı (D-106) |
-| düzeltme-fable c – README, bilinen sınırlar, elle kullanım turu, temizlik (ek) | ⏳ | | README + rehber + komut denetimi testi bitti (D-108); dal temizliği ve kurulu skill eşitlendi (kullanıcı onayıyla); kalan: elle kullanım turu (kullanıcıyla) | README kısalır (en + tr), durum kutusu ve sağlayıcı listesi güncel, komut denetimi testi, "Bilinen sınırlar"; gerçek modelle/terminalde elle tur; eski dallar (kullanıcı onayıyla) |
+| düzeltme-fable c – README, bilinen sınırlar, elle kullanım turu, temizlik (ek) | ⏳ | | README + rehber + komut denetimi testi bitti (D-108, D-109); dal temizliği ve kurulu skill eşitlendi (kullanıcı onayıyla); kalan: gerçek modelle/terminalde elle kullanım turu (kullanıcıyla) |
 | 13a – Benchmark aracı ve 20 görev | ✅ | 2026-11-15 | `bench/run_bench.py`, 20 görev (8/8/4) + gizli test + referans çözüm, sızıntı koruması, kuru koşu (D-076); kod denetimi (D-077) |
 | 13b – Kota korumaları (limit algılama, `--resume`, `--max-claude-runs`) | ✅ | 2026-11-15 | kod; kota harcamaz (D-078); kod denetimi (D-079) |
 | 13c – Deneme ve ölçüm (2 görev, 4 Claude oturumu) | ✅ | 2026-11-15 | 6/6 geçti; B delege etmedi; `/usage` payı kullanıcıdan bekleniyor (D-080); kod denetimi (D-081) |
@@ -52,6 +52,14 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – düzeltme-fable c (PR #41), 2026-11-20
+`/code-review` 6 bulgu; hepsi düzeltildi (D-109). Önce kırmızı testler.
+- ✅ Türkçe rehberde "İ" ile başlayan iki başlığın bağlantısı GitHub'da kırıktı: başlıklar yeniden adlandırıldı; çapa testi GitHub'a yakın.
+- ✅ Bildirim kurulum satırı PyPI'ye değil git adresine; testle korunuyor.
+- ✅ Yol haritası PROGRESS ile tutarlı (6b ⏳, "düzeltmeler" ⏳); PROGRESS tablo satırı düzeldi; beş dil testi sıkılaştı.
+
+Testler: **1902 geçti** (1895 + 7). ruff, ruff format, pyright temiz.
+
 ### düzeltme-fable c (1. kısım) – README ve rehber (2026-11-20)
 **Yapılanlar (D-108):** README.md / README.tr.md 995 → 204 satır; ayrıntılar `docs/guide.md` / `docs/guide.tr.md`'de (taşındı, bağlantılar düzeltildi, içindekiler); yönlendirme sırası güncel; "Bilinen sınırlar" bölümü; `tests/unit/test_readme.py`.
 
@@ -61,7 +69,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 - ✅ README'deki her komut ve bayrak gerçek CLI'ye karşı denetleniyor (rehberler ve tarifler de); bağlantılar ve çapalar çözülüyor.
 - ✅ README belirgin biçimde kısa (204 satır, hedef ~300); taşınan bölümler `docs/guide*.md`'de ve bağlantılı.
 - ✅ "Bilinen sınırlar": kanıtlanmamış tasarruf (13c sayılarıyla), az gerçek kullanım ve AI ile yazım/denetim + sorun bildirme yolu, öğrenen yönlendirmenin veri ihtiyacı, agy deneysel, yerel model yükü, çeviriler, PyPI.
-- ⚠️ Yol haritası / özellik tablosu PROGRESS ile elle karşılaştırıldı; çelişki yok.
+- ✅ Yol haritası / özellik tablosu PROGRESS ile karşılaştırıldı; denetimde bulunan iki çelişki düzeltildi (6b ⏳ satırı eklendi; "düzeltmeler" satırı elle tur bitene kadar ⏳) (D-109).
 - ✅ Temizlik (madde 7, kullanıcı onayıyla, 2026-11-20): main'e tamamen merge edilmiş 15 yerel ve 14 uzak dal silindi (`backup/*` kaldı; uzaktaki `faz-8b` zaten yoktu); kurulu skill kopyası repodakiyle eşitlendi (eskisi `SKILL.md.bak-2026-11-20`). Kök dizindeki eski not dosyaları 2026-11-19'da kaldırılmıştı.
 - ⏳ Elle kullanım turu (gerçek Ollama ile gece kuyruğu, `orkestra ui` her sekme, `init` sihirbazı, `notify test`) kullanıcıyla.
 - ✅ ruff, ruff format, pyright temiz; pytest **1895 geçti** (1877 + 18).

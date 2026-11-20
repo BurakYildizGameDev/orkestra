@@ -42,7 +42,7 @@ Sabah: `orkestra status`, sonra `orkestra review` ve `orkestra apply`.
 
 ```yaml
 notify:
-  desktop: true                      # ek paket gerekir: uv tool install "orkestra-cli[notify]"
+  desktop: true                      # ek paket gerekir: uv tool install git+https://github.com/BurakYildizGameDev/orkestra --with "desktop-notifier>=6.0,<7"
   ntfy_topic_env: ORKESTRA_NTFY_TOPIC
 ```
 

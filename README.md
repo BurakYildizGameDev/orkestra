@@ -176,6 +176,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 |---|---|---|
 | 0–4 | Skeleton, config, Ollama/OpenAI adapters, budgets, consent, circuit breaker, router with failover | ✅ |
 | 5–6 | Task files and verifiers, worktrees, edit tasks, code agents (Codex, Antigravity) | ✅ |
+| 6b | MCP limits; manual tests with Unity open | ⏳ |
 | 7–8 | Batches, cost estimates, `stats`; chief tools (`status`, templates, cache, `review`, `map`) | ✅ |
 | 9 | Claude skill; SEARCH/REPLACE edits for cheap models | ✅ |
 | 10 | Chief handoff (Claude ↔ Codex ↔ Antigravity) | ✅ |
@@ -183,7 +184,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 | 12 | Night queue, notifications, adaptive routing | ✅ |
 | 13a–c | Benchmark tool, 20 tasks, first trial | ✅ |
 | 13f–o | Quota continuity, token map, context filter (`exec`/`read`/`find`), short sessions, quota forecast, model by kind of work, cross-review, non-Claude chief, `providers add` | ✅ |
-| fixes | `gc` database cleanup, file splits, this README | ✅ |
+| fixes | `gc` database cleanup, file splits and this README are done; a manual usage tour on real models is next | ⏳ |
 | 13d, 13e, 13g | Full benchmark rounds and the big-task savings experiment | ⏳ |
 | 14 | Packaging, docs, PyPI release | ⏳ |
 

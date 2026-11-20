@@ -1144,3 +1144,11 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 - **`tests/unit/test_readme.py`:** README'ler, rehberler ve tariflerdeki her `orkestra …` komutu ve bayrağı gerçek CLI'ye karşı (skill denetleyicisi, Faz 9a; ```` ```text ```` blokları atlanır, `\` ile süren satırlar birleşir); README ≤ 320 satır; "Bilinen sınırlar" başlığı var, faz sayan eski durum metni yok; beş dil ve bütün sağlayıcı türleri anılıyor; yerel bağlantılar ve başlık çapaları çözülüyor.
 - Elle kullanım turu (madde 9) ve dal temizliği (madde 7) kullanıcıyla yapılacak; bu PR'da değil.
 
+## D-109 – düzeltme-fable c kod denetimi düzeltmeleri (2026-11-20, düzeltme-fable c)
+`/code-review` (PR #41): 6 bulgu (2 önemli, 4 küçük), hepsi düzeltildi; önce kırmızı testler.
+- **Türkçe rehberde iki kırık bağlantı (önemli):** "İ" ile başlayan başlığın GitHub çapası küçük "i" + birleşik nokta (U+0307) içerir, bağlantılar düz "i" kullanıyordu. Başlıklar "İ" ile başlamayacak biçimde yeniden adlandırıldı ("Çapraz denetim: ikinci bir AI, şef için daha ucuz yazma", "Her iş türüne uygun model"). Test çapayı GitHub'a yakın kuruyor: birleşik işaretler ve `_` kalır, yinelenen başlık `-1`, `-2` alır.
+- **PyPI'de olmayan paketi kuran satır (önemli):** rehber ve tariflerde `uv tool install "orkestra-cli[notify]"` yerine git adresi + `--with "desktop-notifier>=6.0,<7"`. Test: Faz 14'e kadar hiçbir belge `uv tool install orkestra-cli…` demez.
+- **Yol haritası PROGRESS ile çelişmez:** 6b (⏳) satırı eklendi; "düzeltmeler" satırı elle kullanım turu bitene kadar ⏳.
+- **PROGRESS tablosu:** düzeltme-fable c satırı yeniden dört hücre.
+- **Beş dil testi:** iki harfli parçalar yerine tablodaki `--lang en\|tr\|de\|es\|fr` aranıyor.
+

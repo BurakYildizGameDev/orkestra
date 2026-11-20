@@ -425,7 +425,7 @@ orkestra queue run --until 07:00 --notify                # leave the terminal op
   Windows Task Scheduler: see [`docs/recipes.md`](recipes.md).
 - Notifications (`queue run --notify`, `batch --notify`) hold only the counts ("5 finished,
   1 failed"), never task text or code. Desktop notifications need the extra
-  (`uv tool install "orkestra-cli[notify]"`); without it they are skipped quietly. Phone
+  (`uv tool install git+https://github.com/BurakYildizGameDev/orkestra --with "desktop-notifier>=6.0,<7"`); without it they are skipped quietly. Phone
   notifications go to [ntfy](https://ntfy.sh): set `notify.ntfy_topic_env` to the name of an
   environment variable that holds the topic. `orkestra notify test` tries every channel.
 - In the morning: `orkestra status` → `orkestra review` → `orkestra apply`.
