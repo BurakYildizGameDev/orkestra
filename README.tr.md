@@ -189,7 +189,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 |---|---|---|
 | 0–4 | İskelet, config, Ollama/OpenAI adapter'ları, bütçe, onay, devre kesici, yedeğe geçişli router | ✅ |
 | 5–6 | Görev dosyaları ve doğrulayıcılar, worktree'ler, düzenleme görevleri, kod ajanları (Codex, Antigravity) | ✅ |
-| 6b | MCP sınırları; Unity açıkken elle testler | ⏳ |
+| 6b | MCP sınırları: takılan MCP sunucusu agy'yi bekletmiyor; `doctor --mcp` | ✅ |
 | 7–8 | Batch, maliyet tahmini, `stats`; şef araçları (`status`, şablonlar, önbellek, `review`, `map`) | ✅ |
 | 9 | Claude skill; ucuz modeller için SEARCH/REPLACE düzenleme | ✅ |
 | 10 | Şef devri (Claude ↔ Codex ↔ Antigravity) | ✅ |
