@@ -10,8 +10,9 @@
 
 > **Durum: erken sürüm, geliştirme aşamasında.** Aşağıdaki tablodaki her şey çalışıyor ve
 > Linux, macOS ve Windows'ta ağsız çalışan yaklaşık 1.900 testle denetleniyor; ama gerçek
-> kullanımda henüz az denendi. PyPI'de henüz yok. Şefin tokenını *azalttığı* kanıtlanmadı:
-> güvenmeden önce [Bilinen sınırlar](#bilinen-sınırlar) bölümünü oku. Ne bitti, sırada ne var:
+> kullanımda henüz az denendi. PyPI'de henüz yok. Ölçüldü: işi işçilere devretmek şefin
+> tokenını **azaltmıyor**; bağlam süzgeci büyük bir işin maliyetini ~%20 düşürüyor. Güvenmeden
+> önce [Bilinen sınırlar](#bilinen-sınırlar) bölümünü oku. Ne bitti, sırada ne var:
 > [Yol haritası](#yol-haritası).
 
 ```text
@@ -132,12 +133,24 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 
 ## Bilinen sınırlar
 
-- **Tasarruf kanıtlanmadı.** Testler aracın çalıştığını gösteriyor; token ya da zaman
-  kazandırdığını değil. Küçük benchmark görevlerinde Claude üzerinden devretmek şefe *daha*
-  pahalıya geldi (skill ile +%23, "devret" denince ~3,7 kat); yalnız şefsiz çalışma daha ucuzdu.
-  Claude'un kendi oturumları ölçülünce ağırlıklı maliyetinin ~%80'inin bağlamı yeniden okumak
-  olduğu görüldü; yeni araçlar (`exec`, `read`, `find`, kısa oturumlar) oraya yöneliyor. Bunları
-  ölçecek büyük görev deneyi henüz yapılmadı; sonuçlar iyi de kötü de çıksa yayımlanacak.
+- **Devretmek Claude tokenını azaltmıyor; bağlam süzgeci biraz azaltıyor.** Benchmark
+  (Faz 13, Claude Code 2.1.329 + Opus 5.5, Windows 11, i9-13900HX, 32 GB, RTX 5070 Ti 12 GB;
+  ayrıntı [`bench/README.md`](bench/README.md#results)):
+
+  | Koşu | Geçen | Claude token / görev | Claude maliyeti / görev |
+  |---|---|---|---|
+  | 20 küçük görev, yalnız Claude (2 tur) | 20/20 | 9,1k | $0,117 |
+  | aynısı, skill ile (Claude hiç devretmedi) | 20/20 | 11,4k (+%26) | $0,136 (+%16) |
+  | aynısı, agy'ye devret denince (1 tur) | 20/20 | 15,7k (+%73) | $0,197 (+%68) |
+  | şefsiz Orkestra, yerel qwen2.5-coder:14b | 7,5/20 | – | – |
+  | büyük görev (~1.200 satırlık proje, 160 KB log), yalnız Claude (2 tur) | 2/2 | 87,4k | $1,38 |
+  | aynısı, bağlam süzgeciyle (`exec`/`read`/`find`) | 2/2 | 76,9k (−%12) | $1,10 (−%20) |
+  | aynısı, + devir ve çapraz denetim | 2/2 | 76,7k (−%12) | $1,19 (−%13) |
+
+  Projenin hedeflediği %25 tasarruf tutmadı. Orkestra'nın Claude kullanıcısına verdiği şey
+  kesintisizlik (biri bitince başka sağlayıcı ya da şef devralır) ve bağlam süzgeci (büyük
+  görevde bağlamı yeniden okuma −%46); devretmek küçük görevde de büyük görevde de şefe
+  kazandırdığından fazlasına mal oluyor.
 - **Gerçek kullanım az.** Gece kuyruğu, bildirimler, terminal arayüzü ve sihirbaz testlerle
   denetleniyor ama gerçek modellerle, gerçek terminallerde az kullanıldı. Kod AI yardımıyla
   yazıldı ve denetlendi. Pürüz bekle; lütfen
@@ -185,7 +198,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 | 13a–c | Benchmark aracı, 20 görev, ilk deneme | ✅ |
 | 13f–o | Kota kesintisizliği, token haritası, bağlam süzgeci (`exec`/`read`/`find`), kısa oturumlar, kota tahmini, işe göre model, çapraz denetim, Claude dışı şef, `providers add` | ✅ |
 | düzeltmeler | `gc` ile veritabanı temizliği, dosya bölme ve bu README bitti; sırada gerçek modellerle elle kullanım turu | ⏳ |
-| 13d, 13e, 13g | Tam benchmark turları ve büyük görevde tasarruf deneyi | ⏳ |
+| 13d, 13e, 13g, 13p | Tam benchmark turları, büyük görev deneyi, kısa skill | ✅ |
 | 14 | Paketleme, belgeler, PyPI sürümü | ⏳ |
 
 ## Geliştirme

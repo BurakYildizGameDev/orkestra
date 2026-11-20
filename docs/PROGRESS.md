@@ -37,7 +37,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13c – Deneme ve ölçüm (2 görev, 4 Claude oturumu) | ✅ | 2026-11-15 | 6/6 geçti; B delege etmedi; `/usage` payı kullanıcıdan bekleniyor (D-080); kod denetimi (D-081) |
 | 13d – İlk tam tur (`--repeat 1`, 40 Claude oturumu) | ✅ | 2026-11-20 | hazırlık bitti: mod D + Windows izinleri (D-082), kod denetimi (D-083); `--max-claude-runs` sınırında Claude'suz koşular sürer (D-110); 2026-11-20 tur bitti (`bench/results/2026-11-20-0326`): A 20/20 (9.3k token/görev), B 20/20 (11.3k, hiç delege etmedi), C 9/20; A/B tek pencerede koşuldu; 40 Claude oturumu 5 saatlik kotanın ~%30'unu yedi (`/usage` %55 → %85, oturum başına ~%0,75; 13e'nin 80 oturumu ~%60: boş bir pencereye sığar); ek ölçüm `--worker agy` (D-111, `bench/results/2026-11-20-0714`): mod D 17–20'de 4/4, agy her işi yaptı (4/4 işçi koşusu) ama Claude tokenı A'nın ~2 katı (28k vs 13k): Claude'un kendi yazdığı çıktı azaldı, sabit ek yük (skill ~28 KB ≈ 7k token + Orkestra çıktıları, `cache_creation` 2–3 kat) küçük görevde kazancı yiyor; ilk deneme geçersiz (agy açık değildi, `bench/results/trial/2026-11-20-0709`); kod denetimi 6 bulgu düzeltildi (D-112) |
 | 13p – Kısa skill: şefin sabit ek yükü (ek) | ✅ | 2026-11-20 | `SKILL.md` 28 KB → 4,1 KB İngilizce çekirdek + `reference.md` (D-113); mod D agy 17–20: Claude tokenı 28,1k → 14,8k/görev (A 13,5k), maliyet $0,336 → $0,189 (A $0,191): küçük görevde başa baş; kod denetimi 6 bulgu düzeltildi (D-114) |
-| 13e – 2. ve 3. turlar, sonuçlar, README tablosu | ⏳ | | `--resume`, 80 Claude oturumu |
+| 13e – 2. ve 3. turlar, sonuçlar, README tablosu | ✅ | 2026-11-21 | yeni kısa skill ile taze 2 tur (`bench/results/2026-11-20-2333`): A 20/20 9,1k token $0,117, B 20/20 11,4k $0,136 (hiç devretmedi), C 7,5/20; mod D `--worker agy` 1 tur (`2026-11-21-0013`): 20/20, 15,7k, $0,197 (A'dan ~%70 pahalı; 2. tur kota yüzünden yapılmadı); README (en + tr) bilinen sınırlar tablosu, `bench/README.md` sonuçlar bölümü |
 | 13f – Kota bitince kesintisiz devam (ek) | ✅ | 2026-11-17 | ajan ve API kota mesajı tanıma, yenilenene kadar duraklatma (`quota_pause_s`), aynı komutta sıradakine geçiş, batch/kuyrukta bir daha denememe, bildirim satırı; ağsız ölçüm 10/10 (D-084) |
 | 13g – %25 token deneyi: büyük işte bölmek kazandırıyor mu? (ek) | ✅ | 2026-11-21 | `--suite big`, görev `g01-ledger`, kollar A / F (bağlam süzgeci) / G (+ toplu devir + çapraz denetim) (D-115); oturumun tamamından token sayımı + `--rescore` (D-116); sonuç (`bench/results/2026-11-20-2346`, 2 tekrar, hepsi geçti): F Claude tokenında −%12, önbellekten okumada −%46, maliyette −%20; G −%12 / −%10 / −%13, iki koşudan yalnız birinde devretti ve o koşu A'dan pahalı. **%25 hedefi tutmadı**; kaldıraç bağlam süzgeci |
 | 13h – Token haritası: Claude'un tokenı nereye gidiyor (ek) | ✅ | 2026-11-17 | `orkestra tokens`: araç çağrısı başına maliyet, türlere göre pay, sabit başlangıç, önbellek kaçırma, ölçüye göre ölçekleme; bulgu: maliyetin ~%80'i bağlamın yeniden okunması (D-086) |
@@ -52,6 +52,14 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13e – 2. ve 3. turlar, sonuçlar (2026-11-21)
+
+- 13d'nin 1. turundan sonra skill değiştiği için (D-113) 13e eski dosyaya `--resume` ile eklenmedi; yeni skill ile taze 2 tur koşuldu (`bench/results/2026-11-20-2333`, 120 koşu, 80 Claude oturumu iki pencerede). A 20/20 (9,1k token, $0,117), B 20/20 (11,4k, $0,136; Claude 40 oturumun hiçbirinde devretmedi), C 7,5/20 (7–8).
+- Mod D `--worker agy` (`2026-11-21-0013`): 1. tur 20/20, görev başına 15,7k token, $0,197, 1,1 işçi koşusu. 2. tur başlatıldı ama mod D oturumu ~%2 kota yediği için kullanıcının isteğiyle durduruldu (yarım koşu kaydedilmedi); 2. tur gerekirse `--resume` ile eklenir.
+- README (en + tr): durum kutusu ve "Bilinen sınırlar" ölçülmüş sonuçla güncellendi (tablo; %25 hedefi tutmadı, konum: kesintisizlik + bağlam süzgeci); yol haritasında 13d/13e/13g/13p ✅. `bench/README.md` sonuçlar bölümü (donanım, sürümler, dosyalar, sınırlamalar).
+- Test temizliği: 13g'nin iki bench testi `--out` vermediği için kırmızı koşuda gerçek `bench/results/`'a sahte bir dosya yazmıştı (silindi); testlere `--out` eklendi.
+- Ölçüm: 13e'nin 81 Claude oturumu D-116'daki eksik sayımdan etkilenmedi (denetlendi).
 
 ### Kod denetimi – Faz 13g (PR #44), 2026-11-21
 

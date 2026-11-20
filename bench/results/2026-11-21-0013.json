@@ -1,0 +1,743 @@
+{
+  "meta": {
+    "date": "2026-11-21T00:13+03:00",
+    "machine": "Windows 11, Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "python": "3.12.13",
+    "modes": "d",
+    "task_ids": [
+      "01-docstring-geometry",
+      "02-typehints-text",
+      "03-implement-slugify",
+      "04-implement-roman",
+      "05-rename-price",
+      "06-implement-fizzbuzz-rules",
+      "07-dataclass-point",
+      "08-implement-word-count",
+      "09-bugfix-inventory",
+      "10-write-tests-stack",
+      "11-refactor-validation",
+      "12-bugfix-dates",
+      "13-implement-lru-cache",
+      "14-bugfix-csv-line",
+      "15-feature-cli-options",
+      "16-bugfix-flatten",
+      "17-registry-shapes",
+      "18-bank-transfer",
+      "19-rename-class-deprecated",
+      "20-cache-invalidation"
+    ],
+    "tasks": 20,
+    "ollama_model": null,
+    "ollama_model_2": null,
+    "claude_model": null,
+    "timeout_s": 900,
+    "worker": "agy",
+    "windows": [
+      {
+        "date": "2026-11-21T00:13+03:00",
+        "claude": "2.1.329 (Claude Code)",
+        "orkestra": "orkestra 0.0.1",
+        "runs": 20,
+        "agy": "1.5.13",
+        "skill": "b2d2eba2a206"
+      },
+      {
+        "date": "2026-11-21T01:31+03:00",
+        "claude": "2.1.329 (Claude Code)",
+        "orkestra": "orkestra 0.0.1",
+        "runs": 1,
+        "agy": "1.5.13",
+        "skill": "b2d2eba2a206"
+      }
+    ],
+    "suite": "small",
+    "reviewer": null,
+    "claude_tools": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(python:*)",
+      "Bash(pytest:*)",
+      "Bash(git:*)",
+      "Bash(cd:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(pwd:*)",
+      "PowerShell(python:*)",
+      "PowerShell(pytest:*)",
+      "PowerShell(git:*)",
+      "PowerShell(cd:*)",
+      "PowerShell(ls:*)",
+      "PowerShell(dir:*)",
+      "PowerShell(cat:*)",
+      "PowerShell(type:*)",
+      "PowerShell(pwd:*)",
+      "PowerShell(Get-Content:*)",
+      "PowerShell(Get-ChildItem:*)",
+      "PowerShell(Select-String:*)",
+      "PowerShell(Set-Location:*)",
+      "PowerShell(Get-Location:*)"
+    ],
+    "orkestra_tools": [
+      "Bash(orkestra:*)",
+      "PowerShell(orkestra:*)"
+    ],
+    "repeat": 2
+  },
+  "summary": {
+    "d": {
+      "label": "D - Claude + Orkestra, delegation asked",
+      "tasks": 20,
+      "repeats": 1,
+      "complete_repeats": 1,
+      "partial_runs": 1,
+      "passed": {
+        "mean": 20.0,
+        "min": 20,
+        "max": 20
+      },
+      "by_difficulty": {
+        "easy": {
+          "tasks": 8,
+          "passed_mean": 8.0
+        },
+        "medium": {
+          "tasks": 8,
+          "passed_mean": 8.0
+        },
+        "hard": {
+          "tasks": 4,
+          "passed_mean": 4.0
+        }
+      },
+      "claude_tokens_per_task": 15601.476,
+      "claude_cache_read_per_task": 214590.381,
+      "claude_cost_per_task": 0.196,
+      "runs_without_usage": 0,
+      "agent_tokens_per_task": null,
+      "agent_runs_without_usage": null,
+      "permission_denials": 26,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 1.048,
+      "savings_estimate_per_task": 0.0,
+      "duration_per_task_s": 228.07,
+      "errors": 0
+    }
+  },
+  "records": [
+    {
+      "task": "01-docstring-geometry",
+      "difficulty": "easy",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 181.45,
+      "claude": {
+        "input_tokens": 18,
+        "output_tokens": 1923,
+        "cache_read_input_tokens": 187756,
+        "cache_creation_input_tokens": 12347,
+        "cost_usd": 0.1748592,
+        "turns": 9,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 276,
+        "completion_tokens": 97,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "02-typehints-text",
+      "difficulty": "easy",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 86.73,
+      "claude": {
+        "input_tokens": 20,
+        "output_tokens": 1596,
+        "cache_read_input_tokens": 210476,
+        "cache_creation_input_tokens": 11569,
+        "cost_usd": 0.1666472,
+        "turns": 10,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 315,
+        "completion_tokens": 96,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "...                                                                      [100%]\n3 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "03-implement-slugify",
+      "difficulty": "easy",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 237.84,
+      "claude": {
+        "input_tokens": 20,
+        "output_tokens": 2916,
+        "cache_read_input_tokens": 215899,
+        "cache_creation_input_tokens": 13379,
+        "cost_usd": 0.2086118,
+        "turns": 13,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 353,
+        "completion_tokens": 69,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "........                                                                 [100%]\n8 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "04-implement-roman",
+      "difficulty": "easy",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 150.61,
+      "claude": {
+        "input_tokens": 18,
+        "output_tokens": 2205,
+        "cache_read_input_tokens": 186861,
+        "cache_creation_input_tokens": 12870,
+        "cost_usd": 0.18450419999999998,
+        "turns": 9,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 325,
+        "completion_tokens": 109,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".......................                                                  [100%]\n23 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "05-rename-price",
+      "difficulty": "easy",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 698.62,
+      "claude": {
+        "input_tokens": 40,
+        "output_tokens": 3041,
+        "cache_read_input_tokens": 434996,
+        "cache_creation_input_tokens": 15252,
+        "cost_usd": 0.26999520000000005,
+        "turns": 5,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 2,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 987,
+        "completion_tokens": 227,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "..                                                                       [100%]\n2 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "06-implement-fizzbuzz-rules",
+      "difficulty": "easy",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 143.61,
+      "claude": {
+        "input_tokens": 20,
+        "output_tokens": 1917,
+        "cache_read_input_tokens": 210899,
+        "cache_creation_input_tokens": 11872,
+        "cost_usd": 0.1755758,
+        "turns": 10,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 300,
+        "completion_tokens": 99,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "...                                                                      [100%]\n3 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "07-dataclass-point",
+      "difficulty": "easy",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 96.94,
+      "claude": {
+        "input_tokens": 14,
+        "output_tokens": 1807,
+        "cache_read_input_tokens": 136865,
+        "cache_creation_input_tokens": 11536,
+        "cost_usd": 0.15585700000000002,
+        "turns": 8,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 333,
+        "completion_tokens": 84,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "..                                                                       [100%]\n2 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "08-implement-word-count",
+      "difficulty": "easy",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 488.59,
+      "claude": {
+        "input_tokens": 18,
+        "output_tokens": 2687,
+        "cache_read_input_tokens": 187840,
+        "cache_creation_input_tokens": 12820,
+        "cost_usd": 0.19393999999999997,
+        "turns": 10,
+        "permission_denials": 2
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 347,
+        "completion_tokens": 72,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "09-bugfix-inventory",
+      "difficulty": "medium",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 139.02,
+      "claude": {
+        "input_tokens": 16,
+        "output_tokens": 1662,
+        "cache_read_input_tokens": 163572,
+        "cache_creation_input_tokens": 12211,
+        "cost_usd": 0.1637064,
+        "turns": 11,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 297,
+        "completion_tokens": 98,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "10-write-tests-stack",
+      "difficulty": "medium",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 211.53,
+      "claude": {
+        "input_tokens": 18,
+        "output_tokens": 2631,
+        "cache_read_input_tokens": 196871,
+        "cache_creation_input_tokens": 17067,
+        "cost_usd": 0.22860219999999998,
+        "turns": 10,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 486,
+        "completion_tokens": 72,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".........                                                                [100%]\n9 passed in 4.47s\n",
+      "agent": null
+    },
+    {
+      "task": "11-refactor-validation",
+      "difficulty": "medium",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 76.06,
+      "claude": {
+        "input_tokens": 20,
+        "output_tokens": 1845,
+        "cache_read_input_tokens": 212975,
+        "cache_creation_input_tokens": 12852,
+        "cost_usd": 0.18239100000000003,
+        "turns": 11,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 404,
+        "completion_tokens": 66,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "..........                                                               [100%]\n10 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "12-bugfix-dates",
+      "difficulty": "medium",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 136.42,
+      "claude": {
+        "input_tokens": 20,
+        "output_tokens": 3169,
+        "cache_read_input_tokens": 215885,
+        "cache_creation_input_tokens": 13304,
+        "cost_usd": 0.21306899999999998,
+        "turns": 12,
+        "permission_denials": 3
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 386,
+        "completion_tokens": 110,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".........                                                                [100%]\n9 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "13-implement-lru-cache",
+      "difficulty": "medium",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 148.22,
+      "claude": {
+        "input_tokens": 16,
+        "output_tokens": 1710,
+        "cache_read_input_tokens": 163608,
+        "cache_creation_input_tokens": 12010,
+        "cost_usd": 0.1630656,
+        "turns": 9,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 357,
+        "completion_tokens": 84,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "14-bugfix-csv-line",
+      "difficulty": "medium",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 366.53,
+      "claude": {
+        "input_tokens": 20,
+        "output_tokens": 2602,
+        "cache_read_input_tokens": 215255,
+        "cache_creation_input_tokens": 13388,
+        "cost_usd": 0.20227499999999998,
+        "turns": 12,
+        "permission_denials": 2
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 400,
+        "completion_tokens": 114,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": ".......                                                                  [100%]\n7 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "15-feature-cli-options",
+      "difficulty": "medium",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 92.52,
+      "claude": {
+        "input_tokens": 16,
+        "output_tokens": 1752,
+        "cache_read_input_tokens": 162207,
+        "cache_creation_input_tokens": 12231,
+        "cost_usd": 0.1653934,
+        "turns": 9,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 325,
+        "completion_tokens": 61,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "16-bugfix-flatten",
+      "difficulty": "medium",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 267.19,
+      "claude": {
+        "input_tokens": 18,
+        "output_tokens": 2324,
+        "cache_read_input_tokens": 187458,
+        "cache_creation_input_tokens": 12319,
+        "cost_usd": 0.1825956,
+        "turns": 9,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 412,
+        "completion_tokens": 117,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "17-registry-shapes",
+      "difficulty": "hard",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 266.92,
+      "claude": {
+        "input_tokens": 26,
+        "output_tokens": 3033,
+        "cache_read_input_tokens": 300116,
+        "cache_creation_input_tokens": 14823,
+        "cost_usd": 0.2393712,
+        "turns": 16,
+        "permission_denials": 2
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 502,
+        "completion_tokens": 94,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "18-bank-transfer",
+      "difficulty": "hard",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 164.23,
+      "claude": {
+        "input_tokens": 20,
+        "output_tokens": 3094,
+        "cache_read_input_tokens": 216176,
+        "cache_creation_input_tokens": 14177,
+        "cost_usd": 0.21861119999999998,
+        "turns": 15,
+        "permission_denials": 2
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 503,
+        "completion_tokens": 111,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "......                                                                   [100%]\n6 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "19-rename-class-deprecated",
+      "difficulty": "hard",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 593.09,
+      "claude": {
+        "input_tokens": 22,
+        "output_tokens": 3223,
+        "cache_read_input_tokens": 247498,
+        "cache_creation_input_tokens": 15291,
+        "cost_usd": 0.23637560000000002,
+        "turns": 15,
+        "permission_denials": 2
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 1623,
+        "completion_tokens": 182,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "......                                                                   [100%]\n6 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "20-cache-invalidation",
+      "difficulty": "hard",
+      "mode": "d",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 123.47,
+      "claude": {
+        "input_tokens": 22,
+        "output_tokens": 2826,
+        "cache_read_input_tokens": 241383,
+        "cache_creation_input_tokens": 13752,
+        "cost_usd": 0.2149006,
+        "turns": 14,
+        "permission_denials": 2
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 514,
+        "completion_tokens": 65,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "01-docstring-geometry",
+      "difficulty": "easy",
+      "mode": "d",
+      "repeat": 2,
+      "passed": true,
+      "duration_s": 119.89,
+      "claude": {
+        "input_tokens": 20,
+        "output_tokens": 1833,
+        "cache_read_input_tokens": 211802,
+        "cache_creation_input_tokens": 12343,
+        "cost_usd": 0.17784439999999999,
+        "turns": 11,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 290,
+        "completion_tokens": 94,
+        "savings_tokens": 0,
+        "by_provider": {
+          "agy": 1
+        }
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.01s\n",
+      "agent": null
+    }
+  ]
+}

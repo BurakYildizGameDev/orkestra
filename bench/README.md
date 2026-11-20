@@ -136,6 +136,26 @@ Ollama must be running for B and C. Every run is written to `results/<date>.json
 
 ## Results
 
-Not run yet (Faz 13b). Each results file records the date, machine, Python, Claude Code
-version and model, Ollama models and the Orkestra version. Ollama results depend on the
-hardware.
+Each results file records the date, machine, Python, Claude Code version and model, Ollama
+models and the Orkestra version. Ollama results depend on the hardware.
+
+Measured 2026-11-20/21 on Windows 11, Intel i9-13900HX, 32 GB RAM, RTX 5070 Ti Laptop 12 GB;
+Claude Code 2.1.329 (default model, Opus 5.5), agy 1.5.13, Ollama `qwen2.5-coder:14b`, short
+skill (`b2d2eba2a206`, D-113).
+
+| File | Modes | Passed | Claude tokens / task | Claude cost / task |
+|---|---|---|---|---|
+| `2026-11-20-0326` (13d, round 1, long skill) | A / B / C | 20 / 20 / 9 of 20 | 9.3k / 11.3k / – | – |
+| `2026-11-20-2333` (13e, rounds 2–3) | A / B / C | 20 / 20 / 7.5 (7–8) of 20 | 9.1k / 11.4k / – | $0.117 / $0.136 / – |
+| `2026-11-21-0013` (13e, `--worker agy`, 1 round) | D | 20 of 20 | 15.7k | $0.197 |
+| `2026-11-20-2346` (13g, `--suite big`, 2 rounds) | A / F / G | 2 / 2 / 2 of 2 | 87.4k / 76.9k / 76.7k | $1.38 / $1.10 / $1.19 |
+
+- B never delegated in any round: with the choice, Claude does small tasks itself, and the
+  skill's fixed cost makes it ~25% dearer than A.
+- D (told to delegate to agy) passes everything but costs Claude ~70% more than A on small
+  tasks.
+- On the big task the context filter (F) cut Claude's cache reads by 46% and its cost by 20%;
+  G delegated in one of two runs, and that run cost more than A. The 13g target (≥ 25% fewer
+  Claude tokens) was not met.
+- Limits: one machine, one Claude model, Windows only; D one round, the big suite one task with
+  two rounds; LLM runs vary between repeats (see min–max in each `.md`).
