@@ -182,5 +182,7 @@ def test_a_server_that_closes_stdout_but_lives_on_does_not_hang_the_probe(tmp_pa
     started = time.monotonic()  # the limit leaves a slow CI runner time to start Python
     result = _probe(_server(tmp_path, "detached"), timeout_s=20.0)
     assert time.monotonic() - started < 40  # the server sleeps 60 s: no unbounded wait
-    assert result.status == "bad_output"
+    # Where a launcher keeps the pipe open (uv's python.exe on the Windows CI runner) stdout
+    # never reaches EOF and the limit ends it instead: either way it is a warning.
+    assert result.status in ("bad_output", "timeout")
     assert result.pid is not None and not psutil.pid_exists(result.pid)
