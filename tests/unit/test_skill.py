@@ -22,6 +22,8 @@ from orkestra.cli import build_app
 from orkestra.tasks.spec import parse_task
 
 SKILL = Path(__file__).resolve().parents[2] / "skill" / "orkestra" / "SKILL.md"
+REFERENCE = SKILL.with_name("reference.md")  # the details, read only when needed (D-113)
+CORE_MAX_BYTES = 6000  # what every delegating session loads (Faz 13p)
 MAX_LINES = 500  # Faz 9: the skill stays under 500 lines
 _YAML = YAML(typ="safe", pure=True)
 
@@ -225,7 +227,31 @@ def check_reference(group: TyperGroup, span: str) -> list[str]:
 
 @pytest.fixture(scope="module")
 def skill_text() -> str:
+    """Both files: every command and flag in either one must exist."""
+    return SKILL.read_text(encoding="utf-8") + "\n" + REFERENCE.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def core_text() -> str:
     return SKILL.read_text(encoding="utf-8")
+
+
+def test_the_skill_core_is_small(core_text: str) -> None:
+    assert len(core_text.encode("utf-8")) <= CORE_MAX_BYTES
+
+
+def test_the_core_keeps_the_rules_and_points_at_the_reference(core_text: str) -> None:
+    for must in (
+        "orkestra run --template",
+        "orkestra show <run_id> --report",
+        "orkestra apply <run_id> --max-risk low",
+        "--only-ok --max-risk low",
+        "orkestra exec --",
+        "orkestra handoff update",
+        "--force",
+        "reference.md",
+    ):
+        assert must in core_text, must
 
 
 def test_the_skill_has_front_matter_with_name_and_description(skill_text: str) -> None:

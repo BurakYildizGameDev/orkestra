@@ -198,6 +198,7 @@ def test_mode_b_gives_claude_the_skill_and_the_bench_orkestra_home(tmp_path: Pat
     args, cwd, env = runner.calls[0]
     assert "--disable-slash-commands" not in args
     assert (cwd / ".claude" / "skills" / "orkestra" / "SKILL.md").is_file()
+    assert (cwd / ".claude" / "skills" / "orkestra" / "reference.md").is_file()
     assert env["ORKESTRA_HOME"] == str(tmp_path / "home")
     assert record.passed
 

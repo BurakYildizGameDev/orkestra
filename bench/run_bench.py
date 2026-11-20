@@ -57,6 +57,7 @@ REPO_ROOT = BENCH_DIR.parent
 TASKS_DIR = BENCH_DIR / "tasks"
 RESULTS_DIR = BENCH_DIR / "results"
 SKILL_FILE = REPO_ROOT / "skill" / "orkestra" / "SKILL.md"
+SKILL_FILES = (SKILL_FILE, SKILL_FILE.with_name("reference.md"))  # core + details (D-113)
 
 DIFFICULTIES = ("easy", "medium", "hard")
 DEFAULT_OLLAMA_MODEL = "qwen2.5-coder:14b"
@@ -506,7 +507,8 @@ def run_once(
     task: Task, mode: str, repeat: int, settings: Settings, *, runner: Runner, home: Path
 ) -> Record:
     run_dir = settings.work_dir / f"{task.id}-{mode}-{repeat}"
-    extra = {".claude/skills/orkestra/SKILL.md": SKILL_FILE} if mode in SKILL_MODES else None
+    skill = {f".claude/skills/orkestra/{f.name}": f for f in SKILL_FILES}
+    extra = skill if mode in SKILL_MODES else None
     workspace = prepare_workspace(task, run_dir / "ws", extra)
     agent_name = MODES[mode].agent
     prompt = agent_prompt(task.prompt, MODES[mode].hint or "") if agent_name else task.prompt
