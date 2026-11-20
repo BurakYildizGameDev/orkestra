@@ -252,12 +252,29 @@ def _last_heading(archive: Path) -> str | None:
     return headings[-1].strip() if headings else None
 
 
+REPLACE_TRIES = 20
+REPLACE_PAUSE_S = 0.05
+
+
+def _replace(temporary: str, path: Path) -> None:
+    """``os.replace``, retried: Windows refuses to replace a file that another process (a
+    reader, outside the lock) has open; it is free again a moment later (D-119)."""
+    for attempt in range(REPLACE_TRIES):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            if attempt == REPLACE_TRIES - 1:
+                raise
+            time.sleep(REPLACE_PAUSE_S)
+
+
 def _atomic_write(path: Path, text: str) -> None:
     descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
-        os.replace(temporary, path)
+        _replace(temporary, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(temporary)

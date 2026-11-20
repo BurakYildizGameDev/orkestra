@@ -179,8 +179,8 @@ def test_a_server_that_exits_at_once_is_info_not_a_stall(tmp_path: Path) -> None
 
 def test_a_server_that_closes_stdout_but_lives_on_does_not_hang_the_probe(tmp_path: Path) -> None:
     """PR #46 review: after stdout's EOF the wait for the exit code must be bounded too."""
-    started = time.monotonic()
-    result = _probe(_server(tmp_path, "detached"), timeout_s=2.0)
-    assert time.monotonic() - started < 15
+    started = time.monotonic()  # the limit leaves a slow CI runner time to start Python
+    result = _probe(_server(tmp_path, "detached"), timeout_s=20.0)
+    assert time.monotonic() - started < 40  # the server sleeps 60 s: no unbounded wait
     assert result.status == "bad_output"
     assert result.pid is not None and not psutil.pid_exists(result.pid)
