@@ -31,7 +31,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (ek) | ✅ | 2026-11-20 | `gc` eski `runs`/`usage`/`queue` satırlarını siler (en az 35 gün kalır), `queue remove --finished`, `notify.ntfy_url`, `desktop-notifier<7`, `doctor` düzenlenebilir kurulum uyarısı (D-104) |
 | düzeltme-fable b – `cli.py` / `runner.py` bölme (ek) | ✅ | 2026-11-20 | `cli.py` 1964 → ~200 satır (`commands/` altında 7 grup), `runner.py` 1533 → ~780 (`prepare.py`, `run_record.py`); davranış ve testler aynı (D-106) |
-| düzeltme-fable c – README, bilinen sınırlar, elle kullanım turu, temizlik (ek) | ⏳ | | README kısalır (en + tr), durum kutusu ve sağlayıcı listesi güncel, komut denetimi testi, "Bilinen sınırlar"; gerçek modelle/terminalde elle tur; eski dallar (kullanıcı onayıyla) |
+| düzeltme-fable c – README, bilinen sınırlar, elle kullanım turu, temizlik (ek) | ⏳ | | README + rehber + komut denetimi testi bitti (D-108); kalan: elle kullanım turu, dal temizliği, kurulu skill'i eşitleme (kullanıcıyla) | README kısalır (en + tr), durum kutusu ve sağlayıcı listesi güncel, komut denetimi testi, "Bilinen sınırlar"; gerçek modelle/terminalde elle tur; eski dallar (kullanıcı onayıyla) |
 | 13a – Benchmark aracı ve 20 görev | ✅ | 2026-11-15 | `bench/run_bench.py`, 20 görev (8/8/4) + gizli test + referans çözüm, sızıntı koruması, kuru koşu (D-076); kod denetimi (D-077) |
 | 13b – Kota korumaları (limit algılama, `--resume`, `--max-claude-runs`) | ✅ | 2026-11-15 | kod; kota harcamaz (D-078); kod denetimi (D-079) |
 | 13c – Deneme ve ölçüm (2 görev, 4 Claude oturumu) | ✅ | 2026-11-15 | 6/6 geçti; B delege etmedi; `/usage` payı kullanıcıdan bekleniyor (D-080); kod denetimi (D-081) |
@@ -51,6 +51,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### düzeltme-fable c (1. kısım) – README ve rehber (2026-11-20)
+**Yapılanlar (D-108):** README.md / README.tr.md 995 → 204 satır; ayrıntılar `docs/guide.md` / `docs/guide.tr.md`'de (taşındı, bağlantılar düzeltildi, içindekiler); yönlendirme sırası güncel; "Bilinen sınırlar" bölümü; `tests/unit/test_readme.py`.
+
+**Kabul kriterleri:**
+- ✅ Durum kutusu, özellik tablosu (5 dil, `providers add`, `queue remove --finished`, `gc` satırları) ve sağlayıcı listesi (kod ajanları dahil) güncel; şemadaki "Faz 3–4" notu yok.
+- ✅ Kurulum: `uv tool install git+…`, "PyPI'de henüz yok", düzenlenebilir kurulumda `main` notu.
+- ✅ README'deki her komut ve bayrak gerçek CLI'ye karşı denetleniyor (rehberler ve tarifler de); bağlantılar ve çapalar çözülüyor.
+- ✅ README belirgin biçimde kısa (204 satır, hedef ~300); taşınan bölümler `docs/guide*.md`'de ve bağlantılı.
+- ✅ "Bilinen sınırlar": kanıtlanmamış tasarruf (13c sayılarıyla), az gerçek kullanım ve AI ile yazım/denetim + sorun bildirme yolu, öğrenen yönlendirmenin veri ihtiyacı, agy deneysel, yerel model yükü, çeviriler, PyPI.
+- ⚠️ Yol haritası / özellik tablosu PROGRESS ile elle karşılaştırıldı; çelişki yok.
+- ⏳ Elle kullanım turu (gerçek Ollama ile gece kuyruğu, `orkestra ui` her sekme, `init` sihirbazı, `notify test`) ve dal temizliği kullanıcıyla.
+- ✅ ruff, ruff format, pyright temiz; pytest **1895 geçti** (1877 + 18).
+
 
 ### Kod denetimi – düzeltme-fable b (PR #40), 2026-11-20
 `/code-review`: hata yok; 3 küçük not düzeltildi (D-107): komut modüllerinde `cli` çağrı anında içe aktarılıyor, tembel import yorumu, modüller arası alt çizgili adlar belgelendi.
