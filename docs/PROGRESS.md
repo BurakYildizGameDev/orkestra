@@ -53,6 +53,10 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Kod denetimi – Faz 13g (PR #44), 2026-11-21
+
+`/code-review 44`: 6 bulgu (2 önemli, 4 küçük), hepsi düzeltildi (D-117): `--rescore` yalnız aynı oturumun çıktısını (aynı maliyet) kabul eder ve yalnız token alanlarını karşılaştırır; işçi koşularını hangi sağlayıcının yazdığı kaydedilir, denetçinin yazdığı koşu ilerleme satırında ve raporda görünür (13g'nin G koşusunda hepsini agy yazmış); `--worker agy` ile `--ollama-model-2` reddedilir; agy yok mesajı `--reviewer agy`'yi sayar; G'de devretmeyen koşu `did not delegate`. 7 yeni test, bench testleri 151/151.
+
 ### Faz 13g – Büyük görevde bölmek kazandırıyor mu? (2026-11-21)
 
 **Yapılanlar**

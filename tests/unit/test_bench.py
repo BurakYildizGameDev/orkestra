@@ -1435,3 +1435,83 @@ def test_rescore_reads_the_saved_claude_output_again(
     assert records[("09-bugfix-inventory", "a")]["claude"]["output_tokens"] == 9000
     assert records[("01-docstring-geometry", "a")]["claude"]["output_tokens"] == 800
     assert records[("09-bugfix-inventory", "c")]["claude"] is None  # no Claude in mode C
+
+
+# --- PR #44 review (D-117) ------------------------------------------------------------------
+
+
+def test_rescore_leaves_a_record_whose_saved_output_is_another_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The folder name is reused by every call in the work dir: the cost must match."""
+    assert _main(tmp_path, ManyTasks()) == 0
+    [first] = (tmp_path / "out").glob("*.json")
+    later = {**CLAUDE_JSON, "total_cost_usd": 0.9,
+             "modelUsage": {"m": {"outputTokens": 99999}}}  # fmt: skip
+    saved = tmp_path / "work" / "09-bugfix-inventory-a-1" / "claude-output.json"
+    saved.write_text(json.dumps(later), encoding="utf-8")
+    capsys.readouterr()
+    assert rb.main(["--rescore", str(first), "--work-dir", str(tmp_path / "work")]) == 0
+    out = capsys.readouterr().out
+    assert "0 record(s) changed" in out and "1 left as they were" in out
+    records = {(r["task"], r["mode"]): r for r in _saved(tmp_path)["records"]}
+    assert records[("09-bugfix-inventory", "a")]["claude"]["output_tokens"] == 800
+
+
+def test_rescore_counts_only_token_changes(tmp_path: Path) -> None:
+    assert _main(tmp_path, ManyTasks()) == 0
+    [first] = (tmp_path / "out").glob("*.json")
+    data = json.loads(first.read_text(encoding="utf-8"))
+    for record in data["records"]:  # a file from before permission_denials was recorded
+        if record["claude"]:
+            del record["claude"]["permission_denials"]
+    first.write_text(json.dumps(data), encoding="utf-8")
+    assert rb.rescore(first, tmp_path / "work") == 0
+
+
+def test_the_providers_of_worker_runs_are_recorded(tmp_path: Path) -> None:
+    from orkestra.state import db
+
+    since = datetime.now().astimezone()
+    with closing(db.connect(tmp_path / "state.db")) as conn:
+        for run_id, provider in (("r1", "agy"), ("r2", "ollama"), ("r3", "agy")):
+            conn.execute(
+                "INSERT INTO runs (run_id, task_id, kind, status, provider, model, tier, "
+                "attempts, started_at) VALUES (?, 't', 'edit', 'ok', ?, 'm', 1, 1, ?)",
+                (run_id, provider, db.local_now().isoformat()),
+            )
+        conn.commit()
+    assert rb.worker_stats(tmp_path, since)["by_provider"] == {"agy": 2, "ollama": 1}
+
+
+def test_a_run_the_reviewer_wrote_is_marked_and_reported() -> None:
+    workers = {"runs": 3, "by_provider": {"agy": 2, "ollama": 1}}
+    record = dataclasses.replace(_record("g", 1, "t1", True), workers=workers)
+    assert "reviewer ollama wrote 1 run" in rb.run_mark(record, "ollama")
+    table = rb.markdown(rb.summarize([record]), [record], reviewer="ollama")
+    assert "Worker runs written by the reviewer (ollama): G 1" in table
+
+
+def test_a_g_run_without_delegation_is_a_choice_not_a_broken_worker() -> None:
+    idle = dataclasses.replace(_record("g", 1, "t1", True), workers={"runs": 0})
+    assert rb.run_mark(idle, None) == "PASS - did not delegate"
+    broken = dataclasses.replace(_record("d", 1, "t1", False), mode="d", workers={"runs": 0})
+    assert rb.run_mark(broken, None) == "fail - no worker run"
+
+
+def test_ollama_model_2_is_refused_when_only_the_reviewer_is_ollama(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    argv = ["--mode", "a", "--tasks", "01", "--worker", "agy", "--reviewer", "ollama",
+            "--ollama-model-2", "big", "--work-dir", str(tmp_path)]  # fmt: skip
+    assert rb.main(argv, runner=ManyTasks(), which=lambda name: name) == 2
+    assert "--ollama-model-2" in capsys.readouterr().err
+
+
+def test_a_missing_agy_names_the_reviewer_too(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    argv = ["--mode", "a", "--tasks", "01", "--reviewer", "agy", "--work-dir", str(tmp_path)]
+    which = lambda name: None if name == "agy" else name  # noqa: E731
+    assert rb.main(argv, runner=ManyTasks(), which=which) == 2
+    assert "--reviewer agy" in capsys.readouterr().err

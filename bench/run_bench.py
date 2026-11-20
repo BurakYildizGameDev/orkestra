@@ -187,7 +187,8 @@ MODES: dict[str, Mode] = {
     "e": Mode("E - agy chief + Orkestra", chief=False, hint=AGENT_HINT, planned=False,
               agent="agy"),
 }  # fmt: skip
-DELEGATING_MODES = ("c", "d", "g")  # a run here without any worker run means no worker was usable
+DELEGATING_MODES = ("c", "d", "g")  # modes that hand work to workers
+CHOOSING_MODES = ("g",)  # Claude decides what to hand over: no worker run can be a choice
 PLANNED_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.planned)
 CHIEF_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.chief)  # Claude sessions
 AGENT_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.agent)
@@ -532,12 +533,37 @@ def worker_stats(home: Path, since: datetime) -> dict[str, Any]:
 
     with closing(db.connect(path)) as conn:
         report = stats.collect(conn, since=since, now=db.local_now())
+        rows = conn.execute(
+            "SELECT provider, COUNT(*) FROM runs WHERE started_at >= ? GROUP BY provider "
+            "ORDER BY provider",
+            (since.isoformat(),),
+        ).fetchall()
     totals, saved = report.totals, report.savings
     return {
         "runs": totals.runs, "ok": totals.ok, "cost_usd": round(totals.cost_usd, 6),
         "prompt_tokens": totals.prompt_tokens, "completion_tokens": totals.completion_tokens,
         "savings_tokens": max(saved.worker_output_tokens - saved.envelope_tokens, 0),
+        # The reviewer is a routable provider at tier 2: an escalated run may be its work.
+        "by_provider": {str(name): int(count) for name, count in rows if name},
     }  # fmt: skip
+
+
+def reviewer_runs(record: Record, reviewer: str | None) -> int:
+    """Worker runs the cross reviewer wrote itself (an escalation reached tier 2)."""
+    if not reviewer:
+        return 0
+    return int((record.workers.get("by_provider") or {}).get(reviewer, 0))
+
+
+def run_mark(record: Record, reviewer: str | None) -> str:
+    """The progress line's verdict for one run."""
+    mark = "PASS" if record.passed else "fail"
+    if record.mode in DELEGATING_MODES and not record.workers.get("runs"):
+        mark += " - did not delegate" if record.mode in CHOOSING_MODES else " - no worker run"
+    wrote = reviewer_runs(record, reviewer)
+    if wrote:
+        mark += f" - reviewer {reviewer} wrote {wrote} run{'s' if wrote > 1 else ''}"
+    return mark
 
 
 def _env(home: Path) -> dict[str, str]:
@@ -960,7 +986,11 @@ def _num(value: float | None, pattern: str = "{:,.0f}") -> str:
     return "-" if value is None else pattern.format(value)
 
 
-def markdown(summary: Mapping[str, Mapping[str, Any]], records: Sequence[Record]) -> str:
+def markdown(
+    summary: Mapping[str, Mapping[str, Any]],
+    records: Sequence[Record],
+    reviewer: str | None = None,
+) -> str:
     lines = [
         "| Mode | Passed (mean, min-max) | Claude tokens / task | Claude cost / task "
         "| Worker cost / task | Worker runs / task | Time / task |",
@@ -1002,6 +1032,10 @@ def markdown(summary: Mapping[str, Mapping[str, Any]], records: Sequence[Record]
     if denied:
         lines += ["", "Denied tool calls (permission): "
                   + ", ".join(f"{m.upper()} {n}" for m, n in denied.items())]  # fmt: skip
+    wrote = {m: sum(reviewer_runs(r, reviewer) for r in records if r.mode == m) for m in summary}
+    if any(wrote.values()):
+        lines += ["", f"Worker runs written by the reviewer ({reviewer}): "
+                  + ", ".join(f"{m.upper()} {n}" for m, n in wrote.items() if n)]  # fmt: skip
     errors = [r for r in records if r.error]
     if errors:
         lines += ["", f"Runs with an error: {len(errors)} (see the JSON file)."]
@@ -1018,7 +1052,9 @@ def write_results(
     clean = default_scrubber()  # every field and every record, resumed ones too
     json_path = _write_atomic(out_dir / f"{stamp}.json", clean(document))
     header = f"# Benchmark {stamp}\n\n" + "".join(_meta_lines(meta)) + "\n"
-    md_path = _write_atomic(out_dir / f"{stamp}.md", clean(header + markdown(summary, records)))
+    md_path = _write_atomic(
+        out_dir / f"{stamp}.md", clean(header + markdown(summary, records, meta.get("reviewer")))
+    )
     return json_path, md_path
 
 
@@ -1183,9 +1219,15 @@ def _stop(records: Sequence[Record], plan: Plan, reason: str) -> Path:
     return json_path
 
 
-def rescore(path: Path, work_dir: Path) -> int:
+RESCORED_FIELDS = ("input_tokens", "output_tokens", "cache_read_input_tokens",
+                   "cache_creation_input_tokens")  # fmt: skip
+
+
+def rescore(path: Path, work_dir: Path, mismatched: list[str] | None = None) -> int:
     """Parse each Claude run's saved ``claude-output.json`` again; returns how many records
-    changed. Runs whose folder is gone keep their numbers."""
+    changed. Runs whose folder is gone, or holds another run's output (another cost), keep
+    their numbers; the latter are added to ``mismatched``."""
+    mismatched = [] if mismatched is None else mismatched
     data = json.loads(path.read_text(encoding="utf-8"))
     records = [Record(**r) for r in data["records"]]
     changed = 0
@@ -1197,8 +1239,13 @@ def rescore(path: Path, work_dir: Path) -> int:
             fresh = parse_claude(saved.read_text(encoding="utf-8"))
         except BenchError:
             continue
-        if fresh != record.claude:
-            records[index] = Record(**{**asdict(record), "claude": fresh})
+        # Every call in the work dir reuses the folder name: only the same session (its
+        # cost always covered the whole session, D-116) may replace the numbers.
+        if abs(fresh["cost_usd"] - float(record.claude.get("cost_usd") or 0.0)) > 1e-9:
+            mismatched.append(f"{record.task} {record.mode} #{record.repeat}")
+            continue
+        if any(fresh[k] != record.claude.get(k) for k in RESCORED_FIELDS):
+            records[index] = Record(**{**asdict(record), "claude": {**record.claude, **fresh}})
             changed += 1
     write_results(records, path.parent, stamp=path.stem, meta=data["meta"])
     return changed
@@ -1213,11 +1260,17 @@ def main(
     opts = _parser().parse_args(argv)
     if opts.rescore is not None:
         try:
-            changed = rescore(opts.rescore, opts.work_dir)
+            others: list[str] = []
+            changed = rescore(opts.rescore, opts.work_dir, others)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             print(f"cannot rescore {opts.rescore}: {type(exc).__name__}: {exc}", file=sys.stderr)
             return 2
         print(f"{changed} record(s) changed in {opts.rescore}")
+        if others:
+            print(
+                f"{len(others)} left as they were: their saved output is another run's "
+                f"(another cost): {', '.join(others)}"
+            )
         return 0
     try:
         plan = _plan(opts)
@@ -1248,15 +1301,19 @@ def main(
         print(f"claude is not on PATH (needed for modes {', '.join(CHIEF_MODES)})",
               file=sys.stderr)  # fmt: skip
         return 2
-    if worker == "agy" and reviewer != "ollama" and (opts.ollama_model or opts.ollama_model_2):
-        flag = "--ollama-model" if opts.ollama_model else "--ollama-model-2"
-        print(f"{flag} has no use with --worker agy (agy is the only worker)", file=sys.stderr)
+    unused = [flag for flag, value in (("--ollama-model", opts.ollama_model),
+                                       ("--ollama-model-2", opts.ollama_model_2))
+              if value and worker == "agy"
+              and (flag == "--ollama-model-2" or reviewer != "ollama")]  # fmt: skip
+    if unused:
+        print(f"{unused[0]} has no use with --worker agy (agy is the only worker; an ollama "
+              "reviewer uses --ollama-model only)", file=sys.stderr)  # fmt: skip
         return 2
     agy = which("agy")
     needs_agy = "agy" in (worker, reviewer) or any(m in AGENT_MODES for m in plan.modes)
     if needs_agy and agy is None:
-        print(f"agy is not on PATH (needed for modes {', '.join(AGENT_MODES)} and --worker agy)",
-              file=sys.stderr)  # fmt: skip
+        print(f"agy is not on PATH (needed for modes {', '.join(AGENT_MODES)}, --worker agy "
+              "and --reviewer agy)", file=sys.stderr)  # fmt: skip
         return 2
     settings = Settings(
         out_dir=plan.out, work_dir=opts.work_dir, claude=claude or "claude",
@@ -1328,9 +1385,7 @@ def main(
                 claude_runs += is_claude
                 window["runs"] += 1
                 records.append(record)
-                mark = "PASS" if record.passed else "fail"
-                if mode in DELEGATING_MODES and not record.workers.get("runs"):
-                    mark += " - no worker run"
+                mark = run_mark(record, reviewer)
                 print(f"[{len(records)}/{total}] {task.id} {mode} #{repeat}: {mark} "
                       f"({record.duration_s:.0f} s){' - ' + record.error if record.error else ''}",
                       flush=True)  # fmt: skip
