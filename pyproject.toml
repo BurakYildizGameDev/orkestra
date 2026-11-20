@@ -45,7 +45,7 @@ module-name = "orkestra"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["docs", "bench/tasks"]  # benchmark fixtures: start code is meant to be rough
+extend-exclude = ["docs", "bench/tasks", "bench/tasks_big"]  # benchmark fixtures: start code is meant to be rough
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
@@ -54,7 +54,7 @@ allowed-confusables = ["ı"]
 
 [tool.pyright]
 include = ["src", "tests", "bench"]
-exclude = ["bench/tasks"]
+exclude = ["bench/tasks", "bench/tasks_big"]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
 

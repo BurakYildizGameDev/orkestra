@@ -7,6 +7,10 @@ Three modes run the same tasks, each in a fresh git workspace with the task's pr
   Orkestra home of its own (the bench config, cheap local workers, cache off).
 - **C - Orkestra only:** ``orkestra run --profile cheap`` with no chief; a passing run is
   applied. The lower bound without a chief.
+- **F, G - the arms of Faz 13g** (never part of ``all``): F keeps Claude's context small with
+  ``orkestra exec/read/find`` and writes everything itself; G does that too and hands the bulky
+  parts to workers in one batch, with a cross reviewer (``--reviewer``). Meant for the big suite
+  (``--suite big``: one realistic task on a ~2,000-line project).
 - **E - agy chief + Orkestra** (Faz 13n, never part of ``all``): ``agy --print`` is the chief,
   told how to use Orkestra by the same guide a handoff gives (``prompts/chief_guide.md``). agy
   reports its own tokens; no Claude quota is used.
@@ -55,13 +59,16 @@ from orkestra.errors import OrkestraError
 BENCH_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BENCH_DIR.parent
 TASKS_DIR = BENCH_DIR / "tasks"
+BIG_TASKS_DIR = BENCH_DIR / "tasks_big"  # Faz 13g
+SUITES = {"small": TASKS_DIR, "big": BIG_TASKS_DIR}
 RESULTS_DIR = BENCH_DIR / "results"
 SKILL_FILE = REPO_ROOT / "skill" / "orkestra" / "SKILL.md"
 SKILL_FILES = (SKILL_FILE, SKILL_FILE.with_name("reference.md"))  # core + details (D-113)
 
-DIFFICULTIES = ("easy", "medium", "hard")
+DIFFICULTIES = ("easy", "medium", "hard", "big")
 DEFAULT_OLLAMA_MODEL = "qwen2.5-coder:14b"
 WORKERS = ("ollama", "agy")
+REVIEWERS = ("none", "ollama", "agy")  # "none": the default review settings
 DEFAULT_TIMEOUT_S = 900
 EVAL_TIMEOUT_S = 300
 HIDDEN_DIR = "_hidden_tests"  # next to a copy of the result, only while it is evaluated
@@ -134,6 +141,26 @@ DELEGATE_HINT = (
     "worker failed twice)."
 )
 
+# Faz 13g arms: (b) the context filter alone, (d) the filter plus bulk delegation and a cross
+# review. They tell Claude *how* to work, never anything about the solution.
+FILTER_HINT = (
+    "The Orkestra skill is available in this project. Keep your context small: run tests and "
+    "other long commands with `orkestra exec -- <command>`, and read big files and logs with "
+    '`orkestra read <file> "<question>"` or `orkestra find "<text>"` instead of reading '
+    "them whole, as the skill describes. Write all the code yourself: do not hand any work to "
+    "Orkestra workers."
+)
+FULL_HINT = (
+    "The Orkestra skill is available in this project. Keep your context small: run tests and "
+    "other long commands with `orkestra exec -- <command>`, and read big files and logs with "
+    '`orkestra read <file> "<question>"` or `orkestra find "<text>"` instead of reading '
+    "them whole. Hand the bulky, easy-to-check parts (tests, docstrings, boilerplate) to "
+    "Orkestra workers all at once in one batch, with the project's tests as the verifier. Let "
+    "another provider review them (`orkestra review`), read the short report "
+    "(`orkestra show <run_id> --report`) instead of the whole diff, and apply low-risk results "
+    "with `--max-risk low`. Write the core logic yourself."
+)
+
 
 @dataclass(frozen=True)
 class Mode:
@@ -153,10 +180,14 @@ MODES: dict[str, Mode] = {
     "c": Mode("C - Orkestra only (cheap)", chief=False),
     "d": Mode("D - Claude + Orkestra, delegation asked", chief=True, skill=True,
               hint=DELEGATE_HINT, planned=False),
+    "f": Mode("F - Claude + context filter", chief=True, skill=True, hint=FILTER_HINT,
+              planned=False),
+    "g": Mode("G - Claude + filter + bulk delegation + cross review", chief=True, skill=True,
+              hint=FULL_HINT, planned=False),
     "e": Mode("E - agy chief + Orkestra", chief=False, hint=AGENT_HINT, planned=False,
               agent="agy"),
 }  # fmt: skip
-DELEGATING_MODES = ("c", "d")  # a run here without any worker run means no worker was usable
+DELEGATING_MODES = ("c", "d", "g")  # a run here without any worker run means no worker was usable
 PLANNED_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.planned)
 CHIEF_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.chief)  # Claude sessions
 AGENT_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.agent)
@@ -404,6 +435,7 @@ class Settings:
     ollama_model_2: str | None = None
     agy: str = "agy"
     worker: str = "ollama"  # "agy": agy is the only worker, tier 1 (D-111)
+    reviewer: str | None = None  # another provider reviews the worker (Faz 13g)
 
 
 @dataclass
@@ -808,11 +840,24 @@ def setup_home(home: Path, settings: Settings) -> None:
         if settings.ollama_model_2:
             models.append({"id": settings.ollama_model_2, "tier": 2})
         providers = {"ollama": {"type": "ollama", "models": models}}
-    document = {
+    document: dict[str, Any] = {
         "version": 1, "language": "en", "cache": {"enabled": False},
         "routing": {"adaptive": False}, "notify": {"desktop": False},
         "providers": providers,
     }  # fmt: skip
+    if settings.reviewer:  # tier 2: the router tries the worker first, the reviewer reviews it
+        if settings.reviewer == "ollama":
+            providers["ollama"] = {
+                "type": "ollama",
+                "models": [{"id": settings.ollama_model, "tier": 2}],
+            }
+        else:
+            providers["agy"] = {
+                "type": "cli_agent", "command": settings.agy, "kind": "agy", "tier": 2,
+                "experimental": True, "enabled": True,
+                "timeout_s": worker_timeout(settings.timeout_s),
+            }  # fmt: skip
+        document["review"] = {"by": {settings.worker: [settings.reviewer]}, "independent": True}
     (home / "config.yaml").write_text(loader.dump_yaml(document), encoding="utf-8")
 
     config = loader.load_config(home / "config.yaml", cwd=home, environ={}).config
@@ -922,10 +967,11 @@ def markdown(summary: Mapping[str, Mapping[str, Any]], records: Sequence[Record]
             f"| {_num(s['worker_runs_per_task'], '{:.1f}')} "
             f"| {_num(s['duration_per_task_s'], '{:.0f} s')} |"
         )  # fmt: skip
-    lines += ["", "| Mode | " + " | ".join(DIFFICULTIES) + " |", "|---|---|---|---|"]
+    ran = [d for d in DIFFICULTIES if any(d in s["by_difficulty"] for s in summary.values())]
+    lines += ["", "| Mode | " + " | ".join(ran) + " |", "|---" * (len(ran) + 1) + "|"]
     for s in summary.values():
         cells = [f"{s['by_difficulty'][d]['passed_mean']:g}/{s['by_difficulty'][d]['tasks']}"
-                 if d in s["by_difficulty"] else "-" for d in DIFFICULTIES]  # fmt: skip
+                 if d in s["by_difficulty"] else "-" for d in ran]  # fmt: skip
         lines.append(f"| {s['label']} | " + " | ".join(cells) + " |")
     for other in SKILL_MODES:
         if "a" in summary and other in summary:
@@ -1022,6 +1068,8 @@ def _parser() -> argparse.ArgumentParser:
                              "of all)")  # fmt: skip
     parser.add_argument("--repeat", type=int, default=None, help="default 3")
     parser.add_argument("--tasks", default="", help="comma-separated id prefixes (default: all)")
+    parser.add_argument("--suite", choices=tuple(SUITES), default=None,
+                        help="small (default: the 20 tasks) or big (Faz 13g)")  # fmt: skip
     parser.add_argument("--out", type=Path, default=RESULTS_DIR)
     parser.add_argument(
         "--work-dir", type=Path, default=Path(tempfile.gettempdir()) / "orkestra-bench"
@@ -1035,6 +1083,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--worker", choices=WORKERS, default=None,
                         help="who Orkestra hands the work to: ollama (default) or agy "
                              "(agy only, tier 1; for mode D, D-111)")  # fmt: skip
+    parser.add_argument("--reviewer", choices=REVIEWERS, default=None,
+                        help="another provider (tier 2) that reviews the worker's runs "
+                             "(review.by; Faz 13g arm G); default none")  # fmt: skip
     parser.add_argument("--timeout", type=float, default=None,
                         help=f"per run, default {DEFAULT_TIMEOUT_S} s")  # fmt: skip
     parser.add_argument(
@@ -1063,14 +1114,16 @@ class Plan:
     stamp: str
     meta: dict[str, Any]
     records: list[Record]
+    suite: str = "small"
 
 
 def _plan(opts: argparse.Namespace) -> Plan:
     if opts.resume is None:
         modes = parse_modes(opts.mode)
-        tasks = load_tasks(TASKS_DIR, [p for p in opts.tasks.split(",") if p])
+        suite = opts.suite or "small"
+        tasks = load_tasks(SUITES[suite], [p for p in opts.tasks.split(",") if p])
         stamp = datetime.now().strftime("%Y-%m-%d-%H%M")
-        return Plan(modes, tasks, opts.repeat or 3, opts.out, stamp, {}, [])
+        return Plan(modes, tasks, opts.repeat or 3, opts.out, stamp, {}, [], suite)
     try:
         data = json.loads(opts.resume.read_text(encoding="utf-8"))
         meta = dict(data["meta"])
@@ -1080,23 +1133,34 @@ def _plan(opts: argparse.Namespace) -> Plan:
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise BenchError(f"cannot resume from {opts.resume}: not a results file of this "
                          f"version ({type(exc).__name__}: {exc})") from exc  # fmt: skip
+    suite = str(meta.get("suite", "small"))  # files from before Faz 13g
+    if opts.suite is not None and opts.suite != suite:
+        raise BenchError(f"--suite differs from the resumed run ({suite})")
+    folder = SUITES[suite]
     prefixes = [p for p in opts.tasks.split(",") if p]
-    if prefixes and [t.id for t in load_tasks(TASKS_DIR, prefixes)] != ids:
+    if prefixes and [t.id for t in load_tasks(folder, prefixes)] != ids:
         raise BenchError(f"--tasks differs from the resumed run ({', '.join(ids)})")
     for flag, key, value in (("--ollama-model", "ollama_model", opts.ollama_model),
                              ("--ollama-model-2", "ollama_model_2", opts.ollama_model_2),
                              ("--claude-model", "claude_model", opts.claude_model),
                              ("--worker", "worker", opts.worker),
-                             ("--timeout", "timeout_s", opts.timeout)):  # fmt: skip
+                             ("--timeout", "timeout_s", opts.timeout),
+                             ("--reviewer", "reviewer", _reviewer(opts.reviewer))):  # fmt: skip
+        if key == "reviewer" and opts.reviewer is not None and value != meta.get(key):
+            raise BenchError(f"{flag} differs from the resumed run ({meta.get(key) or 'none'})")
         if value is not None and value != meta.get(key):
             raise BenchError(f"{flag} differs from the resumed run ({meta.get(key)})")
     if opts.mode is not None and "".join(parse_modes(opts.mode)) != meta["modes"]:
         raise BenchError(f"--mode differs from the resumed run ({meta['modes']})")
-    tasks = [t for t in load_tasks(TASKS_DIR) if t.id in ids]
+    tasks = [t for t in load_tasks(folder) if t.id in ids]
     records = [Record(**r) for r in stored_records]
     repeat = max(opts.repeat or 0, int(meta["repeat"]))
     return Plan(list(meta["modes"]), tasks, repeat, opts.resume.parent, opts.resume.stem, meta,
-                records)  # fmt: skip
+                records, suite)  # fmt: skip
+
+
+def _reviewer(choice: str | None) -> str | None:
+    return None if choice in (None, "none") else choice
 
 
 def _stop(records: Sequence[Record], plan: Plan, reason: str) -> Path:
@@ -1117,6 +1181,13 @@ def main(
     except BenchError as exc:
         print(exc, file=sys.stderr)
         return 2
+    meta = plan.meta
+    worker = meta.get("worker", opts.worker or "ollama")
+    reviewer = meta.get("reviewer", _reviewer(opts.reviewer))
+    if reviewer is not None and reviewer == worker:
+        print(f"--reviewer {reviewer} is the worker too: the reviewer must be another provider",
+              file=sys.stderr)  # fmt: skip
+        return 2
     done = {(r.task, r.mode, r.repeat) for r in plan.records}
     total = len(plan.tasks) * len(plan.modes) * plan.repeat
     print(f"{len(plan.tasks)} tasks x {len(plan.modes)} modes x {plan.repeat} repeats = "
@@ -1134,14 +1205,12 @@ def main(
         print(f"claude is not on PATH (needed for modes {', '.join(CHIEF_MODES)})",
               file=sys.stderr)  # fmt: skip
         return 2
-    meta = plan.meta
-    worker = meta.get("worker", opts.worker or "ollama")
-    if worker == "agy" and (opts.ollama_model or opts.ollama_model_2):
+    if worker == "agy" and reviewer != "ollama" and (opts.ollama_model or opts.ollama_model_2):
         flag = "--ollama-model" if opts.ollama_model else "--ollama-model-2"
         print(f"{flag} has no use with --worker agy (agy is the only worker)", file=sys.stderr)
         return 2
     agy = which("agy")
-    needs_agy = worker == "agy" or any(m in AGENT_MODES for m in plan.modes)
+    needs_agy = "agy" in (worker, reviewer) or any(m in AGENT_MODES for m in plan.modes)
     if needs_agy and agy is None:
         print(f"agy is not on PATH (needed for modes {', '.join(AGENT_MODES)} and --worker agy)",
               file=sys.stderr)  # fmt: skip
@@ -1153,7 +1222,7 @@ def main(
         ollama_model_2=meta.get("ollama_model_2", opts.ollama_model_2),
         claude_model=meta.get("claude_model", opts.claude_model),
         timeout_s=meta.get("timeout_s", opts.timeout or DEFAULT_TIMEOUT_S),
-        agy=agy or "agy", worker=worker,
+        agy=agy or "agy", worker=worker, reviewer=reviewer,
     )  # fmt: skip
     home = opts.work_dir / f"home-{datetime.now().strftime('%Y-%m-%d-%H%M%S')}"
     setup_home(home, settings)
@@ -1171,9 +1240,11 @@ def main(
             "python": platform.python_version(),
             "modes": "".join(plan.modes), "task_ids": [t.id for t in plan.tasks],
             "tasks": len(plan.tasks),
-            "ollama_model": None if settings.worker == "agy" else settings.ollama_model,
+            "ollama_model": (None if "ollama" not in (settings.worker, settings.reviewer)
+                             else settings.ollama_model),
             "ollama_model_2": settings.ollama_model_2, "claude_model": settings.claude_model,
             "timeout_s": settings.timeout_s, "worker": settings.worker, "windows": [],
+            "suite": plan.suite, "reviewer": settings.reviewer,
             "claude_tools": list(CLAUDE_TOOLS), "orkestra_tools": list(ORKESTRA_TOOLS),
         })  # fmt: skip
     windows = meta.setdefault("windows", [])

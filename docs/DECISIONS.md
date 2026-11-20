@@ -1185,3 +1185,12 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 5. `docs/guide.md`, `docs/guide.tr.md` ("skill şimdilik Türkçe") ve `bench/README.md` iki dosyalı yapıya göre güncellendi.
 6. Toplu devir testi Türkçe cümleleri birleşik metinde arıyordu, çekirdekten silinen kuralı yakalamazdı; artık çekirdekteki İngilizce kuralları denetler. Korumalar için ayrı test eklendi.
 
+
+## D-115 – Faz 13g: büyük görev takımı, F/G kolları, çapraz denetçi (2026-11-21, Faz 13g)
+**Neden:** 13d/13p küçük görevlerde devretmenin en iyi ihtimalle başa baş olduğunu gösterdi (D-111, D-113). 13g'nin sorusu büyük, okumaya dayalı bir işte bölmenin Claude tokenını ≥ %25 azaltıp azaltmadığı.
+**Karar:**
+- `bench/tasks_big/` ayrı görev takımı, `run_bench.py --suite small|big` (varsayılan `small`, eski davranış). Seçim `meta.suite`'e yazılır, `--resume` dosyadakini kullanır ve farklı `--suite`'i reddeder (eski dosyalar `small`). Zorluk listesine `big` eklendi; rapordaki zorluk tablosu yalnız koşulan zorlukları gösterir.
+- İlk büyük görev `g01-ledger`: ~1.200 satırlık bir defter paketi + 33 görünür test + 1.774 satırlık (160 KB) gece içe aktarma log'u. Yedi iş tek şartnamede: log'dan bulunacak tutar ayrıştırma hatası (muhasebe eksisi `(45.00)`, binlik ayırıcı; kötü veri atlanmaya devam eder), `budget.py` (devreden bütçe), `recurring.py` (ay sonuna kırpma, haftalık), CSV dışa aktarma, `budget` CLI komutu, iki modülün bütün açık adlarına docstring, iki yeni test dosyası (≥ 5'er test). Gizli testler (36) başlangıçta kalır, referans çözümde geçer; sızıntı denetimi geçer.
+- Plandaki kollar mod olarak: (a) = mod A; (b) = **mod F** (skill + `exec`/`read`/`find` ile bağlamı küçük tut, işçiye iş verme); (d) = **mod G** (F + kalın ve denetlenebilir işleri tek batch'te işçiye ver, başka sağlayıcı denetlesin, `show --report` oku, `--max-risk low` ile uygula). İpuçları yalnız *nasıl çalışılacağını* söyler, çözüme dair bir şey söylemez. İkisi de `all`'a girmez.
+- **Sapma (plan "4 kol"):** (c) kısa oturum kolu ayrı mod olarak koşulmuyor. `claude -p` oturumu kendini yeni bir oturuma devredemiyor (`handoff to claude` etkileşimli şef açar); ölçmek için çok oturumlu bir sürücü gerekir. Tek oturumun bağlamı 13j eşiğini geçerse sonuçta not edilir ve kol ayrı bir ek fazda ölçülür.
+- `--reviewer none|ollama|agy`: denetçi işçiden başka bir sağlayıcı olarak kademe 2'ye eklenir, `review.by: {<işçi>: [<denetçi>]}`, `independent: true`. Denetçi işçiyle aynıysa koşu başlamaz (kod 2). `meta.reviewer`'a yazılır, `--resume` farklısını reddeder.

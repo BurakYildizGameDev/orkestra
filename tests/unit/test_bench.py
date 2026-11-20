@@ -20,6 +20,7 @@ import pytest
 from bench import run_bench as rb
 
 TASKS = rb.load_tasks(rb.TASKS_DIR)
+BIG = rb.load_tasks(rb.SUITES["big"])  # Faz 13g
 
 
 # --- the task set -----------------------------------------------------------------------------
@@ -40,7 +41,7 @@ def test_the_full_set_has_8_easy_8_medium_4_hard() -> None:
     assert counts == {"easy": 8, "medium": 8, "hard": 4}
 
 
-@pytest.mark.parametrize("task", TASKS, ids=lambda t: t.id)
+@pytest.mark.parametrize("task", TASKS + BIG, ids=lambda t: t.id)
 def test_hidden_tests_fail_on_the_project_and_pass_on_the_solution(
     task: rb.Task, tmp_path: Path
 ) -> None:
@@ -52,7 +53,7 @@ def test_hidden_tests_fail_on_the_project_and_pass_on_the_solution(
     assert result.passed, result.output
 
 
-@pytest.mark.parametrize("task", [t for t in TASKS if t.check], ids=lambda t: t.id)
+@pytest.mark.parametrize("task", [t for t in TASKS + BIG if t.check], ids=lambda t: t.id)
 def test_the_visible_check_passes_on_the_project_and_the_solution(
     task: rb.Task, tmp_path: Path
 ) -> None:
@@ -456,7 +457,7 @@ class ManyTasks:
         self.keys: list[str] = []
 
     def _task(self, cwd: Path) -> rb.Task:
-        return next(t for t in TASKS if cwd.parent.name.startswith(t.id + "-"))
+        return next(t for t in TASKS + BIG if cwd.parent.name.startswith(t.id + "-"))
 
     def __call__(self, args: Sequence[str], cwd: Path, env: dict[str, str], timeout: float,
                  input_text: str | None = None) -> rb.Completed:  # fmt: skip
@@ -937,7 +938,7 @@ def test_every_mode_is_described_in_one_place() -> None:
         assert (mode.hint is not None) <= (mode.skill or mode.agent is not None)
         assert not (mode.skill and not mode.chief)
         assert not (mode.agent and mode.chief)  # an agent chief is no Claude session
-    assert rb.PLANNED_MODES == ("a", "b", "c") and rb.CHIEF_MODES == ("a", "b", "d")
+    assert rb.PLANNED_MODES == ("a", "b", "c") and rb.CHIEF_MODES == ("a", "b", "d", "f", "g")
     assert rb.AGENT_MODES == ("e",)
 
 
@@ -1291,3 +1292,106 @@ def test_each_window_records_the_skill_and_a_change_is_noted(
     assert "skill" in capsys.readouterr().err
     md = next((tmp_path / "out").glob("*.md")).read_text(encoding="utf-8")
     assert f"skill {windows[-1]['skill']}" in md
+
+
+# --- Faz 13g: the big suite, arms F and G, a cross reviewer ----------------------------------
+
+
+def test_the_big_suite_has_big_tasks_with_a_project_hidden_tests_and_a_solution() -> None:
+    assert BIG, "no big benchmark task"
+    for task in BIG:
+        assert task.difficulty == "big" and task.check, task.id
+        assert (task.root / "project").is_dir() and any((task.root / "hidden").glob("test_*.py"))
+        lines = sum(len(f.read_text(encoding="utf-8").splitlines())
+                    for f in (task.root / "project").rglob("*")
+                    if f.is_file() and "__pycache__" not in f.parts)  # fmt: skip
+        assert lines >= 1500, f"{task.id}: a big task starts from a big project ({lines} lines)"
+
+
+def test_the_small_suite_is_the_default_and_big_is_chosen_with_suite(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert rb.SUITES["small"] == rb.TASKS_DIR
+    argv = ["--suite", "big", "--mode", "a", "--repeat", "2", "--dry-run",
+            "--work-dir", str(tmp_path)]  # fmt: skip
+    assert rb.main(argv) == 0
+    assert f"{len(BIG)} tasks x 1 modes x 2 repeats" in capsys.readouterr().out
+
+
+def test_the_suite_is_recorded_and_a_resume_stays_in_it(tmp_path: Path) -> None:
+    argv = ["--suite", "big", "--mode", "a", "--repeat", "1", "--out", str(tmp_path / "out"),
+            "--work-dir", str(tmp_path / "work")]  # fmt: skip
+    assert rb.main(argv, runner=ManyTasks(), which=lambda name: name) == 0
+    [first] = (tmp_path / "out").glob("*.json")
+    data = _saved(tmp_path)
+    assert data["meta"]["suite"] == "big" and data["meta"]["task_ids"] == [t.id for t in BIG]
+    runner = ManyTasks()
+    resume = ["--resume", str(first), "--repeat", "2", "--work-dir", str(tmp_path / "work")]
+    assert rb.main(resume, runner=runner, which=lambda name: name) == 0
+    assert runner.claude_runs == len(BIG)  # the big task again, never the small set
+    bad = ["--resume", str(first), "--suite", "small", "--work-dir", str(tmp_path / "work")]
+    assert rb.main(bad, runner=ManyTasks(), which=lambda name: name) == 2
+
+
+@pytest.mark.parametrize(("mode", "hint"), [("f", "FILTER_HINT"), ("g", "FULL_HINT")])
+def test_arms_f_and_g_get_the_skill_and_their_own_hint(
+    mode: str, hint: str, tmp_path: Path
+) -> None:
+    task = _task("01-docstring-geometry")
+    runner = FakeRunner(task)
+    record = rb.run_once(task, mode, 1, _settings(tmp_path), runner=runner, home=tmp_path / "home")
+    args, cwd, _ = runner.calls[0]
+    assert (cwd / ".claude" / "skills" / "orkestra" / "SKILL.md").is_file()
+    assert runner.stdin[0] is not None and runner.stdin[0].startswith(getattr(rb, hint))
+    allowed = json.loads(Path(args[args.index("--settings") + 1]).read_text(encoding="utf-8"))
+    assert "Bash(orkestra:*)" in allowed["permissions"]["allow"]
+    assert record.passed and mode not in rb.PLANNED_MODES
+
+
+def test_arm_f_only_filters_context_and_arm_g_also_delegates() -> None:
+    assert "orkestra exec" in rb.FILTER_HINT and "orkestra read" in rb.FILTER_HINT
+    assert "do not hand" in rb.FILTER_HINT.lower()
+    assert "orkestra exec" in rb.FULL_HINT and "batch" in rb.FULL_HINT
+    assert "review" in rb.FULL_HINT and "--report" in rb.FULL_HINT
+    assert "g" in rb.DELEGATING_MODES and "f" not in rb.DELEGATING_MODES
+
+
+def test_a_cross_reviewer_is_another_provider_that_never_writes_first(tmp_path: Path) -> None:
+    from orkestra.config import loader
+
+    settings = dataclasses.replace(_settings(tmp_path), worker="agy", reviewer="ollama")
+    rb.setup_home(tmp_path / "home", settings)
+    config = loader.load_config(tmp_path / "home" / "config.yaml", cwd=tmp_path, environ={}).config
+    assert set(config.providers) == {"agy", "ollama"}
+    assert config.providers["agy"].tier == 1  # type: ignore[union-attr]
+    assert [m.tier for m in config.providers["ollama"].models] == [2]  # type: ignore[union-attr]
+    assert config.review.by == {"agy": ["ollama"]} and config.review.independent is True
+
+
+def test_a_reviewer_is_recorded_and_must_match_on_resume(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    argv = ["--mode", "a", "--tasks", "01", "--repeat", "1", "--worker", "agy",
+            "--reviewer", "ollama", "--out", str(tmp_path / "out"),
+            "--work-dir", str(tmp_path / "work")]  # fmt: skip
+    assert rb.main(argv, runner=ManyTasks(), which=lambda name: name) == 0
+    [first] = (tmp_path / "out").glob("*.json")
+    assert _saved(tmp_path)["meta"]["reviewer"] == "ollama"
+    bad = ["--resume", str(first), "--reviewer", "none", "--work-dir", str(tmp_path / "work")]
+    assert rb.main(bad, runner=ManyTasks(), which=lambda name: name) == 2
+    assert "--reviewer" in capsys.readouterr().err
+
+
+def test_the_reviewer_must_differ_from_the_worker(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    argv = ["--mode", "a", "--tasks", "01", "--reviewer", "ollama", "--dry-run",
+            "--work-dir", str(tmp_path)]  # fmt: skip
+    assert rb.main(argv) == 2  # the worker is ollama: it cannot review itself
+    assert "reviewer" in capsys.readouterr().err
+
+
+def test_the_difficulty_table_shows_only_the_difficulties_that_ran() -> None:
+    records = [dataclasses.replace(_record("a", 1, "g1", True), difficulty="big")]
+    table = rb.markdown(rb.summarize(records), records)
+    assert "| Mode | big |\n|---|---|\n| A - Claude only | 1/1 |" in table

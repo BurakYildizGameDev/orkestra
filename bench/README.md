@@ -13,6 +13,8 @@ including the bad results.
 | C – Orkestra only (cheap) | Orkestra, no chief | `orkestra run <task> --profile cheap --json`; a passing run is applied with `orkestra apply` |
 | D – Claude + Orkestra, delegation asked | Claude Code as chief, Orkestra workers | like B, but the hint asks Claude to hand the work to an Orkestra worker and do it itself only when Orkestra cannot; not part of `--mode all`: choose it with `--mode d` or a list such as `--mode a,d` |
 | E – agy chief + Orkestra | Antigravity (`agy`) as chief, Orkestra workers | `agy --print` with the hint, Orkestra's chief guide (`prompts/chief_guide.md`, what `handoff to agy` gives) and the task in a prompt file; no `--sandbox` (in print mode it refuses every shell command, D-048); not part of `--mode all`. agy reports its own tokens (input, output, thinking), shown in their own line: they are not comparable 1:1 with Claude's. Without a sandbox agy could read other folders, so no hidden test stays on disk after its evaluation (any mode), and a trace (agy's log or output) that names the hidden tests or the task folder stops the benchmark like the leak guard. Uses agy's quota, none of Claude's; agy's quota message stops the run like Claude's limit |
+| F – Claude + context filter (Faz 13g) | Claude Code alone, Orkestra as a filter | like B, but the hint asks Claude to run long commands with `orkestra exec` and read big files and logs with `orkestra read`/`find`, and to hand no work to workers; not part of `--mode all` |
+| G – Claude + filter + bulk delegation + cross review (Faz 13g) | Claude Code as chief, Orkestra workers | F plus: hand the bulky, checkable parts to workers in one batch, have another provider review them (`--reviewer`), read `show --report` instead of the diff, apply low-risk results with `--max-risk low`; not part of `--mode all` |
 
 A, B and D use `--setting-sources project`, so personal settings, hooks and memory do not
 take part, and the same tool permissions: read, edit, write, search, `python`, `pytest`, `git`
@@ -49,6 +51,23 @@ The test suite checks every task: the hidden tests **fail** on `project/` and **
 `project/` + `solution/`, and the visible check passes on both. For the test-writing task the
 hidden tests run the worker's tests against the real code (must pass) and seven broken
 versions (each must fail).
+
+### The big suite (Faz 13g, D-115)
+
+`--suite big` runs `tasks_big/` instead: one realistic task, `g01-ledger`, on a ~1,200-line
+package with 33 tests and a 1,774-line (160 KB) import log. One prompt asks for seven things:
+find an amount-parsing bug from the log, two new modules (budgets with rollover, recurring
+transactions), a CSV export, a CLI command, docstrings on every public name of two modules and
+two new test files. 36 hidden tests check each part. It answers 13g's question: on a big job
+that is mostly reading, does splitting the work cut Claude's tokens by at least 25 %?
+
+```bash
+uv run python bench/run_bench.py --suite big --mode a,f,g --repeat 2 --worker agy     --reviewer ollama --timeout 2700
+```
+
+`--reviewer ollama|agy` adds a second provider at tier 2 that reviews the worker's runs
+(`review.by`); it must differ from `--worker`. The suite and the reviewer are recorded in the
+results file and kept by `--resume`.
 
 ## Hidden tests never reach a worker
 
