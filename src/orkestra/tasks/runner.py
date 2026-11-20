@@ -38,49 +38,30 @@ and ``orkestra.log``, plus ``worktree.json`` and ``changes.patch`` for edit task
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
-import logging
 import os
 import random
-import secrets
 import sqlite3
 import time
-from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass, field, replace
-from datetime import datetime
+from collections.abc import Callable, Mapping
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, get_args
 
-import pathspec
-
-from orkestra import paths
 from orkestra.cache import responses
 from orkestra.config.loader import dump_yaml
-from orkestra.config.schema import CliAgentProvider, Config, EditFormat, resolve_edit_format
+from orkestra.config.schema import CliAgentProvider, Config
 from orkestra.envelope import (
-    Changes,
-    EnvelopeUsage,
     Escalation,
     Failover,
-    ResultEnvelope,
-    Status,
-    summarize_text,
-    to_json,
 )
 from orkestra.errors import (
     BudgetExhausted,
-    ExitCode,
-    InternalError,
-    NoProviderAvailable,
-    OrkestraError,
     ProviderError,
     ProviderTimeout,
     UsageError,
 )
 from orkestra.i18n import t
 from orkestra.logging_setup import run_log
-from orkestra.providers import pricing
 from orkestra.providers.base import (
     AgentRequest,
     AgentResult,
@@ -99,494 +80,64 @@ from orkestra.providers.registry import (
 from orkestra.routing import retry
 from orkestra.routing.router import (
     Candidate,
-    Route,
-    Snapshot,
-    TaskNeeds,
-    route,
-    scope,
-    take_snapshot,
 )
-from orkestra.security.redact import Redactor, configured_secrets
-from orkestra.security.secrets_scan import Finding, blocking, scan_text
-from orkestra.state import budget, consent, db, health
-from orkestra.state.slots import MachineSlots, server_key
+from orkestra.state import budget, db, health
 from orkestra.tasks import edit_format as ef
-from orkestra.tasks.context import Context, collect_context
-from orkestra.tasks.prompts import (
-    build_agent_prompt,
-    build_ask_messages,
-    build_retry_message,
-    edit_body,
-    edit_rules,
-    load_prompt,
+from orkestra.tasks.prepare import (
+    AGENT_CONTINUE,
+    OUTPUT_TRUNCATED,
+    SCOPE_CHECK,
+    SCOPE_FILES,
+    TOP_TIER,
+    VERIFICATION_FAILED,
+    _cannot_do,
+    _prepare,
+    _route,
 )
-from orkestra.tasks.spec import ForbidPaths, ProtectPaths, TaskSpec, effective_verifiers
-from orkestra.verify import CheckResult, Verifier, VerifyContext, build_verifiers, run_verifiers
-from orkestra.verify.base import FileChange, Message, failed, passed
-from orkestra.verify.schema import JsonSchemaCheck
+from orkestra.tasks.prepare import (
+    DryRun as DryRun,
+)
+from orkestra.tasks.prepare import (
+    Estimate as Estimate,
+)
+from orkestra.tasks.prepare import (
+    ProviderSlots as ProviderSlots,
+)
+from orkestra.tasks.prepare import (
+    RunOptions as RunOptions,
+)
+from orkestra.tasks.prepare import (
+    Sleep as Sleep,
+)
+from orkestra.tasks.prepare import (
+    Slot as Slot,
+)
+from orkestra.tasks.prepare import (
+    TaskOutcome as TaskOutcome,
+)
+from orkestra.tasks.prepare import (
+    estimate_task as estimate_task,
+)
+from orkestra.tasks.prepare import (
+    new_run_id as new_run_id,
+)
+from orkestra.tasks.prepare import (
+    plan_task as plan_task,
+)
+from orkestra.tasks.prompts import (
+    build_retry_message,
+)
+from orkestra.tasks.run_record import RunRecord, _Answer
+from orkestra.tasks.spec import TaskSpec
+from orkestra.verify import CheckResult, VerifyContext, run_verifiers
+from orkestra.verify.base import Message, failed, passed
 from orkestra.workspace import git_worktree as gw
 from orkestra.workspace import service as workspaces
-
-Sleep = Callable[[float], Awaitable[None]]
-
-PROMPT_SOURCE = "<prompt>"  # where a finding in the prompt text itself is reported
-CANNOT_DO = "CANNOT_DO:"  # worker protocol (prompts/worker_system.md, Mimari §8.1)
-VERIFICATION_FAILED = "VerificationFailed"  # failover "error" when answers kept failing checks
-SCOPE_CHECK = "workspace_scope"  # verification entry: an agent wrote outside its worktree
-SCOPE_FILES = 10  # changed files named in that check
-AGENT_CONTINUE = (
-    "Your changes from the previous attempt are still in the working tree. "
-    "Fix them; do not start over."
-)
-OUTPUT_TRUNCATED = "OutputTruncated"  # failover "error" when an edit answer was cut off
-TOP_TIER = 3
-IGNORED_WARNINGS = 5  # more skipped files than this are reported as one count
-SUMMARY_FILES = 5  # changed files named in an edit summary
-NOTE_CHARS = 200  # characters of the worker's note in an edit summary (Mimari §8)
 
 
 async def _sleep(seconds: float) -> None:
     """Retry backoff wait; tests replace it so they never really wait."""
     await asyncio.sleep(seconds)
-
-
-_ISSUED: set[str] = set()  # run ids handed out by this process (a batch starts several a second)
-
-
-def new_run_id(now: datetime | None = None, token: str | None = None) -> str:
-    """``YYYYMMDD-HHMMSS-<4 hex>``: sortable and collision free within this process.
-
-    A random token that was already handed out, or whose run directory exists, is drawn
-    again; ``token`` (tests) is used as given.
-    """
-    moment = datetime.now() if now is None else now
-    if token is not None:
-        return f"{moment:%Y%m%d-%H%M%S}-{token}"
-    while True:
-        run_id = f"{moment:%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
-        if run_id not in _ISSUED and not paths.run_dir(run_id).exists():
-            _ISSUED.add(run_id)
-            return run_id
-
-
-class ProviderSlots:
-    """Requests in flight per provider, at most its ``concurrency`` (Mimari §12).
-
-    One instance is shared by all tasks of a batch; a single run gets its own. For a
-    ``local`` provider the limit holds across processes too (``state.slots``, Faz 13l): one
-    heavy local model at a time on this computer, whoever asks.
-    """
-
-    def __init__(self, config: Config, machine: MachineSlots | None = None) -> None:
-        self._limits = {name: provider.concurrency for name, provider in config.providers.items()}
-        # Local providers share the machine's slots of their server (``state.slots``).
-        self._servers = {
-            name: server_key(name, provider)
-            for name, provider in config.providers.items()
-            if provider.local
-        }
-        self._slots: dict[str, asyncio.Semaphore] = {}
-        self._machine = machine or MachineSlots()
-        self.prices = asyncio.Lock()  # price list fetches, one task at a time
-
-    def __call__(self, provider: str) -> Slot:
-        if provider not in self._slots:
-            self._slots[provider] = asyncio.Semaphore(self._limits.get(provider, 1))
-        server = self._servers.get(provider)
-        machine = self._machine if server is not None else None
-        return Slot(self._slots[provider], machine, server or provider,
-                    self._limits.get(provider, 1))  # fmt: skip
-
-
-class Slot:
-    """One request's place: the process's semaphore, then (local providers) the machine's.
-    Used as ``async with`` or with ``acquire()`` / ``release()`` on the same object."""
-
-    def __init__(
-        self, semaphore: asyncio.Semaphore, machine: MachineSlots | None, key: str,
-        limit: int,
-    ) -> None:  # fmt: skip
-        self._semaphore = semaphore
-        self._machine = machine
-        self._key = key
-        self._limit = limit
-        self._held: int | None = None
-
-    async def acquire(self, wait_s: float | None = None) -> None:
-        """``wait_s``: give up after that long on the machine's slot (``TimeoutError``); the
-        process's own place is given back then."""
-        await self._semaphore.acquire()
-        if self._machine is None:
-            return
-        try:
-            self._held = await self._machine.acquire(self._key, self._limit, wait_s=wait_s)
-        except BaseException:  # timed out or cancelled: give the process's place back
-            self._semaphore.release()
-            raise
-
-    def release(self) -> None:
-        if self._machine is not None:
-            held, self._held = self._held, None
-            self._machine.release(held)
-        self._semaphore.release()
-
-    async def __aenter__(self) -> Slot:
-        await self.acquire()
-        return self
-
-    async def __aexit__(self, *exc: object) -> None:
-        self.release()
-
-
-@dataclass(frozen=True)
-class RunOptions:
-    """Command line choices that are not part of the task itself."""
-
-    profile: str | None = None
-    allow_secrets: bool = False
-    no_cache: bool = False  # --no-cache: never answer an ask task from the cache (Faz 8a)
-
-
-@dataclass(frozen=True)
-class TaskOutcome:
-    envelope: ResultEnvelope
-    output: str | None
-    exit_code: int
-    warnings: tuple[str, ...] = field(default_factory=tuple)
-
-
-@dataclass(frozen=True)
-class DryRun:
-    route: Route
-    warnings: tuple[str, ...] = ()
-
-    @property
-    def exit_code(self) -> int:
-        return 0 if self.route.candidates else self.route.error().exit_code
-
-
-def _scan(prompt: str, context: Context, known: Sequence[str]) -> list[Finding]:
-    """The prompt counts as much as the context: ``ask "$(cat .env)"`` must not leak either."""
-    findings = scan_text(PROMPT_SOURCE, prompt, known)
-    for f in context.files:
-        findings.extend(scan_text(f.display, f.text, known))
-    return findings
-
-
-def _cannot_do(text: str) -> str | None:
-    """The worker's reason when it answered ``CANNOT_DO: <reason>``, else ``None``."""
-    stripped = text.strip()
-    if not stripped.startswith(CANNOT_DO):
-        return None
-    return stripped[len(CANNOT_DO) :].strip().splitlines()[0] if stripped != CANNOT_DO else ""
-
-
-@dataclass(frozen=True)
-class _EditPlan:
-    """What an edit answer may touch (Mimari §8.2)."""
-
-    editable: frozenset[str]  # context files, as the worker sees their paths
-    forbidden: tuple[str, ...]  # forbid_paths patterns: rejected before anything is written
-    protected: tuple[str, ...]  # protect_paths patterns: told to the worker, checked after
-    lines: int  # lines of the largest context file (router: max_api_edit_lines)
-
-
-def _line_count(text: str) -> int:
-    return text.count("\n") + (1 if text and not text.endswith("\n") else 0)
-
-
-def _is_utf8(path: Path) -> bool:
-    try:
-        path.read_bytes().decode("utf-8")
-    except (OSError, UnicodeDecodeError):
-        return False
-    return True
-
-
-def _edit_plan(task: TaskSpec, context: Context, base: Path) -> tuple[_EditPlan, list[str]]:
-    """Which context files the worker may rewrite, and warnings for the ones it may not.
-
-    Read-only: files matching protect/forbid patterns (reference only), files that are not
-    UTF-8 (the worker saw them with replacement characters; rewriting them would damage every
-    other line) and files git ignores (a change to them could never be applied). Only the
-    editable files count for ``max_api_edit_lines``.
-    """
-    checks = effective_verifiers(task)
-    forbidden = tuple(p for v in checks if isinstance(v, ForbidPaths) for p in v.paths)
-    protected = tuple(p for v in checks if isinstance(v, ProtectPaths) for p in v.paths)
-    guarded = pathspec.GitIgnoreSpec.from_lines([*protected, *forbidden])
-    files: dict[str, str] = {}  # editable path -> text
-    warnings: list[str] = []
-    for f in context.files:
-        rel = ef.normalize_path(f.display)
-        if rel is None or guarded.match_file(rel):
-            continue
-        if not _is_utf8(f.path):
-            warnings.append(t("edit.warning.not_utf8", path=rel))
-            continue
-        files[rel] = f.text
-    for rel in sorted(gw.ignored(base, sorted(files))):
-        warnings.append(t("edit.warning.ignored", path=rel))
-        del files[rel]
-    plan = _EditPlan(
-        editable=frozenset(files),
-        forbidden=forbidden,
-        protected=protected,
-        lines=max((_line_count(text) for text in files.values()), default=0),
-    )
-    return plan, warnings
-
-
-@dataclass
-class _Prepared:
-    task: TaskSpec
-    options: RunOptions
-    config: Config
-    env: Mapping[str, str]
-    base_dir: Path
-    checks: list[Verifier]
-    context: Context
-    redact: Redactor  # records and logs: everything that looks secret
-    redact_output: Redactor  # the answer: secrets only, so "password: changeme" stays intact
-    findings: list[Finding]
-    warnings: list[str]
-    system: str
-    user: str  # edit tasks: the context and the task only; the rules depend on the format
-    edit: _EditPlan | None = None
-    agent_user: str = ""  # the prompt for code agents
-    # edit tasks: the answer format's rules, appended to ``user`` (the context is rendered once)
-    edit_rules: Mapping[EditFormat, str] = field(default_factory=dict)
-
-    def messages(self, edit_format: EditFormat | None) -> tuple[str, str]:
-        """``(system, user)`` for a chat worker; an edit task needs its answer format."""
-        if self.edit is None:
-            return self.system, self.user
-        if edit_format is None:
-            raise InternalError("an API edit needs an answer format")
-        return self.system, f"{self.user}\n\n{self.edit_rules[edit_format]}"
-
-    def edit_format(self, candidate: Candidate) -> EditFormat | None:
-        """How this candidate answers an edit task; ``None``: not an API edit.
-
-        The router writes it into the candidate; a candidate made elsewhere is resolved the
-        same way, so the prompt, JSON mode and parser always agree.
-        """
-        if self.edit is None or isinstance(candidate.config, CliAgentProvider):
-            return None
-        return candidate.edit_format or resolve_edit_format(
-            self.task.edit_format, candidate.model.edit_format,
-            lines=self.edit.lines, limit=self.config.security.max_api_edit_lines,
-        )  # fmt: skip
-
-    def needs(self) -> TaskNeeds:
-        rules = max((len(r) for r in self.edit_rules.values()), default=0)
-        prompt_chars = len(self.system) + len(self.user) + rules
-        return TaskNeeds(
-            kind=self.task.kind,
-            tier=self.task.tier,
-            privacy=self.task.privacy,
-            provider=self.task.provider,
-            model=self.task.model,
-            prompt_chars=prompt_chars,
-            has_secrets=bool(blocking(self.findings)),
-            allow_secrets=self.options.allow_secrets,
-            edit_lines=self.edit.lines if self.edit else 0,
-            edit_format=self.task.edit_format,
-        )
-
-
-def _warnings(context: Context, findings: Sequence[Finding]) -> list[str]:
-    warnings = [t("context.warning.binary", path=p) for p in context.skipped_binary]
-    ignored = context.skipped_ignored
-    if len(ignored) > IGNORED_WARNINGS:  # one line instead of a screenful
-        names = ", ".join(sorted({f for _, f in ignored}))
-        warnings.append(t("context.warning.ignored_many", count=len(ignored), files=names))
-    else:
-        warnings += [t("context.warning.ignored", path=p, file=f) for p, f in ignored]
-    warnings += [
-        t("secrets.warning.found_prompt", line=f.line, kind=f.kind)
-        if f.path == PROMPT_SOURCE
-        else t("secrets.warning.found", path=f.path, line=f.line, kind=f.kind)
-        for f in findings
-    ]
-    return warnings
-
-
-def _prepare(
-    task: TaskSpec, options: RunOptions, config: Config, env: Mapping[str, str], cwd: Path | None
-) -> _Prepared:
-    base = task.base_dir(Path.cwd() if cwd is None else cwd)
-    if task.kind == "edit":
-        gw.check_repo(base)  # no repository or no commit: a usage error before anything starts
-    checks = build_verifiers(task, base_dir=base)
-    context = collect_context(
-        [Path(f) for f in task.context.files], globs=task.context.globs, cwd=base,
-        max_bytes=config.security.max_context_bytes, ignore_file=config.security.ignore_file,
-    )  # fmt: skip
-    known = configured_secrets(config, env)
-    findings = _scan(task.prompt, context, known)
-    edit: _EditPlan | None = None
-    warnings = _warnings(context, findings)
-    json_output = task.output.format == "json"
-    # The model is told the schema it is checked against (loaded once, by the verifier).
-    schema = next((c.schema for c in checks if isinstance(c, JsonSchemaCheck) and c.schema), None)
-    if task.kind == "edit":
-        edit, read_only = _edit_plan(task, context, base)
-        warnings += read_only
-        guarded = [*edit.protected, *edit.forbidden]
-        rules: dict[EditFormat, str] = {
-            fmt: edit_rules(
-                editable=sorted(edit.editable),
-                allow_new=task.allow_new_files,
-                protected=guarded,
-                edit_format=fmt,
-            )
-            for fmt in get_args(EditFormat)
-        }
-        system, user = load_prompt("worker_system.md").strip(), edit_body(task.prompt, context)
-        agent_user = build_agent_prompt(
-            task.prompt, context, edit=True, editable=sorted(edit.editable),
-            allow_new=task.allow_new_files, protected=guarded,
-        )  # fmt: skip
-    else:
-        rules = {}
-        system, user = build_ask_messages(task.prompt, context, schema, json_output=json_output)
-        agent_user = build_agent_prompt(
-            task.prompt, context, edit=False, schema=schema, json_output=json_output
-        )
-    return _Prepared(
-        task, options, config, env, base, checks, context, Redactor(known),
-        Redactor(known, passwords=False), findings, warnings, system, user, edit, agent_user,
-        rules,
-    )  # fmt: skip
-
-
-def _price_targets(prep: _Prepared, conn: sqlite3.Connection) -> set[str]:
-    """Providers whose price list may be fetched: in scope, enabled, consented, remote allowed.
-
-    The request carries the provider's API key, so it never goes to a provider the user has
-    not enabled, nor to one this task cannot use anyway (D-037).
-    """
-    needs = prep.needs()
-    targets: set[str] = set()
-    for name in scope(needs, prep.config):
-        cfg = prep.config.providers[name]
-        if needs.privacy == "local_only" and not cfg.local:
-            continue
-        if cfg.enabled and consent.state(conn, name, cfg) == "granted":
-            targets.add(name)
-    return targets
-
-
-async def _route(
-    prep: _Prepared,
-    conn: sqlite3.Connection,
-    moment: datetime,
-    *,
-    fetch_prices: bool,
-    price_lock: asyncio.Lock | None = None,
-) -> Route:
-    """``price_lock``: a batch's tasks fetch price lists one at a time, so the first fetch is
-    cached for the others and no task overwrites another's cache."""
-    needs = prep.needs()
-    profile = prep.options.profile
-    if needs.provider is not None and needs.provider not in prep.config.providers:
-        return route(needs, prep.config, Snapshot(moment), profile=profile)  # raises
-    if fetch_prices:
-        async with price_lock or contextlib.nullcontext():
-            cache = await pricing.refresh(
-                prep.config, moment, only=_price_targets(prep, conn), environ=prep.env
-            )
-    else:  # --dry-run sends nothing: use whatever prices are cached
-        cache = pricing.load_cache()
-    extra = (needs.provider, needs.model) if needs.provider and needs.model else None
-    snapshot = take_snapshot(
-        conn, prep.config, moment, environ=prep.env, price_cache=cache,
-        names=scope(needs, prep.config), extra_model=extra, tags=prep.task.tags,
-    )  # fmt: skip
-    return route(needs, prep.config, snapshot, profile=profile)
-
-
-async def plan_task(
-    task: TaskSpec,
-    config: Config,
-    options: RunOptions | None = None,
-    *,
-    environ: Mapping[str, str] | None = None,
-    cwd: Path | None = None,
-    now: db.Clock = db.local_now,
-    conn: sqlite3.Connection | None = None,
-) -> DryRun:
-    """``--dry-run``: the route only, no request, no budget, no run directory."""
-    env = os.environ if environ is None else environ
-    prep = _prepare(task, options or RunOptions(), config, env, cwd)
-    state = db.connect() if conn is None else conn
-    try:
-        planned = await _route(prep, state, now(), fetch_prices=False)
-        return DryRun(planned, tuple(prep.warnings))
-    finally:
-        if conn is None:
-            state.close()
-
-
-@dataclass(frozen=True)
-class Estimate:
-    """``batch --estimate``: the first request to the first candidate (Mimari §19).
-
-    ``cost_usd`` is ``None`` when the price is not known (a code agent, a remote model
-    without a price); a local model without a price costs 0. Retries, feedback and
-    escalation are not included, so a run can cost more.
-    """
-
-    candidate: Candidate | None
-    prompt_tokens: int
-    max_output_tokens: int | None  # None: a code agent (no output limit, no price)
-    cost_usd: float | None
-    error: OrkestraError | None = None  # no candidate: why
-    warnings: tuple[str, ...] = ()
-
-
-async def estimate_task(
-    task: TaskSpec,
-    config: Config,
-    options: RunOptions | None = None,
-    *,
-    environ: Mapping[str, str] | None = None,
-    cwd: Path | None = None,
-    now: db.Clock = db.local_now,
-    conn: sqlite3.Connection | None = None,
-    fetch_prices: bool = False,
-    price_lock: asyncio.Lock | None = None,
-) -> Estimate:
-    """Tokens and cost of the task's first request; nothing is sent to a worker.
-
-    ``fetch_prices``: refresh price lists first (before a real run); ``--estimate`` alone
-    uses the cached ones, like ``--dry-run``. A task that cannot even be prepared (bad
-    context file, no repository) raises, as ``run`` would.
-    """
-    env = os.environ if environ is None else environ
-    prep = _prepare(task, options or RunOptions(), config, env, cwd)
-    state = db.connect() if conn is None else conn
-    try:
-        planned = await _route(prep, state, now(), fetch_prices=fetch_prices, price_lock=price_lock)
-    finally:
-        if conn is None:
-            state.close()
-    warnings = tuple(prep.warnings)
-    if not planned.candidates:
-        return Estimate(None, 0, None, None, error=planned.error(), warnings=warnings)
-    first = planned.candidates[0]
-    if isinstance(first.config, CliAgentProvider):
-        tokens = estimate_tokens(len(prep.agent_user))
-        return Estimate(first, tokens, None, None, warnings=warnings)
-    system, user = prep.messages(prep.edit_format(first))
-    max_output = first.model.max_output_tokens or config.defaults.max_output_tokens
-    amount = budget.estimate(len(system) + len(user), max_output, first.price)
-    if first.price is not None:
-        cost: float | None = amount.cost_usd
-    else:
-        cost = 0.0 if first.config.local else None
-    return Estimate(first, amount.tokens - max_output, max_output, cost, warnings=warnings)
 
 
 async def run_task(
@@ -641,77 +192,8 @@ def _repo_of(path: Path) -> Path | None:
         return None
 
 
-@dataclass(frozen=True)
-class _Answer:
-    """An answer that came back but did not pass its checks."""
-
-    candidate: Candidate
-    text: str
-    checks: list[CheckResult]
-    result: CompletionResult
-
-
-class _TaskRun:
-    def __init__(
-        self,
-        prep: _Prepared,
-        conn: sqlite3.Connection,
-        planned: Route,
-        started_at: datetime,
-        now: db.Clock,
-        clock: Callable[[], float],
-        sleep: Sleep,
-        rand: Callable[[], float],
-        policy: retry.RetryPolicy,
-        *,
-        slots: ProviderSlots | None = None,
-        batch_id: str | None = None,
-        on_start: Callable[[str], object] | None = None,
-    ) -> None:
-        self.on_start = on_start
-        self.prep = prep
-        self.task = prep.task
-        self.conn = conn
-        self.route = planned
-        self.started_at = started_at
-        self.now = now
-        self.clock = clock
-        self.sleep = sleep
-        self.rand = rand
-        self.policy = policy
-        self.slots = slots or ProviderSlots(prep.config)
-        self.batch_id = batch_id
-        self.run_id = new_run_id(started_at.replace(tzinfo=None))
-        self.run_dir = paths.run_dir(self.run_id)
-        self.attempts = 0
-        retries = prep.task.limits.max_retries
-        self.max_answers = 1 + (prep.config.defaults.max_retries if retries is None else retries)
-        # daily_runs is per provider: one run each, however many requests it takes there.
-        self.run_counted: set[str] = set()
-        self.escalate_reason: str | None = None  # CANNOT_DO or a cut-off edit: for the chief
-        self.rejected: _Answer | None = None  # last answer that failed its checks
-        self.rejected_patch: bytes | None = None  # edit tasks: that answer's change
-        self.last_problem: str | None = None  # "escalate" | "checks": which came last
-        self.wt: gw.Worktree | None = None  # edit tasks
-        self.workdir = prep.base_dir  # where verifiers run (inside the worktree for edits)
-        self.note = ""  # the last edit answer's note
-        self.edit_format: EditFormat | None = None  # the current chat candidate's answer format
-        self.failovers: list[Failover] = []
-        self.escalations: list[Escalation] = []
-        self.used: list[Usage] = []  # every answered request of the run (envelope usage)
-        self.cache_key: str | None = None  # ask tasks: the first prompt's key (Faz 8a)
-        self.cache_hit = False  # the answer being judged came from the cache
-        self.log = logging.getLogger("orkestra")
-        self.started = clock()
-
-    def _write(self, path: Path, text: str, *, answer: bool = False) -> None:
-        """Write a run record, redacted. ``answer``: the worker's output (secrets only)."""
-        redact = self.prep.redact_output if answer else self.prep.redact
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(redact(text).encode("utf-8"))  # bytes: no newline translation
-
-    def _max_output(self, candidate: Candidate) -> int:
-        return candidate.model.max_output_tokens or self.prep.config.defaults.max_output_tokens
+class _TaskRun(RunRecord):
+    """The attempts of one run: candidates, answers, checks, agents, failover."""
 
     def _completion(self, candidate: Candidate, config: ChatConfig, user: str) -> CompletionRequest:
         timeout = self.task.limits.timeout_s or request_timeout(config, self.prep.config.defaults)
@@ -973,56 +455,6 @@ class _TaskRun:
             candidate, result, checks, tries, answers, completion.max_output_tokens, base_user
         )
 
-    # --- answer cache (Faz 8a, Mimari §19) -------------------------------------------------
-
-    def _cache_key(self, candidate: Candidate, completion: CompletionRequest) -> str | None:
-        """The key of this prompt, when answers of this task may be cached at all. The checks
-        are part of it: an answer that passed one task's checks says nothing about another's."""
-        settings = self.prep.config.cache
-        if self.task.kind != "ask" or not settings.enabled or self.prep.options.no_cache:
-            return None
-        checks = self.task.model_dump(mode="json", include={"verify", "verify_defaults"})
-        return responses.make_key(
-            candidate.provider, candidate.model.id, completion.system, completion.user,
-            json_mode=completion.json_mode, checks=checks,
-        )  # fmt: skip
-
-    def _cached(
-        self, candidate: Candidate, completion: CompletionRequest
-    ) -> CompletionResult | None:
-        if self.cache_key is None:
-            return None
-        ttl = self.prep.config.cache.ttl_days
-        text = responses.load(self.cache_key, now=self.now(), ttl_days=ttl)
-        if text is None:
-            return None
-        self.log.info("answer for %s from the cache", candidate.label)
-        self.cache_hit = True
-        self.used.append(Usage(0, 0, 0.0))  # nothing was sent: nothing used, nothing paid
-        return CompletionResult(text, Usage(0, 0, 0.0), "stop")
-
-    def _cache_attempt(self, candidate: Candidate) -> Path:
-        """The records of a cached answer: an attempt that sent nothing."""
-        self.attempts += 1
-        attempt_dir = self.run_dir / "attempts" / str(self.attempts)
-        record = {"provider": candidate.provider, "cached": True}
-        self._write(attempt_dir / "request.json", json.dumps(record, indent=2))
-        return attempt_dir
-
-    def _remember(self, candidate: Candidate, text: str) -> None:
-        """Store an answer that passed its checks: a chat worker's answer to this candidate's
-        own key, never one that came from the cache or from a code agent."""
-        if (
-            self.cache_key is None
-            or self.cache_hit
-            or isinstance(candidate.config, CliAgentProvider)
-        ):
-            return
-        responses.store(
-            self.cache_key, self.prep.redact_output(text), now=self.now(),
-            provider=candidate.provider, model=candidate.model.id,
-        )  # fmt: skip
-
     async def _judge(
         self,
         candidate: Candidate,
@@ -1257,37 +689,6 @@ class _TaskRun:
         gw.restore(wt, change.patch)
         return [*outside, *checks]
 
-    def _relative(self, wt: gw.Worktree, path: str) -> str:
-        """A repository path as the task sees it (relative to its base directory)."""
-        if self.workdir == wt.path:
-            return path
-        return Path(os.path.relpath(wt.path / path, self.workdir)).as_posix()
-
-    def _changes(
-        self, wt: gw.Worktree, change: gw.ChangeSet | None = None
-    ) -> tuple[FileChange, ...]:
-        files = (change or gw.diff(wt)).files
-        return tuple(replace(c, path=self._relative(wt, c.path)) for c in files)
-
-    def _edit_result(self, wt: gw.Worktree) -> tuple[Changes, str]:
-        """The envelope's ``changes`` (``changes.patch`` written) and the rule-based summary."""
-        change = gw.diff(wt)
-        patch_path: str | None = None
-        if change.patch:
-            path = self.run_dir / workspaces.PATCH_FILE
-            self._write(path, change.patch.decode("utf-8", errors="replace"), answer=True)
-            patch_path = str(path)
-        insertions = sum(c.insertions for c in change.files)
-        deletions = sum(c.deletions for c in change.files)
-        names = [self._relative(wt, c.path) for c in change.files]
-        shown = ", ".join(names[:SUMMARY_FILES]) + (", …" if len(names) > SUMMARY_FILES else "")
-        summary = t("edit.summary", count=len(names), insertions=insertions,
-                    deletions=deletions, files=shown or "-")  # fmt: skip
-        note = " ".join(self.prep.redact(self.note).split())[:NOTE_CHARS]
-        changes = Changes(files=len(names), insertions=insertions, deletions=deletions,
-                          patch_path=patch_path)  # fmt: skip
-        return changes, f"{summary} — {note}" if note else summary
-
     def _actual_usage(
         self, prompt_chars: int, candidate: Candidate, result: CompletionResult
     ) -> Usage:
@@ -1357,54 +758,6 @@ class _TaskRun:
         self.log.warning("giving up on %s: %s → %s", candidate.label, name, action.value)
         return action
 
-    def _base(self, candidate: Candidate | None) -> dict[str, Any]:
-        return {
-            "run_id": self.run_id,
-            "task_id": self.task.id,
-            "edit_format": self.prep.edit_format(candidate) if candidate else None,
-            "provider": candidate.provider if candidate else None,
-            "model": candidate.model.id if candidate else None,
-            "tier": candidate.tier if candidate else None,
-            "attempts": self.attempts,
-            "escalations": self.escalations,
-            "failovers": self.failovers,
-        }
-
-    def _answer_envelope(
-        self, answer: _Answer, status: Status, completion_limit: int
-    ) -> tuple[ResultEnvelope, str]:
-        """Envelope for an answer that is kept (passed, or the last one that failed)."""
-        # Files and the terminal get the answer with real secrets masked; checks saw the
-        # answer itself, so masking can never break valid JSON.
-        text = self.prep.redact_output(answer.text)
-        output_path = self.run_dir / "output.md"
-        self._write(output_path, text, answer=True)
-        if answer.result.raw_finish_reason == "length":
-            self.prep.warnings.append(t("ask.warning.truncated", tokens=completion_limit))
-            self.log.warning("output hit max_output_tokens=%d", completion_limit)
-        changes: Changes | None = None
-        if self.wt is not None:
-            changes, summary = self._edit_result(self.wt)
-            if not changes.files:
-                self._drop_worktree()
-        else:
-            summary = summarize_text(self.prep.redact(text), str(output_path))
-        envelope = ResultEnvelope(
-            **self._base(answer.candidate),
-            status=status,
-            summary=summary,
-            changes=changes,
-            # Command output can echo secrets from the environment: mask like the records.
-            verification=[
-                c.result.model_copy(update={"detail": self.prep.redact(c.result.detail)})
-                for c in answer.checks
-            ],
-            output_path=str(output_path),
-            usage=self._total_usage(),
-            duration_s=self._duration(),
-        )
-        return envelope, text
-
     async def _succeed(
         self,
         candidate: Candidate,
@@ -1425,109 +778,3 @@ class _TaskRun:
         ):
             envelope = await self._auto_review(envelope)
         return self._finish(envelope, text, 0)
-
-    async def _auto_review(self, envelope: ResultEnvelope) -> ResultEnvelope:
-        """``review.auto``: review the change with this run's provider slots; the run stays
-        ``ok`` without a review when that fails, and its duration includes it (D-062)."""
-        from orkestra.chief import review  # chief.review imports this module
-
-        try:
-            report = await review.review_run(
-                self.run_id, self.prep.config, slots=self.slots, conn=self.conn,
-                author=envelope.provider,
-            )  # fmt: skip
-        except OrkestraError as exc:
-            self.log.warning("automatic review failed: %s %s", type(exc).__name__, exc.message)
-            return envelope.model_copy(update={"duration_s": self._duration()})
-        found = review.envelope_review(report)
-        return envelope.model_copy(update={"review": found, "duration_s": self._duration()})
-
-    def _checks_failed(self, answer: _Answer) -> TaskOutcome:
-        """No answer passed. On tier 3 there is nothing left to try: the chief takes over."""
-        status: Status = "escalate" if answer.candidate.tier >= TOP_TIER else "failed"
-        limit = self._max_output(answer.candidate)
-        envelope, text = self._answer_envelope(answer, status, limit)
-        return self._finish(envelope, text, int(ExitCode.TASK_FAILED))
-
-    def _total_usage(self) -> EnvelopeUsage:
-        """Everything the run's answers used: retries and earlier candidates are paid too."""
-        if not self.used:
-            return EnvelopeUsage()
-        costs = [u.cost_usd for u in self.used if u.cost_usd is not None]
-        return EnvelopeUsage(
-            prompt_tokens=sum(u.prompt_tokens or 0 for u in self.used),
-            completion_tokens=sum(u.completion_tokens or 0 for u in self.used),
-            cost_usd=sum(costs) if costs else None,
-        )
-
-    def _duration(self) -> float:
-        return round(self.clock() - self.started, 3)
-
-    def _drop_worktree(self) -> None:
-        """An edit run that ends without a change keeps no worktree (best effort)."""
-        if self.wt is None:
-            return
-        try:
-            gw.remove(self.wt)
-            gw.save_record(self.run_dir, self.wt, state="discarded")
-        except (OrkestraError, OSError) as exc:
-            self.log.warning("could not remove the worktree %s: %s", self.wt.path, exc)
-
-    def _escalate(self) -> TaskOutcome:
-        """CANNOT_DO or a cut-off edit, and no higher tier was left (or answered): exit code 1."""
-        self._drop_worktree()  # a rejected answer may be in it; the envelope reports none
-        reason = self.escalate_reason or t("ask.cannot_do", reason="-")
-        envelope = ResultEnvelope(
-            **self._base(None),
-            status="escalate",
-            summary=self.prep.redact(reason),
-            duration_s=self._duration(),
-        )
-        return self._finish(envelope, None, int(ExitCode.TASK_FAILED))
-
-    def _all_failed(self) -> TaskOutcome:
-        self._drop_worktree()
-        error = NoProviderAvailable(t("route.all_failed", count=len(self.failovers)))
-        envelope = ResultEnvelope(
-            **self._base(None),
-            status="error",
-            error=error.message,
-            duration_s=self._duration(),
-        )
-        return self._finish(envelope, None, int(error.exit_code))
-
-    def _crashed(self, exc: BaseException) -> None:
-        """Best effort after an interrupt or a bug; never hides the original exception."""
-        detail = (
-            t("ask.interrupted")
-            if isinstance(exc, KeyboardInterrupt | asyncio.CancelledError)
-            else f"{type(exc).__name__}: {str(exc)[:300]}"
-        )
-        envelope = ResultEnvelope(
-            **self._base(None), status="error", error=detail, duration_s=self._duration()
-        )
-        try:
-            self._finish(envelope, None, int(ExitCode.INTERNAL))
-        except Exception:  # the database or disk may be what failed
-            self.log.exception("could not record the failed run")
-
-    def _finish(self, envelope: ResultEnvelope, output: str | None, code: int) -> TaskOutcome:
-        text = to_json(envelope)
-        self._write(self.run_dir / "envelope.json", text)
-        db.record_run_end(
-            self.conn,
-            self.run_id,
-            status=envelope.status,
-            provider=envelope.provider,
-            model=envelope.model,
-            tier=envelope.tier,
-            attempts=envelope.attempts,
-            finished_at=self.now(),
-            duration_s=envelope.duration_s,
-            worker_output_tokens=envelope.usage.completion_tokens,
-            envelope_chars=len(text),
-        )
-        self.log.info(
-            "finished status=%s exit=%s attempts=%d", envelope.status, code, self.attempts
-        )
-        return TaskOutcome(envelope, output, code, tuple(self.prep.warnings))

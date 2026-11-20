@@ -30,7 +30,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (ek) | ✅ | 2026-11-20 | `gc` eski `runs`/`usage`/`queue` satırlarını siler (en az 35 gün kalır), `queue remove --finished`, `notify.ntfy_url`, `desktop-notifier<7`, `doctor` düzenlenebilir kurulum uyarısı (D-104) |
-| düzeltme-fable b – `cli.py` / `runner.py` bölme (ek) | ⏳ | | davranış değişmez, var olan testler aynen geçer; hiçbir dosya ~800 satırı aşmaz |
+| düzeltme-fable b – `cli.py` / `runner.py` bölme (ek) | ✅ | 2026-11-20 | `cli.py` 1964 → ~200 satır (`commands/` altında 7 grup), `runner.py` 1533 → ~780 (`prepare.py`, `run_record.py`); davranış ve testler aynı (D-106) |
 | düzeltme-fable c – README, bilinen sınırlar, elle kullanım turu, temizlik (ek) | ⏳ | | README kısalır (en + tr), durum kutusu ve sağlayıcı listesi güncel, komut denetimi testi, "Bilinen sınırlar"; gerçek modelle/terminalde elle tur; eski dallar (kullanıcı onayıyla) |
 | 13a – Benchmark aracı ve 20 görev | ✅ | 2026-11-15 | `bench/run_bench.py`, 20 görev (8/8/4) + gizli test + referans çözüm, sızıntı koruması, kuru koşu (D-076); kod denetimi (D-077) |
 | 13b – Kota korumaları (limit algılama, `--resume`, `--max-claude-runs`) | ✅ | 2026-11-15 | kod; kota harcamaz (D-078); kod denetimi (D-079) |
@@ -51,6 +51,21 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Kod denetimi – düzeltme-fable b (PR #40), 2026-11-20
+`/code-review`: hata yok; 3 küçük not düzeltildi (D-107): komut modüllerinde `cli` çağrı anında içe aktarılıyor, tembel import yorumu, modüller arası alt çizgili adlar belgelendi.
+
+Testler: **1877 geçti** (değişmedi). ruff, ruff format, pyright temiz.
+
+### düzeltme-fable b – `cli.py` / `runner.py` bölme (2026-11-20)
+**Yapılanlar (D-106):** yalnız taşıma. `cli.py` → `orkestra/commands/` (providers, setup, tasks, chief, handoff, tools, queue, common); `tasks/runner.py` → `tasks/prepare.py` + `tasks/run_record.py` (`RunRecord`) + `runner.py` (`_TaskRun`, `run_task`).
+
+**Kabul kriterleri:**
+- ✅ Davranış değişmedi: var olan testlere dokunulmadı ve hepsi geçti; bütün komutların yardımı (en + tr, 108 sayfa) önce/sonra bayt bayt aynı; import dışı satırların karşılaştırmasında yalnız beklenen 4 satır değişti (kanca çağrıları `cli._interactive()` / `cli._at_terminal()`, `_add_queue_commands` → `queue.register`).
+- ✅ Hiçbir dosya ~800 satırı aşmıyor (en büyükler: `tui/app.py` 782, `tasks/runner.py` 780, `chief/tokens.py` 746).
+- ✅ `cli.py` iş mantığı içermez kuralı `commands/` için de geçerli.
+- ✅ ruff, ruff format, pyright temiz; pytest **1877 geçti** (değişmedi; test dosyalarına dokunulmadı).
+
 
 ### Kod denetimi – düzeltme-fable a (PR #39), 2026-11-20
 `/code-review` 6 bulgu; hepsi düzeltildi (D-105). Önce kırmızı testler.

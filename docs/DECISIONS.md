@@ -1125,3 +1125,16 @@ Mimari §20 ve §22 notları güncellendi (D-075).
 - **`gc --dry-run` yazma kilidi almaz** (`BEGIN IMMEDIATE` yok); çalışan bir işçiyi bekletmez.
 - **Gün sayısı tek kaynaktan:** `gc --older-than` ve `stats --since` yardımında `{days}` = `retention.MIN_KEEP.days`; `stats --since` yardımı `gc`'nin eski satırları sildiğini söylüyor.
 
+## D-106 – düzeltme-fable b: `cli.py` ve `tasks/runner.py` bölündü (2026-11-20, düzeltme-fable b)
+Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
+- **`cli.py` (1964 → ~200 satır):** `app()`, hata raporu, dil/config ön okuması, `build_app()` ve testlerin değiştirdiği kancalar (`_interactive`, `_at_terminal`; `t`, `build_app`, `_safe_streams`) yerinde kaldı. Komutlar `orkestra/commands/` altında: `providers` (+ `budget`), `setup` (`init`, `ui`, `config`), `tasks` (`ask`, `run`, `batch`, `show`, `apply`), `chief` (`stats`, `exec`, `read`, `find`, `tokens`, `status`), `handoff` (+ `statusline`), `tools` (`templates`, `cache`, `review`, `map`, `plan`, `discard`, `gc`, `doctor`), `queue` (+ `notify`); ortak yardımcılar `common`. Her modülün `register(...)` fonksiyonu var; `build_app` bunları eski sırayla çağırır (komut sırası ve yardım metinleri aynı: en + tr 108 yardım sayfası bayt bayt karşılaştırıldı). Komut modülleri `build_app` içinde içe aktarılır ve kancalara `cli._interactive()` / `cli._at_terminal()` ile çağrı anında bakar (testler onları `cli` üzerinde değiştiriyor).
+- **`tasks/runner.py` (1533 → ~780):** hazırlık, seçenekler, run id, sağlayıcı yuvaları, yönlendirme, `plan_task`, `estimate_task` → `tasks/prepare.py`; koşunun durumu (`__init__`), kayıt yazma, cevap önbelleği, değişiklik özeti, zarf ve bitiş yolları → `tasks/run_record.py` (`RunRecord`). `runner._TaskRun(RunRecord)` denemeleri (aday, cevap, denetim, ajan, yedeğe geçiş) tutar. `run_task` ve `_sleep` `runner`'da kaldı (testler `runner._sleep` / `runner.run_task`'ı değiştiriyor); genel adlar `runner`'dan yeniden dışa veriliyor (`RunOptions`, `ProviderSlots`, `new_run_id`, `plan_task` …).
+- En büyük dosyalar artık: `tui/app.py` 782, `tasks/runner.py` 780, `chief/tokens.py` 746 (hepsi ~800'ün altında).
+- Mimari dosya ağacı güncellendi.
+
+## D-107 – düzeltme-fable b kod denetimi düzeltmeleri (2026-11-20, düzeltme-fable b)
+`/code-review` (PR #40): hata yok (sözdizimi ağacı karşılaştırması: taşıma birebir); 3 küçük not, hepsi düzeltildi.
+- `commands/tasks.py` ve `commands/setup.py` `cli`'yi modül düzeyinde değil, kancayı kullanan fonksiyonun içinde içe aktarıyor (döngüsel import kırılganlığı yok).
+- `run_record._auto_review`'daki tembel import yorumu doğru modülü anıyor (review → runner → run_record).
+- `prepare.py` ve `run_record.py` belge dizgisi: alt çizgili adların (`_prepare`, `_route`, `_Prepared`, `_cannot_do`, `_Answer`) üç modül arasında paylaşıldığını söylüyor (yeniden adlandırma bu fazda yok: yalnız taşıma).
+
