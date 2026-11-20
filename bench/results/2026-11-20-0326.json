@@ -1,0 +1,1782 @@
+{
+  "meta": {
+    "date": "2026-11-20T03:26+03:00",
+    "machine": "Windows 11, Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "python": "3.12.13",
+    "modes": "abc",
+    "task_ids": [
+      "01-docstring-geometry",
+      "02-typehints-text",
+      "03-implement-slugify",
+      "04-implement-roman",
+      "05-rename-price",
+      "06-implement-fizzbuzz-rules",
+      "07-dataclass-point",
+      "08-implement-word-count",
+      "09-bugfix-inventory",
+      "10-write-tests-stack",
+      "11-refactor-validation",
+      "12-bugfix-dates",
+      "13-implement-lru-cache",
+      "14-bugfix-csv-line",
+      "15-feature-cli-options",
+      "16-bugfix-flatten",
+      "17-registry-shapes",
+      "18-bank-transfer",
+      "19-rename-class-deprecated",
+      "20-cache-invalidation"
+    ],
+    "tasks": 20,
+    "ollama_model": "qwen2.5-coder:14b",
+    "ollama_model_2": null,
+    "claude_model": null,
+    "timeout_s": 900,
+    "windows": [
+      {
+        "date": "2026-11-20T03:26+03:00",
+        "claude": "2.1.329 (Claude Code)",
+        "orkestra": "orkestra 0.0.1",
+        "runs": 20,
+        "agy": "-"
+      },
+      {
+        "date": "2026-11-20T06:28+03:00",
+        "claude": "2.1.329 (Claude Code)",
+        "orkestra": "orkestra 0.0.1",
+        "runs": 40,
+        "agy": "-"
+      }
+    ],
+    "claude_tools": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(python:*)",
+      "Bash(pytest:*)",
+      "Bash(git:*)",
+      "Bash(cd:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(pwd:*)",
+      "PowerShell(python:*)",
+      "PowerShell(pytest:*)",
+      "PowerShell(git:*)",
+      "PowerShell(cd:*)",
+      "PowerShell(ls:*)",
+      "PowerShell(dir:*)",
+      "PowerShell(cat:*)",
+      "PowerShell(type:*)",
+      "PowerShell(pwd:*)",
+      "PowerShell(Get-Content:*)",
+      "PowerShell(Get-ChildItem:*)",
+      "PowerShell(Select-String:*)",
+      "PowerShell(Set-Location:*)",
+      "PowerShell(Get-Location:*)"
+    ],
+    "orkestra_tools": [
+      "Bash(orkestra:*)",
+      "PowerShell(orkestra:*)"
+    ],
+    "repeat": 1
+  },
+  "summary": {
+    "a": {
+      "label": "A - Claude only",
+      "tasks": 20,
+      "repeats": 1,
+      "complete_repeats": 1,
+      "partial_runs": 0,
+      "passed": {
+        "mean": 20.0,
+        "min": 20,
+        "max": 20
+      },
+      "by_difficulty": {
+        "easy": {
+          "tasks": 8,
+          "passed_mean": 8.0
+        },
+        "medium": {
+          "tasks": 8,
+          "passed_mean": 8.0
+        },
+        "hard": {
+          "tasks": 4,
+          "passed_mean": 4.0
+        }
+      },
+      "claude_tokens_per_task": 9323.3,
+      "claude_cache_read_per_task": 109448.95,
+      "claude_cost_per_task": 0.123,
+      "runs_without_usage": 0,
+      "agent_tokens_per_task": null,
+      "agent_runs_without_usage": null,
+      "permission_denials": 21,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 0.0,
+      "savings_estimate_per_task": 0.0,
+      "duration_per_task_s": 28.469,
+      "errors": 0
+    },
+    "b": {
+      "label": "B - Claude + Orkestra skill",
+      "tasks": 20,
+      "repeats": 1,
+      "complete_repeats": 1,
+      "partial_runs": 0,
+      "passed": {
+        "mean": 20.0,
+        "min": 20,
+        "max": 20
+      },
+      "by_difficulty": {
+        "easy": {
+          "tasks": 8,
+          "passed_mean": 8.0
+        },
+        "medium": {
+          "tasks": 8,
+          "passed_mean": 8.0
+        },
+        "hard": {
+          "tasks": 4,
+          "passed_mean": 4.0
+        }
+      },
+      "claude_tokens_per_task": 11270.45,
+      "claude_cache_read_per_task": 94177.2,
+      "claude_cost_per_task": 0.132,
+      "runs_without_usage": 0,
+      "agent_tokens_per_task": null,
+      "agent_runs_without_usage": null,
+      "permission_denials": 8,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 0.0,
+      "savings_estimate_per_task": 0.0,
+      "duration_per_task_s": 23.893,
+      "errors": 0
+    },
+    "c": {
+      "label": "C - Orkestra only (cheap)",
+      "tasks": 20,
+      "repeats": 1,
+      "complete_repeats": 1,
+      "partial_runs": 0,
+      "passed": {
+        "mean": 9.0,
+        "min": 9,
+        "max": 9
+      },
+      "by_difficulty": {
+        "easy": {
+          "tasks": 8,
+          "passed_mean": 3.0
+        },
+        "medium": {
+          "tasks": 8,
+          "passed_mean": 4.0
+        },
+        "hard": {
+          "tasks": 4,
+          "passed_mean": 2.0
+        }
+      },
+      "claude_tokens_per_task": null,
+      "claude_cache_read_per_task": null,
+      "claude_cost_per_task": null,
+      "runs_without_usage": null,
+      "agent_tokens_per_task": null,
+      "agent_runs_without_usage": null,
+      "permission_denials": null,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 1.0,
+      "savings_estimate_per_task": 28.9,
+      "duration_per_task_s": 10.683,
+      "errors": 2
+    }
+  },
+  "records": [
+    {
+      "task": "01-docstring-geometry",
+      "difficulty": "easy",
+      "mode": "c",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 21.61,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 501,
+        "completion_tokens": 524,
+        "savings_tokens": 204
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "02-typehints-text",
+      "difficulty": "easy",
+      "mode": "c",
+      "repeat": 1,
+      "passed": false,
+      "duration_s": 8.98,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 456,
+        "completion_tokens": 209,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".F.                                                                      [100%]\n================================== FAILURES ===================================\n_____________________ test_the_hints_say_the_right_types ______________________\n\n    def test_the_hints_say_the_right_types():\n        hints = typing.get_type_hints(textutils.word_lengths)\n>       assert hints[\"return\"] == dict[str, int]\nE       assert typing.Dict[str, int] == dict[str, int]\nE         \nE         Use -v to get more diff\n\n_hidden_tests\\test_textutils_hidden.py:20: AssertionError\n=========================== short test summary info ===========================\nFAILED _hidden_tests/test_textutils_hidden.py::test_the_hints_say_the_right_types\n1 failed, 2 passed in 0.06s\n",
+      "agent": null
+    },
+    {
+      "task": "03-implement-slugify",
+      "difficulty": "easy",
+      "mode": "c",
+      "repeat": 1,
+      "passed": false,
+      "duration_s": 12.28,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 440,
+        "completion_tokens": 354,
+        "savings_tokens": 40
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "..F.....                                                                 [100%]\n================================== FAILURES ===================================\n___________ test_slugify[\\xc7a\\u011fr\\u0131 \\xdcnl\\xfc-cagri-unlu] ____________\n\ntext = '\ufffda\ufffdr\ufffd \ufffdnl\ufffd', expected = 'cagri-unlu'\n\n    @pytest.mark.parametrize(\n        (\"text\", \"expected\"),\n        [\n            (\"Hello World\", \"hello-world\"),\n            (\"  Many   spaces  \", \"many-spaces\"),\n            (\"\ufffda\ufffdr\ufffd \ufffdnl\ufffd\", \"cagri-unlu\"),\n            (\"C'est d\ufffdj\ufffd l'\ufffdt\ufffd!\", \"c-est-deja-l-ete\"),\n            (\"v2.0 -- release\", \"v2-0-release\"),\n            (\"!!!\", \"n-a\"),\n            (\"\", \"n-a\"),\n        ],\n    )\n    def test_slugify(text, expected):\n>       assert slugify(text) == expected\nE       AssertionError: assert 'cagr-unlu' == 'cagri-unlu'\nE         \nE         - cagri-unlu\nE         ?     -\nE         + cagr-unlu\n\n_hidden_tests\\test_slug_hidden.py:18: AssertionError\n=========================== short test summary info ===========================\nFAILED _hidden_tests/test_slug_hidden.py::test_slugify[\\xc7a\\u011fr\\u0131 \\xdcnl\\xfc-cagri-unlu]\n1 failed, 7 passed in 0.06s\n",
+      "agent": null
+    },
+    {
+      "task": "04-implement-roman",
+      "difficulty": "easy",
+      "mode": "c",
+      "repeat": 1,
+      "passed": false,
+      "duration_s": 2.89,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 469,
+        "completion_tokens": 23,
+        "savings_tokens": 0
+      },
+      "error": "orkestra run ended escalate (exit 1)",
+      "check_passed": null,
+      "output_tail": "40-XL] - NotImpleme...\nFAILED _hidden_tests/test_roman_hidden.py::test_both_ways[90-XC] - NotImpleme...\nFAILED _hidden_tests/test_roman_hidden.py::test_both_ways[400-CD] - NotImplem...\nFAILED _hidden_tests/test_roman_hidden.py::test_both_ways[1994-MCMXCIV] - Not...\nFAILED _hidden_tests/test_roman_hidden.py::test_both_ways[2026-MMXXVI] - NotI...\nFAILED _hidden_tests/test_roman_hidden.py::test_both_ways[3999-MMMCMXCIX] - N...\nFAILED _hidden_tests/test_roman_hidden.py::test_round_trip_everything - NotIm...\nFAILED _hidden_tests/test_roman_hidden.py::test_out_of_range[0] - NotImplemen...\nFAILED _hidden_tests/test_roman_hidden.py::test_out_of_range[4000] - NotImple...\nFAILED _hidden_tests/test_roman_hidden.py::test_out_of_range[-5] - NotImpleme...\nFAILED _hidden_tests/test_roman_hidden.py::test_not_an_int[1.0] - NotImplemen...\nFAILED _hidden_tests/test_roman_hidden.py::test_not_an_int[5] - NotImplemente...\nFAILED _hidden_tests/test_roman_hidden.py::test_not_an_int[True] - NotImpleme...\nFAILED _hidden_tests/test_roman_hidden.py::test_bad_numerals[] - NotImplement...\nFAILED _hidden_tests/test_roman_hidden.py::test_bad_numerals[IIII] - NotImple...\nFAILED _hidden_tests/test_roman_hidden.py::test_bad_numerals[VX] - NotImpleme...\nFAILED _hidden_tests/test_roman_hidden.py::test_bad_numerals[ABC] - NotImplem...\nFAILED _hidden_tests/test_roman_hidden.py::test_bad_numerals[iv] - NotImpleme...\nFAILED _hidden_tests/test_roman_hidden.py::test_bad_numerals[MMMM] - NotImple...\n23 failed in 0.11s\n",
+      "agent": null
+    },
+    {
+      "task": "05-rename-price",
+      "difficulty": "easy",
+      "mode": "c",
+      "repeat": 1,
+      "passed": false,
+      "duration_s": 7.3,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 449,
+        "completion_tokens": 161,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "ng _hidden_tests/test_rename_hidden.py _____________\n<repo>\\.venv\\Lib\\site-packages\\_pytest\\python.py:528: in importtestmodule\n    mod = import_path(\n<repo>\\.venv\\Lib\\site-packages\\_pytest\\pathlib.py:640: in import_path\n    importlib.import_module(module_name)\n..\\..\\..\\..\\..\\Roaming\\uv\\python\\cpython-3.12-windows-x86_64-none\\Lib\\importlib\\__init__.py:90: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n<frozen importlib._bootstrap>:1387: in _gcd_import\n    ???\n<frozen importlib._bootstrap>:1360: in _find_and_load\n    ???\n<frozen importlib._bootstrap>:1331: in _find_and_load_unlocked\n    ???\n<frozen importlib._bootstrap>:935: in _load_unlocked\n    ???\n<repo>\\.venv\\Lib\\site-packages\\_pytest\\assertion\\rewrite.py:185: in exec_module\n    exec(co, module.__dict__)\n_hidden_tests\\test_rename_hidden.py:1: in <module>\n    import pricing\nE     File \"<work>\\05-rename-price-c-1\\eval\\pricing.py\", line 1\nE       def format_price(amount, currency=\"EUR\"):    return f\"{amount:,.2f} {currency}\"def with_tax(amount, rate=0.2):    return round(amount * (1 + rate), 2)\nE                                                                                      ^^^\nE   SyntaxError: invalid syntax\n=========================== short test summary info ===========================\nERROR _hidden_tests/test_rename_hidden.py\n!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 0.12s\n",
+      "agent": null
+    },
+    {
+      "task": "06-implement-fizzbuzz-rules",
+      "difficulty": "easy",
+      "mode": "c",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 10.23,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 424,
+        "completion_tokens": 269,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "...                                                                      [100%]\n3 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "07-dataclass-point",
+      "difficulty": "easy",
+      "mode": "c",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 7.66,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 458,
+        "completion_tokens": 172,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "..                                                                       [100%]\n2 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "08-implement-word-count",
+      "difficulty": "easy",
+      "mode": "c",
+      "repeat": 1,
+      "passed": false,
+      "duration_s": 11.75,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 413,
+        "completion_tokens": 342,
+        "savings_tokens": 23
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "..FF                                                                     [100%]\n================================== FAILURES ===================================\n____________________ test_apostrophes_and_other_alphabets _____________________\n\n    def test_apostrophes_and_other_alphabets():\n>       assert top_words(\"Don't stop, don't! \ufffday \ufffday \ufffdAY\", 2) == [(\"\ufffday\", 3), (\"don't\", 2)]\nE       assert [(\"don't\", 2), ('stop', 1)] == [('\ufffday', 3), (\"don't\", 2)]\nE         \nE         At index 0 diff: (\"don't\", 2) != ('\ufffday', 3)\nE         Use -v to get more diff\n\n_hidden_tests\\test_words_hidden.py:14: AssertionError\n__________________________ test_stop_words_and_edges __________________________\n\n    def test_stop_words_and_edges():\n>       assert top_words(\"the the the cat\", 1, stop_words=(\"The\",)) == [(\"cat\", 1)]\nE       AssertionError: assert [('the', 3)] == [('cat', 1)]\nE         \nE         At index 0 diff: ('the', 3) != ('cat', 1)\nE         Use -v to get more diff\n\n_hidden_tests\\test_words_hidden.py:18: AssertionError\n=========================== short test summary info ===========================\nFAILED _hidden_tests/test_words_hidden.py::test_apostrophes_and_other_alphabets\nFAILED _hidden_tests/test_words_hidden.py::test_stop_words_and_edges - Assert...\n2 failed, 2 passed in 0.06s\n",
+      "agent": null
+    },
+    {
+      "task": "09-bugfix-inventory",
+      "difficulty": "medium",
+      "mode": "c",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 10.31,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 558,
+        "completion_tokens": 265,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "10-write-tests-stack",
+      "difficulty": "medium",
+      "mode": "c",
+      "repeat": 1,
+      "passed": false,
+      "duration_s": 18.28,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 630,
+        "completion_tokens": 634,
+        "savings_tokens": 311
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "NTS[name] != CORRECT\n        done = _run_their_tests(tmp_path, \"stack.py\", MUTANTS[name])\n>       assert done.returncode == 1, f\"a stack where {name} passed their tests\"\nE       AssertionError: a stack where bad limit accepted passed their tests\nE       assert 2 == 1\nE        +  where 2 = CompletedProcess(args=['<repo>\\\\.venv\\\\Scripts\\\\python.exe', '-m', 'pytest'...ss\", \"module\", \"package\", \"session\"\\n\\n  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))\\n').returncode\n\n_hidden_tests\\test_stack_tests_hidden.py:70: AssertionError\n=========================== short test summary info ===========================\nFAILED _hidden_tests/test_stack_tests_hidden.py::test_their_tests_pass_on_the_real_stack\nFAILED _hidden_tests/test_stack_tests_hidden.py::test_their_tests_catch_a_broken_stack[pop takes the bottom]\nFAILED _hidden_tests/test_stack_tests_hidden.py::test_their_tests_catch_a_broken_stack[peek removes]\nFAILED _hidden_tests/test_stack_tests_hidden.py::test_their_tests_catch_a_broken_stack[no limit check]\nFAILED _hidden_tests/test_stack_tests_hidden.py::test_their_tests_catch_a_broken_stack[limit off by one]\nFAILED _hidden_tests/test_stack_tests_hidden.py::test_their_tests_catch_a_broken_stack[empty peek returns None]\nFAILED _hidden_tests/test_stack_tests_hidden.py::test_their_tests_catch_a_broken_stack[is_empty inverted]\nFAILED _hidden_tests/test_stack_tests_hidden.py::test_their_tests_catch_a_broken_stack[bad limit accepted]\n8 failed, 1 passed in 6.21s\n",
+      "agent": null
+    },
+    {
+      "task": "11-refactor-validation",
+      "difficulty": "medium",
+      "mode": "c",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 9.53,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 542,
+        "completion_tokens": 225,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "..........                                                               [100%]\n10 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "12-bugfix-dates",
+      "difficulty": "medium",
+      "mode": "c",
+      "repeat": 1,
+      "passed": false,
+      "duration_s": 8.7,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 510,
+        "completion_tokens": 196,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "_business_days():\n        assert business_days_between(date(2026, 11, 16), date(2026, 11, 23)) == 5  # Mon..Mon\n        assert business_days_between(date(2026, 11, 21), date(2026, 11, 23)) == 0  # weekend\n        assert business_days_between(date(2026, 11, 20), date(2026, 11, 20)) == 0\n>       assert business_days_between(date(2026, 11, 23), date(2026, 11, 16)) == -5\nE       assert 0 == -5\nE        +  where 0 = business_days_between(datetime.date(2026, 11, 23), datetime.date(2026, 11, 16))\nE        +    where datetime.date(2026, 11, 23) = date(2026, 11, 23)\nE        +    and   datetime.date(2026, 11, 16) = date(2026, 11, 16)\n\n_hidden_tests\\test_dates_hidden.py:28: AssertionError\n=========================== short test summary info ===========================\nFAILED _hidden_tests/test_dates_hidden.py::test_add_months[start0-1-expected0]\nFAILED _hidden_tests/test_dates_hidden.py::test_add_months[start1-1-expected1]\nFAILED _hidden_tests/test_dates_hidden.py::test_add_months[start2-1-expected2]\nFAILED _hidden_tests/test_dates_hidden.py::test_add_months[start3-3-expected3]\nFAILED _hidden_tests/test_dates_hidden.py::test_add_months[start4-1-expected4]\nFAILED _hidden_tests/test_dates_hidden.py::test_add_months[start5--1-expected5]\nFAILED _hidden_tests/test_dates_hidden.py::test_add_months[start6--13-expected6]\nFAILED _hidden_tests/test_dates_hidden.py::test_add_months[start7-0-expected7]\nFAILED _hidden_tests/test_dates_hidden.py::test_business_days - assert 0 == -5\n9 failed in 0.07s\n",
+      "agent": null
+    },
+    {
+      "task": "13-implement-lru-cache",
+      "difficulty": "medium",
+      "mode": "c",
+      "repeat": 1,
+      "passed": false,
+      "duration_s": 3.27,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 509,
+        "completion_tokens": 41,
+        "savings_tokens": 0
+      },
+      "error": "orkestra run ended escalate (exit 1)",
+      "check_passed": null,
+      "output_tail": "________\n\n    def test_capacity_one_and_bad_capacity():\n>       c = LRUCache(1)\n            ^^^^^^^^^^^\n\n_hidden_tests\\test_lru_hidden.py:35: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\n\nself = <lru.LRUCache object at 0x0000020D324ABCE0>, capacity = 1\n\n    def __init__(self, capacity):\n        \"\"\"``capacity`` >= 1, otherwise ValueError.\"\"\"\n>       raise NotImplementedError\nE       NotImplementedError\n\nlru.py:6: NotImplementedError\n____________________________ test_none_is_a_value _____________________________\n\n    def test_none_is_a_value():\n>       c = LRUCache(2)\n            ^^^^^^^^^^^\n\n_hidden_tests\\test_lru_hidden.py:44: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\n\nself = <lru.LRUCache object at 0x0000020D324DC320>, capacity = 2\n\n    def __init__(self, capacity):\n        \"\"\"``capacity`` >= 1, otherwise ValueError.\"\"\"\n>       raise NotImplementedError\nE       NotImplementedError\n\nlru.py:6: NotImplementedError\n=========================== short test summary info ===========================\nFAILED _hidden_tests/test_lru_hidden.py::test_eviction_order - NotImplemented...\nFAILED _hidden_tests/test_lru_hidden.py::test_replace_refreshes_and_does_not_grow\nFAILED _hidden_tests/test_lru_hidden.py::test_contains_does_not_refresh - Not...\nFAILED _hidden_tests/test_lru_hidden.py::test_capacity_one_and_bad_capacity\nFAILED _hidden_tests/test_lru_hidden.py::test_none_is_a_value - NotImplemente...\n5 failed in 0.07s\n",
+      "agent": null
+    },
+    {
+      "task": "14-bugfix-csv-line",
+      "difficulty": "medium",
+      "mode": "c",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 9.34,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 389,
+        "completion_tokens": 230,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": ".......                                                                  [100%]\n7 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "15-feature-cli-options",
+      "difficulty": "medium",
+      "mode": "c",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 10.55,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 493,
+        "completion_tokens": 280,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "16-bugfix-flatten",
+      "difficulty": "medium",
+      "mode": "c",
+      "repeat": 1,
+      "passed": false,
+      "duration_s": 7.22,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 425,
+        "completion_tokens": 152,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "..F.                                                                     [100%]\n================================== FAILURES ===================================\n_________________________________ test_depth __________________________________\n\n    def test_depth():\n        data = [1, [2, [3, [4]]]]\n>       assert flatten(data, depth=0) == [1, [2, [3, [4]]]]\nE       assert [1] == [1, [2, [3, [4]]]]\nE         \nE         Right contains one more item: [2, [3, [4]]]\nE         Use -v to get more diff\n\n_hidden_tests\\test_nested_hidden.py:15: AssertionError\n=========================== short test summary info ===========================\nFAILED _hidden_tests/test_nested_hidden.py::test_depth - assert [1] == [1, [2...\n1 failed, 3 passed in 0.06s\n",
+      "agent": null
+    },
+    {
+      "task": "17-registry-shapes",
+      "difficulty": "hard",
+      "mode": "c",
+      "repeat": 1,
+      "passed": false,
+      "duration_s": 14.14,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 571,
+        "completion_tokens": 424,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\n\nself = <shapes.registry.ShapeRegistry object at 0x0000020C67CAD400>\nname = 'triangle'\n\n    def get(self, name):\n        if name not in self._registry:\n>           raise KeyError(f'Unknown shape {name}. Available shapes are: {self.available()}.')\nE           KeyError: \"Unknown shape triangle. Available shapes are: ['circle', 'square'].\"\n\nshapes\\registry.py:15: KeyError\n______________________ test_a_new_shape_registers_itself ______________________\n\n    def test_a_new_shape_registers_itself():\n        @registry.register(\"hexagon-test\")\n        def hexagon(side):\n            return 2.598 * side * side\n    \n        assert shapes.area(\"hexagon-test\", side=1) == 2.598\n>       assert \"hexagon-test\" in shapes.available()\n                                 ^^^^^^^^^^^^^^^^^^\n\n_hidden_tests\\test_shapes_hidden.py:19: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\nshapes\\__init__.py:13: in available\n    return available()\n           ^^^^^^^^^^^\nshapes\\__init__.py:13: in available\n    return available()\n           ^^^^^^^^^^^\nE   RecursionError: maximum recursion depth exceeded\n!!! Recursion detected (same locals & position)\n=========================== short test summary info ===========================\nFAILED _hidden_tests/test_shapes_hidden.py::test_triangle_and_available - Key...\nFAILED _hidden_tests/test_shapes_hidden.py::test_a_new_shape_registers_itself\n2 failed, 2 passed in 0.06s\n",
+      "agent": null
+    },
+    {
+      "task": "18-bank-transfer",
+      "difficulty": "hard",
+      "mode": "c",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 12.08,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 658,
+        "completion_tokens": 336,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "......                                                                   [100%]\n6 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "19-rename-class-deprecated",
+      "difficulty": "hard",
+      "mode": "c",
+      "repeat": 1,
+      "passed": false,
+      "duration_s": 13.2,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 632,
+        "completion_tokens": 365,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": ":21: AttributeError\n\nDuring handling of the above exception, another exception occurred:\n\nmodule = 'crm.models'\n\n    @pytest.mark.parametrize(\"module\", [\"crm\", \"crm.models\"])\n    def test_the_old_name_warns_and_is_the_new_class(module):\n        mod = importlib.import_module(module)\n>       with pytest.warns(DeprecationWarning, match=\"Customer\"):\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT WARN. No warnings of type (<class 'DeprecationWarning'>,) were emitted.\nE        Emitted warnings: [].\n\n_hidden_tests\\test_crm_hidden.py:20: Failed\n___________________________ test_from_import_warns ____________________________\n\n    def test_from_import_warns():\n        with warnings.catch_warnings(record=True) as caught:\n            warnings.simplefilter(\"always\")\n            from crm import UserRecord  # noqa: F401\n>       assert any(issubclass(w.category, DeprecationWarning) for w in caught)\nE       assert False\nE        +  where False = any(<generator object test_from_import_warns.<locals>.<genexpr> at 0x000001F1770B58C0>)\n\n_hidden_tests\\test_crm_hidden.py:29: AssertionError\n=========================== short test summary info ===========================\nFAILED _hidden_tests/test_crm_hidden.py::test_the_old_name_warns_and_is_the_new_class[crm]\nFAILED _hidden_tests/test_crm_hidden.py::test_the_old_name_warns_and_is_the_new_class[crm.models]\nFAILED _hidden_tests/test_crm_hidden.py::test_from_import_warns - assert False\n3 failed, 3 passed in 0.07s\n",
+      "agent": null
+    },
+    {
+      "task": "20-cache-invalidation",
+      "difficulty": "hard",
+      "mode": "c",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 14.34,
+      "claude": null,
+      "workers": {
+        "runs": 1,
+        "ok": 1,
+        "cost_usd": 0.0,
+        "prompt_tokens": 599,
+        "completion_tokens": 393,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "01-docstring-geometry",
+      "difficulty": "easy",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 18.7,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1389,
+        "cache_read_input_tokens": 72096,
+        "cache_creation_input_tokens": 5885,
+        "cost_usd": 0.08931120000000001,
+        "turns": 4,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "01-docstring-geometry",
+      "difficulty": "easy",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 18.66,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1304,
+        "cache_read_input_tokens": 82541,
+        "cache_creation_input_tokens": 8489,
+        "cost_usd": 0.11053220000000001,
+        "turns": 4,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "02-typehints-text",
+      "difficulty": "easy",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 15.92,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 913,
+        "cache_read_input_tokens": 71475,
+        "cache_creation_input_tokens": 5209,
+        "cost_usd": 0.07425899999999999,
+        "turns": 4,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "...                                                                      [100%]\n3 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "02-typehints-text",
+      "difficulty": "easy",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 14.17,
+      "claude": {
+        "input_tokens": 6,
+        "output_tokens": 976,
+        "cache_read_input_tokens": 59250,
+        "cache_creation_input_tokens": 7984,
+        "cost_usd": 0.095266,
+        "turns": 4,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "...                                                                      [100%]\n3 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "03-implement-slugify",
+      "difficulty": "easy",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 32.67,
+      "claude": {
+        "input_tokens": 14,
+        "output_tokens": 2260,
+        "cache_read_input_tokens": 133882,
+        "cache_creation_input_tokens": 6962,
+        "cost_usd": 0.12772840000000002,
+        "turns": 7,
+        "permission_denials": 2
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "........                                                                 [100%]\n8 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "03-implement-slugify",
+      "difficulty": "easy",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 24.12,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1908,
+        "cache_read_input_tokens": 82727,
+        "cache_creation_input_tokens": 8805,
+        "cost_usd": 0.1251774,
+        "turns": 4,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "........                                                                 [100%]\n8 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "04-implement-roman",
+      "difficulty": "easy",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 24.95,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 2142,
+        "cache_read_input_tokens": 73086,
+        "cache_creation_input_tokens": 6907,
+        "cost_usd": 0.1127452,
+        "turns": 6,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".......................                                                  [100%]\n23 passed in 0.05s\n",
+      "agent": null
+    },
+    {
+      "task": "04-implement-roman",
+      "difficulty": "easy",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 25.17,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 2054,
+        "cache_read_input_tokens": 83961,
+        "cache_creation_input_tokens": 9495,
+        "cost_usd": 0.1338642,
+        "turns": 5,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".......................                                                  [100%]\n23 passed in 0.04s\n",
+      "agent": null
+    },
+    {
+      "task": "05-rename-price",
+      "difficulty": "easy",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 16.84,
+      "claude": {
+        "input_tokens": 10,
+        "output_tokens": 872,
+        "cache_read_input_tokens": 91021,
+        "cache_creation_input_tokens": 5668,
+        "cost_usd": 0.08102820000000001,
+        "turns": 7,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "..                                                                       [100%]\n2 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "05-rename-price",
+      "difficulty": "easy",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 16.03,
+      "claude": {
+        "input_tokens": 10,
+        "output_tokens": 989,
+        "cache_read_input_tokens": 104839,
+        "cache_creation_input_tokens": 8363,
+        "cost_usd": 0.1076918,
+        "turns": 7,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "..                                                                       [100%]\n2 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "06-implement-fizzbuzz-rules",
+      "difficulty": "easy",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 20.88,
+      "claude": {
+        "input_tokens": 10,
+        "output_tokens": 1574,
+        "cache_read_input_tokens": 91923,
+        "cache_creation_input_tokens": 6732,
+        "cost_usd": 0.1037606,
+        "turns": 7,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "...                                                                      [100%]\n3 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "06-implement-fizzbuzz-rules",
+      "difficulty": "easy",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 17.33,
+      "claude": {
+        "input_tokens": 6,
+        "output_tokens": 1140,
+        "cache_read_input_tokens": 59231,
+        "cache_creation_input_tokens": 8147,
+        "cost_usd": 0.0998462,
+        "turns": 4,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "...                                                                      [100%]\n3 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "07-dataclass-point",
+      "difficulty": "easy",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 17.38,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1195,
+        "cache_read_input_tokens": 71557,
+        "cache_creation_input_tokens": 5344,
+        "cost_usd": 0.08099540000000001,
+        "turns": 5,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "..                                                                       [100%]\n2 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "07-dataclass-point",
+      "difficulty": "easy",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 16.94,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1221,
+        "cache_read_input_tokens": 82056,
+        "cache_creation_input_tokens": 8022,
+        "cost_usd": 0.1050392,
+        "turns": 5,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "..                                                                       [100%]\n2 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "08-implement-word-count",
+      "difficulty": "easy",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 20.98,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1472,
+        "cache_read_input_tokens": 71509,
+        "cache_creation_input_tokens": 6153,
+        "cost_usd": 0.0929978,
+        "turns": 5,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "08-implement-word-count",
+      "difficulty": "easy",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 22.67,
+      "claude": {
+        "input_tokens": 10,
+        "output_tokens": 1652,
+        "cache_read_input_tokens": 107771,
+        "cache_creation_input_tokens": 9567,
+        "cost_usd": 0.1311702,
+        "turns": 7,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "09-bugfix-inventory",
+      "difficulty": "medium",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 18.02,
+      "claude": {
+        "input_tokens": 10,
+        "output_tokens": 1258,
+        "cache_read_input_tokens": 92285,
+        "cache_creation_input_tokens": 6411,
+        "cost_usd": 0.09494499999999999,
+        "turns": 7,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "09-bugfix-inventory",
+      "difficulty": "medium",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 17.28,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1171,
+        "cache_read_input_tokens": 83052,
+        "cache_creation_input_tokens": 8717,
+        "cost_usd": 0.10979840000000002,
+        "turns": 5,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "10-write-tests-stack",
+      "difficulty": "medium",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 74.94,
+      "claude": {
+        "input_tokens": 24,
+        "output_tokens": 6057,
+        "cache_read_input_tokens": 268676,
+        "cache_creation_input_tokens": 11706,
+        "cost_usd": 0.26861920000000006,
+        "turns": 13,
+        "permission_denials": 5
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".........                                                                [100%]\n9 passed in 4.90s\n",
+      "agent": null
+    },
+    {
+      "task": "10-write-tests-stack",
+      "difficulty": "medium",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 31.11,
+      "claude": {
+        "input_tokens": 6,
+        "output_tokens": 3244,
+        "cache_read_input_tokens": 59610,
+        "cache_creation_input_tokens": 10286,
+        "cost_usd": 0.159114,
+        "turns": 4,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".........                                                                [100%]\n9 passed in 4.74s\n",
+      "agent": null
+    },
+    {
+      "task": "11-refactor-validation",
+      "difficulty": "medium",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 12.94,
+      "claude": {
+        "input_tokens": 6,
+        "output_tokens": 809,
+        "cache_read_input_tokens": 52387,
+        "cache_creation_input_tokens": 5751,
+        "cost_usd": 0.07268940000000002,
+        "turns": 5,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "..........                                                               [100%]\n10 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "11-refactor-validation",
+      "difficulty": "medium",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 13.86,
+      "claude": {
+        "input_tokens": 6,
+        "output_tokens": 935,
+        "cache_read_input_tokens": 59721,
+        "cache_creation_input_tokens": 8622,
+        "cost_usd": 0.09964420000000002,
+        "turns": 4,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "..........                                                               [100%]\n10 passed in 0.01s\n",
+      "agent": null
+    },
+    {
+      "task": "12-bugfix-dates",
+      "difficulty": "medium",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 21.3,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1703,
+        "cache_read_input_tokens": 71961,
+        "cache_creation_input_tokens": 5928,
+        "cost_usd": 0.0959082,
+        "turns": 4,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".........                                                                [100%]\n9 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "12-bugfix-dates",
+      "difficulty": "medium",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 28.55,
+      "claude": {
+        "input_tokens": 10,
+        "output_tokens": 2069,
+        "cache_read_input_tokens": 105822,
+        "cache_creation_input_tokens": 8987,
+        "cost_usd": 0.1344804,
+        "turns": 6,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".........                                                                [100%]\n9 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "13-implement-lru-cache",
+      "difficulty": "medium",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 19.56,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1568,
+        "cache_read_input_tokens": 73111,
+        "cache_creation_input_tokens": 6437,
+        "cost_usd": 0.0975102,
+        "turns": 5,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "13-implement-lru-cache",
+      "difficulty": "medium",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 20.69,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1571,
+        "cache_read_input_tokens": 83926,
+        "cache_creation_input_tokens": 9259,
+        "cost_usd": 0.12230919999999999,
+        "turns": 5,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": ".....                                                                    [100%]\n5 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "14-bugfix-csv-line",
+      "difficulty": "medium",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 22.7,
+      "claude": {
+        "input_tokens": 6,
+        "output_tokens": 1791,
+        "cache_read_input_tokens": 52157,
+        "cache_creation_input_tokens": 6265,
+        "cost_usd": 0.0963954,
+        "turns": 4,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": ".......                                                                  [100%]\n7 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "14-bugfix-csv-line",
+      "difficulty": "medium",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 27.08,
+      "claude": {
+        "input_tokens": 10,
+        "output_tokens": 2107,
+        "cache_read_input_tokens": 106678,
+        "cache_creation_input_tokens": 9577,
+        "cost_usd": 0.1401316,
+        "turns": 5,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": ".......                                                                  [100%]\n7 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "15-feature-cli-options",
+      "difficulty": "medium",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 23.19,
+      "claude": {
+        "input_tokens": 10,
+        "output_tokens": 1723,
+        "cache_read_input_tokens": 92110,
+        "cache_creation_input_tokens": 6765,
+        "cost_usd": 0.10704199999999998,
+        "turns": 7,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "15-feature-cli-options",
+      "difficulty": "medium",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 18.56,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1418,
+        "cache_read_input_tokens": 83043,
+        "cache_creation_input_tokens": 8782,
+        "cost_usd": 0.1152566,
+        "turns": 5,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "16-bugfix-flatten",
+      "difficulty": "medium",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 21.52,
+      "claude": {
+        "input_tokens": 8,
+        "output_tokens": 1753,
+        "cache_read_input_tokens": 70928,
+        "cache_creation_input_tokens": 5857,
+        "cost_usd": 0.09613360000000001,
+        "turns": 5,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "16-bugfix-flatten",
+      "difficulty": "medium",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 20.72,
+      "claude": {
+        "input_tokens": 6,
+        "output_tokens": 1776,
+        "cache_read_input_tokens": 59354,
+        "cache_creation_input_tokens": 8584,
+        "cost_usd": 0.1160868,
+        "turns": 4,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": null,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.03s\n",
+      "agent": null
+    },
+    {
+      "task": "17-registry-shapes",
+      "difficulty": "hard",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 33.17,
+      "claude": {
+        "input_tokens": 14,
+        "output_tokens": 2543,
+        "cache_read_input_tokens": 134235,
+        "cache_creation_input_tokens": 8486,
+        "cost_usd": 0.145651,
+        "turns": 14,
+        "permission_denials": 2
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.05s\n",
+      "agent": null
+    },
+    {
+      "task": "17-registry-shapes",
+      "difficulty": "hard",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 34.36,
+      "claude": {
+        "input_tokens": 14,
+        "output_tokens": 2603,
+        "cache_read_input_tokens": 155249,
+        "cache_creation_input_tokens": 11218,
+        "cost_usd": 0.1729098,
+        "turns": 14,
+        "permission_denials": 2
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.02s\n",
+      "agent": null
+    },
+    {
+      "task": "18-bank-transfer",
+      "difficulty": "hard",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 58.48,
+      "claude": {
+        "input_tokens": 22,
+        "output_tokens": 5119,
+        "cache_read_input_tokens": 237853,
+        "cache_creation_input_tokens": 10927,
+        "cost_usd": 0.2374546,
+        "turns": 14,
+        "permission_denials": 6
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "......                                                                   [100%]\n6 passed in 0.05s\n",
+      "agent": null
+    },
+    {
+      "task": "18-bank-transfer",
+      "difficulty": "hard",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 50.09,
+      "claude": {
+        "input_tokens": 16,
+        "output_tokens": 4310,
+        "cache_read_input_tokens": 184528,
+        "cache_creation_input_tokens": 13618,
+        "cost_usd": 0.2321136,
+        "turns": 19,
+        "permission_denials": 2
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "......                                                                   [100%]\n6 passed in 0.04s\n",
+      "agent": null
+    },
+    {
+      "task": "19-rename-class-deprecated",
+      "difficulty": "hard",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 62.55,
+      "claude": {
+        "input_tokens": 24,
+        "output_tokens": 5413,
+        "cache_read_input_tokens": 254126,
+        "cache_creation_input_tokens": 11323,
+        "cost_usd": 0.24976519999999997,
+        "turns": 21,
+        "permission_denials": 5
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "......                                                                   [100%]\n6 passed in 0.05s\n",
+      "agent": null
+    },
+    {
+      "task": "19-rename-class-deprecated",
+      "difficulty": "hard",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 32.27,
+      "claude": {
+        "input_tokens": 12,
+        "output_tokens": 2845,
+        "cache_read_input_tokens": 133483,
+        "cache_creation_input_tokens": 11146,
+        "cost_usd": 0.17281259999999998,
+        "turns": 14,
+        "permission_denials": 0
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "......                                                                   [100%]\n6 passed in 0.04s\n",
+      "agent": null
+    },
+    {
+      "task": "20-cache-invalidation",
+      "difficulty": "hard",
+      "mode": "a",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 32.69,
+      "claude": {
+        "input_tokens": 12,
+        "output_tokens": 2540,
+        "cache_read_input_tokens": 112601,
+        "cache_creation_input_tokens": 7430,
+        "cost_usd": 0.13280820000000002,
+        "turns": 8,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.06s\n",
+      "agent": null
+    },
+    {
+      "task": "20-cache-invalidation",
+      "difficulty": "hard",
+      "mode": "b",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 28.19,
+      "claude": {
+        "input_tokens": 10,
+        "output_tokens": 2416,
+        "cache_read_input_tokens": 106702,
+        "cache_creation_input_tokens": 9854,
+        "cost_usd": 0.1485324,
+        "turns": 7,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....                                                                     [100%]\n4 passed in 0.04s\n",
+      "agent": null
+    }
+  ]
+}
