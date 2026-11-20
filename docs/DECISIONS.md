@@ -1138,3 +1138,17 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 - `run_record._auto_review`'daki tembel import yorumu doğru modülü anıyor (review → runner → run_record).
 - `prepare.py` ve `run_record.py` belge dizgisi: alt çizgili adların (`_prepare`, `_route`, `_Prepared`, `_cannot_do`, `_Answer`) üç modül arasında paylaşıldığını söylüyor (yeniden adlandırma bu fazda yok: yalnız taşıma).
 
+## D-108 – düzeltme-fable c: README kısaldı, ayrıntılar rehbere taşındı (2026-11-20, düzeltme-fable c)
+- **README (en + tr) 995 → ~200 satır:** ne, neden (önce kesintisizlik, sonra şefin bağlamı), bugün çalışanlar tablosu, sağlayıcılar (Ollama, OpenAI uyumlu + `providers add`, kod ajanları Codex / agy deneysel / generic), kurulum (`uv tool install git+…`, PyPI'de yok, düzenlenebilir kurulumda `main` notu), hızlı başlangıç, **Bilinen sınırlar**, güvenlik, belgeler, yol haritası, geliştirme. Durum kutusu faz saymıyor (bayatlamasın); yol haritası tablosuna gönderiyor.
+- **Ayrıntılar `docs/guide.md` + `docs/guide.tr.md`:** eski README'nin yönlendirmeden sonuç zarfına kadar bölümleri olduğu gibi taşındı; yalnız göreli bağlantılar `docs/`'a göre düzeltildi, örnek çıktı blokları ```` ```text ```` oldu, başa içindekiler eklendi. Yönlendirme sırası paragrafı güncellendi: kademe → kotası azalan sona → `by_kind` → öğrenen skor → `priority` → config sırası (`router._order_key`).
+- **`tests/unit/test_readme.py`:** README'ler, rehberler ve tariflerdeki her `orkestra …` komutu ve bayrağı gerçek CLI'ye karşı (skill denetleyicisi, Faz 9a; ```` ```text ```` blokları atlanır, `\` ile süren satırlar birleşir); README ≤ 320 satır; "Bilinen sınırlar" başlığı var, faz sayan eski durum metni yok; beş dil ve bütün sağlayıcı türleri anılıyor; yerel bağlantılar ve başlık çapaları çözülüyor.
+- Elle kullanım turu (madde 9) ve dal temizliği (madde 7) kullanıcıyla yapılacak; bu PR'da değil.
+
+## D-109 – düzeltme-fable c kod denetimi düzeltmeleri (2026-11-20, düzeltme-fable c)
+`/code-review` (PR #41): 6 bulgu (2 önemli, 4 küçük), hepsi düzeltildi; önce kırmızı testler.
+- **Türkçe rehberde iki kırık bağlantı (önemli):** "İ" ile başlayan başlığın GitHub çapası küçük "i" + birleşik nokta (U+0307) içerir, bağlantılar düz "i" kullanıyordu. Başlıklar "İ" ile başlamayacak biçimde yeniden adlandırıldı ("Çapraz denetim: ikinci bir AI, şef için daha ucuz yazma", "Her iş türüne uygun model"). Test çapayı GitHub'a yakın kuruyor: birleşik işaretler ve `_` kalır, yinelenen başlık `-1`, `-2` alır.
+- **PyPI'de olmayan paketi kuran satır (önemli):** rehber ve tariflerde `uv tool install "orkestra-cli[notify]"` yerine git adresi + `--with "desktop-notifier>=6.0,<7"`. Test: Faz 14'e kadar hiçbir belge `uv tool install orkestra-cli…` demez.
+- **Yol haritası PROGRESS ile çelişmez:** 6b (⏳) satırı eklendi; "düzeltmeler" satırı elle kullanım turu bitene kadar ⏳.
+- **PROGRESS tablosu:** düzeltme-fable c satırı yeniden dört hücre.
+- **Beş dil testi:** iki harfli parçalar yerine tablodaki `--lang en\|tr\|de\|es\|fr` aranıyor.
+

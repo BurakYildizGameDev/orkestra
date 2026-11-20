@@ -42,7 +42,7 @@ In the morning: `orkestra status`, then `orkestra review` and `orkestra apply`.
 
 ```yaml
 notify:
-  desktop: true                      # needs the extra: uv tool install "orkestra-cli[notify]"
+  desktop: true                      # needs the extra: uv tool install git+https://github.com/BurakYildizGameDev/orkestra --with "desktop-notifier>=6.0,<7"
   ntfy_topic_env: ORKESTRA_NTFY_TOPIC
 ```
 
