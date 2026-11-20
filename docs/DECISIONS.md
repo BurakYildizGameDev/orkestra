@@ -1171,3 +1171,17 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 4. Mod C/D'de hiç işçi koşusu olmazsa ilerleme satırı `no worker run` der (geçersiz ilk deneme fark edilmeden kalmasın). Geçersiz deneme dosyasının başına not eklendi.
 5. Pencere satırı agy sürümünü de yazar (önceden yalnız JSON'daydı).
 
+## D-113 – Faz 13p: skill kısa İngilizce çekirdek + `reference.md` (2026-11-20, Faz 13p)
+**Neden:** 13d'de (D-111) mod D'de agy işi yaptığı halde Claude tokenı A'nın ~2 katıydı. `cache_creation` 2–3 kat artmıştı, ek yükün büyük kısmı her devreden oturumun yüklediği 28 KB'lık Türkçe `SKILL.md` idi.
+**Karar:** `skill/orkestra/SKILL.md` ≤ 6000 bayt İngilizce çekirdek oldu (4,1 KB): ne zaman devredilir, run/ask/batch/template, yalnız zarfı oku, denetim ve apply kuralları, `exec`/`read`/`find`, devir dosyası, rapor, asla yapma. Eski Türkçe metnin tamamı aynı klasörde `reference.md` oldu, Claude onu yalnız gerektiğinde okur. Kurulum zaten klasörü kopyalar (`cp -r skill/orkestra`), bench iki dosyayı da kopyalar (`SKILL_FILES`). Testler: çekirdek boyutu ve çekirdek kuralları; komut/bayrak denetimi iki dosyayı da kapsar. Skill dili İngilizce oldu (Türkçe aynı metin için daha çok token tutar; skill şefe, yani modele yazılır, kullanıcıya görünmez).
+**Ölçüm (`bench/results/2026-11-20-0750`, mod D, `--worker agy`, görev 17–20, 1 tekrar):** 4/4 geçti, her görevi agy yaptı. Claude tokenı görev başına 14,8k (uzun skill ile 28,1k, %47 düşüş; A 13,5k). Claude maliyeti görev başına $0,189 (uzun skill $0,336; A $0,191). Küçük görevde devretmek artık başa baş; Claude'un kendi çıktısı A'dan az (ör. 19: 5,4k → 2,7k). Tek tekrar, 4 görev: gürültü payı var.
+
+## D-114 – Faz 13p: PR #43 kod denetimi düzeltmeleri (2026-11-20, Faz 13p)
+**Bulgular ve kararlar (6):**
+1. Kısa çekirdek batch'in maliyet onayını (`needs_confirmation`, `--yes-cost`) söylemiyordu; kural yalnız `reference.md`'deydi. Çekirdeğe çıkış kodu satırı (1–5, kod 2'de tahmini göster ve `--yes-cost`'u yalnız kullanıcı kabul ederse ekle) ve "Never" listesine `--yes-cost` eklendi.
+2. Bench sonuç dosyası hangi skill ile koşulduğunu yazmıyordu; `--resume` uzun ve kısa skill'i fark edilmeden karıştırabilirdi. Her pencere artık `skill` (iki dosyanın içeriğinden 12 haneli sha256) yazar, değişince not basılır, rapor satırında görünür.
+3. Çekirdekte yoktu: kod 3'te bütçe limitlerini kendin değiştirme, kod 4'te onayı kullanıcı verir, oturum başında `orkestra status --json` ve `unapplied` koşular. Eklendi (çekirdek 4,1 → 4,6 KB; 13p ölçümü 4,1 KB sürümle yapıldı, yeniden ölçülmedi).
+4. Şef kılavuzunun "Full rules" bağlantısı yalnız çekirdeği gösteriyordu; artık klasörü (`tree/main/skill/orkestra`) gösterir.
+5. `docs/guide.md`, `docs/guide.tr.md` ("skill şimdilik Türkçe") ve `bench/README.md` iki dosyalı yapıya göre güncellendi.
+6. Toplu devir testi Türkçe cümleleri birleşik metinde arıyordu, çekirdekten silinen kuralı yakalamazdı; artık çekirdekteki İngilizce kuralları denetler. Korumalar için ayrı test eklendi.
+

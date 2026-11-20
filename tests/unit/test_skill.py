@@ -22,6 +22,8 @@ from orkestra.cli import build_app
 from orkestra.tasks.spec import parse_task
 
 SKILL = Path(__file__).resolve().parents[2] / "skill" / "orkestra" / "SKILL.md"
+REFERENCE = SKILL.with_name("reference.md")  # the details, read only when needed (D-113)
+CORE_MAX_BYTES = 6000  # what every delegating session loads (Faz 13p)
 MAX_LINES = 500  # Faz 9: the skill stays under 500 lines
 _YAML = YAML(typ="safe", pure=True)
 
@@ -225,7 +227,31 @@ def check_reference(group: TyperGroup, span: str) -> list[str]:
 
 @pytest.fixture(scope="module")
 def skill_text() -> str:
+    """Both files: every command and flag in either one must exist."""
+    return SKILL.read_text(encoding="utf-8") + "\n" + REFERENCE.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def core_text() -> str:
     return SKILL.read_text(encoding="utf-8")
+
+
+def test_the_skill_core_is_small(core_text: str) -> None:
+    assert len(core_text.encode("utf-8")) <= CORE_MAX_BYTES
+
+
+def test_the_core_keeps_the_rules_and_points_at_the_reference(core_text: str) -> None:
+    for must in (
+        "orkestra run --template",
+        "orkestra show <run_id> --report",
+        "orkestra apply <run_id> --max-risk low",
+        "--only-ok --max-risk low",
+        "orkestra exec --",
+        "orkestra handoff update",
+        "--force",
+        "reference.md",
+    ):
+        assert must in core_text, must
 
 
 def test_the_skill_has_front_matter_with_name_and_description(skill_text: str) -> None:
@@ -407,14 +433,29 @@ def test_the_field_list_names_every_task_field_and_nothing_else(skill_text: str)
     assert named == fields
 
 
-def test_the_skill_teaches_bulk_delegation_and_cross_review(skill_text: str) -> None:
+def test_the_skill_teaches_bulk_delegation_and_cross_review(core_text: str) -> None:
     """Faz 13m (D-098): small work is not delegated, mechanical work goes in one batch, and
-    a change another provider reviewed as low risk is applied from the report."""
-    assert "orkestra run --template" in skill_text and "Tek küçük işi devretme" in skill_text
-    assert "işe özel denetim betiği yazma" in skill_text
-    assert "orkestra show <run_id> --report" in skill_text
-    assert "orkestra apply <run_id> --max-risk low" in skill_text
-    assert "--only-ok --max-risk low" in skill_text
+    a change another provider reviewed as low risk is applied from the report. The core is
+    what Claude loads, so the rules must be there (D-114)."""
+    assert "orkestra run --template" in core_text and "**all at once**" in core_text
+    assert "never write a task-specific check script" in core_text
+    assert "orkestra show <run_id> --report" in core_text
+    assert "orkestra apply <run_id> --max-risk low" in core_text
+    assert "--only-ok --max-risk low" in core_text
+
+
+def test_the_core_keeps_the_guardrails(core_text: str) -> None:
+    """D-114: cost confirmation, exit codes and budget limits stay in what Claude loads."""
+    assert "--yes-cost" in core_text and "needs_confirmation" in core_text
+    for code in ("2 ", "3 ", "4 ", "5 "):
+        assert f"exit {code}" in core_text or f"{code.strip()} =" in core_text, code
+    assert "budget limits" in core_text
+    assert "orkestra status --json" in core_text and "unapplied" in core_text
+
+
+def test_the_chief_guide_links_the_whole_skill_folder(guide_text: str) -> None:
+    assert "skill/orkestra/SKILL.md" not in guide_text  # only the core since D-113
+    assert "tree/main/skill/orkestra" in guide_text
 
 
 # --- the chief guide: what a chief other than Claude learns Orkestra from (Faz 13n) ---------

@@ -737,9 +737,11 @@ mkdir -p .claude/skills && cp -r skill/orkestra .claude/skills/
 ```
 
 Sonra Claude'a örneğin şunu söyle: *"Bu 20 dosyaya docstring ekleme işini orkestra ile dağıt,
-sonucu sen denetle."* Skill şimdilik Türkçe (yayında İngilizceye çevrilecek) ve bugün var olan
-bütün komutları kapsıyor: `batch`, `map`, `review`, `plan expand` ve devir dosyası da
-(`handoff update`, `show --brief`, `to --print-only`).
+sonucu sen denetle."* Skill iki dosyadır: `SKILL.md` Claude'un yüklediği kısa İngilizce çekirdek
+(ne zaman devredilir, nasıl çalıştırılır ve denetlenir, korumalar), `reference.md` ise Claude'un
+yalnız gerektiğinde okuduğu Türkçe ayrıntılar. İkisi birlikte bugün var olan bütün komutları
+kapsıyor: `batch`, `map`, `review`, `plan expand` ve devir dosyası da (`handoff update`,
+`show --brief`, `to --print-only`). Klasörün tamamını kopyala.
 
 ## Yapılandırma
 
