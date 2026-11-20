@@ -60,6 +60,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 - Testler: 14 yeni (sahte stdio sunucular: el sıkışan, susan, hemen çıkan, bozuk JSON yazan; süreç ağacının öldüğü; bayraksız `doctor`'un hiçbir sunucu başlatmadığı).
 - Canlı deneme (kullanıcının makinesi, Unity kapalı): `blender` cevap veriyor (MCP for Blender), `unity` koruma betiği hemen çıktı (kod 1) → bilgi satırı. İlk sürüm bunu "cevap vermiyor" uyarısı yapıyordu, yanıltıcıydı; düzeltildi.
 - Kalan (kullanıcıyla): Unity açıkken elle testler, Unity'nin sonradan açılması (6b'nin 1. ve 2. maddeleri).
+- Kod denetimi (`/code-review 46`): 1 bulgu düzeltildi (stdout kapanınca çıkış kodu beklemesi süresizdi; artık 3 sn, sonra `bad_output` ve süreç ağacı durur); 15. test eklendi.
 
 ### Faz 13e – 2. ve 3. turlar, sonuçlar (2026-11-21)
 

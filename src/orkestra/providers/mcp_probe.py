@@ -23,6 +23,7 @@ from typing import Literal
 from orkestra.providers.cli_agent import AGY_MCP_CONFIG, kill_tree
 
 DEFAULT_TIMEOUT_S = 15.0  # npx/uvx servers can take a while on the first start
+EXIT_WAIT_S = 3.0  # after stdout's EOF, how long the exit code may take
 PROTOCOL_VERSION = "2025-06-18"
 WINDOWS_BATCH = (".cmd", ".bat")
 
@@ -142,8 +143,12 @@ async def probe_server(server: McpServer, *, timeout_s: float = DEFAULT_TIMEOUT_
         except TimeoutError:
             status, detail = "timeout", ""
         if status == "exited":
-            code = await proc.wait()
-            detail = str(code)
+            # stdout closed: a server that lives on without it never answers; never wait
+            # for it without a limit (``finally`` stops its tree).
+            try:
+                detail = str(await asyncio.wait_for(proc.wait(), EXIT_WAIT_S))
+            except TimeoutError:
+                status, detail = "bad_output", ""
         return ProbeResult(server.name, status, detail, proc.pid)
     finally:
         if proc.returncode is None:

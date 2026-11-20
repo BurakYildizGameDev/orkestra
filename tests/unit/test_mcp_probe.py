@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import time
 from pathlib import Path
 
 import psutil
@@ -31,6 +32,7 @@ sys.stdin.readline()
     "silent": "import time\ntime.sleep(60)\n",
     "exits": "import sys\nsys.exit(3)\n",
     "garbage": "print('hello, this is not json', flush=True)\nimport time\ntime.sleep(60)\n",
+    "detached": "import os, sys, time\nsys.stdout.flush()\nos.close(1)\ntime.sleep(60)\n",
 }
 
 
@@ -173,3 +175,12 @@ def test_a_server_that_exits_at_once_is_info_not_a_stall(tmp_path: Path) -> None
     report = _doctor(tmp_path, mcp=True, prober=prober)
     unity = next(c for c in report.checks if c.name == "provider:agy:mcp:unity")
     assert unity.status == "info" and "mcp_wait_s" not in unity.message
+
+
+def test_a_server_that_closes_stdout_but_lives_on_does_not_hang_the_probe(tmp_path: Path) -> None:
+    """PR #46 review: after stdout's EOF the wait for the exit code must be bounded too."""
+    started = time.monotonic()
+    result = _probe(_server(tmp_path, "detached"), timeout_s=2.0)
+    assert time.monotonic() - started < 15
+    assert result.status == "bad_output"
+    assert result.pid is not None and not psutil.pid_exists(result.pid)
