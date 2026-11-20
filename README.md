@@ -189,7 +189,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 |---|---|---|
 | 0–4 | Skeleton, config, Ollama/OpenAI adapters, budgets, consent, circuit breaker, router with failover | ✅ |
 | 5–6 | Task files and verifiers, worktrees, edit tasks, code agents (Codex, Antigravity) | ✅ |
-| 6b | MCP limits; manual tests with Unity open | ⏳ |
+| 6b | MCP limits: a stalled MCP server no longer blocks agy; `doctor --mcp` | ✅ |
 | 7–8 | Batches, cost estimates, `stats`; chief tools (`status`, templates, cache, `review`, `map`) | ✅ |
 | 9 | Claude skill; SEARCH/REPLACE edits for cheap models | ✅ |
 | 10 | Chief handoff (Claude ↔ Codex ↔ Antigravity) | ✅ |
