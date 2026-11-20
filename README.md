@@ -10,8 +10,9 @@
 
 > **Status: early release, in development.** Everything in the table below works and is
 > covered by about 1,900 offline tests on Linux, macOS and Windows, but it has seen little
-> real-world use yet. It is not on PyPI yet. Whether it *saves* the chief tokens is not proven:
-> read [Known limits](#known-limits) before you rely on it. What is done and what is next:
+> real-world use yet. It is not on PyPI yet. Measured: handing work to workers does **not**
+> save the chief tokens; the context filter cuts a big job's cost by ~20%. Read
+> [Known limits](#known-limits) before you rely on it. What is done and what is next:
 > [Roadmap](#roadmap).
 
 ```text
@@ -132,12 +133,24 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 
 ## Known limits
 
-- **Savings are not proven.** The tests show that the tool works, not that it saves tokens or
-  time. On small benchmark tasks, delegating through Claude cost the chief *more* (+23% with the
-  skill, ~3.7× when told to delegate); only running without a chief was cheaper. Measuring
-  Claude's own sessions showed that about 80% of its weighted cost is re-reading the context, so
-  the newer tools (`exec`, `read`, `find`, short sessions) aim there. A big-task experiment that
-  measures them is still to come; the results will be published either way.
+- **Delegating does not save Claude tokens; the context filter does a little.** Benchmark
+  (Faz 13, Claude Code 2.1.329 with Opus 5.5, Windows 11, i9-13900HX, 32 GB, RTX 5070 Ti 12 GB;
+  details in [`bench/README.md`](bench/README.md#results)):
+
+  | Run | Passed | Claude tokens / task | Claude cost / task |
+  |---|---|---|---|
+  | 20 small tasks, Claude only (2 rounds) | 20/20 | 9.1k | $0.117 |
+  | the same with the skill (Claude chose never to delegate) | 20/20 | 11.4k (+26%) | $0.136 (+16%) |
+  | the same, told to delegate to agy (1 round) | 20/20 | 15.7k (+73%) | $0.197 (+68%) |
+  | Orkestra alone, local qwen2.5-coder:14b, no chief | 7.5/20 | – | – |
+  | big task (~1,200-line project, 160 KB log), Claude only (2 rounds) | 2/2 | 87.4k | $1.38 |
+  | the same with the context filter (`exec`/`read`/`find`) | 2/2 | 76.9k (−12%) | $1.10 (−20%) |
+  | the same plus delegation and cross-review | 2/2 | 76.7k (−12%) | $1.19 (−13%) |
+
+  The 25% saving the project aimed for was not reached. What Orkestra gives a Claude user is
+  continuity (another provider or chief takes over when one runs out) and a context filter
+  (−46% context re-reading on the big task); delegating costs the chief more than it saves,
+  on small and on big tasks alike.
 - **Little real-world use.** The night queue, notifications, the terminal interface and the
   wizard are covered by tests but have had little use on real models and real terminals. The
   code was written and reviewed with AI help. Expect rough edges and please
@@ -185,7 +198,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 | 13a–c | Benchmark tool, 20 tasks, first trial | ✅ |
 | 13f–o | Quota continuity, token map, context filter (`exec`/`read`/`find`), short sessions, quota forecast, model by kind of work, cross-review, non-Claude chief, `providers add` | ✅ |
 | fixes | `gc` database cleanup, file splits and this README are done; a manual usage tour on real models is next | ⏳ |
-| 13d, 13e, 13g | Full benchmark rounds and the big-task savings experiment | ⏳ |
+| 13d, 13e, 13g, 13p | Full benchmark rounds, the big-task experiment, a short skill | ✅ |
 | 14 | Packaging, docs, PyPI release | ⏳ |
 
 ## Development

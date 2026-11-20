@@ -1503,7 +1503,8 @@ def test_ollama_model_2_is_refused_when_only_the_reviewer_is_ollama(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     argv = ["--mode", "a", "--tasks", "01", "--worker", "agy", "--reviewer", "ollama",
-            "--ollama-model-2", "big", "--work-dir", str(tmp_path)]  # fmt: skip
+            "--ollama-model-2", "big", "--out", str(tmp_path / "out"),
+            "--work-dir", str(tmp_path)]  # fmt: skip
     assert rb.main(argv, runner=ManyTasks(), which=lambda name: name) == 2
     assert "--ollama-model-2" in capsys.readouterr().err
 
@@ -1511,7 +1512,8 @@ def test_ollama_model_2_is_refused_when_only_the_reviewer_is_ollama(
 def test_a_missing_agy_names_the_reviewer_too(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    argv = ["--mode", "a", "--tasks", "01", "--reviewer", "agy", "--work-dir", str(tmp_path)]
+    argv = ["--mode", "a", "--tasks", "01", "--reviewer", "agy", "--out", str(tmp_path / "out"),
+            "--work-dir", str(tmp_path)]  # fmt: skip
     which = lambda name: None if name == "agy" else name  # noqa: E731
     assert rb.main(argv, runner=ManyTasks(), which=which) == 2
     assert "--reviewer agy" in capsys.readouterr().err
