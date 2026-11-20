@@ -243,7 +243,11 @@ providers:
   relay'i) her koşuyu zaman aşımına kadar bekletirdi. Orkestra, agy `mcp_wait_s` kadar
   beklediğinde (varsayılan 60 saniye; agy 30 sn'de bir raporlar; `0` hiç durdurmaz) koşuyu
   sunucunun adını veren bir hatayla durdurur ve sıradaki sağlayıcıya geçer; `doctor` ve
-  `providers enable` `disabled` kayıtlar için uyarır. Böyle bir sunucuyu etkileşimli kullanım için
+  `providers enable` `disabled` kayıtlar için uyarır. `orkestra doctor --mcp` etkin her stdio
+  sunucusunu başlatır, MCP `initialize` isteğini gönderir ve adıyla raporlar: hangisi cevap
+  veriyor, hangisi zaman aşımına uğruyor (her agy koşusu onu bekler), hangisi hemen çıkıyor
+  (uygulaması kapalıyken koruma betiği); gerçek sunucularını başlattığı için yalnız istenince
+  çalışır. Böyle bir sunucuyu etkileşimli kullanım için
   tutmak istersen, uygulaması çalışmıyorsa hemen kapanan küçük bir betikle başlat, ör.
   Windows'ta (`command: "cmd.exe"`, `args: ["/d", "/c", "<betik>.cmd", "--mcp"]`):
   ```bat

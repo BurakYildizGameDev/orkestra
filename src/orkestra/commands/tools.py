@@ -274,10 +274,11 @@ def register(
     def doctor_command(
         ctx: typer.Context,
         warm: Annotated[bool, typer.Option("--warm", help=t("cli.doctor.option.warm"))] = False,
+        mcp: Annotated[bool, typer.Option("--mcp", help=t("cli.doctor.option.mcp"))] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
         report = asyncio.run(
-            doctor.run_doctor(config_flag=ctx.ensure_object(_State).config_path, warm=warm)
+            doctor.run_doctor(config_flag=ctx.ensure_object(_State).config_path, warm=warm, mcp=mcp)
         )
         if as_json:
             _echo_json({"ok": report.ok, "checks": [asdict(c) for c in report.checks]})

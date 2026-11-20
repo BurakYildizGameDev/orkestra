@@ -438,3 +438,41 @@ def test_a_permission_error_outside_windows_is_a_real_error(tmp_path: Path) -> N
         store._acquire(tmp_path / "HANDOFF.md.lock", now=NOW, timeout_s=5.0,
                        stale_after_s=30.0, clock=lambda: 0.0, sleep=lambda seconds: None,
                        opener=opener, platform="posix")  # fmt: skip
+
+
+def test_a_replace_refused_while_another_process_reads_is_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows refuses os.replace onto a file another process has open (PR #46 CI, D-119)."""
+    from orkestra.handoff import store
+
+    real = os.replace
+    calls = {"n": 0}
+
+    def flaky(src: str, dst: object) -> None:
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise PermissionError(5, "Access is denied")
+        real(src, dst)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(store.os, "replace", flaky)
+    monkeypatch.setattr(store.time, "sleep", lambda _s: None)
+    target = tmp_path / "HANDOFF.md"
+    store._atomic_write(target, "hello\n")
+    assert target.read_text(encoding="utf-8") == "hello\n" and calls["n"] == 3
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_a_replace_refused_for_good_still_fails_and_leaves_no_temp_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from orkestra.handoff import store
+
+    def refuse(src: str, dst: object) -> None:
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr(store.os, "replace", refuse)
+    monkeypatch.setattr(store.time, "sleep", lambda _s: None)
+    with pytest.raises(PermissionError):
+        store._atomic_write(tmp_path / "HANDOFF.md", "hello\n")
+    assert list(tmp_path.glob("*.tmp")) == []

@@ -32,7 +32,7 @@ from orkestra.config.schema import (
 )
 from orkestra.errors import ConfigError, ProviderBadOutput, ProviderError
 from orkestra.i18n import t
-from orkestra.providers import cli_agent, pricing
+from orkestra.providers import cli_agent, mcp_probe, pricing
 from orkestra.providers.base import CompletionRequest
 from orkestra.providers.ollama import OllamaChat, has_model
 from orkestra.providers.openai_compat import OpenAICompatChat
@@ -250,6 +250,39 @@ def _check_agent(
     return checks
 
 
+async def _mcp_checks(
+    providers: Mapping[str, Provider],
+    which: Which,
+    agy_mcp_config: Path | None,
+    prober: mcp_probe.Prober,
+    timeout_s: float,
+) -> list[Check]:
+    """One check per MCP server agy starts: does it answer ``initialize`` in time?"""
+    agy = next((n for n, c in providers.items() if isinstance(c, CliAgentProvider)
+                and c.kind == "agy" and which(c.command) is not None), None)  # fmt: skip
+    if agy is None:
+        return []
+    path = agy_mcp_config or cli_agent.AGY_MCP_CONFIG
+    servers = mcp_probe.agy_mcp_servers(path)
+    if not servers:
+        return [Check(f"provider:{agy}:mcp", "info", t("doctor.mcp.none", path=path), {})]
+    checks: list[Check] = []
+    for result in await prober(servers, timeout_s):
+        data = {"server": result.name, "status": result.status}
+        if result.status == "ok":
+            message = t("doctor.mcp.ok", server=result.name, info=result.detail or "-")
+            checks.append(Check(f"provider:{agy}:mcp:{result.name}", "ok", message, data))
+        elif result.status == "exited":  # e.g. a guard script while its app is closed
+            message = t("doctor.mcp.exited", server=result.name, code=result.detail)
+            checks.append(Check(f"provider:{agy}:mcp:{result.name}", "info", message, data))
+        else:
+            reason = t(f"doctor.mcp.reason.{result.status}", seconds=f"{timeout_s:g}",
+                       error=result.detail)  # fmt: skip
+            message = t("doctor.mcp.failed", server=result.name, reason=reason)
+            checks.append(Check(f"provider:{agy}:mcp:{result.name}", "warn", message, data))
+    return checks
+
+
 async def _check_provider(
     name: str,
     cfg: Provider,
@@ -441,6 +474,9 @@ async def run_doctor(
     platform: str = sys.platform,
     machine: hardware.Machine | None = None,
     install_info: Callable[[], install.InstallInfo | None] = install.detect,
+    mcp: bool = False,
+    mcp_prober: mcp_probe.Prober = mcp_probe.probe_all,
+    mcp_timeout_s: float = mcp_probe.DEFAULT_TIMEOUT_S,
 ) -> DoctorReport:
     env = os.environ if environ is None else environ
     checks: list[Check] = []
@@ -487,6 +523,9 @@ async def run_doctor(
         )  # fmt: skip
         for provider_checks in per_provider:
             checks.extend(provider_checks)
+        if mcp:  # starts the user's real MCP servers: only when asked (Faz 6b)
+            checks.extend(await _mcp_checks(loaded.config.providers, which, agy_mcp_config,
+                                            mcp_prober, mcp_timeout_s))  # fmt: skip
         checks.extend(_state_checks(loaded.config.providers, loaded.config.forecast))
         checks.extend(await _price_checks(loaded.config, env))
         if any(c.local and c.enabled for c in loaded.config.providers.values()):
