@@ -96,8 +96,12 @@ class LeakError(BenchError):
 
 
 class UsageLimitReached(BenchError):
-    """Claude's usage limit (or an overload) stopped a run: it is not a model failure, so the
-    benchmark stops and is resumed later (``--resume``)."""
+    """Claude's usage limit (or an overload), the agy chief's or a worker's quota stopped a run:
+    it is not a model failure, so the benchmark stops and is resumed later (``--resume``)."""
+
+    def __init__(self, message: str, source: str = "Claude") -> None:
+        super().__init__(message)
+        self.source = source  # whose limit: Claude, agy, or the worker provider's name
 
 
 # Searched in the result *text* and stderr only (never the serialized usage numbers), and
@@ -151,6 +155,7 @@ MODES: dict[str, Mode] = {
     "e": Mode("E - agy chief + Orkestra", chief=False, hint=AGENT_HINT, planned=False,
               agent="agy"),
 }  # fmt: skip
+DELEGATING_MODES = ("c", "d")  # a run here without any worker run means no worker was usable
 PLANNED_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.planned)
 CHIEF_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.chief)  # Claude sessions
 AGENT_MODES: tuple[str, ...] = tuple(k for k, m in MODES.items() if m.agent)
@@ -525,6 +530,10 @@ def run_once(
         raise  # never a model failure: the whole benchmark stops
     except BenchError as exc:
         error = str(exc)
+    worker_out = worker_quota_hit(home, started_at)
+    if worker_out is not None:
+        raise UsageLimitReached(f"{task.id} {mode}: worker {worker_out} quota used up",
+                                worker_out)  # fmt: skip
     duration = round(time.monotonic() - started, 2)
     if agent_name:
         check_agent_trace(task, run_dir)  # before the hidden tests exist anywhere again
@@ -708,7 +717,7 @@ def _run_agent(
     failed = done.returncode != 0 or status != "SUCCESS"  # no result at all is a failure too
     hit = quota.detect(f"{done.stdout}\n{done.stderr}") if failed else None
     if hit is not None and hit.hard:  # a passing rate limit (429) is a failed run, no stop
-        raise UsageLimitReached(f"{task.id} agy: {(done.stderr or done.stdout)[:200]}")
+        raise UsageLimitReached(f"{task.id} agy: {(done.stderr or done.stdout)[:200]}", "agy")
     usage = parse_agent(done.stdout)
     if failed:
         tail = clean_tail(done.stderr or done.stdout, 300, default_scrubber())
@@ -759,6 +768,26 @@ def _run_orkestra(
 # --- the bench Orkestra home --------------------------------------------------------------------
 
 
+def worker_timeout(timeout_s: float) -> int:
+    """The agy worker's timeout: well inside the run's, so ``orkestra run`` still reports a
+    worker timeout (mode C) and a delegating Claude session keeps time to finish (mode D)."""
+    return max(int(timeout_s * 2 / 3), 1)
+
+
+def worker_quota_hit(home: Path, since: datetime) -> str | None:
+    """The worker provider whose quota ran out in ``home`` since ``since`` (Orkestra records it
+    in ``quota_events``, Faz 13k), or None."""
+    path = home / "state.db"
+    if not path.is_file():
+        return None
+    from orkestra.state import db
+
+    with closing(db.connect(path)) as conn:
+        row = conn.execute("SELECT provider FROM quota_events WHERE at >= ? ORDER BY id LIMIT 1",
+                           (since.isoformat(),)).fetchone()  # fmt: skip
+    return None if row is None else str(row["provider"])
+
+
 def setup_home(home: Path, settings: Settings) -> None:
     """Orkestra's config and consent for the bench: local Ollama only (or agy only with
     ``--worker agy``, D-111), the cache off (the same task runs several times), adaptive routing
@@ -770,7 +799,7 @@ def setup_home(home: Path, settings: Settings) -> None:
     if settings.worker == "agy":
         providers: dict[str, Any] = {"agy": {
             "type": "cli_agent", "command": settings.agy, "kind": "agy", "tier": 1,
-            "experimental": True, "enabled": True, "timeout_s": int(settings.timeout_s),
+            "experimental": True, "enabled": True, "timeout_s": worker_timeout(settings.timeout_s),
         }}  # fmt: skip
     else:
         models = [{"id": settings.ollama_model, "tier": 1}]
@@ -950,7 +979,8 @@ def _meta_lines(meta: Mapping[str, Any]) -> list[str]:
             lines.append(f"- tasks: {', '.join(value)}\n")
         elif key == "windows":
             lines += [f"- window {w.get('date', '-')}: claude {w.get('claude', '-')}, "
-                      f"orkestra {w.get('orkestra', '-')}, {w.get('runs', 0)} runs\n"
+                      f"orkestra {w.get('orkestra', '-')}, agy {w.get('agy', '-')}, "
+                      f"{w.get('runs', 0)} runs\n"
                       for w in value]  # fmt: skip
         elif key == "tasks":
             continue  # the ids above say it
@@ -1095,6 +1125,10 @@ def main(
         return 2
     meta = plan.meta
     worker = meta.get("worker", opts.worker or "ollama")
+    if worker == "agy" and (opts.ollama_model or opts.ollama_model_2):
+        flag = "--ollama-model" if opts.ollama_model else "--ollama-model-2"
+        print(f"{flag} has no use with --worker agy (agy is the only worker)", file=sys.stderr)
+        return 2
     agy = which("agy")
     needs_agy = worker == "agy" or any(m in AGENT_MODES for m in plan.modes)
     if needs_agy and agy is None:
@@ -1125,7 +1159,8 @@ def main(
                        f"{platform.processor() or platform.machine()}",
             "python": platform.python_version(),
             "modes": "".join(plan.modes), "task_ids": [t.id for t in plan.tasks],
-            "tasks": len(plan.tasks), "ollama_model": settings.ollama_model,
+            "tasks": len(plan.tasks),
+            "ollama_model": None if settings.worker == "agy" else settings.ollama_model,
             "ollama_model_2": settings.ollama_model_2, "claude_model": settings.claude_model,
             "timeout_s": settings.timeout_s, "worker": settings.worker, "windows": [],
             "claude_tools": list(CLAUDE_TOOLS), "orkestra_tools": list(ORKESTRA_TOOLS),
@@ -1160,14 +1195,15 @@ def main(
                     print(f"STOPPED, the leak guard tripped: {exc}", file=sys.stderr)
                     return 3
                 except UsageLimitReached as exc:
-                    print(f"STOPPED, a usage limit ({'agy' if mode in AGENT_MODES else 'Claude'}): "
-                          f"{exc}", file=sys.stderr)  # fmt: skip
+                    print(f"STOPPED, a usage limit ({exc.source}): {exc}", file=sys.stderr)
                     _stop(records, plan, "this run is not recorded; wait for the limit to reset")
                     return 4
                 claude_runs += is_claude
                 window["runs"] += 1
                 records.append(record)
                 mark = "PASS" if record.passed else "fail"
+                if mode in DELEGATING_MODES and not record.workers.get("runs"):
+                    mark += " - no worker run"
                 print(f"[{len(records)}/{total}] {task.id} {mode} #{repeat}: {mark} "
                       f"({record.duration_s:.0f} s){' - ' + record.error if record.error else ''}",
                       flush=True)  # fmt: skip
