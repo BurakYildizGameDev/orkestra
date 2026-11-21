@@ -46,7 +46,7 @@ Güçlü modellerin kotası az; kotası bol modeller daha az güvenilir. Orkestr
 | Özellik | Komut |
 |---|---|
 | Kurulum sihirbazı (Ollama, Codex/agy/Claude ve API anahtarı değişkenlerini bulur) ya da örnek config | `orkestra init [--plain \| --defaults] [--project]` |
-| Terminal arayüzü: durum, sağlayıcılar, bütçeler, profiller, onaylar, gece kuyruğu, devir özeti, ayarlar | `orkestra ui` |
+| Terminal arayüzü: durum, sağlayıcılar, bütçeler, profiller, onaylar, gece kuyruğu, devir özeti, ayarlar | `orkestra ui --tui` |
 | Herhangi bir OpenAI uyumlu servisi ekleme ya da OpenCode'dan alma | `orkestra providers add NAME --base-url URL --model ID`, `providers import opencode` |
 | Sağlayıcı başına açık onay; sağlık ve kalan bütçeyle sağlayıcı listesi | `orkestra providers enable NAME`, `providers list` |
 | İşçiye tek soru; bağlam dosyaları ve isteğe bağlı JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |

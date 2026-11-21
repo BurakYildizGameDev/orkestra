@@ -222,7 +222,7 @@ def test_ui_without_a_usable_terminal_says_so_and_suggests_plain(
         monkeypatch.delenv("TERM", raising=False)
     else:
         monkeypatch.setenv("TERM", term)
-    code, _, err = _run(["ui"], capsys)
+    code, _, err = _run(["ui", "--tui"], capsys)
     assert code == 2
     assert t("ui.error.no_terminal") in err
 

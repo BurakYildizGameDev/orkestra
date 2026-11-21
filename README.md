@@ -47,7 +47,7 @@ things about it:
 | Feature | Command |
 |---|---|
 | Setup wizard (finds Ollama, Codex/agy/Claude and API key variables) or the example config | `orkestra init [--plain \| --defaults] [--project]` |
-| Terminal interface: status, providers, budgets, profiles, consent, night queue, handoff brief, settings | `orkestra ui` |
+| Terminal interface: status, providers, budgets, profiles, consent, night queue, handoff brief, settings | `orkestra ui --tui` |
 | Add any OpenAI-compatible service, or import one from OpenCode | `orkestra providers add NAME --base-url URL --model ID`, `providers import opencode` |
 | Explicit consent per provider; providers with health and remaining budget | `orkestra providers enable NAME`, `providers list` |
 | One question to a worker, with context files and an optional JSON Schema | `orkestra ask "…" [--context f] [--schema s.json] [--json]` |
