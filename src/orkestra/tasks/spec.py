@@ -169,6 +169,7 @@ class TaskSpec(_Model):
     model: str | None = None
     depends_on: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    max_wait_s: PosInt | None = None
 
     @field_validator("id")
     @classmethod

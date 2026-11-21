@@ -104,12 +104,15 @@ verify:
 limits:
   max_retries: 1             # retries with feedback per model (default: defaults.max_retries)
   timeout_s: 120             # per request (default: the provider's timeout)
+max_wait_s: 30               # optional: models with median duration > max_wait_s are moved to tier end
 privacy: normal              # local_only keeps the task on local models
 tags: [docs]
 ```
 
 Relative paths are resolved from the directory you run `orkestra` in, or from `workspace` if
 the task sets one.
+
+**Maximum wait time (`max_wait_s`):** When set to a positive number of seconds, any model whose historical median run duration exceeds `max_wait_s` is flagged with `wait_exceeded: true` and moved to the end of its tier during routing. It is never dropped completely—if it is the only candidate in the tier, it will still be attempted.
 
 **Verifiers:** `command` (exit code 0; no shell unless `shell: true`, which pipes and `&&` need),
 `json_schema` (added automatically for `format: json`), `regex` (`must_match`, `must_not_match`),

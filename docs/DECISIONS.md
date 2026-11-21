@@ -1277,3 +1277,13 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 - Belirgin başarı farkında (fark >= 0,05) başarılı olan öne geçer (hız başarıyı ezmez).
 - Kademe (`tier`), kota azalan durumu (`quota_low`) ve iş türü tercihi (`by_kind`) önceliğini korur; hız yalnız kademe içinde etkilidir.
 **Sonuç:** `prefer_fast` açıkken başarıdan ödün vermeden en hızlı model seçilir; `docs/PROJE_DOKUMANTASYONU.md` §7 güncellendi.
+
+## D-125 – Görev alanında `max_wait_s`: Bekleme süresine duyarlı yönlendirme (2026-11-22, Faz 13q-c)
+**Bağlam:** Bazı acil veya etkileşimli görevlerde kullanıcının belirli bir süreden (ör. 30 saniye) fazla bekleme toleransı olmayabilir. Adayın geçmiş ortanca süresi bu sınırı aşıyorsa, kullanıcı öncelikle daha hızlı modellerin denenmesini ister.
+**Karar:** `TaskSpec` şemasına isteğe bağlı `max_wait_s: PosInt | None = None` alanı eklendi (`TaskNeeds` ve `Candidate.wait_exceeded` üzerinden yönlendiriciye iletilir).
+- `max_wait_s` belirtilmemişse: yönlendirme davranışı ve sıralaması eskisiyle bit bit aynı kalır (`wait_exceeded=False`).
+- `max_wait_s` belirtilmişse: adayın geçmiş ortanca süresi (`median_duration_s`) bu değeri aşıyorsa aday `wait_exceeded=True` olarak işaretlenir.
+- Kademe sıralamasında (`_order_key` ve `_candidate_cmp_fast`), `wait_exceeded=True` olan adaylar kendi kademelerinin EN SONUNA itilir.
+- Adaylar ASLA silinmez/elenmez: kademedeki tek aday süreyi aşsa dahi aday listesinde kalır ve sırası gelince denenir.
+- `describe_candidates()` çıktısına `"wait_exceeded": c.wait_exceeded` alanı eklendi (`--dry-run --json` ve envelope için).
+**Sonuç:** Acil görevlerde yavaş modeller kademe sonuna ötelenir, ancak uygun model bulunamazsa görev alternatifsiz bırakılmaz; `docs/PROJE_DOKUMANTASYONU.md` §4.2 güncellendi.

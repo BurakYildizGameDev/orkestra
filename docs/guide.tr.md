@@ -101,11 +101,14 @@ verify:
 limits:
   max_retries: 1             # model başına geri bildirimle tekrar (varsayılan: defaults.max_retries)
   timeout_s: 120             # istek başına (varsayılan: sağlayıcının zaman aşımı)
+max_wait_s: 30               # isteğe bağlı: ortanca süresi bu değeri aşan modeller kademe sonuna itilir
 privacy: normal              # local_only görevi yerel modellerde tutar
 tags: [docs]
 ```
 
 Göreli yollar `orkestra`'yı çalıştırdığın dizine göre, görevde `workspace` varsa ona göre çözülür.
+
+**Azami bekleme süresi (`max_wait_s`):** Görev dosyasında (veya batch görevinde) saniye cinsinden isteğe bağlı pozitif tam sayı. Belirtildiğinde, geçmiş ortanca süresi `max_wait_s`'i aşan modeller `wait_exceeded: true` olarak işaretlenir ve yönlendirmede kendi kademelerinin en sonuna itilir. Model listeden asla tamamen çıkarılmaz; kademedeki tek seçenek o ise yine denenir.
 
 **Doğrulayıcılar:** `command` (çıkış kodu 0; `shell: true` yazmadıkça kabuk yok, boru ve `&&`
 için gerekir), `json_schema` (`format: json` ise kendiliğinden eklenir), `regex` (`must_match`,
