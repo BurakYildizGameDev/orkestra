@@ -216,6 +216,7 @@ class KindPrefs(_Model):
 class RoutingCfg(_Model):
     adaptive: bool = False
     min_samples: PosInt = 10
+    prefer_fast: bool = False
     by_kind: dict[WorkKind, KindPrefs] = Field(default_factory=dict)
 
 

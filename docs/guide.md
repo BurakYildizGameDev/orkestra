@@ -37,6 +37,11 @@ The tier always comes first (lowest first); inside a tier the order is:
 4. `priority`, higher first;
 5. the order you wrote them in the config (providers first to last, then each provider's models).
 
+If `routing.prefer_fast` is enabled (default `false`), candidates in the same tier whose success
+scores are close (difference < 0.05) are ordered by their median duration, fastest first; candidates
+without duration history go behind those with known duration. When the success difference is 0.05
+or larger, the higher-scoring model stays first (speed never overrides success).
+
 Budgets only filter: a provider that would exceed its limit is left out, but remaining budget
 does not reorder. Tiers come from the
 profile (`--profile cheap|balanced|quality`, default from the config) and `--tier` sets the lowest

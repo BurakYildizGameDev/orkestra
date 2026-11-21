@@ -17,6 +17,7 @@ neutral.
 
 from __future__ import annotations
 
+import functools
 import math
 import os
 import sqlite3
@@ -397,12 +398,15 @@ def route(
     prefs = config.routing.by_kind.get(needs.work or needs.kind)
     if prefs is not None and prefs.prefer:
         candidates = [replace(c, prefer_rank=_prefer_rank(c, prefs.prefer)) for c in candidates]
-    if config.routing.adaptive:
+    if config.routing.adaptive or config.routing.prefer_fast:
         neutral = Score(adaptive.NEUTRAL, 0, 0, config.routing.min_samples, scored=False)
         candidates = [
             replace(c, score=snapshot.scores.get(_score_key(c), neutral)) for c in candidates
         ]
-    candidates.sort(key=_order_key)
+    if config.routing.prefer_fast:
+        candidates.sort(key=functools.cmp_to_key(_candidate_cmp_fast))
+    else:
+        candidates.sort(key=_order_key)
     return Route(profile_name, (low, high), tokens, tuple(candidates), tuple(eliminated))
 
 
@@ -442,6 +446,43 @@ def unmatched_preferences(config: Config) -> list[tuple[str, str]]:
         for pattern in prefs.prefer
         if not any(_matches(pattern, label) for label in labels)
     ]
+
+
+def _candidate_cmp_fast(a: Candidate, b: Candidate) -> int:
+    """Compare candidates with ``routing.prefer_fast``: tier first, then quota_low, then by_kind.
+    Within the same tier, if success score difference is < 0.05, the one with shorter median
+    duration comes first (unknown duration goes behind known). When difference is >= 0.05,
+    higher score comes first (speed never overrides success). Priority and config order break ties.
+    """
+    if a.tier != b.tier:
+        return -1 if a.tier < b.tier else 1
+    if a.quota_low != b.quota_low:
+        return 1 if a.quota_low else -1
+    a_rank = math.inf if a.prefer_rank is None else float(a.prefer_rank)
+    b_rank = math.inf if b.prefer_rank is None else float(b.prefer_rank)
+    if a_rank != b_rank:
+        return -1 if a_rank < b_rank else 1
+    score_a = a.score.value if a.score is not None else 0.5
+    score_b = b.score.value if b.score is not None else 0.5
+    score_diff = score_a - score_b
+    if abs(score_diff) >= 0.05:
+        return -1 if score_diff > 0 else 1
+    dur_a = a.median_duration_s
+    dur_b = b.median_duration_s
+    if dur_a is not None and dur_b is not None:
+        if dur_a != dur_b:
+            return -1 if dur_a < dur_b else 1
+    elif dur_a is not None and dur_b is None:
+        return -1
+    elif dur_a is None and dur_b is not None:
+        return 1
+    if abs(score_diff) > 1e-9:
+        return -1 if score_diff > 0 else 1
+    if a.model.priority != b.model.priority:
+        return -1 if a.model.priority > b.model.priority else 1
+    if a.order != b.order:
+        return -1 if a.order < b.order else 1
+    return 0
 
 
 def _order_key(c: Candidate) -> tuple[int, bool, float, float, int, tuple[int, int]]:
@@ -504,7 +545,7 @@ def take_snapshot(
                 name, cfg, model, conn=conn, cache=cache, history=history
             )
     scores: dict[ScoreKey, Score] = {}
-    if config.routing.adaptive:
+    if config.routing.adaptive or config.routing.prefer_fast:
         outcomes = adaptive.load_outcomes(conn, now)
         scores = adaptive.scores(config, outcomes, tags, list(states), extra=extra_model)
     return Snapshot(now, states, prices, scores)

@@ -1268,3 +1268,12 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 **Alternatifler:** `pywebview`'ı zorunlu bağımlılık yapmak (sunucu ortamlarında ve C-bağımlılıklarında kurulum sorunlarına yol açar) ya da Electron/Tauri gibi ayrı ağır araçlar kullanmak (paket boyutunu ve karmaşıklığı aşırı artırır).
 **Sonuç:** Kullanıcı arayüzü masaüstü penceresinde (`orkestra ui --window`), tarayıcıda (`orkestra ui`) veya terminalde (`orkestra ui --tui`) kesintisiz deneyimle çalışır.
 **Kod denetimi (Claude, 2026-11-21, 11c sonu):** yalnız `ImportError` yakalanıyordu; pywebview kurulu ama açılamıyorsa (ör. Linux'ta GUI arka ucu yok) komut iz basıp çöküyordu, sunucu iş parçacığı da açık kalıyordu. Artık pencere açılamazsa sunucu iş parçacığı durdurulur, `ui.web.window_failed` (5 dil, nedeniyle) yazılır ve tarayıcıya düşülür; pencere kapanınca sunucu kapatılır (`server_close`).
+
+## D-124 – `routing.prefer_fast`: Kademe içinde hızlı model tercihi (2026-11-22, Faz 13q-b)
+**Bağlam:** Öğrenen yönlendirme (`routing.adaptive`) yalnız başarı oranına (Laplace skoru) bakıyordu; ancak modeller arasında süre farkı büyüktü (ör. hızlı Ollama ile yavaş Evren/Ajan). Şefin işçiyi beklemesi pahalıya mal olabiliyordu.
+**Karar:** `routing.prefer_fast: bool = false` ayarı eklendi.
+- Kapalıyken (varsayılan): yönlendirme sırası eskisiyle bit bit aynı kalır.
+- Açıkken: kademe içinde başarı skorları arasındaki fark < 0,05 olan adaylar arasında ortanca süresi (`duration_s`) kısa olan öne geçer; süresi bilinmeyen adaylar bilinenlerin arkasına alınır.
+- Belirgin başarı farkında (fark >= 0,05) başarılı olan öne geçer (hız başarıyı ezmez).
+- Kademe (`tier`), kota azalan durumu (`quota_low`) ve iş türü tercihi (`by_kind`) önceliğini korur; hız yalnız kademe içinde etkilidir.
+**Sonuç:** `prefer_fast` açıkken başarıdan ödün vermeden en hızlı model seçilir; `docs/PROJE_DOKUMANTASYONU.md` §7 güncellendi.
