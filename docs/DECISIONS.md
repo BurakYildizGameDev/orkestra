@@ -1225,3 +1225,12 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 **Karar (kullanıcı):** 6b'nin 1. maddesi (Unity açıkken elle doğrulama) ve 2. maddesi (Unity sonradan açılınca bağlanma, MCP vekili araştırması) yapılmayacak; faz bitmiş sayılır. 4. madde (agy `permissions.deny`) ve 5. madde (makinedeki eski MCP yedekleri) repo dışı makine ayarı, kullanıcıya bırakıldı.
 **Neden:** agy'nin takılması asıl sorundu ve D-055/D-056 ile çözüldü; etkin ama bağlanamayan sunucuyu `doctor --mcp` önceden gösteriyor (D-118). Unity açıkken davranış Orkestra'nın kodunu değil agy ile Unity relay'ini ilgilendiriyor.
 **Bilinen sınır:** Unity iş sırasında açılırsa istemci o oturumda Unity'ye bağlanmaz (agy'yi yeniden başlatmak gerekir); README/rehberde bununla ilgili ek not yok, gerekirse ileride eklenir.
+
+## D-121 – Faz 11c-a: Web sunucusu bağımlılığı olarak standart kütüphane http.server (2026-11-21, Faz 11c-a)
+**Bağlam:** Faz 11c yerel bir web arayüzü ekler (`orkestra ui`). `YAPILIS_PLANI.md` bağımlılık seçiminin (Starlette + uvicorn ya da standart kütüphane) Mimari §1'e bakılarak yapılmasını ve DECISIONS'a yazılmasını ister.
+**Karar:** Standart kütüphane `http.server.ThreadingHTTPServer` ve `BaseHTTPRequestHandler` seçildi (`orkestra/web/server.py`).
+**Nedenler:**
+1. *Sıfır ek bağımlılık:* Mimari §1'deki `sqlite3` kararıyla aynı felsefe; paketi büyütmez, ek bağımlılık ve kilit dosyası yükü getirmez.
+2. *Olay döngüsü (event loop) çatışması yok:* Orkestra'nın servisleri senkron fonksiyonlardan `asyncio.run()` ile asenkron sağlayıcıları çağırır. `uvicorn` (ASGI) içinde istekler zaten çalışan bir `asyncio` olay döngüsünde koşar; orada senkron bir servis çağrıldığında `asyncio.run()` `RuntimeError: This event loop is already running` hatası verir. `ThreadingHTTPServer`'da her istek ayrı bir iş parçacığında koştuğu için thread içinde `asyncio.run()` sorunsuz çalışır.
+3. *Güvenlik gereksinimlerinin tam denetimi:* Yalnız `127.0.0.1` dinleme, dinamik boş port (port 0), `Host` başlığı doğrulaması (`127.0.0.1:<port>`), DNS rebinding ve CSRF koruması için CORS'un kapalı olması ve tek kullanımlık oturum token'ı doğrudan işleyicide (`secrets.compare_digest`) uygulanmıştır.
+**Sonuç:** `orkestra ui` varsayılan olarak yerel web sunucusunu açar; `--tui` eski terminal arayüzünü açar; `--no-browser` otomatik tarayıcı açmayı engeller; `--port` port belirtir.

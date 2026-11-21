@@ -180,12 +180,54 @@ def register(app: typer.Typer, config_app: typer.Typer) -> None:
             typer.echo(t("init.next"))
 
     @app.command("ui", help=t("cli.ui.help"))
-    def ui_command(ctx: typer.Context) -> None:
-        from orkestra.tui import app as tui_app
+    def ui_command(
+        ctx: typer.Context,
+        tui: Annotated[bool, typer.Option("--tui", help=t("cli.ui.option.tui"))] = False,
+        no_browser: Annotated[
+            bool, typer.Option("--no-browser", help=t("cli.ui.option.no_browser"))
+        ] = False,
+        port: Annotated[
+            int, typer.Option("--port", min=0, max=65535, help=t("cli.ui.option.port"))
+        ] = 0,
+        window: Annotated[bool, typer.Option("--window", help=t("cli.ui.option.window"))] = False,
+    ) -> None:
+        if tui:
+            from orkestra.tui import app as tui_app
 
-        if not tui_app.usable_terminal():
-            raise UsageError(t("ui.error.no_terminal"))
-        tui_app.OrkestraApp(config_flag=ctx.ensure_object(_State).config_path, mode="ui").run()
+            if not tui_app.usable_terminal():
+                raise UsageError(t("ui.error.no_terminal"))
+            tui_app.OrkestraApp(config_flag=ctx.ensure_object(_State).config_path, mode="ui").run()
+            return
+
+        import webbrowser
+
+        from orkestra.web import server
+
+        if window:
+            try:
+                import webview  # type: ignore # noqa: F401
+            except ImportError:
+                typer.echo(t("ui.web.window_fallback"), err=True)
+
+        config_path = ctx.ensure_object(_State).config_path
+        srv = server.create_server(
+            server.ServerConfig(host="127.0.0.1", port=port, config_path=config_path)
+        )
+        url = f"http://127.0.0.1:{srv.server_port}/?token={srv.token}"
+
+        typer.echo(t("ui.web.started", url=url))
+        typer.echo(t("ui.web.press_ctrl_c"))
+
+        if not no_browser:
+            webbrowser.open(url)
+
+        try:
+            srv.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            srv.server_close()
+            typer.echo(t("ui.web.stopped"))
 
     @config_app.command("show", help=t("cli.config.show.help"))
     def config_show(ctx: typer.Context, as_json: Annotated[bool, _json_option()] = False) -> None:

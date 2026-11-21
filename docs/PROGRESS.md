@@ -27,6 +27,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
+| 11c – Web arayüzü (ek) | ⏳ | 2026-11-21 | 11c-a sunucu iskeleti ve güvenlik bitti (D-121); 11c-b…11c-e sürüyor |
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (ek) | ✅ | 2026-11-20 | `gc` eski `runs`/`usage`/`queue` satırlarını siler (en az 35 gün kalır), `queue remove --finished`, `notify.ntfy_url`, `desktop-notifier<7`, `doctor` düzenlenebilir kurulum uyarısı (D-104) |
@@ -52,6 +53,14 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 11c-a – Sunucu iskeleti ve güvenlik (2026-11-21)
+
+- `web/server.py`: Standart kütüphane `http.server.ThreadingHTTPServer` tabanlı yerel web sunucusu (D-121, sıfır ek bağımlılık; istek başına iş parçacığı sayesinde döngü çatışması yok). Yalnız `127.0.0.1` dinler; dinamik port (port 0); rastgele kriptografik oturum anahtarı (`secrets.token_urlsafe`); `Host` başlığı denetimi (`127.0.0.1:<port>`); CORS tamamen kapalı ve yabancı `Origin` reddi; token query parametresi (`?token=...`), `Authorization: Bearer ...` veya `X-Orkestra-Token` ile doğrulanır; eksik/yanlış token veya geçersiz `Host` 403 Forbidden döner.
+- Şimdilik kök sayfa (`/` -> HTML) ve sağlık kontrolü (`/api/health` -> JSON `{"ok": true, "version": ...}`).
+- `commands/setup.py`: `orkestra ui` varsayılan olarak web sunucusunu açar, adresi basar ve tarayıcıyı açar; `--no-browser` tarayıcıyı açmaz; `--tui` Textual terminal arayüzünü açar; `--port` port belirtir; `--window` pywebview kurulu değilse tarayıcıya geçer (11c-e hazırlığı). Ctrl+C temiz kapanır.
+- i18n: Yeni seçenekler ve durum mesajları 5 dilde (`en`, `tr`, `de`, `es`, `fr`).
+- Testler: 16 yeni test (`test_web_server.py`: 13 test; `test_ui_cli.py`: 3 test; `test_tui.py`: `--tui` gezinme bayrağı güncellemesi).
 
 ### Faz 6b (3. madde) – `doctor --mcp` (2026-11-21)
 
