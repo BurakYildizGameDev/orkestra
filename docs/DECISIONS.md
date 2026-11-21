@@ -1225,3 +1225,20 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 **Karar (kullanıcı):** 6b'nin 1. maddesi (Unity açıkken elle doğrulama) ve 2. maddesi (Unity sonradan açılınca bağlanma, MCP vekili araştırması) yapılmayacak; faz bitmiş sayılır. 4. madde (agy `permissions.deny`) ve 5. madde (makinedeki eski MCP yedekleri) repo dışı makine ayarı, kullanıcıya bırakıldı.
 **Neden:** agy'nin takılması asıl sorundu ve D-055/D-056 ile çözüldü; etkin ama bağlanamayan sunucuyu `doctor --mcp` önceden gösteriyor (D-118). Unity açıkken davranış Orkestra'nın kodunu değil agy ile Unity relay'ini ilgilendiriyor.
 **Bilinen sınır:** Unity iş sırasında açılırsa istemci o oturumda Unity'ye bağlanmaz (agy'yi yeniden başlatmak gerekir); README/rehberde bununla ilgili ek not yok, gerekirse ileride eklenir.
+
+## D-121 – Faz 11c-a: Web sunucusu bağımlılığı olarak standart kütüphane http.server (2026-11-21, Faz 11c-a)
+**Bağlam:** Faz 11c yerel bir web arayüzü ekler (`orkestra ui`). `YAPILIS_PLANI.md` bağımlılık seçiminin (Starlette + uvicorn ya da standart kütüphane) Mimari §1'e bakılarak yapılmasını ve DECISIONS'a yazılmasını ister.
+**Karar:** Standart kütüphane `http.server.ThreadingHTTPServer` ve `BaseHTTPRequestHandler` seçildi (`orkestra/web/server.py`).
+**Nedenler:**
+1. *Sıfır ek bağımlılık:* Mimari §1'deki `sqlite3` kararıyla aynı felsefe; paketi büyütmez, ek bağımlılık ve kilit dosyası yükü getirmez.
+2. *Olay döngüsü (event loop) çatışması yok:* Orkestra'nın servisleri senkron fonksiyonlardan `asyncio.run()` ile asenkron sağlayıcıları çağırır. `uvicorn` (ASGI) içinde istekler zaten çalışan bir `asyncio` olay döngüsünde koşar; orada senkron bir servis çağrıldığında `asyncio.run()` `RuntimeError: This event loop is already running` hatası verir. `ThreadingHTTPServer`'da her istek ayrı bir iş parçacığında koştuğu için thread içinde `asyncio.run()` sorunsuz çalışır.
+3. *Güvenlik gereksinimlerinin tam denetimi:* Yalnız `127.0.0.1` dinleme, dinamik boş port (port 0), `Host` başlığı doğrulaması (`127.0.0.1:<port>`), DNS rebinding ve CSRF koruması için CORS'un kapalı olması ve tek kullanımlık oturum token'ı doğrudan işleyicide (`secrets.compare_digest`) uygulanmıştır.
+**Sonuç:** `orkestra ui` varsayılan olarak yerel web sunucusunu açar; `--tui` eski terminal arayüzünü açar; `--no-browser` otomatik tarayıcı açmayı engeller; `--port` port belirtir.
+**Kod denetimi (Claude, 2026-11-21, PR #48):**
+1. `secrets.compare_digest` ASCII dışı `str`'de `TypeError` atıyor; `?token=%C3%A9` isteği yanıtsız kapanıyor, stderr'e iz basılıyordu. Token'lar UTF-8 bayt olarak karşılaştırılır, sonuç 403.
+2. `HTTPServer.allow_reuse_address` Windows'ta `SO_REUSEADDR` demek; bu, dinlemedeki bir portu ikinci bir sokete de bağlatıyor (iki `orkestra ui --port N` aynı portta, istekler rastgele birine). Windows'ta `allow_reuse_address` kapalı ve `SO_EXCLUSIVEADDRUSE` açık; POSIX'te davranış aynı.
+3. Dolu/izinsiz port `OSError` olarak iç hataya (kod 5) düşüyordu; artık `UsageError` (kod 2), `ui.web.error.port` 5 dilde.
+4. Adres token taşıdığı için her yanıta `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`.
+5. `127.0.0.1` dışı host koruması `ValueError` yerine `errors.InternalError` (AGENTS kuralı), testi eklendi.
+6. `--window` 11c-e'nin işi; 11c-a'daki yarım hâli (pywebview kuruluyken de tarayıcı açıyordu, mesaj yoktu) ve iki metin anahtarı çıkarıldı.
+7. README (en + tr) terminal arayüzü satırı `orkestra ui --tui`.
