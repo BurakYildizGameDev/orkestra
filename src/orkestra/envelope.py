@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_serializer
 
 from orkestra.config.schema import EditFormat
 from orkestra.i18n import t
@@ -86,6 +86,14 @@ class ResultEnvelope(BaseModel):
     cached: bool = False
     review: EnvelopeReview | None = None
     error: str | None = None
+    warnings: list[str] | None = None
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: Any) -> dict[str, Any]:
+        data = handler(self)
+        if data.get("warnings") is None:
+            data.pop("warnings", None)
+        return data
 
 
 BATCH_VERSION = 1

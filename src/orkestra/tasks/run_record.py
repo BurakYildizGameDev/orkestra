@@ -221,7 +221,7 @@ class RunRecord:
         return changes, f"{summary} — {note}" if note else summary
 
     def _base(self, candidate: Candidate | None) -> dict[str, Any]:
-        return {
+        base: dict[str, Any] = {
             "run_id": self.run_id,
             "task_id": self.task.id,
             "edit_format": self.prep.edit_format(candidate) if candidate else None,
@@ -232,6 +232,9 @@ class RunRecord:
             "escalations": self.escalations,
             "failovers": self.failovers,
         }
+        if self.prep.envelope_warnings:
+            base["warnings"] = list(self.prep.envelope_warnings)
+        return base
 
     def _answer_envelope(
         self, answer: _Answer, status: Status, completion_limit: int

@@ -1287,3 +1287,13 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 - Adaylar ASLA silinmez/elenmez: kademedeki tek aday süreyi aşsa dahi aday listesinde kalır ve sırası gelince denenir.
 - `describe_candidates()` çıktısına `"wait_exceeded": c.wait_exceeded` alanı eklendi (`--dry-run --json` ve envelope için).
 **Sonuç:** Acil görevlerde yavaş modeller kademe sonuna ötelenir, ancak uygun model bulunamazsa görev alternatifsiz bırakılmaz; `docs/PROJE_DOKUMANTASYONU.md` §4.2 güncellendi.
+
+## D-126 – Devir eşikleri ve `small_task` uyarısı (2026-11-22, Faz 13q-d)
+**Bağlam:** Şefin küçük işleri (ör. 1 dosya, 30 satır) işçilere devretmesi sabit devir ek yükü (benchmark: devir başına ~5–7k Claude tokenı; doğrudan yapma ~9k, devredince ~15k) nedeniyle maliyeti artırabilir. Skill'deki tavsiye kuralının ("5+ dosya ya da ~100+ satır") kod tarafında farkındalığı yoktu.
+**Karar:** `delegation` ayar bölümü (`DelegationCfg(min_files=5, min_lines=100)`) eklendi.
+- `orkestra run` (ve `--dry-run`, `batch --estimate`): görevin dosya sayısı < `delegation.min_files` VE toplam satırı < `delegation.min_lines` ise çıktıya ve zarfa uyarı yazılır: `small_task` ("küçük görev: devir ek yükü işin kendisinden büyük olabilir; doğrudan kendiniz yapmayı değerlendirin").
+- Engelleyici değildir: koşu durmaz, çıkış kodu eskisiyle aynı kalır.
+- `0` değeri eşiği kapatır (`min_files=0` veya `min_lines=0`).
+- Şefsiz doğrudan kullanımda (`--profile cheap`, kuyruk koşuları veya etkileşimli `ask`) uyarı basılmaz.
+- Zarf sürümü değişmez (`ENVELOPE_VERSION = 4` kalır); `warnings: list[str] | None = None` isteğe bağlı alandır, boşken JSON'dan çıkarılır (`model_serializer(mode="wrap")`).
+**Sonuç:** Şef küçük işleri gereksiz devretme konusunda uyarılır, ancak CLI esnekliği ve geriye uyumluluk korunur; `docs/PROJE_DOKUMANTASYONU.md` §4.1 ve §13 güncellendi.

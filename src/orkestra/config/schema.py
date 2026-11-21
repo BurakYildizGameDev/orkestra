@@ -337,6 +337,11 @@ def default_chiefs() -> dict[str, Chief]:
     }
 
 
+class DelegationCfg(_Model):
+    min_files: NonNegInt = 5
+    min_lines: NonNegInt = 100
+
+
 class Config(_Model):
     version: Literal[1]
     language: Literal["auto", "en", "tr", "de", "es", "fr"] = "auto"
@@ -349,6 +354,7 @@ class Config(_Model):
     map: MapCfg = Field(default_factory=MapCfg)
     cache: CacheCfg = Field(default_factory=CacheCfg)
     routing: RoutingCfg = Field(default_factory=RoutingCfg)
+    delegation: DelegationCfg = Field(default_factory=DelegationCfg)
     estimate: EstimateCfg = Field(default_factory=EstimateCfg)
     notify: NotifyCfg = Field(default_factory=NotifyCfg)
     queue: QueueCfg = Field(default_factory=QueueCfg)
