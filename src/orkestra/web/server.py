@@ -1,4 +1,4 @@
-"""Web server for the Orkestra graphical interface (Faz 11c-a, D-121).
+"""Web server for the Orkestra graphical interface (Faz 11c-a, Faz 11c-b, D-121).
 
 Security rules:
 - binds strictly to 127.0.0.1 (never 0.0.0.0);
@@ -15,19 +15,31 @@ Security rules:
 
 from __future__ import annotations
 
+import asyncio
 import http.server
 import json
 import secrets
 import socket
 import sys
+import threading
 import urllib.parse
+from collections.abc import Callable
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from orkestra import __version__
+from orkestra.chief.home import home_summary
+from orkestra.config.loader import load_config
+from orkestra.config.schema import NotifyCfg
+from orkestra.doctor import DoctorReport
 from orkestra.errors import InternalError, UsageError
 from orkestra.i18n import t
+from orkestra.notify import notify
+from orkestra.notify.notify import Delivery
+from orkestra.state import db
+from orkestra.web.ui import render_home_html
 
 _SECURITY_HEADERS = (
     ("Cache-Control", "no-store"),
@@ -35,6 +47,16 @@ _SECURITY_HEADERS = (
     ("X-Frame-Options", "DENY"),
     ("X-Content-Type-Options", "nosniff"),
 )
+
+
+def _default_doctor_runner(*, config_flag: Path | None = None) -> DoctorReport:
+    from orkestra import doctor
+
+    return asyncio.run(doctor.run_doctor(config_flag=config_flag))
+
+
+def _default_notify_send(config: NotifyCfg, title: str, message: str) -> list[Delivery]:
+    return notify.send(config, title, message)
 
 
 @dataclass(frozen=True)
@@ -55,6 +77,12 @@ class WebServer(http.server.ThreadingHTTPServer):
             raise InternalError(f"WebServer must bind strictly to 127.0.0.1, got {config.host!r}")
         self.token = config.token or secrets.token_urlsafe(24)
         self.config_path = config.config_path
+        self.doctor_report: DoctorReport | None = None
+        self.doctor_error: str | None = None
+        self.doctor_running: bool = False
+        self.doctor_runner: Callable[..., DoctorReport] = _default_doctor_runner
+        self.notify_sender: Callable[..., list[Delivery]] = _default_notify_send
+        self._doctor_lock = threading.RLock()
         super().__init__((config.host, config.port), WebHandler)
 
     def server_bind(self) -> None:
@@ -62,6 +90,30 @@ class WebServer(http.server.ThreadingHTTPServer):
         if exclusive is not None:
             self.socket.setsockopt(socket.SOL_SOCKET, exclusive, 1)
         super().server_bind()
+
+    def run_doctor_background(self) -> None:
+        with self._doctor_lock:
+            if self.doctor_running:
+                return
+            self.doctor_running = True
+            self.doctor_report = None
+            self.doctor_error = None
+
+        def _worker() -> None:
+            try:
+                report = self.doctor_runner(config_flag=self.config_path)
+                with self._doctor_lock:
+                    self.doctor_report = report
+                    self.doctor_error = None
+            except Exception as exc:
+                with self._doctor_lock:
+                    self.doctor_report = None
+                    self.doctor_error = str(exc)
+            finally:
+                with self._doctor_lock:
+                    self.doctor_running = False
+
+        threading.Thread(target=_worker, daemon=True).start()
 
 
 class WebHandler(http.server.BaseHTTPRequestHandler):
@@ -139,30 +191,82 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
 
         parsed = urllib.parse.urlsplit(self.path).path
         if parsed in ("/", "/index.html"):
-            html = (
-                "<!DOCTYPE html>\n"
-                '<html lang="en">\n'
-                "<head>\n"
-                '    <meta charset="utf-8">\n'
-                "    <title>Orkestra</title>\n"
-                "</head>\n"
-                "<body>\n"
-                "    <h1>Orkestra</h1>\n"
-                "</body>\n"
-                "</html>\n"
-            )
-            self._send_html(200, html)
+            self._send_html(200, render_home_html(self.server.token))
             return
 
         if parsed == "/api/health":
             self._send_json(200, {"ok": True, "version": __version__})
             return
 
+        if parsed == "/api/home":
+            try:
+                loaded = load_config(self.server.config_path)
+                with closing(db.connect()) as conn:
+                    summary = home_summary(
+                        loaded.config,
+                        conn,
+                        db.local_now(),
+                        doctor_report=self.server.doctor_report,
+                    )
+                self._send_json(200, summary.to_dict())
+            except Exception as exc:
+                self._send_error_json(500, str(exc))
+            return
+
+        if parsed == "/api/doctor":
+            with self.server._doctor_lock:
+                if self.server.doctor_running:
+                    self._send_json(200, {"status": "running", "checks": []})
+                    return
+                if self.server.doctor_error is not None:
+                    self._send_json(200, {"status": "failed", "error": self.server.doctor_error})
+                    return
+                if self.server.doctor_report is not None:
+                    checks = [
+                        {"name": c.name, "status": c.status, "message": c.message}
+                        for c in self.server.doctor_report.checks
+                    ]
+                    self._send_json(200, {"status": "done", "checks": checks})
+                    return
+                self._send_json(200, {"status": "idle", "checks": []})
+                return
+
         self._send_error_json(404, "Not found")
 
     def do_POST(self) -> None:
         if not self._check_security():
             return
+
+        parsed = urllib.parse.urlsplit(self.path).path
+        if parsed == "/api/doctor":
+            self.server.run_doctor_background()
+            with self.server._doctor_lock:
+                running = self.server.doctor_running
+            self._send_json(200, {"status": "running" if running else "done"})
+            return
+
+        if parsed == "/api/notify/test":
+            try:
+                loaded = load_config(self.server.config_path)
+                deliveries = self.server.notify_sender(
+                    loaded.config.notify,
+                    t("notify.title.test"),
+                    t("notify.test.message"),
+                )
+                lines = notify.delivery_lines(deliveries, loaded.config.notify)
+                data = {
+                    "ok": True,
+                    "deliveries": [
+                        {"channel": d.channel, "state": d.state, "reason": d.reason}
+                        for d in deliveries
+                    ],
+                    "lines": lines,
+                }
+                self._send_json(200, data)
+            except Exception as exc:
+                self._send_error_json(500, str(exc))
+            return
+
         self._send_error_json(404, "Not found")
 
 
