@@ -56,3 +56,11 @@ def score_text(score: Score | None) -> str:
     if score.scored:
         return t("route.dry.score", score=f"{score.value:.2f}", ok=score.ok, samples=score.samples)
     return t("route.dry.score_neutral", samples=score.samples, needed=score.needed)
+
+
+def duration_text(duration: float | None) -> str:
+    """``--dry-run``: the median duration of recent successful runs, if known (Faz 13q)."""
+    if duration is None:
+        return ""
+    seconds = str(int(duration)) if float(duration).is_integer() else f"{duration:.1f}"
+    return t("route.dry.duration", seconds=seconds)

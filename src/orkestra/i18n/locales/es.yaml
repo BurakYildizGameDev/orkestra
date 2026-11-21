@@ -713,6 +713,7 @@ notify.state.topic_invalid: "no enviada: el valor de {env} solo puede tener letr
 # Faz 12b: adaptive routing, queue tab, notification settings
 route.dry.score: " | puntuación {score} ({ok}/{samples} correctas)"
 route.dry.score_neutral: " | puntuación neutra ({samples} de {needed} ejecuciones necesarias)"
+route.dry.duration: " | mediana {seconds} s"
 ui.tab.queue: "Cola"
 ui.button.remove: "Quitar"
 ui.button.notify_test: "Enviar una prueba"

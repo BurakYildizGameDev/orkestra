@@ -91,3 +91,42 @@ def test_without_adaptive_the_config_order_stays_and_no_score_is_shown(
     candidates = json.loads(out)["candidates"]
     assert [c["model"] for c in candidates] == ["first", "second"]
     assert candidates[0]["score"] is None
+
+
+def test_dry_run_shows_median_duration_when_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    home = tmp_path / "orkestra-home"
+    home.mkdir(exist_ok=True)
+    (home / "config.yaml").write_text(CONFIG.format(adaptive="true"), encoding="utf-8")
+    work = tmp_path / "work"
+    work.mkdir(exist_ok=True)
+    monkeypatch.chdir(work)
+    config = load_config(cwd=work, environ={}).config
+    now = db.local_now()
+    with closing(db.connect()) as conn:
+        consent.grant(conn, "ollama", config.providers["ollama"], now)
+        for n, dur in enumerate([10.0, 15.0, 20.0]):
+            run_id = f"dur_{n}"
+            started = now - timedelta(hours=n + 1)
+            db.record_run_start(
+                conn, run_id=run_id, task_id="t", kind="ask", started_at=started, tags=["docstring"]
+            )
+            db.record_run_end(
+                conn, run_id, status="ok", provider="ollama", model="second", duration_s=dur
+            )
+    (work / "task.json").write_text(
+        json.dumps(
+            {"id": "doc", "kind": "ask", "prompt": "add a docstring", "tags": ["docstring"]}
+        ),
+        encoding="utf-8",
+    )
+    code, out, _ = _run(["run", "task.json", "--dry-run", "--json"], capsys)
+    assert code == 0
+    candidates = json.loads(out)["candidates"]
+    assert candidates[0]["model"] == "second"
+    assert candidates[0]["median_duration_s"] == 15.0
+
+    code, out, _ = _run(["run", "task.json", "--dry-run"], capsys)
+    assert code == 0
+    assert t("route.dry.duration", seconds="15") in out

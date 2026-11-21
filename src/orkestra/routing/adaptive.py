@@ -20,6 +20,7 @@ Everything here except ``load_outcomes`` is a pure function of the outcomes.
 from __future__ import annotations
 
 import sqlite3
+import statistics
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -38,6 +39,7 @@ class Outcome:
     model: str
     tags: tuple[str, ...]
     ok: bool
+    duration_s: float | None = None
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,7 @@ class Score:
     ok: int
     needed: int  # min_samples
     scored: bool  # samples >= needed; otherwise value is NEUTRAL
+    median_duration_s: float | None = None
 
 
 ScoreKey = tuple[str, str]  # provider, candidate model id
@@ -62,6 +65,30 @@ def _matches(outcome: Outcome, tags: Sequence[str]) -> bool:
     return any(tag in outcome.tags for tag in tags)
 
 
+def median_duration_for(
+    outcomes: Iterable[Outcome],
+    provider: str,
+    model: str | None,
+    tags: Sequence[str],
+    min_samples: int,
+) -> float | None:
+    """The median duration in seconds for (provider, model, tags) from runs that ended 'ok'.
+
+    Below ``min_samples``, returns None.
+    """
+    durations: list[float] = []
+    for outcome in outcomes:
+        if not outcome.ok or outcome.duration_s is None:
+            continue
+        if outcome.provider != provider or (model is not None and outcome.model != model):
+            continue
+        if _matches(outcome, tags):
+            durations.append(outcome.duration_s)
+    if len(durations) < min_samples:
+        return None
+    return float(statistics.median(durations))
+
+
 def score_for(
     outcomes: Iterable[Outcome],
     provider: str,
@@ -70,16 +97,18 @@ def score_for(
     min_samples: int,
 ) -> Score:
     """``model=None``: a code agent, matched by provider alone (its model may vary)."""
+    found = list(outcomes)
     total = ok = 0
-    for outcome in outcomes:
+    for outcome in found:
         if outcome.provider != provider or (model is not None and outcome.model != model):
             continue
         if _matches(outcome, tags):
             total += 1
             ok += outcome.ok
+    median = median_duration_for(found, provider, model, tags, min_samples)
     if total < min_samples:
-        return Score(NEUTRAL, total, ok, min_samples, scored=False)
-    return Score(laplace(ok, total), total, ok, min_samples, scored=True)
+        return Score(NEUTRAL, total, ok, min_samples, scored=False, median_duration_s=median)
+    return Score(laplace(ok, total), total, ok, min_samples, scored=True, median_duration_s=median)
 
 
 def agent_model_id(cfg: CliAgentProvider) -> str:
@@ -143,7 +172,7 @@ def load_outcomes(
 ) -> list[Outcome]:
     since = now - window
     rows = conn.execute(
-        "SELECT run_id, status, provider, model, tags, started_at FROM runs "
+        "SELECT run_id, status, provider, model, tags, started_at, duration_s FROM runs "
         f"WHERE started_at >= ? AND status IN ({', '.join('?' for _ in SCORED)})",
         ((since - OFFSET_MARGIN).isoformat(), *SCORED),
     ).fetchall()
@@ -161,6 +190,8 @@ def load_outcomes(
         else:
             continue  # nothing answered: nothing to say about a model
         tags = parse_tags(row["tags"])
-        outcomes.append(Outcome(*final, tags, row["status"] == "ok" and bool(row["provider"])))
-        outcomes.extend(Outcome(*pair, tags, False) for pair in _replaced(used, final))
+        is_ok = row["status"] == "ok" and bool(row["provider"])
+        duration = float(row["duration_s"]) if (is_ok and row["duration_s"] is not None) else None
+        outcomes.append(Outcome(*final, tags, is_ok, duration))
+        outcomes.extend(Outcome(*pair, tags, False, None) for pair in _replaced(used, final))
     return outcomes

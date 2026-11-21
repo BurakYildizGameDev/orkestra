@@ -713,6 +713,7 @@ notify.state.topic_invalid: "not sent: the value of {env} may only hold letters,
 # Faz 12b: adaptive routing, queue tab, notification settings
 route.dry.score: " | score {score} ({ok}/{samples} ok)"
 route.dry.score_neutral: " | score neutral ({samples} of {needed} runs needed)"
+route.dry.duration: " | median {seconds}s"
 ui.tab.queue: "Queue"
 ui.button.remove: "Remove"
 ui.button.notify_test: "Send a test"

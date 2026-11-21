@@ -265,3 +265,79 @@ def test_an_explicitly_chosen_model_shows_its_history() -> None:
         config, _runs("local", "unlisted", 10, 0), (), extra=("local", "unlisted")
     )
     assert extra[("local", "unlisted")].samples == 10
+
+
+# --- median duration (Faz 13q-a) -----------------------------------------------------------
+
+
+def test_median_duration_odd_and_even() -> None:
+    # Odd count: 5 samples, min_samples=5
+    runs_odd = [
+        Outcome("p", "m", (), True, duration_s=10.0),
+        Outcome("p", "m", (), True, duration_s=20.0),
+        Outcome("p", "m", (), True, duration_s=30.0),
+        Outcome("p", "m", (), True, duration_s=40.0),
+        Outcome("p", "m", (), True, duration_s=50.0),
+    ]
+    assert adaptive.median_duration_for(runs_odd, "p", "m", (), 5) == pytest.approx(30.0)
+
+    # Even count: 4 samples, min_samples=4 -> (20 + 30) / 2 = 25.0
+    runs_even = [
+        Outcome("p", "m", (), True, duration_s=10.0),
+        Outcome("p", "m", (), True, duration_s=20.0),
+        Outcome("p", "m", (), True, duration_s=30.0),
+        Outcome("p", "m", (), True, duration_s=40.0),
+    ]
+    assert adaptive.median_duration_for(runs_even, "p", "m", (), 4) == pytest.approx(25.0)
+
+
+def test_median_duration_below_min_samples_returns_none() -> None:
+    runs = [
+        Outcome("p", "m", (), True, duration_s=10.0),
+        Outcome("p", "m", (), True, duration_s=20.0),
+    ]
+    assert adaptive.median_duration_for(runs, "p", "m", (), 3) is None
+
+
+def test_median_duration_counts_only_ok_runs() -> None:
+    # 4 runs total: 2 ok, 2 failed. min_samples=3 -> None because only 2 ok runs
+    runs = [
+        Outcome("p", "m", (), True, duration_s=10.0),
+        Outcome("p", "m", (), True, duration_s=20.0),
+        Outcome("p", "m", (), False, duration_s=99.0),
+        Outcome("p", "m", (), False, duration_s=100.0),
+    ]
+    assert adaptive.median_duration_for(runs, "p", "m", (), 3) is None
+
+    # With min_samples=2 -> median of the 2 ok runs (10, 20) -> 15.0
+    assert adaptive.median_duration_for(runs, "p", "m", (), 2) == pytest.approx(15.0)
+
+
+def test_median_duration_filters_by_tag_and_agent() -> None:
+    # Tags matching
+    runs = [
+        Outcome("p", "m", ("tests",), True, duration_s=5.0),
+        Outcome("p", "m", ("tests",), True, duration_s=7.0),
+        Outcome("p", "m", ("docs",), True, duration_s=30.0),
+    ]
+    assert adaptive.median_duration_for(runs, "p", "m", ("tests",), 2) == pytest.approx(6.0)
+    assert adaptive.median_duration_for(runs, "p", "m", (), 1) is None
+
+    # Code agent (model=None matches by provider alone)
+    agent_runs = [
+        Outcome("codex", "gpt-5-codex", (), True, duration_s=12.0),
+        Outcome("codex", "codex-mini", (), True, duration_s=14.0),
+    ]
+    assert adaptive.median_duration_for(agent_runs, "codex", None, (), 2) == pytest.approx(13.0)
+
+
+def test_load_outcomes_records_duration_for_ok_runs_only(conn: sqlite3.Connection) -> None:
+    _run(conn, "r1", NOW - timedelta(days=1), "ok", provider="p", model="m", duration_s=12.5)
+    _run(conn, "r2", NOW - timedelta(days=2), "failed", provider="p", model="m", duration_s=20.0)
+    _run(conn, "r3", NOW - timedelta(days=3), "error", provider="p", model="m", duration_s=5.0)
+
+    outcomes = sorted(adaptive.load_outcomes(conn, NOW), key=lambda o: (o.provider, o.model, o.ok))
+    assert len(outcomes) == 2
+    failed_out, ok_out = outcomes[0], outcomes[1]
+    assert ok_out.ok is True and ok_out.duration_s == pytest.approx(12.5)
+    assert failed_out.ok is False and failed_out.duration_s is None

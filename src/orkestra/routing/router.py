@@ -126,6 +126,10 @@ class Candidate:
     def label(self) -> str:
         return f"{self.provider}/{self.model.id}"
 
+    @property
+    def median_duration_s(self) -> float | None:
+        return self.score.median_duration_s if self.score is not None else None
+
 
 @dataclass(frozen=True)
 class Elimination:
@@ -529,6 +533,9 @@ def describe_candidates(candidates: Sequence[Candidate]) -> list[dict[str, Any]]
             "score": round(c.score.value, 4) if c.score is not None else None,
             "score_samples": c.score.samples if c.score is not None else None,
             "score_used": c.score.scored if c.score is not None else None,
+            "median_duration_s": round(c.score.median_duration_s, 2)
+            if (c.score and c.score.median_duration_s is not None)
+            else None,
             "quota_low": c.quota_low,
             "prefer_rank": c.prefer_rank,
         }

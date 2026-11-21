@@ -67,6 +67,7 @@ def _route_text(plan: Route) -> str:
                 )
                 + (t("route.dry.edit_format", format=c.edit_format) if c.edit_format else "")
                 + display.score_text(c.score)
+                + display.duration_text(c.median_duration_s)
             )
     else:
         lines.append(t("route.dry.none"))
