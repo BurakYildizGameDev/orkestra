@@ -22,11 +22,13 @@ _SECRET_HEADER = re.compile(r"(?i)auth|key|token|secret|cookie|session|password"
 
 
 def configured_secrets(config: Config, environ: Mapping[str, str] | None = None) -> list[str]:
+    from orkestra.chief.keys import get_key
+
     env = os.environ if environ is None else environ
     values: list[str] = []
     for provider in config.providers.values():
         if isinstance(provider, OpenAICompatProvider) and provider.api_key_env:
-            value = env.get(provider.api_key_env, "").strip()
+            value = get_key(provider.api_key_env, env) or ""
             if len(value) >= MIN_SECRET_LENGTH:
                 values.append(value)
     return values
