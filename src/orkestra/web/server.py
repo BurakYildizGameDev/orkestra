@@ -30,11 +30,12 @@ from pathlib import Path
 from typing import Any
 
 from orkestra import __version__
+from orkestra.chief import team
 from orkestra.chief.home import home_summary
 from orkestra.config.loader import load_config
 from orkestra.config.schema import NotifyCfg
 from orkestra.doctor import DoctorReport
-from orkestra.errors import InternalError, UsageError
+from orkestra.errors import ConfigError, InternalError, UsageError
 from orkestra.i18n import t
 from orkestra.notify import notify
 from orkestra.notify.notify import Delivery
@@ -116,6 +117,38 @@ class WebServer(http.server.ThreadingHTTPServer):
         threading.Thread(target=_worker, daemon=True).start()
 
 
+def _team_json(summary: team.TeamSummary) -> dict[str, Any]:
+    return {
+        "patron": summary.patron,
+        "chiefs": [
+            {
+                "name": c.name,
+                "is_default": c.is_default,
+                "launch": list(c.launch),
+                "prompt_mode": c.prompt_mode,
+            }
+            for c in summary.chiefs
+        ],
+        "workers": [
+            {
+                "name": w.name,
+                "type": w.type,
+                "enabled": w.enabled,
+                "local": w.local,
+                "tier": w.tier,
+                "models": list(w.models),
+                "selected_model": w.selected_model,
+                "base_url": w.base_url,
+                "api_key_env": w.api_key_env,
+                "command": w.command,
+                "consent_state": w.consent_state,
+                "consent_description": list(w.consent_description),
+            }
+            for w in summary.workers
+        ],
+    }
+
+
 class WebHandler(http.server.BaseHTTPRequestHandler):
     server_version = "Orkestra"
     sys_version = ""
@@ -145,6 +178,19 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
 
     def _send_error_json(self, status_code: int, message: str) -> None:
         self._send_json(status_code, {"error": message})
+
+    def _read_json(self) -> dict[str, Any]:
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length <= 0:
+                return {}
+            raw = self.rfile.read(length)
+            data = json.loads(raw.decode("utf-8"))
+            if not isinstance(data, dict):
+                return {}
+            return data
+        except Exception as exc:
+            raise UsageError(str(exc)) from exc
 
     def _check_security(self) -> bool:
         """Validate Host, Origin, and Token. Returns True if request is allowed."""
@@ -231,6 +277,16 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json(200, {"status": "idle", "checks": []})
                 return
 
+        if parsed == "/api/team":
+            try:
+                loaded = load_config(self.server.config_path)
+                with closing(db.connect()) as conn:
+                    summary = team.team_summary(loaded.config, conn)
+                self._send_json(200, _team_json(summary))
+            except Exception as exc:
+                self._send_error_json(500, str(exc))
+            return
+
         self._send_error_json(404, "Not found")
 
     def do_POST(self) -> None:
@@ -263,6 +319,70 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                     "lines": lines,
                 }
                 self._send_json(200, data)
+            except Exception as exc:
+                self._send_error_json(500, str(exc))
+            return
+
+        if parsed.startswith("/api/team/"):
+            try:
+                body = self._read_json()
+                if parsed == "/api/team/patron":
+                    chief = str(body.get("chief", "")).strip()
+                    team.set_patron(self.server.config_path, chief)
+                elif parsed == "/api/team/worker/toggle":
+                    name = str(body.get("name", "")).strip()
+                    enabled = bool(body.get("enabled", True))
+                    team.toggle_worker(self.server.config_path, name, enabled)
+                elif parsed == "/api/team/worker/tier":
+                    name = str(body.get("name", "")).strip()
+                    tier = int(body.get("tier", 2))
+                    team.set_worker_tier(self.server.config_path, name, tier)
+                elif parsed == "/api/team/worker/model":
+                    name = str(body.get("name", "")).strip()
+                    model = str(body.get("model", "")).strip()
+                    team.set_worker_model(self.server.config_path, name, model)
+                elif parsed == "/api/team/worker/reorder":
+                    names = [str(n).strip() for n in body.get("names", []) if str(n).strip()]
+                    team.reorder_workers(self.server.config_path, names)
+                elif parsed == "/api/team/worker/add":
+                    name = str(body.get("name", "")).strip()
+                    ptype = str(body.get("type", "openai_compat")).strip()
+                    model = str(body.get("model", "")).strip()
+                    tier = int(body.get("tier", 2))
+                    base_url = body.get("base_url")
+                    api_key_env = body.get("api_key_env")
+                    command = body.get("command")
+                    force = bool(body.get("force", False))
+                    team.add_worker(
+                        self.server.config_path,
+                        name=name,
+                        provider_type=ptype,
+                        model=model,
+                        tier=tier,
+                        base_url=str(base_url) if base_url else None,
+                        api_key_env=str(api_key_env) if api_key_env else None,
+                        command=str(command) if command else None,
+                        force=force,
+                    )
+                elif parsed == "/api/team/worker/remove":
+                    name = str(body.get("name", "")).strip()
+                    with closing(db.connect()) as conn:
+                        team.remove_worker(self.server.config_path, name, conn=conn)
+                elif parsed == "/api/team/consent":
+                    name = str(body.get("name", "")).strip()
+                    loaded = load_config(self.server.config_path)
+                    with closing(db.connect()) as conn:
+                        team.grant_consent(conn, loaded.config, name, db.local_now())
+                else:
+                    self._send_error_json(404, "Not found")
+                    return
+
+                loaded = load_config(self.server.config_path)
+                with closing(db.connect()) as conn:
+                    summary = team.team_summary(loaded.config, conn)
+                self._send_json(200, _team_json(summary))
+            except (UsageError, ConfigError, ValueError) as exc:
+                self._send_error_json(400, str(exc))
             except Exception as exc:
                 self._send_error_json(500, str(exc))
             return

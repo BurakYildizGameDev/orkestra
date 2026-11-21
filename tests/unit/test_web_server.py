@@ -33,6 +33,8 @@ def simulate_request(
 ) -> tuple[int, dict[str, str], bytes]:
     port = server.server_port
     hdrs = {"Host": f"127.0.0.1:{port}"}
+    if body:
+        hdrs["Content-Length"] = str(len(body))
     if headers:
         hdrs.update(headers)
 
@@ -524,3 +526,136 @@ def test_ui_css_has_doc_info_style() -> None:
 
     html = render_home_html("test-tok")
     assert ".doc-info" in html
+
+
+def test_team_api_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    db_file = tmp_path / "state.db"
+    monkeypatch.setattr("orkestra.paths.state_db_path", lambda: db_file)
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text(
+        "version: 1\ndefaults:\n  chief: claude\n"
+        "chiefs:\n  claude:\n    launch: ['claude']\n  agy:\n    launch: ['agy']\n"
+        "providers:\n  ollama:\n    type: ollama\n"
+        "    base_url: http://localhost:11434\n    models:\n      - id: m1\n        tier: 1\n",
+        encoding="utf-8",
+    )
+
+    server = create_server(
+        ServerConfig(host="127.0.0.1", port=0, token="test-tok", config_path=cfg_file)
+    )
+    try:
+        # 1. Unauthorized GET /api/team
+        code, _, _ = simulate_request(server, "GET", "/api/team")
+        assert code == 403
+
+        # 2. Authorized GET /api/team
+        code, _headers, body = simulate_request(server, "GET", f"/api/team?token={server.token}")
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        assert data["patron"] == "claude"
+        assert len(data["chiefs"]) == 3
+        assert len(data["workers"]) == 1
+        assert data["workers"][0]["name"] == "ollama"
+
+        # 3. POST /api/team/patron
+        code, _, body = simulate_request(
+            server,
+            "POST",
+            f"/api/team/patron?token={server.token}",
+            body=json.dumps({"chief": "agy"}).encode("utf-8"),
+        )
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        assert data["patron"] == "agy"
+
+        # 4. POST /api/team/worker/toggle
+        code, _, body = simulate_request(
+            server,
+            "POST",
+            f"/api/team/worker/toggle?token={server.token}",
+            body=json.dumps({"name": "ollama", "enabled": False}).encode("utf-8"),
+        )
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        assert data["workers"][0]["enabled"] is False
+
+        # 5. POST /api/team/worker/tier
+        code, _, body = simulate_request(
+            server,
+            "POST",
+            f"/api/team/worker/tier?token={server.token}",
+            body=json.dumps({"name": "ollama", "tier": 2}).encode("utf-8"),
+        )
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        assert data["workers"][0]["tier"] == 2
+
+        # 6. POST /api/team/worker/model
+        code, _, body = simulate_request(
+            server,
+            "POST",
+            f"/api/team/worker/model?token={server.token}",
+            body=json.dumps({"name": "ollama", "model": "new-model"}).encode("utf-8"),
+        )
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        assert data["workers"][0]["selected_model"] == "new-model"
+
+        # 7. POST /api/team/worker/add (openai_compat)
+        code, _, body = simulate_request(
+            server,
+            "POST",
+            f"/api/team/worker/add?token={server.token}",
+            body=json.dumps(
+                {
+                    "name": "cloud-api",
+                    "type": "openai_compat",
+                    "base_url": "https://api.example.test/v1",
+                    "model": "deepseek-v3",
+                    "api_key_env": "CLOUD_API_KEY",
+                    "tier": 2,
+                }
+            ).encode("utf-8"),
+        )
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        worker_names = [w["name"] for w in data["workers"]]
+        assert "cloud-api" in worker_names
+
+        # 8. POST /api/team/worker/reorder
+        code, _, body = simulate_request(
+            server,
+            "POST",
+            f"/api/team/worker/reorder?token={server.token}",
+            body=json.dumps({"names": ["cloud-api", "ollama"]}).encode("utf-8"),
+        )
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        assert [w["name"] for w in data["workers"]] == ["cloud-api", "ollama"]
+
+        # 9. POST /api/team/consent
+        code, _, body = simulate_request(
+            server,
+            "POST",
+            f"/api/team/consent?token={server.token}",
+            body=json.dumps({"name": "cloud-api"}).encode("utf-8"),
+        )
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        cloud_worker = next(w for w in data["workers"] if w["name"] == "cloud-api")
+        assert cloud_worker["consent_state"] == "granted"
+
+        # 10. POST /api/team/worker/remove
+        code, _, body = simulate_request(
+            server,
+            "POST",
+            f"/api/team/worker/remove?token={server.token}",
+            body=json.dumps({"name": "cloud-api"}).encode("utf-8"),
+        )
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        assert "cloud-api" not in [w["name"] for w in data["workers"]]
+    finally:
+        server.server_close()
