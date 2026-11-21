@@ -29,12 +29,13 @@ QUEUE_FAILED_WINDOW = timedelta(hours=24)
 class ProviderHomeRow:
     name: str
     type: str
-    status: str  # "ready" | "paused" | "no_consent" | "no_key" | "disabled"
+    # "ready" | "paused" | "no_consent" | "no_key" | "disabled" | "check_failed"
+    status: str
     status_text: str
     is_local: bool
     local_text: str | None
     limits_text: str | None
-    doctor_status: str | None = None  # "ok" | "warn" | "fail" | None
+    doctor_status: str | None = None  # "ok" | "warn" | "fail" | "info" | None
     doctor_message: str | None = None
 
 
@@ -94,6 +95,33 @@ def _provider_key_var(cfg: Any) -> str:
     return "API_KEY"
 
 
+_DOCTOR_RANK = {"info": 0, "ok": 1, "warn": 2, "fail": 3}
+
+
+def _doctor_by_provider(
+    report: DoctorReport | None, names: list[str]
+) -> dict[str, tuple[str, str]]:
+    """Worst doctor check per provider, including sub-checks.
+
+    `provider:<name>` and `provider:<name>:...` (login, deny, mcp:<server>) all
+    belong to `<name>`; the worst status wins (fail > warn > ok > info).
+    """
+    result: dict[str, tuple[str, str]] = {}
+    if report is None:
+        return result
+    for check in report.checks:
+        rest = check.name.removeprefix("provider:")
+        if rest == check.name:
+            continue
+        owner = next((n for n in names if rest == n or rest.startswith(f"{n}:")), None)
+        if owner is None:
+            continue
+        current = result.get(owner)
+        if current is None or _DOCTOR_RANK.get(check.status, 0) > _DOCTOR_RANK.get(current[0], 0):
+            result[owner] = (check.status, check.message)
+    return result
+
+
 def home_summary(
     config: Config,
     conn: sqlite3.Connection,
@@ -104,14 +132,8 @@ def home_summary(
     env = os.environ if environ is None else environ
 
     # 1. Providers
-    doctor_map: dict[str, tuple[str, str]] = {}
-    if doctor_report is not None:
-        for check in doctor_report.checks:
-            if check.name.startswith("provider:"):
-                p_name = check.name.removeprefix("provider:")
-                doctor_map[p_name] = (check.status, check.message)
-
     overview = registry.provider_overview(config, conn, now, env)
+    doctor_map = _doctor_by_provider(doctor_report, [row.name for row in overview])
     provider_rows: list[ProviderHomeRow] = []
 
     for row in overview:
@@ -143,11 +165,14 @@ def home_summary(
             st = "ready"
             st_text = t("home.provider.ready")
 
+        doc_status, doc_msg = doctor_map.get(row.name, (None, None))
+        if st == "ready" and doc_status == "fail":
+            st = "check_failed"
+            st_text = t("home.provider.check_failed", message=doc_msg)
+
         is_local = bool(row.local)
         local_text = t("home.provider.local_free") if is_local else None
         limits_text = _format_limits(row)
-
-        doc_status, doc_msg = doctor_map.get(row.name, (None, None))
 
         provider_rows.append(
             ProviderHomeRow(
@@ -199,6 +224,8 @@ def home_summary(
     # 5. Overall status and next step
     enabled_providers = [p for p in provider_rows if p.status != "disabled"]
     ready_providers = [p for p in enabled_providers if p.status == "ready"]
+    first_check_failed = next((p for p in enabled_providers if p.status == "check_failed"), None)
+    first_check_warn = next((p for p in ready_providers if p.doctor_status == "warn"), None)
 
     if not config.providers:
         overall_status = "fail"
@@ -220,10 +247,20 @@ def home_summary(
             cfg = config.providers[first_no_key.name]
             key_var = _provider_key_var(cfg)
             next_step = t("home.next_step.set_key", provider=first_no_key.name, env=key_var)
+        elif first_check_failed is not None:
+            next_step = t(
+                "home.next_step.fix_check",
+                provider=first_check_failed.name,
+                message=first_check_failed.doctor_message,
+            )
         else:
             next_step = t("home.next_step.wait_or_reset")
     elif (
-        any(p.status in ("no_consent", "no_key", "paused") for p in enabled_providers)
+        any(
+            p.status in ("no_consent", "no_key", "paused", "check_failed")
+            for p in enabled_providers
+        )
+        or first_check_warn is not None
         or pending.unapplied_runs > 0
         or pending.queue_failed > 0
     ):
@@ -240,6 +277,13 @@ def home_summary(
             cfg = config.providers[first_no_key.name]
             key_var = _provider_key_var(cfg)
             next_step = t("home.next_step.set_key", provider=first_no_key.name, env=key_var)
+        elif first_check_failed is not None:
+            overall_text = t("home.status.warn_check_failed", provider=first_check_failed.name)
+            next_step = t(
+                "home.next_step.fix_check",
+                provider=first_check_failed.name,
+                message=first_check_failed.doctor_message,
+            )
         elif first_paused is not None:
             overall_text = t("home.status.warn_paused", provider=first_paused.name)
             if pending.unapplied_runs > 0:
@@ -248,6 +292,13 @@ def home_summary(
                 next_step = t("home.next_step.queue", pending=pending.queue_pending)
             else:
                 next_step = t("home.next_step.ready")
+        elif first_check_warn is not None:
+            overall_text = t("home.status.warn_check_warn", provider=first_check_warn.name)
+            next_step = t(
+                "home.next_step.fix_check",
+                provider=first_check_warn.name,
+                message=first_check_warn.doctor_message,
+            )
         elif pending.queue_failed > 0:
             overall_text = t("home.status.warn_queue_failed", count=pending.queue_failed)
             if pending.unapplied_runs > 0:

@@ -263,6 +263,7 @@ def render_home_html(token: str) -> str:
         .tag-paused {{ background: var(--warn-bg); color: var(--warn-text); }}
         .tag-no_consent {{ background: var(--warn-bg); color: var(--warn-text); }}
         .tag-no_key {{ background: var(--fail-bg); color: var(--fail-text); }}
+        .tag-check_failed {{ background: var(--fail-bg); color: var(--fail-text); }}
         .tag-disabled {{ background: var(--btn-sec-bg); color: var(--text-muted); }}
         .tag-local {{ background: var(--tag-local-bg); color: var(--tag-local-text); }}
         .doc-badge {{

@@ -176,3 +176,96 @@ def test_home_summary_doctor_report(conn: sqlite3.Connection) -> None:
     assert p_map["ollama"].doctor_status == "ok"
     assert p_map["openrouter"].doctor_status == "fail"
     assert p_map["openrouter"].doctor_message == "unauthorized"
+
+
+def _ready_both(conn: sqlite3.Connection) -> tuple[Config, dict[str, str]]:
+    cfg = _config()
+    consent.grant(conn, "ollama", cfg.providers["ollama"], NOW)
+    consent.grant(conn, "openrouter", cfg.providers["openrouter"], NOW)
+    return cfg, {"OPENROUTER_API_KEY": "sk-secret-test"}
+
+
+def test_home_summary_doctor_fail_makes_provider_not_ready(conn: sqlite3.Connection) -> None:
+    cfg, env = _ready_both(conn)
+    report = DoctorReport(
+        checks=(
+            Check(name="provider:ollama", status="ok", message="healthy"),
+            Check(name="provider:openrouter", status="fail", message="unauthorized"),
+        )
+    )
+
+    summary = home_summary(cfg, conn, NOW, environ=env, doctor_report=report)
+
+    p_map = {p.name: p for p in summary.providers}
+    assert p_map["openrouter"].status == "check_failed"
+    assert "unauthorized" in p_map["openrouter"].status_text
+    assert p_map["ollama"].status == "ready"
+    assert summary.status == "warn"
+    assert "openrouter" in summary.status_text
+    assert "openrouter" in summary.next_step
+    assert "unauthorized" in summary.next_step
+
+
+def test_home_summary_all_doctor_fail_is_red(conn: sqlite3.Connection) -> None:
+    cfg, env = _ready_both(conn)
+    report = DoctorReport(
+        checks=(
+            Check(name="provider:ollama", status="fail", message="not running"),
+            Check(name="provider:openrouter", status="fail", message="unauthorized"),
+        )
+    )
+
+    summary = home_summary(cfg, conn, NOW, environ=env, doctor_report=report)
+
+    assert summary.status == "fail"
+    assert "ollama" in summary.next_step
+    assert "not running" in summary.next_step
+
+
+def test_home_summary_doctor_warn_warns_but_stays_ready(conn: sqlite3.Connection) -> None:
+    cfg, env = _ready_both(conn)
+    report = DoctorReport(
+        checks=(Check(name="provider:openrouter", status="warn", message="quota forecast low"),)
+    )
+
+    summary = home_summary(cfg, conn, NOW, environ=env, doctor_report=report)
+
+    p_map = {p.name: p for p in summary.providers}
+    assert p_map["openrouter"].status == "ready"
+    assert summary.status == "warn"
+    assert "openrouter" in summary.status_text
+    assert "quota forecast low" in summary.next_step
+
+
+def test_home_summary_doctor_sub_checks_map_to_provider_worst_wins(
+    conn: sqlite3.Connection,
+) -> None:
+    cfg, env = _ready_both(conn)
+    report = DoctorReport(
+        checks=(
+            Check(name="provider:ollama", status="info", message="found"),
+            Check(name="provider:ollama:login", status="warn", message="not logged in"),
+            Check(name="provider:ollama:mcp:unity", status="ok", message="answers"),
+            Check(name="provider:openrouter:mcp:x", status="info", message="exited"),
+        )
+    )
+
+    summary = home_summary(cfg, conn, NOW, environ=env, doctor_report=report)
+
+    p_map = {p.name: p for p in summary.providers}
+    assert p_map["ollama"].doctor_status == "warn"
+    assert p_map["ollama"].doctor_message == "not logged in"
+    assert p_map["openrouter"].doctor_status == "info"
+
+
+def test_home_summary_doctor_prefix_does_not_match_other_provider(
+    conn: sqlite3.Connection,
+) -> None:
+    cfg, env = _ready_both(conn)
+    report = DoctorReport(checks=(Check(name="provider:ollamax", status="fail", message="x"),))
+
+    summary = home_summary(cfg, conn, NOW, environ=env, doctor_report=report)
+
+    p_map = {p.name: p for p in summary.providers}
+    assert p_map["ollama"].doctor_status is None
+    assert p_map["ollama"].status == "ready"
