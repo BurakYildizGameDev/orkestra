@@ -50,6 +50,8 @@ def render_home_html(token: str) -> str:
     lbl_add_can = html.escape(t("team.add.cancel"))
     lbl_work_title = html.escape(t("team.workers.title"))
     lbl_work_add = html.escape(t("team.workers.add"))
+    lbl_keys_title = html.escape(t("keys.title"))
+    lbl_keys_info = html.escape(t("keys.info_box"))
 
     i18n_dict = {
         "error_prefix": t("home.error_prefix"),
@@ -88,6 +90,17 @@ def render_home_html(token: str) -> str:
         "team_feedback_model_saved": t("team.feedback.model_saved", name="{name}", model="{model}"),
         "team_feedback_removed": t("team.feedback.removed", name="{name}"),
         "team_feedback_reordered": t("team.feedback.reordered"),
+        "keys_title": t("keys.title"),
+        "keys_empty": t("keys.empty"),
+        "keys_source_env": t("keys.source.env"),
+        "keys_source_keyring": t("keys.source.keyring"),
+        "keys_source_none": t("keys.source.none"),
+        "keys_action_save": t("keys.action.save"),
+        "keys_action_delete": t("keys.action.delete"),
+        "keys_placeholder": t("keys.placeholder"),
+        "keys_feedback_saved": t("keys.feedback.saved", var="{var}"),
+        "keys_feedback_deleted": t("keys.feedback.deleted", var="{var}"),
+        "keys_confirm_delete": t("keys.confirm_delete", var="{var}"),
     }
     safe_i18n_json = (
         json.dumps(i18n_dict, ensure_ascii=True)
@@ -654,6 +667,22 @@ def render_home_html(token: str) -> str:
                 <div id="team-workers-container" class="provider-list"></div>
             </div>
         </div>
+
+        <!-- KEYS TAB VIEW -->
+        <div id="view-keys" style="display: none;">
+            <div class="card"
+                 style="margin-bottom: 1.5rem; background: var(--btn-sec-bg);
+                        border-left: 4px solid var(--btn-bg);">
+                <div style="font-size: 0.9rem; line-height: 1.4;">
+                    {lbl_keys_info}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">{lbl_keys_title}</div>
+                <div id="keys-container" class="provider-list"></div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -684,18 +713,28 @@ def render_home_html(token: str) -> str:
             }});
             const viewHome = document.getElementById("view-home");
             const viewTeam = document.getElementById("view-team");
+            const viewKeys = document.getElementById("view-keys");
             const homeActions = document.getElementById("home-actions");
             const titleEl = document.getElementById("page-title");
 
             if (target === "team") {{
                 viewHome.style.display = "none";
                 viewTeam.style.display = "block";
+                viewKeys.style.display = "none";
                 homeActions.style.display = "none";
                 titleEl.textContent = I18N.team_title || "Team";
                 loadTeam();
+            }} else if (target === "keys") {{
+                viewHome.style.display = "none";
+                viewTeam.style.display = "none";
+                viewKeys.style.display = "block";
+                homeActions.style.display = "none";
+                titleEl.textContent = I18N.keys_title || "Keys";
+                loadKeys();
             }} else {{
                 viewHome.style.display = "block";
                 viewTeam.style.display = "none";
+                viewKeys.style.display = "none";
                 homeActions.style.display = "flex";
                 titleEl.textContent = I18N.home_title || "Home";
                 loadHome();
@@ -705,7 +744,7 @@ def render_home_html(token: str) -> str:
         document.querySelectorAll(".nav-item").forEach(item => {{
             item.addEventListener("click", () => {{
                 const tab = item.dataset.tab;
-                if (tab === "home" || tab === "team") {{
+                if (tab === "home" || tab === "team" || tab === "keys") {{
                     switchTab(tab);
                 }}
             }});
@@ -1286,6 +1325,140 @@ def render_home_html(token: str) -> str:
                 showFeedback(I18N.home_notify_error + ": " + err.message, true);
             }}
         }});
+
+        async function loadKeys() {{
+            try {{
+                const res = await fetchWithToken("/api/keys");
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                const data = await res.json();
+                renderKeys(data.keys || []);
+            }} catch (err) {{
+                showFeedback(I18N.error_prefix + ": " + err.message, true);
+            }}
+        }}
+
+        function renderKeys(keysList) {{
+            const container = document.getElementById("keys-container");
+            container.innerHTML = "";
+            if (!keysList || keysList.length === 0) {{
+                const empty = document.createElement("div");
+                empty.className = "empty-text";
+                empty.textContent = I18N.keys_empty || "No keys configured.";
+                container.appendChild(empty);
+                return;
+            }}
+
+            keysList.forEach(k => {{
+                const row = document.createElement("div");
+                row.className = "team-worker-row";
+
+                const left = document.createElement("div");
+                left.className = "team-worker-left";
+
+                const varName = document.createElement("span");
+                varName.style.fontWeight = "600";
+                varName.style.fontSize = "0.95rem";
+                varName.textContent = k.var_name;
+                left.appendChild(varName);
+
+                const sourceBadge = document.createElement("span");
+                const isEnv = k.source === "env";
+                const isKeyring = k.source === "keyring";
+                const badgeClass = isEnv ? "tag-local" :
+                    (isKeyring ? "tag-enabled" : "tag-disabled");
+                sourceBadge.className = "tag " + badgeClass;
+                sourceBadge.textContent = isEnv ? (I18N.keys_source_env || "Environment Variable") :
+                                         (isKeyring ? (I18N.keys_source_keyring || "Keyring") :
+                                         (I18N.keys_source_none || "Not Defined"));
+                left.appendChild(sourceBadge);
+
+                if (k.providers && k.providers.length > 0) {{
+                    const provList = document.createElement("span");
+                    provList.style.fontSize = "0.8rem";
+                    provList.style.color = "var(--text-muted)";
+                    provList.textContent = "(" + k.providers.join(", ") + ")";
+                    left.appendChild(provList);
+                }}
+
+                row.appendChild(left);
+
+                const right = document.createElement("div");
+                right.className = "team-worker-right";
+
+                const input = document.createElement("input");
+                input.type = "password";
+                input.className = "input-sm";
+                input.placeholder = I18N.keys_placeholder || "Paste secret key...";
+                input.style.width = "220px";
+                right.appendChild(input);
+
+                const saveBtn = document.createElement("button");
+                saveBtn.className = "btn btn-primary btn-sm";
+                saveBtn.textContent = I18N.keys_action_save || "Save";
+                saveBtn.onclick = async () => {{
+                    const secretVal = input.value.trim();
+                    if (!secretVal) return;
+                    saveBtn.disabled = true;
+                    try {{
+                        const res = await fetchWithToken("/api/keys/set", {{
+                            method: "POST",
+                            headers: {{ "Content-Type": "application/json" }},
+                            body: JSON.stringify({{ var_name: k.var_name, key: secretVal }}),
+                        }});
+                        const resData = await res.json();
+                        if (res.ok) {{
+                            const saveMsg = (I18N.keys_feedback_saved || "Saved")
+                                .replace("{{var}}", k.var_name);
+                            showFeedback(saveMsg);
+                            renderKeys(resData.keys || []);
+                        }} else {{
+                            showFeedback(resData.error || "Save failed", true);
+                        }}
+                    }} catch (err) {{
+                        showFeedback(String(err), true);
+                    }} finally {{
+                        saveBtn.disabled = false;
+                    }}
+                }};
+                right.appendChild(saveBtn);
+
+                if (k.source === "keyring") {{
+                    const delBtn = document.createElement("button");
+                    delBtn.className = "btn btn-danger btn-sm";
+                    delBtn.textContent = I18N.keys_action_delete || "Delete";
+                    delBtn.onclick = async () => {{
+                        const confirmMsg = (I18N.keys_confirm_delete || "Delete?")
+                            .replace("{{var}}", k.var_name);
+                        if (!confirm(confirmMsg)) return;
+                        delBtn.disabled = true;
+                        try {{
+                            const res = await fetchWithToken("/api/keys/delete", {{
+                                method: "POST",
+                                headers: {{ "Content-Type": "application/json" }},
+                                body: JSON.stringify({{ var_name: k.var_name }}),
+                            }});
+                            const resData = await res.json();
+                            if (res.ok) {{
+                                const delMsg = (I18N.keys_feedback_deleted || "Deleted")
+                                    .replace("{{var}}", k.var_name);
+                                showFeedback(delMsg);
+                                renderKeys(resData.keys || []);
+                            }} else {{
+                                showFeedback(resData.error || "Delete failed", true);
+                            }}
+                        }} catch (err) {{
+                            showFeedback(String(err), true);
+                        }} finally {{
+                            delBtn.disabled = false;
+                        }}
+                    }};
+                    right.appendChild(delBtn);
+                }}
+
+                row.appendChild(right);
+                container.appendChild(row);
+            }});
+        }}
 
         loadHome();
     </script>

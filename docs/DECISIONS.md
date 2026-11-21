@@ -1242,3 +1242,15 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 5. `127.0.0.1` dışı host koruması `ValueError` yerine `errors.InternalError` (AGENTS kuralı), testi eklendi.
 6. `--window` 11c-e'nin işi; 11c-a'daki yarım hâli (pywebview kuruluyken de tarayıcı açıyordu, mesaj yoktu) ve iki metin anahtarı çıkarıldı.
 7. README (en + tr) terminal arayüzü satırı `orkestra ui --tui`.
+
+## D-122 – Faz 11c-d: API anahtarlarının OS kimlik deposunda (keyring) saklanması (2026-11-21, Faz 11c-d)
+**Bağlam:** Faz 11c web arayüzünde kullanıcıların sağlayıcı API anahtarlarını girmesi ve yönetmesi gerekir. Orkestra'nın kesin kuralı: "Anahtar hiçbir dosyaya girmez" (config, git, log, commit).
+**Karar:** `keyring>=24.0` bağımlılığı eklendi. Anahtarlar işletim sisteminin güvenli kimlik deposuna (Windows Credential Locker, macOS Keychain, Linux SecretService) `orkestra` servis adı ve ortam değişkeni adıyla (`api_key_env`, ör. `OPENROUTER_API_KEY`) kaydedilir.
+**Okuma önceliği:**
+1. `os.environ` (öncelikli – CI, CLI, geçici kullanım ve komut satırı geçersiz kılmaları için).
+2. `keyring` (ortam değişkeni yoksa veya boşsa sorgulanır).
+**Güvenlik ve İzolasyon:**
+- Anahtarlar asla config dosyasına, git'e, loglara ya da web arayüzü API yanıtlarına dönmez.
+- Web arayüzü ve API (`/api/keys`) yalnızca `defined: bool` ve `source: "env" | "keyring" | "none"` döner.
+- Keyring'de saklanan anahtarlar `security.redact` tarafından otomatik olarak toplanır ve log/çıktılarda maskelenir (`***`).
+- Keyring servisi kullanılamıyorsa çökme yerine anlaşılır `KeyringUnavailable` hatası (kod 2) döner.

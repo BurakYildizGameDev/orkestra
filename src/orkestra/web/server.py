@@ -30,12 +30,12 @@ from pathlib import Path
 from typing import Any
 
 from orkestra import __version__
-from orkestra.chief import team
+from orkestra.chief import keys, team
 from orkestra.chief.home import home_summary
 from orkestra.config.loader import load_config
 from orkestra.config.schema import NotifyCfg
 from orkestra.doctor import DoctorReport
-from orkestra.errors import ConfigError, InternalError, UsageError
+from orkestra.errors import ConfigError, InternalError, KeyringUnavailable, UsageError
 from orkestra.i18n import t
 from orkestra.notify import notify
 from orkestra.notify.notify import Delivery
@@ -287,6 +287,15 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                 self._send_error_json(500, str(exc))
             return
 
+        if parsed == "/api/keys":
+            try:
+                loaded = load_config(self.server.config_path)
+                status_list = keys.keys_status(loaded.config)
+                self._send_json(200, {"keys": [s.as_dict() for s in status_list]})
+            except Exception as exc:
+                self._send_error_json(500, str(exc))
+            return
+
         self._send_error_json(404, "Not found")
 
     def do_POST(self) -> None:
@@ -382,6 +391,29 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                     summary = team.team_summary(loaded.config, conn)
                 self._send_json(200, _team_json(summary))
             except (UsageError, ConfigError, ValueError) as exc:
+                self._send_error_json(400, str(exc))
+            except Exception as exc:
+                self._send_error_json(500, str(exc))
+            return
+
+        if parsed.startswith("/api/keys/"):
+            try:
+                body = self._read_json()
+                if parsed == "/api/keys/set":
+                    var_name = str(body.get("var_name", "")).strip()
+                    key_val = str(body.get("key", "")).strip()
+                    keys.set_key(var_name, key_val)
+                elif parsed == "/api/keys/delete":
+                    var_name = str(body.get("var_name", "")).strip()
+                    keys.delete_key(var_name)
+                else:
+                    self._send_error_json(404, "Not found")
+                    return
+
+                loaded = load_config(self.server.config_path)
+                status_list = keys.keys_status(loaded.config)
+                self._send_json(200, {"ok": True, "keys": [s.as_dict() for s in status_list]})
+            except (UsageError, ConfigError, KeyringUnavailable, ValueError) as exc:
                 self._send_error_json(400, str(exc))
             except Exception as exc:
                 self._send_error_json(500, str(exc))

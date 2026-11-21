@@ -92,6 +92,10 @@ class TranslationError(InternalError):
     """A broken or incomplete translation catalog (a bug in Orkestra, not user input)."""
 
 
+class KeyringUnavailable(UsageError):
+    """OS credential store (keyring) is not accessible (Faz 11c-d, D-122)."""
+
+
 class WizardCancelled(UsageError):
     """The user left the setup wizard (Escape); nothing more is written (Faz 11b, code 2)."""
 

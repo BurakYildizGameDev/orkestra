@@ -27,7 +27,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
-| 11c – Web arayüzü (ek) | ⏳ | 2026-11-21 | 11c-a (D-121), 11c-b ana ekran ve 11c-c ekip ekranı bitti; 11c-d…11c-e sürüyor |
+| 11c – Web arayüzü (ek) | ⏳ | 2026-11-21 | 11c-a (D-121), 11c-b ana ekran, 11c-c ekip, 11c-d anahtarlar/keyring (D-122) bitti; 11c-e sürüyor |
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (ek) | ✅ | 2026-11-20 | `gc` eski `runs`/`usage`/`queue` satırlarını siler (en az 35 gün kalır), `queue remove --finished`, `notify.ntfy_url`, `desktop-notifier<7`, `doctor` düzenlenebilir kurulum uyarısı (D-104) |
@@ -53,6 +53,16 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 11c-d – Anahtarlar ve Keyring (2026-11-21)
+
+- `keyring>=24.0` bağımlılığı eklendi (D-122). API anahtarları işletim sisteminin güvenli kimlik deposunda (Windows Credential Locker, Keychain, SecretService) `orkestra` servis adı ve ortam değişkeni adıyla saklanır.
+- `chief/keys.py`: `get_key(var_name, environ) -> str | None` servisi yazıldı. Okuma önceliği: 1. `os.environ` (öncelikli), 2. `keyring`. `set_key(var_name, value)` ve `delete_key(var_name)` eklendi; değişken adı ve boş değer doğrulaması yapılır; keyring backend hataları yakalanıp `KeyringUnavailable` fırlatılır. `keys_status(config, environ) -> list[KeyStatus]` tüm sağlayıcı ve bildirim değişkenlerini listeler; asla gizli anahtar değerini döndürmez ya da loglamaz (yalnızca `defined: bool` ve `source: "env" | "keyring" | "none"`).
+- Yalıtım ve entegrasyon: `openai_compat.read_api_key`, `doctor._check_openai` ve `security.redact.configured_secrets` servisleri `get_key` üzerinden keyring entegrasyonuyla güncellendi. Keyring'deki sırlar loglarda ve çıktılarda otomatik olarak maskelenir (`***`).
+- Web API: `GET /api/keys`, `POST /api/keys/set`, `POST /api/keys/delete` uç noktaları eklendi; token denetimiyle korunur.
+- Web UI: "Anahtarlar" sekmesi eklendi; bilgi kutusu (anahtarların dosyalara değil OS kimlik deposuna yazıldığını açıklar), maskeli parola alanı (`<input type="password">`), Kaydet butonu, Keyring'deki anahtarlar için Sil butonu, durum rozetleri ("Ortam Değişkeni", "Keyring'de Kayıtlı", "Tanımlı Değil"). Bütün DOM düğümleri `createElement` + `textContent` ile oluşturulur; kaçışsız `innerHTML` kullanılmaz.
+- Çoklu dil: `keys.*` anahtarları 5 dile (`en`, `tr`, `de`, `es`, `fr`) eklendi.
+- Testler: `tests/unit/test_keys.py` (12 test, sahte keyring ile öncelik, doğrulama, hata yönetimi, gizlilik, redact ve provider entegrasyonu), `tests/unit/test_web_server.py` (`test_keys_api_endpoints` ile token koruması, set, delete, 400 ve gizlilik testi).
 
 ### Faz 11c-c – Ekip ekranı (2026-11-21)
 

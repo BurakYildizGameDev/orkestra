@@ -230,7 +230,9 @@ def read_api_key(config: OpenAICompatProvider, environ: Mapping[str, str]) -> st
     """The key from the variable named in the config (stripped); ``None`` if unset or empty."""
     if not config.api_key_env:
         return None
-    return environ.get(config.api_key_env, "").strip() or None
+    from orkestra.chief.keys import get_key
+
+    return get_key(config.api_key_env, environ)
 
 
 def _reported_cost(usage: Any) -> float | None:

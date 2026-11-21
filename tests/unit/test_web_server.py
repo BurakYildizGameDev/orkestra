@@ -4,6 +4,7 @@ import io
 from pathlib import Path
 from typing import Any
 
+import keyring
 import pytest
 
 from orkestra import __version__
@@ -657,5 +658,98 @@ def test_team_api_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
         assert code == 200
         data = json.loads(body.decode("utf-8"))
         assert "cloud-api" not in [w["name"] for w in data["workers"]]
+    finally:
+        server.server_close()
+
+
+def test_keys_api_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    passwords: dict[tuple[str, str], str] = {}
+    monkeypatch.setattr(keyring, "get_password", lambda s, u: passwords.get((s, u)))
+    monkeypatch.setattr(keyring, "set_password", lambda s, u, p: passwords.update({(s, u): p}))
+
+    def fake_del(s: str, u: str) -> None:
+        passwords.pop((s, u), None)
+
+    monkeypatch.setattr(keyring, "delete_password", fake_del)
+
+    cfg_content = """\
+version: 1
+language: en
+providers:
+  remote:
+    type: openai_compat
+    base_url: https://api.example.test/v1
+    api_key_env: REMOTE_KEY
+    models:
+      - id: m1
+        tier: 1
+"""
+    cfg_file = tmp_path / "orkestra.yaml"
+    cfg_file.write_text(cfg_content, encoding="utf-8")
+
+    server = create_server(ServerConfig(port=0, config_path=cfg_file))
+    try:
+        # 1. 403 when token missing
+        code, _, _ = simulate_request(server, "GET", "/api/keys")
+        assert code == 403
+
+        # 2. GET /api/keys returns initial state
+        code, _, body = simulate_request(server, "GET", f"/api/keys?token={server.token}")
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        assert len(data["keys"]) == 1
+        assert data["keys"][0]["var_name"] == "REMOTE_KEY"
+        assert data["keys"][0]["source"] == "none"
+        assert data["keys"][0]["defined"] is False
+        assert data["keys"][0]["providers"] == ["remote"]
+
+        # 3. POST /api/keys/set without token is 403
+        code, _, _ = simulate_request(
+            server,
+            "POST",
+            "/api/keys/set",
+            body=json.dumps({"var_name": "REMOTE_KEY", "key": "secret-val"}).encode("utf-8"),
+        )
+        assert code == 403
+
+        # 4. POST /api/keys/set saves to keyring
+        secret_val = "ultra-secret-test-token-777"
+        code, _, body = simulate_request(
+            server,
+            "POST",
+            f"/api/keys/set?token={server.token}",
+            body=json.dumps({"var_name": "REMOTE_KEY", "key": secret_val}).encode("utf-8"),
+        )
+        assert code == 200
+        assert secret_val not in body.decode("utf-8")  # secret NEVER exposed in response
+        data = json.loads(body.decode("utf-8"))
+        assert data["ok"] is True
+        assert data["keys"][0]["source"] == "keyring"
+        assert data["keys"][0]["defined"] is True
+        assert passwords.get(("orkestra", "REMOTE_KEY")) == secret_val
+
+        # 5. POST /api/keys/delete removes from keyring
+        code, _, body = simulate_request(
+            server,
+            "POST",
+            f"/api/keys/delete?token={server.token}",
+            body=json.dumps({"var_name": "REMOTE_KEY"}).encode("utf-8"),
+        )
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        assert data["keys"][0]["source"] == "none"
+        assert data["keys"][0]["defined"] is False
+        assert passwords.get(("orkestra", "REMOTE_KEY")) is None
+
+        # 6. POST /api/keys/set with invalid name returns 400
+        code, _, body = simulate_request(
+            server,
+            "POST",
+            f"/api/keys/set?token={server.token}",
+            body=json.dumps({"var_name": "invalid-name!", "key": "val"}).encode("utf-8"),
+        )
+        assert code == 400
     finally:
         server.server_close()
