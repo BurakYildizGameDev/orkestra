@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 from typing import Annotated
 
@@ -186,6 +187,7 @@ def register(app: typer.Typer, config_app: typer.Typer) -> None:
         no_browser: Annotated[
             bool, typer.Option("--no-browser", help=t("cli.ui.option.no_browser"))
         ] = False,
+        window: Annotated[bool, typer.Option("--window", help=t("cli.ui.option.window"))] = False,
         port: Annotated[
             int, typer.Option("--port", min=0, max=65535, help=t("cli.ui.option.port"))
         ] = 0,
@@ -211,7 +213,22 @@ def register(app: typer.Typer, config_app: typer.Typer) -> None:
         typer.echo(t("ui.web.started", url=url))
         typer.echo(t("ui.web.press_ctrl_c"))
 
-        if not no_browser:
+        if window:
+            try:
+                import webview  # type: ignore
+
+                server_thread = threading.Thread(target=srv.serve_forever, daemon=True)
+                server_thread.start()
+                webview.create_window("Orkestra", url, width=1280, height=800)
+                webview.start()
+                srv.shutdown()
+                typer.echo(t("ui.web.stopped"))
+                return
+            except ImportError:
+                typer.echo(t("ui.web.window_fallback"), err=True)
+                if not no_browser:
+                    webbrowser.open(url)
+        elif not no_browser:
             webbrowser.open(url)
 
         try:

@@ -1254,3 +1254,13 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 - Web arayüzü ve API (`/api/keys`) yalnızca `defined: bool` ve `source: "env" | "keyring" | "none"` döner.
 - Keyring'de saklanan anahtarlar `security.redact` tarafından otomatik olarak toplanır ve log/çıktılarda maskelenir (`***`).
 - Keyring servisi kullanılamıyorsa çökme yerine anlaşılır `KeyringUnavailable` hatası (kod 2) döner.
+
+## D-123 – Faz 11c-e: İsteğe bağlı bağımlılık olarak pywebview ve masaüstü pencere modu (--window) (2026-11-21, Faz 11c-e)
+**Bağlam:** Faz 11c-e yerel web arayüzü için masaüstü penceresi seçeneği (`--window`) ekler. Bazı kullanıcılar tarayıcı sekmesi yerine bağımsız bir yerel pencere tercih edebilir. Ancak `pywebview` işletim sistemine özgü GUI/WebView kütüphaneleri (Windows WebView2, macOS WebKit, Linux WebKitGTK) gerektirebilir; sunucu veya CLI ortamlarında kurulum yükü getirmemesi gerekir.
+**Karar:** `pywebview>=5.0` temel zorunlu bağımlılıklar yerine `[project.optional-dependencies]` altında `window = ["pywebview>=5.0"]` olarak eklendi.
+**Davranış ve Hata Yönetimi:**
+- `orkestra ui --window` çalıştırıldığında `pywebview` kuruluysa arka planda sunucuyu başlatıp 1280x800 ebadında yerel pencere açar (`webview.create_window`, `webview.start`).
+- `pywebview` kurulu değilse CLI çökmez; stderr'e `ui.web.window_fallback` uyarısını yazar ve otomatik olarak varsayılan tarayıcı moduna (`webbrowser.open`) düşer.
+- İsteğe bağlı kurulum: `uv tool install git+https://... --with pywebview` veya `pip install orkestra-cli[window]`.
+**Alternatifler:** `pywebview`'ı zorunlu bağımlılık yapmak (sunucu ortamlarında ve C-bağımlılıklarında kurulum sorunlarına yol açar) ya da Electron/Tauri gibi ayrı ağır araçlar kullanmak (paket boyutunu ve karmaşıklığı aşırı artırır).
+**Sonuç:** Kullanıcı arayüzü masaüstü penceresinde (`orkestra ui --window`), tarayıcıda (`orkestra ui`) veya terminalde (`orkestra ui --tui`) kesintisiz deneyimle çalışır.

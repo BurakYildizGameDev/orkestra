@@ -27,7 +27,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
-| 11c – Web arayüzü (ek) | ⏳ | 2026-11-21 | 11c-a (D-121), 11c-b ana ekran, 11c-c ekip, 11c-d anahtarlar/keyring (D-122) bitti; 11c-e sürüyor |
+| 11c – Web arayüzü (ek) | ✅ | 2026-11-21 | 11c-a (D-121), 11c-b ana ekran, 11c-c ekip, 11c-d anahtarlar (D-122), 11c-e kullanım, rehber, gelişmiş ve pencere (D-123) |
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (ek) | ✅ | 2026-11-20 | `gc` eski `runs`/`usage`/`queue` satırlarını siler (en az 35 gün kalır), `queue remove --finished`, `notify.ntfy_url`, `desktop-notifier<7`, `doctor` düzenlenebilir kurulum uyarısı (D-104) |
@@ -53,6 +53,21 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 11c-e – Kullanım, Rehber, Gelişmiş ve Masaüstü Penceresi (2026-11-21)
+
+- İsteğe bağlı bağımlılık: `pywebview>=5.0` `[project.optional-dependencies]` altında `window = ["pywebview>=5.0"]` olarak eklendi (D-123). `orkestra ui --window` seçeneği eklendi; `pywebview` yoksa CLI çökmez, stderr'e `ui.web.window_fallback` uyarısını basar ve varsayılan tarayıcı moduna düşer. Kurulu olduğunda 1280x800 çözünürlüğünde yerel masaüstü penceresi açar.
+- `chief/usage.py`: `usage_summary(conn, days, now) -> dict` veri katmanı servisi yazıldı. Veritabanındaki `runs` ve `usage` tablolarından son N günün (varsayılan 7, desteklenen 30) toplam koşu, başarı/başarısızlık oranı, kesinleşen prompt/tamamlama tokenları, toplam harcama ($), şefin bağlamından tasarruf edilen işçi çıktı tokenları ve maliyet tasarrufu tahminini hesaplar. Sağlayıcı bazlı döküm ve günlük zaman serisi döner.
+- `chief/advanced.py`: `advanced_summary(config, conn, now) -> dict` veri katmanı servisi yazıldı. Sağlayıcı bütçelerini (günlük USD, token, istek, koşu sınırları ve bugünkü harcama), çalışma profillerini (etkin profil, kademe sınırları `min_tier`/`max_tier`), gece kuyruğu bekleyen işlerini, sağlayıcı devre kesici durumlarını (`health.is_open(now)`, hata sayısı, `open_until` ve son hata nedeni) ve genel ayarları inceler.
+- Web API: `GET /api/usage?days=7` ve `GET /api/advanced` uç noktaları eklendi; token denetimiyle korunur.
+- Web UI sekmeleri (`web/ui.py`):
+  - "Kullanım" sekmesi: Özet istatistik kartları (toplam koşu, başarı oranı, toplam harcama, tasarruf edilen tokenlar), saf SVG ile çizilen duyarlı (responsive `viewBox="0 0 600 200"`) günlük harcama grafiği (CSS değişkenleriyle uyumlu temalama), 7 gün / 30 gün filtre seçicisi ve sağlayıcı bazında döküm tablosu.
+  - "Rehber" sekmesi: Orkestra'nın patron-çalışan mimarisi, yönlendirme sistemi, görev dosyaları, gece kuyruğu ve güvenlik ilkelerini anlatan 5 rehber kartı ve proje dokümanlarına doğrudan bağlantılar.
+  - "Gelişmiş" sekmesi: Sağlayıcı bütçeleri tablosu (limit ve harcama), profiller listesi, devre kesici durumları kartı (sağlıklı veya açık devre uyarısı), gece kuyruğu listesi ve sistem ayarları kartı.
+  - Sıfır harici CDN bağımlılığı; DOM düğümleri `createElement` ve `textContent` ile oluşturulur; kaçışsız `innerHTML` kullanılmaz.
+- Çoklu dil: `usage.*`, `guide.*`, `advanced.*`, `cli.ui.option.window`, `ui.web.window_fallback` anahtarları 5 dile (`en`, `tr`, `de`, `es`, `fr`) eklendi.
+- Dokümantasyon: `README.md`, `README.tr.md`, `docs/guide.md`, `docs/guide.tr.md`, `docs/DECISIONS.md` (D-123) güncellendi.
+- Testler: `tests/unit/test_usage_advanced.py` (4 test: boş durum, verili koşu ve kullanım hesaplamaları, gelişmiş özet, API uç noktaları güvenliği), `tests/unit/test_ui_cli.py` (`--window` yardım çıktısı, `pywebview` yokken tarayıcıya düşme, `pywebview` varken pencere açma testleri). Toplam test sayısı arttı (2031 -> 2038).
 
 ### Faz 11c-d – Anahtarlar ve Keyring (2026-11-21)
 

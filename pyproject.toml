@@ -23,6 +23,8 @@ dependencies = [
 [project.optional-dependencies]
 # Desktop notifications (Faz 12a); without it they are skipped quietly.
 notify = ["desktop-notifier>=6.0,<7"]
+# Desktop application window for Web UI (Faz 11c-e); without it falls back to browser.
+window = ["pywebview>=5.0"]
 
 [project.scripts]
 orkestra = "orkestra.entry:main"

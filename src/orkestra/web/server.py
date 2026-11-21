@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from orkestra import __version__
-from orkestra.chief import keys, team
+from orkestra.chief import advanced, keys, team, usage
 from orkestra.chief.home import home_summary
 from orkestra.config.loader import load_config
 from orkestra.config.schema import NotifyCfg
@@ -292,6 +292,25 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                 loaded = load_config(self.server.config_path)
                 status_list = keys.keys_status(loaded.config)
                 self._send_json(200, {"keys": [s.as_dict() for s in status_list]})
+            except Exception as exc:
+                self._send_error_json(500, str(exc))
+            return
+
+        if parsed == "/api/usage":
+            try:
+                with closing(db.connect()) as conn:
+                    summary = usage.usage_summary(conn)
+                self._send_json(200, summary)
+            except Exception as exc:
+                self._send_error_json(500, str(exc))
+            return
+
+        if parsed == "/api/advanced":
+            try:
+                loaded = load_config(self.server.config_path)
+                with closing(db.connect()) as conn:
+                    summary = advanced.advanced_summary(loaded.config, conn)
+                self._send_json(200, summary)
             except Exception as exc:
                 self._send_error_json(500, str(exc))
             return

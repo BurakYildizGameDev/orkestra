@@ -24,6 +24,7 @@ def test_ui_help_shows_new_options(capsys: pytest.CaptureFixture[str]) -> None:
     assert "--tui" in out
     assert "--no-browser" in out
     assert "--port" in out
+    assert "--window" in out
 
 
 def test_ui_tui_flag_invokes_terminal_app(
@@ -116,3 +117,58 @@ def test_ui_busy_port_is_a_clear_usage_error(
     assert code == 2
     assert str(taken.server_port) in err
     assert "Traceback" not in err
+
+
+def test_ui_window_flag_without_pywebview_falls_back_to_browser(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import sys
+    import webbrowser
+
+    from orkestra.i18n import t
+    from orkestra.web import server
+
+    monkeypatch.setitem(sys.modules, "webview", None)
+    mock_open = MagicMock()
+    monkeypatch.setattr(webbrowser, "open", mock_open)
+    monkeypatch.setattr(server.WebServer, "serve_forever", MagicMock(side_effect=KeyboardInterrupt))
+
+    code, _, err = _run(["ui", "--window"], capsys)
+    assert code == 0
+    assert t("ui.web.window_fallback") in err
+    mock_open.assert_called_once()
+    url = mock_open.call_args.args[0]
+    assert url.startswith("http://127.0.0.1:")
+
+
+def test_ui_window_flag_with_pywebview_opens_window(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import sys
+    import types
+    import webbrowser
+
+    from orkestra.web import server
+
+    mock_open = MagicMock()
+    monkeypatch.setattr(webbrowser, "open", mock_open)
+
+    mock_webview = types.ModuleType("webview")
+    mock_webview.create_window = MagicMock()  # type: ignore[attr-defined]
+    mock_webview.start = MagicMock()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "webview", mock_webview)
+
+    mock_serve = MagicMock()
+    mock_shutdown = MagicMock()
+    monkeypatch.setattr(server.WebServer, "serve_forever", mock_serve)
+    monkeypatch.setattr(server.WebServer, "shutdown", mock_shutdown)
+
+    code, _, _ = _run(["ui", "--window"], capsys)
+    assert code == 0
+    mock_open.assert_not_called()
+    mock_webview.create_window.assert_called_once()
+    args = mock_webview.create_window.call_args[0]
+    assert args[0] == "Orkestra"
+    assert args[1].startswith("http://127.0.0.1:")
+    mock_webview.start.assert_called_once()
+    mock_shutdown.assert_called_once()

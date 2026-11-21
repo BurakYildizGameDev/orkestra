@@ -53,6 +53,31 @@ def render_home_html(token: str) -> str:
     lbl_keys_title = html.escape(t("keys.title"))
     lbl_keys_info = html.escape(t("keys.info_box"))
 
+    lbl_usage_card_runs = html.escape(t("usage.card.runs"))
+    lbl_usage_card_ok_rate = html.escape(t("usage.card.ok_rate"))
+    lbl_usage_card_cost = html.escape(t("usage.card.cost"))
+    lbl_usage_card_savings = html.escape(t("usage.card.savings"))
+    lbl_usage_chart_title = html.escape(t("usage.chart.title"))
+    lbl_usage_table_title = html.escape(t("usage.table.provider"))
+
+    lbl_guide_s1_t = html.escape(t("guide.step1.title"))
+    lbl_guide_s1_d = html.escape(t("guide.step1.desc"))
+    lbl_guide_s2_t = html.escape(t("guide.step2.title"))
+    lbl_guide_s2_d = html.escape(t("guide.step2.desc"))
+    lbl_guide_s3_t = html.escape(t("guide.step3.title"))
+    lbl_guide_s3_d = html.escape(t("guide.step3.desc"))
+    lbl_guide_s4_t = html.escape(t("guide.step4.title"))
+    lbl_guide_s4_d = html.escape(t("guide.step4.desc"))
+    lbl_guide_s5_t = html.escape(t("guide.step5.title"))
+    lbl_guide_s5_d = html.escape(t("guide.step5.desc"))
+    lbl_guide_docs_link = html.escape(t("guide.docs_link"))
+
+    lbl_adv_budgets = html.escape(t("advanced.card.budgets"))
+    lbl_adv_profiles = html.escape(t("advanced.card.profiles"))
+    lbl_adv_queue = html.escape(t("advanced.card.queue"))
+    lbl_adv_breakers = html.escape(t("advanced.card.circuit_breakers"))
+    lbl_adv_settings = html.escape(t("advanced.card.settings"))
+
     i18n_dict = {
         "error_prefix": t("home.error_prefix"),
         "load_failed": t("home.feedback.load_failed"),
@@ -101,6 +126,32 @@ def render_home_html(token: str) -> str:
         "keys_feedback_saved": t("keys.feedback.saved", var="{var}"),
         "keys_feedback_deleted": t("keys.feedback.deleted", var="{var}"),
         "keys_confirm_delete": t("keys.confirm_delete", var="{var}"),
+        "usage_title": t("usage.title"),
+        "usage_card_runs": t("usage.card.runs"),
+        "usage_card_ok_rate": t("usage.card.ok_rate"),
+        "usage_card_cost": t("usage.card.cost"),
+        "usage_card_savings": t("usage.card.savings"),
+        "usage_chart_title": t("usage.chart.title"),
+        "usage_chart_empty": t("usage.chart.empty"),
+        "usage_table_provider": t("usage.table.provider"),
+        "usage_table_runs": t("usage.table.runs"),
+        "usage_table_success": t("usage.table.success"),
+        "usage_table_cost": t("usage.table.cost"),
+        "usage_table_tokens": t("usage.table.tokens"),
+        "usage_savings_detail": t(
+            "usage.savings_detail", out="{out}", env="{env}", ratio="{ratio}"
+        ),
+        "guide_title": t("guide.title"),
+        "advanced_title": t("advanced.title"),
+        "advanced_card_budgets": t("advanced.card.budgets"),
+        "advanced_card_profiles": t("advanced.card.profiles"),
+        "advanced_card_queue": t("advanced.card.queue"),
+        "advanced_card_circuit_breakers": t("advanced.card.circuit_breakers"),
+        "advanced_card_settings": t("advanced.card.settings"),
+        "advanced_queue_empty": t("advanced.queue.empty"),
+        "advanced_breaker_ok": t("advanced.breaker.ok"),
+        "advanced_breaker_open": t("advanced.breaker.open"),
+        "advanced_budget_none": t("advanced.budget.none"),
     }
     safe_i18n_json = (
         json.dumps(i18n_dict, ensure_ascii=True)
@@ -683,6 +734,124 @@ def render_home_html(token: str) -> str:
                 <div id="keys-container" class="provider-list"></div>
             </div>
         </div>
+
+        <!-- USAGE TAB VIEW -->
+        <div id="view-usage" style="display: none;">
+            <div class="grid" style="margin-bottom: 1.5rem;">
+                <div class="card">
+                    <div class="card-title">{lbl_usage_card_runs}</div>
+                    <div id="usage-stat-runs" class="card-number">-</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">{lbl_usage_card_ok_rate}</div>
+                    <div id="usage-stat-rate" class="card-number">-</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">{lbl_usage_card_cost}</div>
+                    <div id="usage-stat-cost" class="card-number">-</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">{lbl_usage_card_savings}</div>
+                    <div id="usage-stat-savings" class="card-number">-</div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <div class="card-title">{lbl_usage_chart_title}</div>
+                <div id="usage-chart-container" style="min-height: 200px;"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">{lbl_usage_table_title}</div>
+                <div id="usage-providers-table" class="provider-list"></div>
+                <div id="usage-savings-detail"
+                     style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">
+                </div>
+            </div>
+        </div>
+
+        <!-- GUIDE TAB VIEW -->
+        <div id="view-guide" style="display: none;">
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-title" style="font-size: 1.1rem; color: var(--btn-bg);">
+                    {lbl_guide_s1_t}
+                </div>
+                <p style="font-size: 0.9rem; line-height: 1.5; color: var(--text-main); margin: 0;">
+                    {lbl_guide_s1_d}
+                </p>
+            </div>
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-title" style="font-size: 1.1rem; color: var(--btn-bg);">
+                    {lbl_guide_s2_t}
+                </div>
+                <p style="font-size: 0.9rem; line-height: 1.5; color: var(--text-main); margin: 0;">
+                    {lbl_guide_s2_d}
+                </p>
+            </div>
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-title" style="font-size: 1.1rem; color: var(--btn-bg);">
+                    {lbl_guide_s3_t}
+                </div>
+                <p style="font-size: 0.9rem; line-height: 1.5; color: var(--text-main); margin: 0;">
+                    {lbl_guide_s3_d}
+                </p>
+            </div>
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-title" style="font-size: 1.1rem; color: var(--btn-bg);">
+                    {lbl_guide_s4_t}
+                </div>
+                <p style="font-size: 0.9rem; line-height: 1.5; color: var(--text-main); margin: 0;">
+                    {lbl_guide_s4_d}
+                </p>
+            </div>
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-title" style="font-size: 1.1rem; color: var(--btn-bg);">
+                    {lbl_guide_s5_t}
+                </div>
+                <p style="font-size: 0.9rem; line-height: 1.5; color: var(--text-main); margin: 0;">
+                    {lbl_guide_s5_d}
+                </p>
+            </div>
+            <div class="card" style="background: var(--btn-sec-bg);">
+                <div style="font-size: 0.9rem;">
+                    <strong>{lbl_guide_docs_link}</strong>
+                    <div style="margin-top: 0.4rem; font-family: monospace; font-size: 0.85rem;">
+                        <a href="docs/guide.md" target="_blank"
+                           style="color: var(--btn-bg); text-decoration: none;">docs/guide.md</a> ·
+                        <a href="docs/guide.tr.md" target="_blank"
+                           style="color: var(--btn-bg); text-decoration: none;">docs/guide.tr.md</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ADVANCED TAB VIEW -->
+        <div id="view-advanced" style="display: none;">
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <div class="card-title">{lbl_adv_budgets}</div>
+                <div id="adv-budgets-container" style="font-size: 0.9rem; line-height: 1.6;"></div>
+            </div>
+
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <div class="card-title">{lbl_adv_profiles}</div>
+                <div id="adv-profiles-container" style="font-size: 0.9rem; line-height: 1.6;"></div>
+            </div>
+
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <div class="card-title">{lbl_adv_queue}</div>
+                <div id="adv-queue-container" class="provider-list"></div>
+            </div>
+
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <div class="card-title">{lbl_adv_breakers}</div>
+                <div id="adv-breakers-container" class="provider-list"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">{lbl_adv_settings}</div>
+                <div id="adv-settings-container" style="font-size: 0.9rem; line-height: 1.6;"></div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -714,28 +883,39 @@ def render_home_html(token: str) -> str:
             const viewHome = document.getElementById("view-home");
             const viewTeam = document.getElementById("view-team");
             const viewKeys = document.getElementById("view-keys");
+            const viewUsage = document.getElementById("view-usage");
+            const viewGuide = document.getElementById("view-guide");
+            const viewAdvanced = document.getElementById("view-advanced");
             const homeActions = document.getElementById("home-actions");
             const titleEl = document.getElementById("page-title");
 
+            const allViews = [
+                viewHome, viewTeam, viewKeys, viewUsage, viewGuide, viewAdvanced
+            ];
+            allViews.forEach(v => {{ if (v) v.style.display = "none"; }});
+            homeActions.style.display = (target === "home") ? "flex" : "none";
+
             if (target === "team") {{
-                viewHome.style.display = "none";
                 viewTeam.style.display = "block";
-                viewKeys.style.display = "none";
-                homeActions.style.display = "none";
                 titleEl.textContent = I18N.team_title || "Team";
                 loadTeam();
             }} else if (target === "keys") {{
-                viewHome.style.display = "none";
-                viewTeam.style.display = "none";
                 viewKeys.style.display = "block";
-                homeActions.style.display = "none";
                 titleEl.textContent = I18N.keys_title || "Keys";
                 loadKeys();
+            }} else if (target === "usage") {{
+                viewUsage.style.display = "block";
+                titleEl.textContent = I18N.usage_title || "Usage";
+                loadUsage();
+            }} else if (target === "guide") {{
+                viewGuide.style.display = "block";
+                titleEl.textContent = I18N.guide_title || "Guide";
+            }} else if (target === "advanced") {{
+                viewAdvanced.style.display = "block";
+                titleEl.textContent = I18N.advanced_title || "Advanced";
+                loadAdvanced();
             }} else {{
                 viewHome.style.display = "block";
-                viewTeam.style.display = "none";
-                viewKeys.style.display = "none";
-                homeActions.style.display = "flex";
                 titleEl.textContent = I18N.home_title || "Home";
                 loadHome();
             }}
@@ -744,7 +924,7 @@ def render_home_html(token: str) -> str:
         document.querySelectorAll(".nav-item").forEach(item => {{
             item.addEventListener("click", () => {{
                 const tab = item.dataset.tab;
-                if (tab === "home" || tab === "team" || tab === "keys") {{
+                if (tab) {{
                     switchTab(tab);
                 }}
             }});
@@ -1458,6 +1638,296 @@ def render_home_html(token: str) -> str:
                 row.appendChild(right);
                 container.appendChild(row);
             }});
+        }}
+
+        function renderDailyChart(container, daily) {{
+            container.innerHTML = "";
+            if (!daily || daily.length === 0) {{
+                const empty = document.createElement("div");
+                empty.className = "empty-text";
+                empty.textContent = I18N.usage_chart_empty || "No activity.";
+                container.appendChild(empty);
+                return;
+            }}
+            const svgNS = "http://www.w3.org/2000/svg";
+            const svg = document.createElementNS(svgNS, "svg");
+            svg.setAttribute("viewBox", "0 0 600 200");
+            svg.setAttribute("style", "width: 100%; height: 200px; display: block;");
+
+            const maxRuns = Math.max(...daily.map(d => d.runs), 1);
+            const barWidth = Math.min(40, 500 / daily.length);
+            const spacing = 550 / daily.length;
+
+            daily.forEach((d, i) => {{
+                const x = 40 + i * spacing;
+                const totalHeight = (d.runs / maxRuns) * 140;
+                const okHeight = (d.ok / maxRuns) * 140;
+                const yTotal = 160 - totalHeight;
+                const yOk = 160 - okHeight;
+
+                if (d.runs > d.ok) {{
+                    const rectFail = document.createElementNS(svgNS, "rect");
+                    rectFail.setAttribute("x", String(x));
+                    rectFail.setAttribute("y", String(yTotal));
+                    rectFail.setAttribute("width", String(barWidth));
+                    rectFail.setAttribute("height", String(totalHeight));
+                    rectFail.setAttribute("fill", "var(--fail-border)");
+                    rectFail.setAttribute("rx", "3");
+                    svg.appendChild(rectFail);
+                }}
+
+                const rectOk = document.createElementNS(svgNS, "rect");
+                rectOk.setAttribute("x", String(x));
+                rectOk.setAttribute("y", String(yOk));
+                rectOk.setAttribute("width", String(barWidth));
+                rectOk.setAttribute("height", String(okHeight));
+                rectOk.setAttribute("fill", "var(--btn-bg)");
+                rectOk.setAttribute("rx", "3");
+                svg.appendChild(rectOk);
+
+                const text = document.createElementNS(svgNS, "text");
+                text.setAttribute("x", String(x + barWidth / 2));
+                text.setAttribute("y", "180");
+                text.setAttribute("text-anchor", "middle");
+                text.setAttribute("font-size", "11");
+                text.setAttribute("fill", "var(--text-muted)");
+                const shortDate = d.date.length > 5 ? d.date.slice(5) : d.date;
+                text.textContent = shortDate;
+                svg.appendChild(text);
+
+                const countText = document.createElementNS(svgNS, "text");
+                countText.setAttribute("x", String(x + barWidth / 2));
+                countText.setAttribute("y", String(yTotal - 5));
+                countText.setAttribute("text-anchor", "middle");
+                countText.setAttribute("font-size", "11");
+                countText.setAttribute("font-weight", "600");
+                countText.setAttribute("fill", "var(--text-main)");
+                countText.textContent = String(d.runs);
+                svg.appendChild(countText);
+            }});
+
+            container.appendChild(svg);
+        }}
+
+        async function loadUsage() {{
+            try {{
+                const res = await fetchWithToken("/api/usage");
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                const data = await res.json();
+                renderUsage(data);
+            }} catch (err) {{
+                showFeedback(I18N.error_prefix + ": " + err.message, true);
+            }}
+        }}
+
+        function renderUsage(data) {{
+            const totals = data.totals || {{}};
+            document.getElementById("usage-stat-runs").textContent = String(totals.runs || 0);
+            const rate = totals.success_rate !== null && totals.success_rate !== undefined
+                ? (totals.success_rate * 100).toFixed(0) + "%" : "-";
+            document.getElementById("usage-stat-rate").textContent = rate;
+            const cost = totals.cost_usd !== undefined ?
+                "$" + totals.cost_usd.toFixed(4) : "$0.00";
+            document.getElementById("usage-stat-cost").textContent = cost;
+
+            const savings = data.savings || {{}};
+            const workerTokens = savings.worker_output_tokens || 0;
+            const envTokens = savings.envelope_tokens || 0;
+            const ratio = envTokens > 0 ? (workerTokens / envTokens).toFixed(1) : "-";
+            document.getElementById("usage-stat-savings").textContent =
+                workerTokens > 0 ? "~" + workerTokens + " tok" : "-";
+
+            const detailEl = document.getElementById("usage-savings-detail");
+            if (workerTokens > 0) {{
+                detailEl.textContent = (I18N.usage_savings_detail || "")
+                    .replace("{{out}}", String(workerTokens))
+                    .replace("{{env}}", String(envTokens))
+                    .replace("{{ratio}}", ratio);
+            }} else {{
+                detailEl.textContent = "";
+            }}
+
+            renderDailyChart(
+                document.getElementById("usage-chart-container"),
+                data.daily || []
+            );
+
+            const provContainer = document.getElementById("usage-providers-table");
+            provContainer.innerHTML = "";
+            const providers = data.providers || [];
+            if (providers.length === 0) {{
+                const empty = document.createElement("div");
+                empty.className = "empty-text";
+                empty.textContent = I18N.usage_chart_empty || "No provider activity.";
+                provContainer.appendChild(empty);
+                return;
+            }}
+
+            providers.forEach(p => {{
+                const row = document.createElement("div");
+                row.className = "team-worker-row";
+
+                const left = document.createElement("div");
+                left.className = "team-worker-left";
+                const name = document.createElement("span");
+                name.style.fontWeight = "600";
+                name.textContent = p.provider || "unnamed";
+                left.appendChild(name);
+
+                const rateBadge = document.createElement("span");
+                const sRate = p.success_rate !== null && p.success_rate !== undefined
+                    ? (p.success_rate * 100).toFixed(0) + "%" : "-";
+                rateBadge.className = "tag " + (p.ok > 0 ? "tag-enabled" : "tag-disabled");
+                rateBadge.textContent = sRate;
+                left.appendChild(rateBadge);
+                row.appendChild(left);
+
+                const right = document.createElement("div");
+                right.className = "team-worker-right";
+                right.style.fontSize = "0.85rem";
+                right.style.color = "var(--text-muted)";
+                const runsText = (p.runs || 0) + " runs (" + (p.ok || 0) + " ok)";
+                const costText = "$" + (p.cost_usd || 0).toFixed(4);
+                const tokensText = ((p.prompt_tokens || 0) + (p.completion_tokens || 0)) + " tok";
+                right.textContent = runsText + " · " + costText + " · " + tokensText;
+                row.appendChild(right);
+
+                provContainer.appendChild(row);
+            }});
+        }}
+
+        async function loadAdvanced() {{
+            try {{
+                const res = await fetchWithToken("/api/advanced");
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                const data = await res.json();
+                renderAdvanced(data);
+            }} catch (err) {{
+                showFeedback(I18N.error_prefix + ": " + err.message, true);
+            }}
+        }}
+
+        function renderAdvanced(data) {{
+            const bContainer = document.getElementById("adv-budgets-container");
+            bContainer.innerHTML = "";
+            const b = data.budgets || {{}};
+            const dailyB = b.daily ? "$" + b.daily.toFixed(2) :
+                (I18N.advanced_budget_none || "None");
+            const dLine = document.createElement("div");
+            dLine.textContent = "Global daily limit: " + dailyB;
+            bContainer.appendChild(dLine);
+
+            const pBudgets = b.providers || {{}};
+            const pKeys = Object.keys(pBudgets);
+            if (pKeys.length > 0) {{
+                pKeys.forEach(pName => {{
+                    const line = document.createElement("div");
+                    const pb = pBudgets[pName];
+                    const usd = pb.daily_usd !== null && pb.daily_usd !== undefined ?
+                        "$" + pb.daily_usd : "-";
+                    line.textContent = pName + ": daily limit " + usd;
+                    bContainer.appendChild(line);
+                }});
+            }}
+
+            const prContainer = document.getElementById("adv-profiles-container");
+            prContainer.innerHTML = "";
+            const pr = data.profiles || {{}};
+            const act = document.createElement("div");
+            act.textContent = "Active profile: " + (pr.active || "balanced");
+            prContainer.appendChild(act);
+
+            const defs = pr.definitions || {{}};
+            Object.keys(defs).forEach(pName => {{
+                const line = document.createElement("div");
+                const def = defs[pName];
+                line.textContent = pName + ": min tier " + def.min_tier +
+                    ", max tier " + def.max_tier;
+                prContainer.appendChild(line);
+            }});
+
+            const qContainer = document.getElementById("adv-queue-container");
+            qContainer.innerHTML = "";
+            const q = data.queue || {{}};
+            const items = q.items || [];
+            if (items.length === 0) {{
+                const empty = document.createElement("div");
+                empty.className = "empty-text";
+                empty.textContent = I18N.advanced_queue_empty || "Queue is empty.";
+                qContainer.appendChild(empty);
+            }} else {{
+                items.forEach(it => {{
+                    const row = document.createElement("div");
+                    row.className = "team-worker-row";
+
+                    const left = document.createElement("div");
+                    left.className = "team-worker-left";
+                    const idSpan = document.createElement("span");
+                    idSpan.style.fontWeight = "600";
+                    idSpan.textContent = "#" + it.id + " " + it.kind;
+                    left.appendChild(idSpan);
+
+                    const stBadge = document.createElement("span");
+                    stBadge.className = "tag " + (it.status === "ok" ? "tag-enabled" :
+                        (it.status === "failed" ? "tag-disabled" : "tag-local"));
+                    stBadge.textContent = it.status;
+                    left.appendChild(stBadge);
+
+                    const pathSpan = document.createElement("span");
+                    pathSpan.style.fontSize = "0.8rem";
+                    pathSpan.style.color = "var(--text-muted)";
+                    pathSpan.textContent = it.path;
+                    left.appendChild(pathSpan);
+                    row.appendChild(left);
+
+                    qContainer.appendChild(row);
+                }});
+            }}
+
+            const cbContainer = document.getElementById("adv-breakers-container");
+            cbContainer.innerHTML = "";
+            const breakers = data.circuit_breakers || [];
+            breakers.forEach(br => {{
+                const row = document.createElement("div");
+                row.className = "team-worker-row";
+
+                const left = document.createElement("div");
+                left.className = "team-worker-left";
+                const pName = document.createElement("span");
+                pName.style.fontWeight = "600";
+                pName.textContent = br.provider;
+                left.appendChild(pName);
+
+                const statusTag = document.createElement("span");
+                statusTag.className = "tag " + (br.is_open ? "tag-disabled" : "tag-enabled");
+                statusTag.textContent = br.is_open ?
+                    (I18N.advanced_breaker_open || "Tripped") :
+                    (I18N.advanced_breaker_ok || "Healthy");
+                left.appendChild(statusTag);
+
+                if (br.consecutive_failures > 0) {{
+                    const fails = document.createElement("span");
+                    fails.style.fontSize = "0.8rem";
+                    fails.style.color = "var(--fail-text)";
+                    fails.textContent = br.consecutive_failures + " failures";
+                    left.appendChild(fails);
+                }}
+                row.appendChild(left);
+                cbContainer.appendChild(row);
+            }});
+
+            const stContainer = document.getElementById("adv-settings-container");
+            stContainer.innerHTML = "";
+            const st = data.settings || {{}};
+            const s1 = document.createElement("div");
+            s1.textContent = "Language: " + st.language;
+            stContainer.appendChild(s1);
+            const s2 = document.createElement("div");
+            s2.textContent = "Chief: " + st.chief;
+            stContainer.appendChild(s2);
+            const s3 = document.createElement("div");
+            s3.textContent = "Privacy: " + st.privacy;
+            stContainer.appendChild(s3);
         }}
 
         loadHome();
