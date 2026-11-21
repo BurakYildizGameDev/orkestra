@@ -2,7 +2,9 @@
 
 The text is only the counts ("3 finished, 1 failed"): no task text, code, paths or secrets,
 because an ntfy topic is readable by anyone who guesses its name. The topic itself lives in
-the environment variable that ``notify.ntfy_topic_env`` names and is never printed.
+the environment variable that ``notify.ntfy_topic_env`` names (or, when that variable is unset,
+the OS credential store under the same name: the web interface's Keys screen, D-122) and is
+never printed.
 
 A notification never fails the command: ``desktop-notifier`` is an optional extra
 (``orkestra-cli[notify]``) and is skipped quietly when missing; any other failure is a
@@ -21,6 +23,7 @@ from typing import Any, Literal
 
 import httpx
 
+from orkestra.chief.keys import get_key
 from orkestra.config.schema import NotifyCfg
 from orkestra.i18n import t
 from orkestra.state import db, forecast, health
@@ -94,7 +97,7 @@ def send(
         deliveries.append(Delivery("ntfy", "failed", "env_invalid"))
     elif config.ntfy_topic_env:
         deliveries.append(
-            _send_ntfy(post, config, env.get(config.ntfy_topic_env, "").strip(), title, message)
+            _send_ntfy(post, config, get_key(config.ntfy_topic_env, env) or "", title, message)
         )
     return deliveries
 

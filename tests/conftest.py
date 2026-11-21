@@ -81,6 +81,39 @@ def no_real_notifications(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ..
     return sent
 
 
+class MemoryKeyring:
+    """The OS credential store stand-in: no test reads or writes the developer's keyring."""
+
+    def __init__(self) -> None:
+        self.passwords: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self.passwords.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.passwords[(service, username)] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        import keyring.errors
+
+        if self.passwords.pop((service, username), None) is None:
+            raise keyring.errors.PasswordDeleteError("not found")
+
+
+@pytest.fixture(autouse=True)
+def memory_keyring(monkeypatch: pytest.MonkeyPatch) -> MemoryKeyring:
+    """Keys read through ``chief.keys`` (env first, then keyring) never come from the real
+    store: a key saved there by the web interface would change "key missing" tests (11c-d)."""
+    import keyring
+
+    store = MemoryKeyring()
+    monkeypatch.setattr(keyring, "get_keyring", lambda: store)
+    monkeypatch.setattr(keyring, "get_password", store.get_password)
+    monkeypatch.setattr(keyring, "set_password", store.set_password)
+    monkeypatch.setattr(keyring, "delete_password", store.delete_password)
+    return store
+
+
 GIT_ENV = {
     "GIT_AUTHOR_NAME": "test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
     "GIT_COMMITTER_NAME": "test", "GIT_COMMITTER_EMAIL": "test@example.invalid",

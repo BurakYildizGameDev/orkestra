@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="[[@lang]]">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orkestra</title>
+<style>
+[[@css]]
+</style>
+</head>
+<body>
+<header class="topbar">
+    <div class="topbar-inner">
+        <div class="brand">Orkestra<span class="version">v[[@version]]</span></div>
+        <nav class="nav">
+            <button id="nav-home" class="nav-item active" data-tab="home">[[home.nav.home]]</button>
+            <button id="nav-team" class="nav-item" data-tab="team">[[home.nav.team]]</button>
+            <button id="nav-keys" class="nav-item" data-tab="keys">[[home.nav.keys]]</button>
+            <button id="nav-usage" class="nav-item" data-tab="usage">[[home.nav.usage]]</button>
+            <button id="nav-guide" class="nav-item" data-tab="guide">[[home.nav.guide]]</button>
+            <button id="nav-advanced" class="nav-item" data-tab="advanced">[[home.nav.advanced]]</button>
+        </nav>
+    </div>
+</header>
+
+<main>
+    <!-- HOME -->
+    <section id="view-home">
+        <div id="status-card" class="headline">
+            <span id="status-dot" class="dot"></span>
+            <div>
+                <div id="status-text" class="headline-text">[[home.loading]]</div>
+                <div id="next-step-text" class="headline-next"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-head">
+                <h2>[[team.workers.title]]</h2>
+                <div class="actions">
+                    <button id="btn-test-all" class="btn">[[home.button.test_all]]</button>
+                    <button id="btn-notify-test" class="btn btn-quiet">[[home.button.notify_test]]</button>
+                </div>
+            </div>
+            <div id="providers-container" class="rows"></div>
+        </div>
+
+        <div class="facts">
+            <div><span class="fact-label">[[home.card.today]]</span><span id="today-text"></span></div>
+            <div id="claude-fact" hidden><span class="fact-label">Claude</span><span id="claude-text"></span></div>
+            <div><span class="fact-label">[[home.card.pending]]</span><span id="pending-text"></span></div>
+        </div>
+    </section>
+
+    <!-- TEAM -->
+    <section id="view-team" hidden>
+        <h1>[[team.title]]</h1>
+        <div class="section-head"><h2>[[team.patron.title]]</h2></div>
+        <div class="inline">
+            <select id="patron-select" aria-label="[[team.patron.title]]"></select>
+            <span class="muted small">[[team.patron.order]] <span id="patron-handoff-order"></span></span>
+        </div>
+        <p class="note">[[team.patron.help]]</p>
+
+        <div class="section">
+            <div class="section-head">
+                <h2>[[team.workers.title]]</h2>
+                <button id="btn-toggle-add-worker" class="btn">[[team.workers.add]]</button>
+            </div>
+            <form id="team-add-form" class="form" hidden>
+                <div class="field">
+                    <label for="add-worker-type">[[team.add.type]]</label>
+                    <select id="add-worker-type">
+                        <option value="ollama">[[team.add.type_ollama]]</option>
+                        <option value="openai_compat">[[team.add.type_openai]]</option>
+                        <option value="cli_agent">[[team.add.type_cli]]</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="add-worker-name">[[team.add.name]]</label>
+                    <input id="add-worker-name" type="text" placeholder="openrouter" required>
+                </div>
+                <div class="field">
+                    <label for="add-worker-model">[[team.add.model]]</label>
+                    <input id="add-worker-model" type="text" placeholder="qwen2.5-coder:7b" required>
+                </div>
+                <div class="field">
+                    <label for="add-worker-tier">[[team.add.tier]]</label>
+                    <select id="add-worker-tier">
+                        <option value="1" selected>1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                    </select>
+                </div>
+                <div class="field" id="add-group-url">
+                    <label for="add-worker-url">[[team.add.base_url]]</label>
+                    <input id="add-worker-url" type="text" value="http://localhost:11434">
+                </div>
+                <div class="field" id="add-group-key-env" hidden>
+                    <label for="add-worker-key-env">[[team.add.key_env]]</label>
+                    <input id="add-worker-key-env" type="text" placeholder="OPENROUTER_API_KEY">
+                    <label class="field-check"><input id="add-worker-no-key" type="checkbox"> [[team.add.no_key]]</label>
+                </div>
+                <div class="field" id="add-group-command" hidden>
+                    <label for="add-worker-command">[[team.add.command]]</label>
+                    <input id="add-worker-command" type="text" placeholder="agy">
+                </div>
+                <div class="form-actions">
+                    <button id="btn-add-worker-submit" type="submit" class="btn btn-primary">[[team.add.submit]]</button>
+                    <button id="btn-add-worker-cancel" type="button" class="btn btn-quiet">[[team.add.cancel]]</button>
+                </div>
+            </form>
+            <div id="team-workers-container" class="rows"></div>
+        </div>
+    </section>
+
+    <!-- KEYS -->
+    <section id="view-keys" hidden>
+        <h1>[[keys.title]]</h1>
+        <p class="note">[[keys.info_box]]</p>
+        <div class="section">
+            <div id="keys-container" class="rows"></div>
+        </div>
+    </section>
+
+    <!-- USAGE -->
+    <section id="view-usage" hidden>
+        <h1>[[usage.title]]</h1>
+        <select id="usage-days" aria-label="[[usage.title]]">
+            <option value="7" selected>[[usage.days.7]]</option>
+            <option value="30">[[usage.days.30]]</option>
+        </select>
+        <div class="stats section">
+            <div><div id="usage-stat-runs" class="stat-value">-</div><div class="stat-label">[[usage.card.runs]]</div></div>
+            <div><div id="usage-stat-rate" class="stat-value">-</div><div class="stat-label">[[usage.card.ok_rate]]</div></div>
+            <div><div id="usage-stat-cost" class="stat-value">-</div><div class="stat-label">[[usage.card.cost]]</div></div>
+            <div><div id="usage-stat-savings" class="stat-value">-</div><div class="stat-label">[[usage.card.savings]]</div></div>
+        </div>
+        <p id="usage-savings-detail" class="note"></p>
+
+        <div class="section">
+            <div class="section-head"><h2>[[usage.chart.title]]</h2></div>
+            <div id="usage-chart-container" class="chart"></div>
+            <div class="legend">
+                <span><span class="dot is-ok"></span>[[usage.legend.ok]]</span>
+                <span><span class="dot is-fail"></span>[[usage.legend.failed]]</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-head"><h2>[[usage.table.provider]]</h2></div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>[[usage.table.provider]]</th>
+                        <th class="num">[[usage.table.runs]]</th>
+                        <th class="num">[[usage.table.success]]</th>
+                        <th class="num">[[usage.table.cost]]</th>
+                        <th class="num">[[usage.table.tokens]]</th>
+                    </tr>
+                </thead>
+                <tbody id="usage-providers-table"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- GUIDE -->
+    <section id="view-guide" hidden>
+        <h1>[[guide.title]]</h1>
+        <ol class="steps">
+            <li><h3>[[guide.step1.title]]</h3><p>[[guide.step1.desc]]</p></li>
+            <li><h3>[[guide.step2.title]]</h3><p>[[guide.step2.desc]]</p></li>
+            <li><h3>[[guide.step3.title]]</h3><p>[[guide.step3.desc]]</p></li>
+            <li><h3>[[guide.step4.title]]</h3><p>[[guide.step4.desc]]</p></li>
+            <li><h3>[[guide.step5.title]]</h3><p>[[guide.step5.desc]]</p></li>
+        </ol>
+        <p class="note">
+            [[guide.docs_link]]
+            <a href="[[@guide_url]]" target="_blank" rel="noopener noreferrer">docs/guide.md</a> ·
+            <a href="[[@guide_tr_url]]" target="_blank" rel="noopener noreferrer">docs/guide.tr.md</a>
+        </p>
+    </section>
+
+    <!-- ADVANCED -->
+    <section id="view-advanced" hidden>
+        <h1>[[advanced.title]]</h1>
+        <p class="note">[[advanced.read_only]]</p>
+
+        <div class="section">
+            <div class="section-head"><h2>[[advanced.card.circuit_breakers]]</h2></div>
+            <div id="adv-breakers-container" class="rows"></div>
+        </div>
+        <div class="section">
+            <div class="section-head"><h2>[[advanced.card.budgets]]</h2></div>
+            <div id="adv-budgets-container" class="plain-list"></div>
+        </div>
+        <div class="section">
+            <div class="section-head"><h2>[[advanced.card.profiles]]</h2></div>
+            <div id="adv-profiles-container" class="plain-list"></div>
+        </div>
+        <div class="section">
+            <div class="section-head"><h2>[[advanced.card.queue]]</h2></div>
+            <div id="adv-queue-container" class="rows"></div>
+        </div>
+        <div class="section">
+            <div class="section-head"><h2>[[advanced.card.handoff]]</h2></div>
+            <details>
+                <summary>[[advanced.handoff.show]]</summary>
+                <pre id="adv-handoff-container" class="brief"></pre>
+            </details>
+        </div>
+        <div class="section">
+            <div class="section-head"><h2>[[advanced.card.settings]]</h2></div>
+            <div id="adv-settings-container" class="plain-list"></div>
+        </div>
+    </section>
+</main>
+
+<div id="feedback" role="status" aria-live="polite"></div>
+
+<script>
+[[@script]]
+</script>
+</body>
+</html>

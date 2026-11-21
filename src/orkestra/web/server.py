@@ -30,11 +30,11 @@ from pathlib import Path
 from typing import Any
 
 from orkestra import __version__
-from orkestra.chief import keys, team
+from orkestra.chief import advanced, keys, team, usage
 from orkestra.chief.home import home_summary
 from orkestra.config.loader import load_config
-from orkestra.config.schema import NotifyCfg
-from orkestra.doctor import DoctorReport
+from orkestra.config.schema import Config, NotifyCfg
+from orkestra.doctor import Check, DoctorReport
 from orkestra.errors import ConfigError, InternalError, KeyringUnavailable, UsageError
 from orkestra.i18n import t
 from orkestra.notify import notify
@@ -54,6 +54,12 @@ def _default_doctor_runner(*, config_flag: Path | None = None) -> DoctorReport:
     from orkestra import doctor
 
     return asyncio.run(doctor.run_doctor(config_flag=config_flag))
+
+
+def _default_provider_checker(name: str, config: Config) -> list[Check]:
+    from orkestra import doctor
+
+    return asyncio.run(doctor.check_one(name, config))
 
 
 def _default_notify_send(config: NotifyCfg, title: str, message: str) -> list[Delivery]:
@@ -83,6 +89,8 @@ class WebServer(http.server.ThreadingHTTPServer):
         self.doctor_running: bool = False
         self.doctor_runner: Callable[..., DoctorReport] = _default_doctor_runner
         self.notify_sender: Callable[..., list[Delivery]] = _default_notify_send
+        # The Keys screen's "try" button: the doctor checks of one provider (network).
+        self.provider_checker: Callable[[str, Config], list[Check]] = _default_provider_checker
         self._doctor_lock = threading.RLock()
         super().__init__((config.host, config.port), WebHandler)
 
@@ -120,6 +128,7 @@ class WebServer(http.server.ThreadingHTTPServer):
 def _team_json(summary: team.TeamSummary) -> dict[str, Any]:
     return {
         "patron": summary.patron,
+        "handoff_order": list(summary.handoff_order),
         "chiefs": [
             {
                 "name": c.name,
@@ -147,6 +156,17 @@ def _team_json(summary: team.TeamSummary) -> dict[str, Any]:
             for w in summary.workers
         ],
     }
+
+
+USAGE_DAYS = (7, 30)
+
+
+def _usage_days(path: str) -> int:
+    """``?days=7`` (default) or ``?days=30``: the usage screen's two periods."""
+    raw = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query).get("days", ["7"])[0]
+    if not raw.isdigit() or int(raw) not in USAGE_DAYS:
+        raise UsageError(t("usage.error.days", value=raw[:20]))
+    return int(raw)
 
 
 class WebHandler(http.server.BaseHTTPRequestHandler):
@@ -231,6 +251,18 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
 
         return True
 
+    def _key_test(self, config: Config, var_name: str) -> list[dict[str, str]]:
+        """The checks of every provider whose key is ``var_name`` (only messages, no key)."""
+        names = next((s.providers for s in keys.keys_status(config) if s.var_name == var_name), ())
+        names = tuple(name for name in names if name in config.providers)
+        if not names:
+            raise UsageError(t("keys.error.not_used", var=var_name[:64]))
+        return [
+            {"provider": name, "status": check.status, "message": check.message}
+            for name in names
+            for check in self.server.provider_checker(name, config)
+        ]
+
     def do_GET(self) -> None:
         if not self._check_security():
             return
@@ -296,6 +328,28 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                 self._send_error_json(500, str(exc))
             return
 
+        if parsed == "/api/usage":
+            try:
+                days = _usage_days(self.path)
+                with closing(db.connect()) as conn:
+                    summary = usage.usage_summary(conn, days=days, now=db.local_now())
+                self._send_json(200, summary)
+            except UsageError as exc:
+                self._send_error_json(400, str(exc))
+            except Exception as exc:
+                self._send_error_json(500, str(exc))
+            return
+
+        if parsed == "/api/advanced":
+            try:
+                loaded = load_config(self.server.config_path)
+                with closing(db.connect()) as conn:
+                    summary = advanced.advanced_summary(loaded.config, conn, now=db.local_now())
+                self._send_json(200, summary)
+            except Exception as exc:
+                self._send_error_json(500, str(exc))
+            return
+
         self._send_error_json(404, "Not found")
 
     def do_POST(self) -> None:
@@ -340,7 +394,9 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                     team.set_patron(self.server.config_path, chief)
                 elif parsed == "/api/team/worker/toggle":
                     name = str(body.get("name", "")).strip()
-                    enabled = bool(body.get("enabled", True))
+                    enabled = body.get("enabled")
+                    if not isinstance(enabled, bool):
+                        raise UsageError(t("team.error.enabled_bool"))
                     team.toggle_worker(self.server.config_path, name, enabled)
                 elif parsed == "/api/team/worker/tier":
                     name = str(body.get("name", "")).strip()
@@ -361,6 +417,7 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                     base_url = body.get("base_url")
                     api_key_env = body.get("api_key_env")
                     command = body.get("command")
+                    no_key = body.get("no_key") is True
                     force = bool(body.get("force", False))
                     team.add_worker(
                         self.server.config_path,
@@ -371,6 +428,7 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                         base_url=str(base_url) if base_url else None,
                         api_key_env=str(api_key_env) if api_key_env else None,
                         command=str(command) if command else None,
+                        no_key=no_key,
                         force=force,
                     )
                 elif parsed == "/api/team/worker/remove":
@@ -406,6 +464,11 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                 elif parsed == "/api/keys/delete":
                     var_name = str(body.get("var_name", "")).strip()
                     keys.delete_key(var_name)
+                elif parsed == "/api/keys/test":
+                    var_name = str(body.get("var_name", "")).strip()
+                    config = load_config(self.server.config_path).config
+                    self._send_json(200, {"results": self._key_test(config, var_name)})
+                    return
                 else:
                     self._send_error_json(404, "Not found")
                     return
