@@ -257,14 +257,17 @@ def test_page_script_has_no_hardcoded_text(text: str) -> None:
     assert text not in script
 
 
-# 11. Every badge class the script sets has a style.
+# 11. Every class the script sets has a style (``el(tag, "a b", …)`` and ``is-<status>``).
 def test_every_class_set_by_the_script_has_a_style() -> None:
     page = ui.render_home_html("tok")
     style = page.split("<style>", 1)[1].split("</style>", 1)[0]
     script = page.split("<script>", 1)[1]
-    used = set(re.findall(r'"(tag-[a-z_]+|empty-text)"', script))
-    used |= set(re.findall(r'"tag (tag-[a-z_]+)"', script))
-    assert used, "the script sets badge classes"
+    used: set[str] = set()
+    for classes in re.findall(r'el\("[a-z0-9]+", "([^"]+)"', script):
+        used |= set(classes.split())
+    for listed in re.findall(r"const [A-Z_]+_STATES = \[([^\]]+)\]", script):
+        used |= {f"is-{name}" for name in re.findall(r'"([a-z_]+)"', listed)}
+    assert used, "the script sets classes"
     missing = sorted(name for name in used if f".{name}" not in style)
     assert missing == []
 
@@ -313,3 +316,74 @@ def test_add_form_has_a_no_key_choice() -> None:
     page = ui.render_home_html("tok")
     assert 'id="add-worker-no-key"' in page
     assert "no_key" in page.split("<script>", 1)[1]
+
+
+# 13. Redesign (2026-11-21, user: "çok AI gibi"): texts the script shows come from the catalog
+# by key, so a placeholder can never leak ("0 {count} bekleyen").
+def test_script_translations_are_the_catalog_keys_it_uses() -> None:
+    page = ui.render_home_html("tok")
+    script = page.split("<script>", 1)[1]
+    used = {k for k in re.findall(r'\btr\("([a-z0-9_.]+)"', script) if not k.endswith(".")}
+    assert "home.pending.unapplied" in used
+    found = re.search(r"const I18N = (\{.*?\});\n", script)
+    assert found is not None
+    catalog = json.loads(found.group(1))
+    assert used <= set(catalog)
+
+
+def test_claude_windows_have_readable_names() -> None:
+    script = ui.render_home_html("tok").split("<script>", 1)[1]
+    assert 'tr("home.claude." + w.name)' in script
+    assert t("home.claude.five_hour") and t("home.claude.seven_day")
+
+
+# 14. Keys: "try" a saved key with the doctor check of the providers that use it.
+def test_key_test_runs_the_providers_checks(cfg_file: Path, state_db: Path) -> None:
+    from orkestra.doctor import Check
+
+    cfg_file.write_text(
+        BASE_CONFIG
+        + "  cloud:\n    type: openai_compat\n    base_url: https://api.example.test/v1\n"
+        + "    api_key_env: CLOUD_API_KEY\n    models:\n      - id: m\n        tier: 2\n",
+        encoding="utf-8",
+    )
+    keys.set_key("CLOUD_API_KEY", "sk-test-secret-value-123456")
+    server = create_server(ServerConfig(port=0, token="tok", config_path=cfg_file))
+    seen: list[str] = []
+
+    def checker(name: str, config: object) -> list[Check]:
+        seen.append(name)
+        return [Check(f"provider:{name}", "ok", "reachable")]
+
+    server.provider_checker = checker
+    try:
+        body = json.dumps({"var_name": "CLOUD_API_KEY"}).encode("utf-8")
+        code, _, raw = simulate_request(server, "POST", "/api/keys/test?token=tok", body=body)
+        bad = json.dumps({"var_name": "NOT_USED_KEY"}).encode("utf-8")
+        bad_code, _, _ = simulate_request(server, "POST", "/api/keys/test?token=tok", body=bad)
+    finally:
+        server.server_close()
+    assert code == 200
+    assert seen == ["cloud"]
+    assert json.loads(raw)["results"] == [
+        {"provider": "cloud", "status": "ok", "message": "reachable"}
+    ]
+    assert b"sk-test-secret" not in raw
+    assert bad_code == 400
+
+
+# 15. The home row's limit text is translated ("runs 0/10" was the raw config name), and a
+# provider without limits and without use today shows none ("0 requests, $0.0000" was noise).
+def test_home_limit_text_is_translated_and_quiet_when_unused(
+    tmp_path: Path, state_db: Path
+) -> None:
+    from orkestra.chief.home import home_summary
+
+    path = tmp_path / "limits.yaml"
+    path.write_text(BASE_CONFIG + "    budget:\n      daily_runs: 10\n", encoding="utf-8")
+    config = loader.load_config(path).config
+    with closing(db.connect(state_db)) as conn:
+        summary = home_summary(config, conn, NOW, environ={})
+    rows = {row.name: row for row in summary.providers}
+    assert rows["agy"].limits_text == t("home.limit.daily_runs", used=0, value=10)
+    assert rows["local"].limits_text is None

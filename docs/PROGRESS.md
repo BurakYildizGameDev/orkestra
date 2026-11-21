@@ -73,6 +73,15 @@ agy 11c-b düzeltmelerini ve 11c-c, d, e'yi kesintisiz yaptı (PR #49–#52); Cl
 Doğrulama: sayfanın JS'i 5 dilde `node --check` ile geçerli; gerçek config ile canlı sunucu: anahtarsız 403, `/`, `/api/home|team|keys|usage|advanced|doctor` 200, `days=5` 400.
 **Ertelenen / bilinen:** `providers/pricing.py` fiyat çekerken anahtarı yalnız ortam değişkeninden okur (OpenRouter'ın model listesi anahtarsız da açık; etkisi yok). Ekranlar arası tarayıcı testi (Playwright) yok; plan gereği kullanıcının elle denemesi (patron Claude, agy + OpenRouter ekleme, anahtar girme, kullanım ekranı) bekliyor.
 
+### Faz 11c – Arayüzün yeniden tasarımı (kullanıcı isteği, 2026-11-21)
+
+Kullanıcı arayüzü denedi: "çalışıyor ama çok AI gibi". Yön kullanıcıdan ("sade araç"): kutu yerine çizgi ve boşluk, tek vurgu rengi, durum bir cümle + renkli nokta, açık/koyu tema sistemden.
+- `web/ui.py` 2000 satırlık f-string'den ince bir katmana indi; sayfa `web/assets/index.html` (metinler `[[katalog.anahtarı]]`, HTML kaçışlı), `app.css`, `app.js` (her metin `tr("anahtar")`; sayfaya yalnız betiğin kullandığı anahtarlar gider, `innerHTML` yok). Hâlâ tek yanıt, CDN yok.
+- Üst menü, sağlayıcılar satır listesi; teknik türler okunur ("Kod ajanı", "API servisi", "Yerel model"); Claude kotası "5 saatlik %31 · haftalık %47" ("5sa/7g" yerine); kullanım grafiği dönemin her gününü gösterir, yazılar artık uzamıyor; Gelişmiş yalnız gösterdiğini söyler, devir özeti katlanır.
+- Hatalar: ana ekranda **"0 {count} bekleyen"** (yer tutucu doldurulmuyordu); sağlayıcı satırında çevrilmemiş "runs 0/10" (`home.limit.*`, 5 dil) ve kullanımı olmayan sağlayıcıda "0 istek, $0.0000" gürültüsü.
+- Anahtarlar ekranı: (1) anahtar ortam değişkenindeyse kaydetme kutusu yerine "önce ortam değişkeni okunur, burada kaydedilen kullanılmaz" notu (eskiden kaydedilen sessizce yok sayılırdı); (2) **Dene** düğmesi: o anahtarı kullanan sağlayıcıların doctor kontrolü (`POST /api/keys/test`, `doctor.check_one`; yanıt yalnız durum ve mesaj); (3) bilgi kutusu düz dille.
+- Testler (`test_web_11c_review.py` #13–#15): betikteki her `tr()` anahtarı sayfada, Claude pencereleri okunur adla, anahtar denemesi doğru sağlayıcıyı çalıştırıyor ve anahtarı döndürmüyor, kullanılmayan değişken 400, sınır metni çevrili. Var olan testlerin hiçbiri değişmedi. JS 5 dilde `node --check`; açık ve koyu temada ekran görüntüsüyle bakıldı.
+
 ### Faz 11c-e – Kullanım, Rehber, Gelişmiş ve Masaüstü Penceresi (2026-11-21)
 
 - İsteğe bağlı bağımlılık: `pywebview>=5.0` `[project.optional-dependencies]` altında `window = ["pywebview>=5.0"]` olarak eklendi (D-123). `orkestra ui --window` seçeneği eklendi; `pywebview` yoksa CLI çökmez, stderr'e `ui.web.window_fallback` uyarısını basar ve varsayılan tarayıcı moduna düşer. Kurulu olduğunda 1280x800 çözünürlüğünde yerel masaüstü penceresi açar.

@@ -33,8 +33,8 @@ from orkestra import __version__
 from orkestra.chief import advanced, keys, team, usage
 from orkestra.chief.home import home_summary
 from orkestra.config.loader import load_config
-from orkestra.config.schema import NotifyCfg
-from orkestra.doctor import DoctorReport
+from orkestra.config.schema import Config, NotifyCfg
+from orkestra.doctor import Check, DoctorReport
 from orkestra.errors import ConfigError, InternalError, KeyringUnavailable, UsageError
 from orkestra.i18n import t
 from orkestra.notify import notify
@@ -54,6 +54,12 @@ def _default_doctor_runner(*, config_flag: Path | None = None) -> DoctorReport:
     from orkestra import doctor
 
     return asyncio.run(doctor.run_doctor(config_flag=config_flag))
+
+
+def _default_provider_checker(name: str, config: Config) -> list[Check]:
+    from orkestra import doctor
+
+    return asyncio.run(doctor.check_one(name, config))
 
 
 def _default_notify_send(config: NotifyCfg, title: str, message: str) -> list[Delivery]:
@@ -83,6 +89,8 @@ class WebServer(http.server.ThreadingHTTPServer):
         self.doctor_running: bool = False
         self.doctor_runner: Callable[..., DoctorReport] = _default_doctor_runner
         self.notify_sender: Callable[..., list[Delivery]] = _default_notify_send
+        # The Keys screen's "try" button: the doctor checks of one provider (network).
+        self.provider_checker: Callable[[str, Config], list[Check]] = _default_provider_checker
         self._doctor_lock = threading.RLock()
         super().__init__((config.host, config.port), WebHandler)
 
@@ -242,6 +250,18 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
             return False
 
         return True
+
+    def _key_test(self, config: Config, var_name: str) -> list[dict[str, str]]:
+        """The checks of every provider whose key is ``var_name`` (only messages, no key)."""
+        names = next((s.providers for s in keys.keys_status(config) if s.var_name == var_name), ())
+        names = tuple(name for name in names if name in config.providers)
+        if not names:
+            raise UsageError(t("keys.error.not_used", var=var_name[:64]))
+        return [
+            {"provider": name, "status": check.status, "message": check.message}
+            for name in names
+            for check in self.server.provider_checker(name, config)
+        ]
 
     def do_GET(self) -> None:
         if not self._check_security():
@@ -444,6 +464,11 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                 elif parsed == "/api/keys/delete":
                     var_name = str(body.get("var_name", "")).strip()
                     keys.delete_key(var_name)
+                elif parsed == "/api/keys/test":
+                    var_name = str(body.get("var_name", "")).strip()
+                    config = load_config(self.server.config_path).config
+                    self._send_json(200, {"results": self._key_test(config, var_name)})
+                    return
                 else:
                     self._send_error_json(404, "Not found")
                     return

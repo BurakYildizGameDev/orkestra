@@ -78,15 +78,16 @@ class HomeSummary:
         return asdict(self)
 
 
-def _format_limits(row: registry.ProviderRow) -> str:
+def _format_limits(row: registry.ProviderRow) -> str | None:
+    """Today's use against each daily limit; without limits, today's use, or nothing at all."""
     parts = [
-        f"{limit.limit.removeprefix('daily_')} {limit.used:g}/{limit.value:g}"
+        t(f"home.limit.{limit.limit}", used=f"{limit.used:g}", value=f"{limit.value:g}")
         for limit in row.limits
     ]
-    if not parts:
+    if not parts and (row.used.requests or row.used.cost_usd):
         cost = f"{row.used.cost_usd:.4f}"
         parts = [t("status.budget.used", requests=row.used.requests, cost=cost)]
-    return ", ".join(parts)
+    return ", ".join(parts) or None
 
 
 def _provider_key_var(cfg: Any) -> str:
