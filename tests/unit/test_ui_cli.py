@@ -78,3 +78,41 @@ def test_ui_no_browser_starts_server_and_does_not_open_browser(
     assert "127.0.0.1" in out
     assert "token=" in out
     mock_open.assert_not_called()
+
+
+def test_ui_opens_the_browser_with_the_tokenized_address(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import webbrowser
+
+    from orkestra.web import server
+
+    mock_open = MagicMock()
+    monkeypatch.setattr(webbrowser, "open", mock_open)
+    monkeypatch.setattr(server.WebServer, "serve_forever", MagicMock(side_effect=KeyboardInterrupt))
+
+    code, out, _ = _run(["ui"], capsys)
+    assert code == 0
+    mock_open.assert_called_once()
+    url = mock_open.call_args.args[0]
+    assert url.startswith("http://127.0.0.1:")
+    assert "?token=" in url
+    assert url in out
+
+
+def test_ui_busy_port_is_a_clear_usage_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import webbrowser
+
+    from orkestra.web import server
+
+    monkeypatch.setattr(webbrowser, "open", MagicMock())
+    taken = server.create_server(server.ServerConfig(port=0, token="tok"))
+    try:
+        code, _, err = _run(["ui", "--no-browser", "--port", str(taken.server_port)], capsys)
+    finally:
+        taken.server_close()
+    assert code == 2
+    assert str(taken.server_port) in err
+    assert "Traceback" not in err

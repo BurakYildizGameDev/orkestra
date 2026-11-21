@@ -1234,3 +1234,11 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 2. *Olay döngüsü (event loop) çatışması yok:* Orkestra'nın servisleri senkron fonksiyonlardan `asyncio.run()` ile asenkron sağlayıcıları çağırır. `uvicorn` (ASGI) içinde istekler zaten çalışan bir `asyncio` olay döngüsünde koşar; orada senkron bir servis çağrıldığında `asyncio.run()` `RuntimeError: This event loop is already running` hatası verir. `ThreadingHTTPServer`'da her istek ayrı bir iş parçacığında koştuğu için thread içinde `asyncio.run()` sorunsuz çalışır.
 3. *Güvenlik gereksinimlerinin tam denetimi:* Yalnız `127.0.0.1` dinleme, dinamik boş port (port 0), `Host` başlığı doğrulaması (`127.0.0.1:<port>`), DNS rebinding ve CSRF koruması için CORS'un kapalı olması ve tek kullanımlık oturum token'ı doğrudan işleyicide (`secrets.compare_digest`) uygulanmıştır.
 **Sonuç:** `orkestra ui` varsayılan olarak yerel web sunucusunu açar; `--tui` eski terminal arayüzünü açar; `--no-browser` otomatik tarayıcı açmayı engeller; `--port` port belirtir.
+**Kod denetimi (Claude, 2026-11-21, PR #48):**
+1. `secrets.compare_digest` ASCII dışı `str`'de `TypeError` atıyor; `?token=%C3%A9` isteği yanıtsız kapanıyor, stderr'e iz basılıyordu. Token'lar UTF-8 bayt olarak karşılaştırılır, sonuç 403.
+2. `HTTPServer.allow_reuse_address` Windows'ta `SO_REUSEADDR` demek; bu, dinlemedeki bir portu ikinci bir sokete de bağlatıyor (iki `orkestra ui --port N` aynı portta, istekler rastgele birine). Windows'ta `allow_reuse_address` kapalı ve `SO_EXCLUSIVEADDRUSE` açık; POSIX'te davranış aynı.
+3. Dolu/izinsiz port `OSError` olarak iç hataya (kod 5) düşüyordu; artık `UsageError` (kod 2), `ui.web.error.port` 5 dilde.
+4. Adres token taşıdığı için her yanıta `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`.
+5. `127.0.0.1` dışı host koruması `ValueError` yerine `errors.InternalError` (AGENTS kuralı), testi eklendi.
+6. `--window` 11c-e'nin işi; 11c-a'daki yarım hâli (pywebview kuruluyken de tarayıcı açıyordu, mesaj yoktu) ve iki metin anahtarı çıkarıldı.
+7. README (en + tr) terminal arayüzü satırı `orkestra ui --tui`.

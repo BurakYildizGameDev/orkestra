@@ -189,7 +189,6 @@ def register(app: typer.Typer, config_app: typer.Typer) -> None:
         port: Annotated[
             int, typer.Option("--port", min=0, max=65535, help=t("cli.ui.option.port"))
         ] = 0,
-        window: Annotated[bool, typer.Option("--window", help=t("cli.ui.option.window"))] = False,
     ) -> None:
         if tui:
             from orkestra.tui import app as tui_app
@@ -202,12 +201,6 @@ def register(app: typer.Typer, config_app: typer.Typer) -> None:
         import webbrowser
 
         from orkestra.web import server
-
-        if window:
-            try:
-                import webview  # type: ignore # noqa: F401
-            except ImportError:
-                typer.echo(t("ui.web.window_fallback"), err=True)
 
         config_path = ctx.ensure_object(_State).config_path
         srv = server.create_server(

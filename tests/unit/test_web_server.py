@@ -220,3 +220,52 @@ def test_not_found_endpoint() -> None:
         assert code == 404
     finally:
         server.server_close()
+
+
+def test_server_refuses_a_host_other_than_127_0_0_1() -> None:
+    import pytest
+
+    from orkestra.errors import InternalError
+
+    with pytest.raises(InternalError):
+        create_server(ServerConfig(host="0.0.0.0", port=0, token="tok"))
+
+
+def test_non_ascii_token_returns_403_instead_of_dropping_the_connection() -> None:
+    server = create_server(ServerConfig(host="127.0.0.1", port=0, token="test-tok"))
+    try:
+        code, _, _ = simulate_request(server, "GET", "/api/health?token=%C3%A9")
+        assert code == 403
+        code, _, _ = simulate_request(
+            server, "GET", "/api/health", headers={"X-Orkestra-Token": "é"}
+        )
+        assert code == 403
+    finally:
+        server.server_close()
+
+
+def test_busy_port_is_a_usage_error_and_never_shares_the_port() -> None:
+    import pytest
+
+    from orkestra.errors import UsageError
+
+    first = create_server(ServerConfig(host="127.0.0.1", port=0, token="tok"))
+    try:
+        with pytest.raises(UsageError) as exc_info:
+            create_server(ServerConfig(host="127.0.0.1", port=first.server_port, token="tok"))
+        assert str(first.server_port) in exc_info.value.message
+    finally:
+        first.server_close()
+
+
+def test_responses_are_not_cached_framed_or_leaked_by_referrer() -> None:
+    server = create_server(ServerConfig(host="127.0.0.1", port=0, token="test-tok"))
+    try:
+        for path in (f"/?token={server.token}", f"/api/health?token={server.token}", "/api/health"):
+            _, headers, _ = simulate_request(server, "GET", path)
+            assert headers.get("cache-control") == "no-store"
+            assert headers.get("referrer-policy") == "no-referrer"
+            assert headers.get("x-frame-options") == "DENY"
+            assert headers.get("x-content-type-options") == "nosniff"
+    finally:
+        server.server_close()

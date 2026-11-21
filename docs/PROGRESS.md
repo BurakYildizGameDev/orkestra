@@ -58,9 +58,10 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 - `web/server.py`: Standart kütüphane `http.server.ThreadingHTTPServer` tabanlı yerel web sunucusu (D-121, sıfır ek bağımlılık; istek başına iş parçacığı sayesinde döngü çatışması yok). Yalnız `127.0.0.1` dinler; dinamik port (port 0); rastgele kriptografik oturum anahtarı (`secrets.token_urlsafe`); `Host` başlığı denetimi (`127.0.0.1:<port>`); CORS tamamen kapalı ve yabancı `Origin` reddi; token query parametresi (`?token=...`), `Authorization: Bearer ...` veya `X-Orkestra-Token` ile doğrulanır; eksik/yanlış token veya geçersiz `Host` 403 Forbidden döner.
 - Şimdilik kök sayfa (`/` -> HTML) ve sağlık kontrolü (`/api/health` -> JSON `{"ok": true, "version": ...}`).
-- `commands/setup.py`: `orkestra ui` varsayılan olarak web sunucusunu açar, adresi basar ve tarayıcıyı açar; `--no-browser` tarayıcıyı açmaz; `--tui` Textual terminal arayüzünü açar; `--port` port belirtir; `--window` pywebview kurulu değilse tarayıcıya geçer (11c-e hazırlığı). Ctrl+C temiz kapanır.
+- `commands/setup.py`: `orkestra ui` varsayılan olarak web sunucusunu açar, adresi basar ve tarayıcıyı açar; `--no-browser` tarayıcıyı açmaz; `--tui` Textual terminal arayüzünü açar; `--port` port belirtir; dolu port açık bir hata mesajı verir (kod 2). Ctrl+C temiz kapanır. `--window` 11c-e'de (denetimde bu parçadan çıkarıldı).
 - i18n: Yeni seçenekler ve durum mesajları 5 dilde (`en`, `tr`, `de`, `es`, `fr`).
-- Testler: 16 yeni test (`test_web_server.py`: 13 test; `test_ui_cli.py`: 3 test; `test_tui.py`: `--tui` gezinme bayrağı güncellemesi).
+- Testler: 22 yeni test (`test_web_server.py`: 17 test; `test_ui_cli.py`: 5 test; `test_tui.py`: `--tui` gezinme bayrağı güncellemesi). README'lerde terminal arayüzü satırı `orkestra ui --tui` oldu.
+- Kod denetimi (Claude, PR #48): ASCII dışı token bağlantıyı yanıtsız düşürüyordu (`compare_digest` `TypeError`) → bayt karşılaştırma, 403; Windows'ta `SO_REUSEADDR` yüzünden ikinci sunucu aynı portu paylaşabiliyordu → Windows'ta `SO_EXCLUSIVEADDRUSE`; dolu port iç hata (kod 5) yerine `UsageError` (`ui.web.error.port`, 5 dil); yanıtlara `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` (adres token taşıyor); `127.0.0.1` dışı host `ValueError` yerine `InternalError`; plan dışı yarım `--window` çıkarıldı (11c-e). Ayrıntı D-121 sonunda.
 
 ### Faz 6b (3. madde) – `doctor --mcp` (2026-11-21)
 

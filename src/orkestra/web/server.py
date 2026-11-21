@@ -8,7 +8,9 @@ Security rules:
 - CORS disabled: cross-origin browser requests (e.g. from malicious sites) are rejected;
 - token must be provided via query param `?token=...`,
   `Authorization: Bearer ...`, or `X-Orkestra-Token: ...`;
-- missing or invalid token yields 403 Forbidden.
+- missing or invalid token yields 403 Forbidden;
+- responses are never cached, framed or sent as a referrer (the address carries the token);
+- on Windows the port is bound exclusively, so a second server cannot share it.
 """
 
 from __future__ import annotations
@@ -16,12 +18,23 @@ from __future__ import annotations
 import http.server
 import json
 import secrets
+import socket
+import sys
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from orkestra import __version__
+from orkestra.errors import InternalError, UsageError
+from orkestra.i18n import t
+
+_SECURITY_HEADERS = (
+    ("Cache-Control", "no-store"),
+    ("Referrer-Policy", "no-referrer"),
+    ("X-Frame-Options", "DENY"),
+    ("X-Content-Type-Options", "nosniff"),
+)
 
 
 @dataclass(frozen=True)
@@ -34,13 +47,21 @@ class ServerConfig:
 
 class WebServer(http.server.ThreadingHTTPServer):
     server_port: int  # set by HTTPServer.server_bind
+    # On Windows SO_REUSEADDR lets a second socket bind a port that is already listening.
+    allow_reuse_address = sys.platform != "win32"
 
     def __init__(self, config: ServerConfig) -> None:
         if config.host != "127.0.0.1":
-            raise ValueError(f"WebServer must bind strictly to 127.0.0.1, got {config.host!r}")
+            raise InternalError(f"WebServer must bind strictly to 127.0.0.1, got {config.host!r}")
         self.token = config.token or secrets.token_urlsafe(24)
         self.config_path = config.config_path
         super().__init__((config.host, config.port), WebHandler)
+
+    def server_bind(self) -> None:
+        exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+        if exclusive is not None:
+            self.socket.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+        super().server_bind()
 
 
 class WebHandler(http.server.BaseHTTPRequestHandler):
@@ -53,23 +74,22 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
         # Suppress default stderr request logging to keep CLI output clean
         pass
 
-    def _send_json(self, status_code: int, data: dict[str, Any]) -> None:
-        body = json.dumps(data, ensure_ascii=True).encode("utf-8")
+    def _send(self, status_code: int, content_type: str, body: bytes) -> None:
         self.send_response(status_code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        for name, value in _SECURITY_HEADERS:
+            self.send_header(name, value)
         # No CORS headers
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_json(self, status_code: int, data: dict[str, Any]) -> None:
+        body = json.dumps(data, ensure_ascii=True).encode("utf-8")
+        self._send(status_code, "application/json; charset=utf-8", body)
+
     def _send_html(self, status_code: int, html: str) -> None:
-        body = html.encode("utf-8")
-        self.send_response(status_code)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        # No CORS headers
-        self.end_headers()
-        self.wfile.write(body)
+        self._send(status_code, "text/html; charset=utf-8", html.encode("utf-8"))
 
     def _send_error_json(self, status_code: int, message: str) -> None:
         self._send_json(status_code, {"error": message})
@@ -104,7 +124,10 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
 
         token = token_query or token_auth or token_custom
 
-        if not token or not secrets.compare_digest(token, self.server.token):
+        # compare_digest rejects non-ASCII str with TypeError; compare bytes instead.
+        if not token or not secrets.compare_digest(
+            token.encode("utf-8"), self.server.token.encode("utf-8")
+        ):
             self._send_error_json(403, "Forbidden")
             return False
 
@@ -144,4 +167,8 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
 
 
 def create_server(config: ServerConfig) -> WebServer:
-    return WebServer(config)
+    try:
+        return WebServer(config)
+    except OSError as exc:
+        reason = exc.strerror or str(exc)
+        raise UsageError(t("ui.web.error.port", port=config.port, reason=reason)) from exc
