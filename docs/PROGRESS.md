@@ -27,7 +27,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
-| 11c – Web arayüzü (ek) | ⏳ | 2026-11-21 | 11c-a (D-121) ve 11c-b veri katmanı ve ana ekran bitti; 11c-c…11c-e sürüyor |
+| 11c – Web arayüzü (ek) | ⏳ | 2026-11-21 | 11c-a (D-121), 11c-b ana ekran ve 11c-c ekip ekranı bitti; 11c-d…11c-e sürüyor |
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (ek) | ✅ | 2026-11-20 | `gc` eski `runs`/`usage`/`queue` satırlarını siler (en az 35 gün kalır), `queue remove --finished`, `notify.ntfy_url`, `desktop-notifier<7`, `doctor` düzenlenebilir kurulum uyarısı (D-104) |
@@ -53,6 +53,16 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 11c-c – Ekip ekranı (2026-11-21)
+
+- `chief/team.py`: `team_summary(config, conn) -> TeamSummary` veri katmanı servisi yazıldı. Patron (aktif şef: `defaults.chief`), mevcut şefler (`chiefs`) ve çalışan sağlayıcılar (`providers`) özetini döner. `set_patron`, `toggle_worker`, `set_worker_tier`, `set_worker_model`, `reorder_workers`, `add_worker`, `remove_worker`, `grant_consent` servis fonksiyonları eklendi. Bütün config yazımları `config/writer.py` üzerinden ruamel round-trip ile yapılır; kullanıcının yorumları, anahtar sırası ve biçimlendirmesi korunur; geçersiz girişler kaydedilmeden reddedilir; otomatik yedek oluşturulur.
+- Yeni çalışan ekleme (`add_worker`): Ollama (yerel, varsayılan http://localhost:11434, kademe 1), OpenAI uyumlu bulut servisleri (`provider_entry.add` mantığını yeniden kullanır; ham anahtar yapıştırılması engellenir, kademe 2) ve CLI ajanları (agy, codex, generic; kademe 3) destekler.
+- `web/server.py`: `GET /api/team` (ekip durumu JSON), `POST /api/team/patron` (şef seçimi), `POST /api/team/worker/toggle` (aç-kapa), `POST /api/team/worker/tier` (kademe güncelleme), `POST /api/team/worker/model` (model seçimi), `POST /api/team/worker/reorder` (çalışan sıralama), `POST /api/team/worker/add` (çalışan ekleme), `POST /api/team/worker/remove` (çalışan silme), `POST /api/team/consent` (ekrandan onay verme) REST uç noktaları eklendi. Hepsi oturum anahtarı (token) denetimli ve JSON döner.
+- `web/ui.py`: Sekme geçiş altyapısı kuruldu (Ana ekran ↔ Ekip). Ekip ekranı: Patron kartı (şef seçimi açılır menüsü ve devir sırası), Çalışanlar kartı (sıralama düğmeleri ▲/▼, ad ve tür rozetleri, kademe seçimi, model seçimi, aç/kapa düğmesi, onay durumu rozeti ve onaylama düğmesi, silme düğmesi), ve Yeni Çalışan Ekle formu (türe göre dinamik alanlar, hata ve başarı geri bildirimleri). Sıfır CDN bağımlılığı; kaçışsız `innerHTML` kullanılmadı (tüm DOM `createElement` ve `textContent` ile kuruldu); tüm metinler `I18N` sözlüğü üzerinden 5 dilde (`en`, `tr`, `de`, `es`, `fr`).
+- i18n: Yeni `team.*` anahtarları 5 dile (`en`, `tr`, `de`, `es`, `fr`) eklendi.
+- Testler: `tests/unit/test_team.py` (15 test) ve `tests/unit/test_web_server.py` (`test_team_api_endpoints` ile 10 API operasyonu) eklendi.
+- Kod denetimi: Claude denetimi bekliyor.
 
 ### Faz 11c-b – Veri katmanı ve ana ekran (2026-11-21)
 
