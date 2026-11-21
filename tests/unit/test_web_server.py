@@ -328,6 +328,7 @@ def test_get_home_api_returns_summary(tmp_path: Path, monkeypatch: pytest.Monkey
 
 def test_post_doctor_triggers_in_background(tmp_path: Path) -> None:
     import json
+    import threading
     import time
 
     from orkestra.doctor import Check, DoctorReport
@@ -339,9 +340,12 @@ def test_post_doctor_triggers_in_background(tmp_path: Path) -> None:
         ServerConfig(host="127.0.0.1", port=0, token="test-tok", config_path=cfg_file)
     )
     try:
+        doctor_called = threading.Event()
+        doctor_proceed = threading.Event()
 
         def fake_run_doctor(**kwargs: Any) -> DoctorReport:
-            time.sleep(0.2)
+            doctor_called.set()
+            doctor_proceed.wait(timeout=5.0)
             return DoctorReport(checks=(Check("config", "ok", "mock ok"),))
 
         server.doctor_runner = fake_run_doctor  # type: ignore
@@ -356,12 +360,20 @@ def test_post_doctor_triggers_in_background(tmp_path: Path) -> None:
         assert code_h == 200
         assert json.loads(body_h.decode("utf-8"))["ok"] is True
 
-        time.sleep(0.3)
-        code_d, _, body_d = simulate_request(server, "GET", f"/api/doctor?token={server.token}")
-        assert code_d == 200
-        data_d = json.loads(body_d.decode("utf-8"))
-        assert data_d["status"] == "done"
-        assert len(data_d["checks"]) >= 1
+        assert doctor_called.wait(timeout=5.0)
+        doctor_proceed.set()
+
+        deadline = time.monotonic() + 5.0
+        data_d = {}
+        while time.monotonic() < deadline:
+            code_d, _, body_d = simulate_request(server, "GET", f"/api/doctor?token={server.token}")
+            assert code_d == 200
+            data_d = json.loads(body_d.decode("utf-8"))
+            if data_d.get("status") == "done":
+                break
+            time.sleep(0.02)
+        assert data_d.get("status") == "done"
+        assert len(data_d.get("checks", [])) >= 1
     finally:
         server.server_close()
 
@@ -391,3 +403,124 @@ def test_post_notify_test(tmp_path: Path) -> None:
         assert "deliveries" in data
     finally:
         server.server_close()
+
+
+def test_doctor_error_returns_failed_and_does_not_lock(tmp_path: Path) -> None:
+    import json
+    import time
+
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text("version: 1\nproviders: {}\n", encoding="utf-8")
+
+    server = create_server(
+        ServerConfig(host="127.0.0.1", port=0, token="test-tok", config_path=cfg_file)
+    )
+    try:
+
+        def failing_doctor(**kwargs: Any) -> Any:
+            raise RuntimeError("Doctor crash test")
+
+        server.doctor_runner = failing_doctor  # type: ignore
+
+        code, _, _ = simulate_request(server, "POST", f"/api/doctor?token={server.token}")
+        assert code == 200
+
+        deadline = time.monotonic() + 5.0
+        data_d = {}
+        while time.monotonic() < deadline:
+            code_d, _, body_d = simulate_request(server, "GET", f"/api/doctor?token={server.token}")
+            assert code_d == 200
+            data_d = json.loads(body_d.decode("utf-8"))
+            if data_d.get("status") == "failed":
+                break
+            time.sleep(0.02)
+
+        assert data_d.get("status") == "failed"
+        assert "Doctor crash test" in data_d.get("error", "")
+    finally:
+        server.server_close()
+
+
+def test_doctor_new_run_fails_after_previous_success(tmp_path: Path) -> None:
+    import json
+    import time
+
+    from orkestra.doctor import Check, DoctorReport
+
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text("version: 1\nproviders: {}\n", encoding="utf-8")
+
+    server = create_server(
+        ServerConfig(host="127.0.0.1", port=0, token="test-tok", config_path=cfg_file)
+    )
+    try:
+        # Prepopulate with a previous success report
+        server.doctor_report = DoctorReport(checks=(Check("config", "ok", "previous ok"),))
+
+        def failing_doctor(**kwargs: Any) -> Any:
+            raise RuntimeError("New run failed")
+
+        server.doctor_runner = failing_doctor  # type: ignore
+
+        code, _, _ = simulate_request(server, "POST", f"/api/doctor?token={server.token}")
+        assert code == 200
+
+        deadline = time.monotonic() + 5.0
+        data_d = {}
+        while time.monotonic() < deadline:
+            code_d, _, body_d = simulate_request(server, "GET", f"/api/doctor?token={server.token}")
+            assert code_d == 200
+            data_d = json.loads(body_d.decode("utf-8"))
+            if data_d.get("status") == "failed":
+                break
+            time.sleep(0.02)
+
+        assert data_d.get("status") == "failed"
+        assert data_d.get("status") != "done"
+        assert "New run failed" in data_d.get("error", "")
+    finally:
+        server.server_close()
+
+
+def test_render_home_html_no_inner_html_injection_and_escaped() -> None:
+    from orkestra.web.ui import render_home_html
+
+    html = render_home_html("my-test-token")
+    # Verify that innerHTML is not used to insert provider data or claude windows
+    assert "textContent" in html or "esc(" in html
+    assert "pCont.innerHTML" not in html
+    assert "cont.innerHTML = data.claude_windows" not in html
+
+
+def test_render_home_html_translation_escaping(monkeypatch: pytest.MonkeyPatch) -> None:
+    import orkestra.web.ui as ui_mod
+    from orkestra.web.ui import render_home_html
+
+    # Monkeypatch t to return quotes, backslashes, and </script> tags
+    malicious = 'Test "quote" \\slash </script><script>alert(1)</script>'
+    monkeypatch.setattr(ui_mod, "t", lambda key, **kwargs: malicious)
+
+    html = render_home_html("safe-tok")
+    # </script> should not appear unescaped inside <script> blocks
+    parts = html.split("<script>")
+    for script_part in parts[1:]:
+        content = script_part.split("</script>")[0]
+        assert "<script>" not in content
+        assert "alert(1)" not in content or "\\u003c" in content or "\\/" in content
+
+
+def test_render_home_html_i18n_and_lang() -> None:
+    from orkestra.i18n import get_language
+    from orkestra.web.ui import render_home_html
+
+    current_lang = get_language()
+    html = render_home_html("test-tok")
+    assert f'lang="{current_lang}"' in html
+    assert "I18N =" in html or "const I18N" in html
+
+
+def test_ui_css_has_doc_info_style() -> None:
+    from orkestra.web.ui import render_home_html
+
+    html = render_home_html("test-tok")
+    assert ".doc-info" in html

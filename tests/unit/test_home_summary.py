@@ -269,3 +269,51 @@ def test_home_summary_doctor_prefix_does_not_match_other_provider(
     p_map = {p.name: p for p in summary.providers}
     assert p_map["ollama"].doctor_status is None
     assert p_map["ollama"].status == "ready"
+
+
+def test_home_summary_paused_until_multiday(conn: sqlite3.Connection) -> None:
+    cfg = _config()
+    consent.grant(conn, "ollama", cfg.providers["ollama"], NOW)
+    consent.grant(conn, "openrouter", cfg.providers["openrouter"], NOW)
+    env = {"OPENROUTER_API_KEY": "sk-secret-test"}
+
+    tomorrow = NOW + timedelta(days=1, hours=2)
+    health.record_failure(conn, "openrouter", ProviderAuthError("auth error"), NOW)
+    with conn:
+        conn.execute(
+            "UPDATE health SET open_until = ? WHERE provider = 'openrouter'",
+            (tomorrow.isoformat(),),
+        )
+
+    summary = home_summary(cfg, conn, NOW, environ=env)
+    p_map = {p.name: p for p in summary.providers}
+    assert p_map["openrouter"].status == "paused"
+    assert f"{tomorrow:%Y-%m-%d}" in p_map["openrouter"].status_text
+
+
+def test_home_summary_single_paused_warn_next_step_is_wait_or_reset(
+    conn: sqlite3.Connection,
+) -> None:
+    from orkestra.i18n import t
+
+    cfg, env = _ready_both(conn)
+    health.record_failure(conn, "openrouter", ProviderAuthError("auth error"), NOW)
+
+    summary = home_summary(cfg, conn, NOW, environ=env)
+    assert summary.status == "warn"
+    assert summary.next_step == t("home.next_step.wait_or_reset")
+
+
+def test_home_summary_queue_failed_warn_suggests_queue_list(
+    conn: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg, env = _ready_both(conn)
+
+    monkeypatch.setattr(
+        "orkestra.chief.home.queue_store.counts",
+        lambda c, failed_since: {"pending": 0, "running": 0, "failed": 1},
+    )
+
+    summary = home_summary(cfg, conn, NOW, environ=env)
+    assert summary.status == "warn"
+    assert "queue list" in summary.next_step

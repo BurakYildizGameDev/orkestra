@@ -157,7 +157,7 @@ def home_summary(
                 else:
                     st_text = t(
                         "home.provider.paused_until",
-                        time=f"{row.health.open_until:%H:%M}",
+                        until=health.until_text(row.health.open_until, now),
                     )
             else:
                 st_text = t("home.provider.paused")
@@ -291,7 +291,7 @@ def home_summary(
             elif pending.queue_pending > 0:
                 next_step = t("home.next_step.queue", pending=pending.queue_pending)
             else:
-                next_step = t("home.next_step.ready")
+                next_step = t("home.next_step.wait_or_reset")
         elif first_check_warn is not None:
             overall_text = t("home.status.warn_check_warn", provider=first_check_warn.name)
             next_step = t(
@@ -306,7 +306,7 @@ def home_summary(
             elif pending.queue_pending > 0:
                 next_step = t("home.next_step.queue", pending=pending.queue_pending)
             else:
-                next_step = t("home.next_step.ready")
+                next_step = t("home.next_step.queue_failed")
         else:
             overall_text = t("home.status.warn_unapplied", count=pending.unapplied_runs)
             next_step = t("home.next_step.unapplied", count=pending.unapplied_runs)

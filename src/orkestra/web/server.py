@@ -78,10 +78,11 @@ class WebServer(http.server.ThreadingHTTPServer):
         self.token = config.token or secrets.token_urlsafe(24)
         self.config_path = config.config_path
         self.doctor_report: DoctorReport | None = None
+        self.doctor_error: str | None = None
         self.doctor_running: bool = False
         self.doctor_runner: Callable[..., DoctorReport] = _default_doctor_runner
         self.notify_sender: Callable[..., list[Delivery]] = _default_notify_send
-        self._doctor_lock = threading.Lock()
+        self._doctor_lock = threading.RLock()
         super().__init__((config.host, config.port), WebHandler)
 
     def server_bind(self) -> None:
@@ -95,13 +96,19 @@ class WebServer(http.server.ThreadingHTTPServer):
             if self.doctor_running:
                 return
             self.doctor_running = True
+            self.doctor_report = None
+            self.doctor_error = None
 
         def _worker() -> None:
             try:
                 report = self.doctor_runner(config_flag=self.config_path)
-                self.doctor_report = report
-            except Exception:
-                pass
+                with self._doctor_lock:
+                    self.doctor_report = report
+                    self.doctor_error = None
+            except Exception as exc:
+                with self._doctor_lock:
+                    self.doctor_report = None
+                    self.doctor_error = str(exc)
             finally:
                 with self._doctor_lock:
                     self.doctor_running = False
@@ -207,18 +214,22 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if parsed == "/api/doctor":
-            if self.server.doctor_running:
-                self._send_json(200, {"status": "running", "checks": []})
+            with self.server._doctor_lock:
+                if self.server.doctor_running:
+                    self._send_json(200, {"status": "running", "checks": []})
+                    return
+                if self.server.doctor_error is not None:
+                    self._send_json(200, {"status": "failed", "error": self.server.doctor_error})
+                    return
+                if self.server.doctor_report is not None:
+                    checks = [
+                        {"name": c.name, "status": c.status, "message": c.message}
+                        for c in self.server.doctor_report.checks
+                    ]
+                    self._send_json(200, {"status": "done", "checks": checks})
+                    return
+                self._send_json(200, {"status": "idle", "checks": []})
                 return
-            if self.server.doctor_report is not None:
-                checks = [
-                    {"name": c.name, "status": c.status, "message": c.message}
-                    for c in self.server.doctor_report.checks
-                ]
-                self._send_json(200, {"status": "done", "checks": checks})
-                return
-            self._send_json(200, {"status": "idle", "checks": []})
-            return
 
         self._send_error_json(404, "Not found")
 
@@ -228,9 +239,10 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
 
         parsed = urllib.parse.urlsplit(self.path).path
         if parsed == "/api/doctor":
-            if not self.server.doctor_running:
-                self.server.run_doctor_background()
-            self._send_json(200, {"status": "running" if self.server.doctor_running else "done"})
+            self.server.run_doctor_background()
+            with self.server._doctor_lock:
+                running = self.server.doctor_running
+            self._send_json(200, {"status": "running" if running else "done"})
             return
 
         if parsed == "/api/notify/test":

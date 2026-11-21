@@ -6,16 +6,42 @@ Self-contained: no external CDN or fonts. Light and dark theme via CSS variables
 from __future__ import annotations
 
 import html
+import json
 
 from orkestra import __version__
-from orkestra.i18n import t
+from orkestra.i18n import get_language, t
 
 
 def render_home_html(token: str) -> str:
+    current_lang = get_language()
     safe_token = html.escape(token)
 
+    i18n_dict = {
+        "error_prefix": t("home.error_prefix"),
+        "load_failed": t("home.feedback.load_failed"),
+        "today_runs": t("home.today.runs_suffix"),
+        "pending_unapplied": t("home.pending.unapplied"),
+        "queue_summary": t("home.queue.summary"),
+        "home_no_providers": t("home.no_providers"),
+        "home_local": t("home.provider.local"),
+        "home_doctor_running": t("home.doctor.running"),
+        "home_doctor_done": t("home.doctor.done"),
+        "home_doctor_failed": t("home.doctor.failed"),
+        "home_doctor_start_failed": t("home.doctor.start_failed"),
+        "home_doctor_idle": t("home.doctor.idle"),
+        "home_notify_sending": t("home.notify.sending"),
+        "home_notify_sent": t("home.notify.sent"),
+        "home_notify_error": t("home.notify.error"),
+    }
+    safe_i18n_json = (
+        json.dumps(i18n_dict, ensure_ascii=True)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
+
     return f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="{html.escape(current_lang)}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -102,38 +128,46 @@ def render_home_html(token: str) -> str:
             font-weight: 700;
             color: #ffffff;
             margin-bottom: 2rem;
-            padding: 0 0.5rem;
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            gap: 0.5rem;
         }}
-        .version {{
+        .brand .version {{
             font-size: 0.75rem;
-            background: #334155;
+            font-weight: 400;
+            color: var(--sidebar-text);
+            background: var(--sidebar-active-bg);
             padding: 0.15rem 0.4rem;
             border-radius: 4px;
-            color: #94a3b8;
         }}
-        .nav-list {{ list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }}
+        .nav-list {{
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }}
         .nav-item a {{
             display: block;
-            padding: 0.65rem 0.85rem;
+            padding: 0.6rem 0.8rem;
             color: var(--sidebar-text);
             text-decoration: none;
             border-radius: 6px;
-            font-weight: 500;
-            font-size: 0.95rem;
+            font-size: 0.875rem;
             transition: all 0.15s ease;
         }}
-        .nav-item.active a, .nav-item a:hover {{
-            background-color: var(--sidebar-active-bg);
+        .nav-item a:hover {{
             color: var(--sidebar-active);
+            background-color: var(--sidebar-active-bg);
+        }}
+        .nav-item.active a {{
+            color: var(--sidebar-active);
+            background-color: var(--sidebar-active-bg);
+            font-weight: 600;
         }}
         .main-content {{
             flex: 1;
             padding: 2rem;
-            overflow-y: auto;
-            max-width: 1280px;
+            max-width: 1200px;
         }}
         .header {{
             display: flex;
@@ -141,112 +175,141 @@ def render_home_html(token: str) -> str:
             align-items: center;
             margin-bottom: 1.5rem;
         }}
-        .header h1 {{ font-size: 1.75rem; font-weight: 700; }}
-        .header-actions {{ display: flex; gap: 0.75rem; }}
+        .header h1 {{
+            font-size: 1.5rem;
+            font-weight: 700;
+        }}
+        .header-actions {{
+            display: flex;
+            gap: 0.75rem;
+        }}
         .btn {{
-            cursor: pointer;
-            border: 1px solid transparent;
+            display: inline-flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
             border-radius: 6px;
-            padding: 0.55rem 1rem;
-            font-size: 0.9rem;
+            font-size: 0.875rem;
             font-weight: 500;
-            transition: background 0.15s ease;
+            border: 1px solid transparent;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.15s ease;
         }}
         .btn-primary {{
-            background: var(--btn-bg);
+            background-color: var(--btn-bg);
             color: var(--btn-text);
         }}
-        .btn-primary:hover {{ background: var(--btn-hover); }}
+        .btn-primary:hover:not(:disabled) {{
+            background-color: var(--btn-hover);
+        }}
         .btn-secondary {{
-            background: var(--btn-sec-bg);
+            background-color: var(--btn-sec-bg);
             color: var(--btn-sec-text);
             border-color: var(--border);
         }}
-        .btn-secondary:hover {{ background: var(--btn-sec-hover); }}
-        .btn:disabled {{ opacity: 0.6; cursor: not-allowed; }}
-        .status-banner {{
-            border-radius: 8px;
-            padding: 1.25rem;
-            margin-bottom: 1.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
+        .btn-secondary:hover:not(:disabled) {{
+            background-color: var(--btn-sec-hover);
+        }}
+        .btn:disabled {{
+            opacity: 0.5;
+            cursor: not-allowed;
+        }}
+        .feedback-banner {{
+            display: none;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+            background: var(--bg-card);
             border: 1px solid var(--border);
         }}
-        .status-banner.status-ok {{
-            background: var(--ok-bg);
+        .status-banner {{
+            padding: 1.25rem 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            border: 1px solid transparent;
+        }}
+        .status-ok {{
+            background-color: var(--ok-bg);
             color: var(--ok-text);
             border-color: var(--ok-border);
         }}
-        .status-banner.status-warn {{
-            background: var(--warn-bg);
+        .status-warn {{
+            background-color: var(--warn-bg);
             color: var(--warn-text);
             border-color: var(--warn-border);
         }}
-        .status-banner.status-fail {{
-            background: var(--fail-bg);
+        .status-fail {{
+            background-color: var(--fail-bg);
             color: var(--fail-text);
             border-color: var(--fail-border);
         }}
-        .status-title {{ font-size: 1.2rem; font-weight: 700; }}
-        .status-next {{ font-size: 0.95rem; opacity: 0.9; }}
-        .feedback-banner {{
-            margin-bottom: 1.5rem;
-            padding: 0.75rem 1rem;
-            border-radius: 6px;
-            background: var(--btn-sec-bg);
-            font-size: 0.9rem;
-            display: none;
+        .status-title {{
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }}
+        .status-next {{
+            font-size: 0.875rem;
+            opacity: 0.9;
         }}
         .grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
             margin-bottom: 1.5rem;
         }}
         .card {{
-            background: var(--bg-card);
+            background-color: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 1.25rem;
         }}
         .card-title {{
-            font-size: 1.1rem;
+            font-size: 0.875rem;
             font-weight: 600;
-            margin-bottom: 1rem;
-            color: var(--text-main);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }}
         .card-number {{
-            font-size: 2rem;
+            font-size: 1.75rem;
             font-weight: 700;
-            color: var(--text-main);
             margin-bottom: 0.25rem;
         }}
         .card-subtitle {{
-            font-size: 0.85rem;
+            font-size: 0.875rem;
             color: var(--text-muted);
         }}
         .provider-list {{
             display: flex;
             flex-direction: column;
-            gap: 0.75rem;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
         }}
         .provider-row {{
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0.75rem;
-            background: var(--bg-page);
-            border: 1px solid var(--border);
-            border-radius: 6px;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border);
         }}
-        .provider-info {{ display: flex; flex-direction: column; gap: 0.2rem; }}
-        .provider-name {{ font-weight: 600; font-size: 0.95rem; }}
+        .provider-row:last-child {{
+            border-bottom: none;
+        }}
+        .provider-info {{
+            display: flex;
+            flex-direction: column;
+        }}
+        .provider-name {{
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
         .provider-meta {{
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: var(--text-muted);
             display: flex;
             gap: 0.5rem;
@@ -275,6 +338,7 @@ def render_home_html(token: str) -> str:
         .doc-ok {{ background: var(--ok-bg); color: var(--ok-text); }}
         .doc-fail {{ background: var(--fail-bg); color: var(--fail-text); }}
         .doc-warn {{ background: var(--warn-bg); color: var(--warn-text); }}
+        .doc-info {{ background: var(--btn-sec-bg); color: var(--text-muted); }}
     </style>
 </head>
 <body>
@@ -284,23 +348,23 @@ def render_home_html(token: str) -> str:
             <span class="version">v{__version__}</span>
         </div>
         <ul class="nav-list">
-            <li class="nav-item active"><a href="#home">Ana ekran</a></li>
-            <li class="nav-item"><a href="#team">Ekip</a></li>
-            <li class="nav-item"><a href="#keys">Anahtarlar</a></li>
-            <li class="nav-item"><a href="#usage">Kullanım</a></li>
-            <li class="nav-item"><a href="#guide">Nasıl kullanılır</a></li>
-            <li class="nav-item"><a href="#advanced">Gelişmiş</a></li>
+            <li class="nav-item active"><a href="#home">{html.escape(t("home.nav.home"))}</a></li>
+            <li class="nav-item"><a href="#team">{html.escape(t("home.nav.team"))}</a></li>
+            <li class="nav-item"><a href="#keys">{html.escape(t("home.nav.keys"))}</a></li>
+            <li class="nav-item"><a href="#usage">{html.escape(t("home.nav.usage"))}</a></li>
+            <li class="nav-item"><a href="#guide">{html.escape(t("home.nav.guide"))}</a></li>
+            <li class="nav-item"><a href="#advanced">{html.escape(t("home.nav.advanced"))}</a></li>
         </ul>
     </div>
     <div class="main-content">
         <div class="header">
-            <h1 id="page-title">Ana ekran</h1>
+            <h1 id="page-title">{html.escape(t("home.title"))}</h1>
             <div class="header-actions">
                 <button id="btn-test-all" class="btn btn-primary">
-                    {t("home.button.test_all")}
+                    {html.escape(t("home.button.test_all"))}
                 </button>
                 <button id="btn-notify-test" class="btn btn-secondary">
-                    {t("home.button.notify_test")}
+                    {html.escape(t("home.button.notify_test"))}
                 </button>
             </div>
         </div>
@@ -308,29 +372,31 @@ def render_home_html(token: str) -> str:
         <div id="feedback" class="feedback-banner"></div>
 
         <div id="status-card" class="status-banner status-ok">
-            <div id="status-text" class="status-title">Yükleniyor…</div>
+            <div id="status-text" class="status-title">{html.escape(t("home.loading"))}</div>
             <div id="next-step-text" class="status-next"></div>
         </div>
 
         <div class="grid">
             <div class="card">
-                <div class="card-title">Bugün</div>
+                <div class="card-title">{html.escape(t("home.card.today"))}</div>
                 <div id="today-runs" class="card-number">0</div>
-                <div class="card-subtitle"><span id="today-cost">$0.0000</span> harcama</div>
+                <div class="card-subtitle">
+                    <span id="today-cost">$0.0000</span> {html.escape(t("home.card.cost_label"))}
+                </div>
             </div>
             <div id="claude-card" class="card" style="display: none;">
-                <div class="card-title">Claude Kotası</div>
+                <div class="card-title">{html.escape(t("home.card.claude_quota"))}</div>
                 <div id="claude-content" class="provider-list"></div>
             </div>
             <div class="card">
-                <div class="card-title">Bekleyenler</div>
+                <div class="card-title">{html.escape(t("home.card.pending"))}</div>
                 <div id="unapplied-count" class="card-number">0</div>
-                <div id="queue-count" class="card-subtitle">Kuyruk: 0 bekleyen</div>
+                <div id="queue-count" class="card-subtitle"></div>
             </div>
         </div>
 
         <div class="card">
-            <div class="card-title">Sağlayıcılar</div>
+            <div class="card-title">{html.escape(t("home.card.providers"))}</div>
             <div id="providers-container" class="provider-list"></div>
         </div>
     </div>
@@ -338,6 +404,7 @@ def render_home_html(token: str) -> str:
     <script>
         const TOKEN = "{safe_token}";
         const API_BASE = window.location.origin;
+        const I18N = {safe_i18n_json};
 
         async function fetchWithToken(path, options = {{}}) {{
             const url = new URL(path, API_BASE);
@@ -359,7 +426,7 @@ def render_home_html(token: str) -> str:
                 const data = await res.json();
                 renderSummary(data);
             }} catch (err) {{
-                showFeedback("Yükleme başarısız: " + err.message, true);
+                showFeedback(I18N.load_failed + ": " + err.message, true);
             }}
         }}
 
@@ -370,107 +437,189 @@ def render_home_html(token: str) -> str:
             document.getElementById("next-step-text").textContent = data.next_step || "";
 
             if (data.today) {{
-                document.getElementById("today-runs").textContent = data.today.runs + " iş";
+                const runsEl = document.getElementById("today-runs");
+                runsEl.textContent = data.today.runs + " " + I18N.today_runs;
                 const cost = "$" + (data.today.cost_usd || 0).toFixed(4);
                 document.getElementById("today-cost").textContent = cost;
             }}
 
             if (data.pending) {{
-                const unappliedText = data.pending.unapplied_runs + " bekleyen";
-                document.getElementById("unapplied-count").textContent = unappliedText;
-                document.getElementById("queue-count").textContent =
-                    "Kuyruk: " + data.pending.queue_pending + " bekleyen, " +
-                    data.pending.queue_running + " çalışan, " +
-                    data.pending.queue_failed + " başarısız";
+                const unappliedEl = document.getElementById("unapplied-count");
+                unappliedEl.textContent = (
+                    data.pending.unapplied_runs + " " + I18N.pending_unapplied
+                );
+                const qp = data.pending.queue_pending || 0;
+                const qr = data.pending.queue_running || 0;
+                const qf = data.pending.queue_failed || 0;
+                const qText = (I18N.queue_summary || "")
+                    .replace("{{pending}}", qp)
+                    .replace("{{running}}", qr)
+                    .replace("{{failed}}", qf);
+                const queueFallback = "Kuyruk: " + qp + ", " + qr + ", " + qf;
+                document.getElementById("queue-count").textContent = qText || queueFallback;
             }}
 
+            const claudeCard = document.getElementById("claude-card");
+            const claudeCont = document.getElementById("claude-content");
+            claudeCont.replaceChildren();
             if (data.claude_windows && data.claude_windows.length > 0) {{
-                const claudeCard = document.getElementById("claude-card");
                 claudeCard.style.display = "block";
-                const cont = document.getElementById("claude-content");
-                cont.innerHTML = data.claude_windows.map(w =>
-                    `<div class="provider-row">
-                        <span>${{w.label || w.name}}</span>
-                        <span class="tag tag-ready">%${{Math.round(w.used)}}</span>
-                    </div>`
-                ).join("");
+                data.claude_windows.forEach(w => {{
+                    const row = document.createElement("div");
+                    row.className = "provider-row";
+                    const spanLabel = document.createElement("span");
+                    spanLabel.textContent = w.label || w.name || "";
+                    const spanTag = document.createElement("span");
+                    spanTag.className = "tag tag-ready";
+                    spanTag.textContent = "%" + Math.round(w.used || 0);
+                    row.appendChild(spanLabel);
+                    row.appendChild(spanTag);
+                    claudeCont.appendChild(row);
+                }});
+            }} else {{
+                claudeCard.style.display = "none";
             }}
 
             const pCont = document.getElementById("providers-container");
+            pCont.replaceChildren();
             if (!data.providers || data.providers.length === 0) {{
-                pCont.innerHTML = "<div class='card-subtitle'>Tanımlı sağlayıcı yok.</div>";
+                const empty = document.createElement("div");
+                empty.className = "card-subtitle";
+                empty.textContent = I18N.home_no_providers;
+                pCont.appendChild(empty);
             }} else {{
-                pCont.innerHTML = data.providers.map(p => {{
-                    let docBadge = "";
-                    if (p.doctor_status) {{
-                        const st = p.doctor_status;
-                        const cls = "doc-badge doc-" + st;
-                        docBadge = `<span class="${{cls}}">${{st.toUpperCase()}}</span>`;
+                const validDocStatus = ["ok", "warn", "fail", "info"];
+                const validProviderStatus = [
+                    "ready", "paused", "no_consent", "no_key", "disabled", "check_failed"
+                ];
+                data.providers.forEach(p => {{
+                    const row = document.createElement("div");
+                    row.className = "provider-row";
+
+                    const info = document.createElement("div");
+                    info.className = "provider-info";
+
+                    const nameDiv = document.createElement("div");
+                    nameDiv.className = "provider-name";
+                    nameDiv.textContent = p.name || "";
+
+                    if (p.doctor_status && validDocStatus.includes(p.doctor_status)) {{
+                        const docBadge = document.createElement("span");
+                        docBadge.className = "doc-badge doc-" + p.doctor_status;
+                        docBadge.textContent = p.doctor_status.toUpperCase();
+                        nameDiv.appendChild(document.createTextNode(" "));
+                        nameDiv.appendChild(docBadge);
                     }}
-                    const localLabel = p.local_text || "yerel";
-                    let localTag = "";
+
+                    const meta = document.createElement("div");
+                    meta.className = "provider-meta";
+
+                    const typeSpan = document.createElement("span");
+                    typeSpan.textContent = p.type || "";
+                    meta.appendChild(typeSpan);
+
+                    if (p.limits_text) {{
+                        const dotSpan = document.createElement("span");
+                        dotSpan.textContent = "·";
+                        const limitsSpan = document.createElement("span");
+                        limitsSpan.textContent = p.limits_text;
+                        meta.appendChild(dotSpan);
+                        meta.appendChild(limitsSpan);
+                    }}
+
+                    info.appendChild(nameDiv);
+                    info.appendChild(meta);
+
+                    const actions = document.createElement("div");
+                    actions.style.display = "flex";
+                    actions.style.gap = "0.5rem";
+                    actions.style.alignItems = "center";
+
                     if (p.is_local) {{
-                        localTag = `<span class="tag tag-local">${{localLabel}}</span>`;
+                        const localTag = document.createElement("span");
+                        localTag.className = "tag tag-local";
+                        localTag.textContent = p.local_text || I18N.home_local;
+                        actions.appendChild(localTag);
                     }}
-                    return `
-                    <div class="provider-row">
-                        <div class="provider-info">
-                            <div class="provider-name">${{p.name}} ${{docBadge}}</div>
-                            <div class="provider-meta">
-                                <span>${{p.type}}</span>
-                                <span>·</span>
-                                <span>${{p.limits_text || ""}}</span>
-                            </div>
-                        </div>
-                        <div style="display: flex; gap: 0.5rem; align-items: center;">
-                            ${{localTag}}
-                            <span class="tag tag-${{p.status}}">${{p.status_text}}</span>
-                        </div>
-                    </div>`;
-                }}).join("");
+
+                    const statusTag = document.createElement("span");
+                    const stCls = validProviderStatus.includes(p.status) ? p.status : "disabled";
+                    statusTag.className = "tag tag-" + stCls;
+                    statusTag.textContent = p.status_text || "";
+                    actions.appendChild(statusTag);
+
+                    row.appendChild(info);
+                    row.appendChild(actions);
+                    pCont.appendChild(row);
+                }});
             }}
         }}
 
         document.getElementById("btn-test-all").addEventListener("click", async () => {{
             const btn = document.getElementById("btn-test-all");
             btn.disabled = true;
-            showFeedback("{t("home.doctor.running")}");
+            showFeedback(I18N.home_doctor_running);
             try {{
-                await fetchWithToken("/api/doctor", {{ method: "POST" }});
+                const postRes = await fetchWithToken("/api/doctor", {{ method: "POST" }});
+                if (!postRes.ok) {{
+                    throw new Error("HTTP " + postRes.status);
+                }}
                 const poll = setInterval(async () => {{
-                    const res = await fetchWithToken("/api/doctor");
-                    if (res.ok) {{
+                    try {{
+                        const res = await fetchWithToken("/api/doctor");
+                        if (!res.ok) {{
+                            clearInterval(poll);
+                            btn.disabled = false;
+                            showFeedback(I18N.error_prefix + " HTTP " + res.status, true);
+                            return;
+                        }}
                         const docData = await res.json();
                         if (docData.status === "done") {{
                             clearInterval(poll);
                             btn.disabled = false;
-                            showFeedback("Test tamamlandı.");
+                            showFeedback(I18N.home_doctor_done);
                             loadHome();
+                        }} else if (docData.status === "failed") {{
+                            clearInterval(poll);
+                            btn.disabled = false;
+                            const docErr = docData.error ? ": " + docData.error : "";
+                            showFeedback(I18N.home_doctor_failed + docErr, true);
+                        }} else if (docData.status === "idle") {{
+                            clearInterval(poll);
+                            btn.disabled = false;
+                            showFeedback(I18N.home_doctor_idle, false);
                         }}
+                    }} catch (pollErr) {{
+                        clearInterval(poll);
+                        btn.disabled = false;
+                        showFeedback(I18N.error_prefix + ": " + pollErr.message, true);
                     }}
                 }}, 1000);
             }} catch (err) {{
                 btn.disabled = false;
-                showFeedback("Test başlatılamadı: " + err.message, true);
+                showFeedback(I18N.home_doctor_start_failed + ": " + err.message, true);
             }}
         }});
 
         document.getElementById("btn-notify-test").addEventListener("click", async () => {{
             const btn = document.getElementById("btn-notify-test");
             btn.disabled = true;
-            showFeedback("Bildirim gönderiliyor…");
+            showFeedback(I18N.home_notify_sending);
             try {{
                 const res = await fetchWithToken("/api/notify/test", {{ method: "POST" }});
                 const data = await res.json();
                 btn.disabled = false;
-                if (data.lines && data.lines.length > 0) {{
+                if (!res.ok) {{
+                    const notifyErr = data.error || ("HTTP " + res.status);
+                    showFeedback(I18N.home_notify_error + ": " + notifyErr, true);
+                }} else if (data.lines && data.lines.length > 0) {{
                     showFeedback(data.lines.join(" · "));
                 }} else {{
-                    showFeedback("Bildirim gönderildi.");
+                    showFeedback(I18N.home_notify_sent);
                 }}
             }} catch (err) {{
                 btn.disabled = false;
-                showFeedback("Bildirim hatası: " + err.message, true);
+                showFeedback(I18N.home_notify_error + ": " + err.message, true);
             }}
         }});
 
