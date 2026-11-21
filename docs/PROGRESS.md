@@ -27,7 +27,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
-| 11c – Web arayüzü (ek) | ⏳ | 2026-11-21 | 11c-a sunucu iskeleti ve güvenlik bitti (D-121); 11c-b…11c-e sürüyor |
+| 11c – Web arayüzü (ek) | ⏳ | 2026-11-21 | 11c-a (D-121) ve 11c-b veri katmanı ve ana ekran bitti; 11c-c…11c-e sürüyor |
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (ek) | ✅ | 2026-11-20 | `gc` eski `runs`/`usage`/`queue` satırlarını siler (en az 35 gün kalır), `queue remove --finished`, `notify.ntfy_url`, `desktop-notifier<7`, `doctor` düzenlenebilir kurulum uyarısı (D-104) |
@@ -53,6 +53,13 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 11c-b – Veri katmanı ve ana ekran (2026-11-21)
+
+- `chief/home.py`: `home_summary(config, conn, now, environ, doctor_report) -> HomeSummary` veri katmanı servisi yazıldı. Ağa çıkmaz. Tek cümle genel durum (yeşil/sarı/kırmızı: `ok`, `warn`, `fail`), sağlayıcı durumları (hazır / duraklatıldı / onay yok / anahtar yok / kapalı; yerelse yerel/ücretsiz etiketi; bütçe/limit metni; varsa doctor sonucu), bugün yapılan iş ve harcama, Claude'un 5 saatlik ve haftalık yüzdesi (13k statusline verisi varsa), bekleyen değişiklikler ve gece kuyruğu sayıları, ve önceliklendirilmiş "Sonraki adım" satırı.
+- `web/server.py` & `web/ui.py`: `GET /api/home` uç noktası (özeti JSON döner); `POST /api/doctor` (sunucuyu bloklamadan arka planda doctor çalıştırır) ve `GET /api/doctor` (durum ve sonuçlar); `POST /api/notify/test` (arka planda test bildirimi gönderir ve durum döner). Kök adres (`/` ve `/index.html`) ana ekranı, durum kutusunu, sağlayıcı listesini, bugün ve kuyruk kartlarını, "Hepsini test et" ve "Bildirim dene" düğmelerini içeren harici bağımlılıksız (sıfır CDN) hafif, açık/koyu temalı HTML/CSS/JS arayüzü sunar.
+- i18n: Yeni durum ve arayüz metinleri 5 dilde (`en`, `tr`, `de`, `es`, `fr`).
+- Testler: `test_home_summary.py` (8 test) ve `test_web_server.py` (eklenen 3 test) ile toplam 11 yeni test. Bütün durum kombinasyonları (hazır, onaysız, anahtarsız, duraklatılmış, devre kesici, kota, kapalı, bekleyen işler, sahte doctor ile bloklamama) doğrulandı.
 
 ### Faz 11c-a – Sunucu iskeleti ve güvenlik (2026-11-21)
 

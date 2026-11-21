@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 from typing import Any
+
+import pytest
 
 from orkestra import __version__
 from orkestra.web.server import ServerConfig, WebHandler, WebServer, create_server
@@ -155,7 +158,12 @@ def test_root_page_with_token() -> None:
         code, headers, body = simulate_request(server, "GET", f"/?token={server.token}")
         assert code == 200
         assert "text/html" in headers.get("content-type", "")
-        assert "<!DOCTYPE html>" in body.decode("utf-8")
+        html_text = body.decode("utf-8")
+        assert "<!DOCTYPE html>" in html_text
+        assert "btn-test-all" in html_text
+        assert "btn-notify-test" in html_text
+        assert "providers-container" in html_text
+        assert "status-card" in html_text
     finally:
         server.server_close()
 
@@ -267,5 +275,119 @@ def test_responses_are_not_cached_framed_or_leaked_by_referrer() -> None:
             assert headers.get("referrer-policy") == "no-referrer"
             assert headers.get("x-frame-options") == "DENY"
             assert headers.get("x-content-type-options") == "nosniff"
+    finally:
+        server.server_close()
+
+
+def test_get_home_api_returns_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import json
+
+    from orkestra.config.schema import Config, ModelSpec, OllamaProvider
+    from orkestra.state import consent, db
+
+    db_file = tmp_path / "state.db"
+    monkeypatch.setattr("orkestra.paths.state_db_path", lambda: db_file)
+    cfg_file = tmp_path / "config.yaml"
+    cfg = Config(
+        version=1,
+        providers={
+            "ollama": OllamaProvider(
+                type="ollama",
+                base_url="http://localhost:11434",
+                models=[ModelSpec(id="m1", tier=1)],
+            )
+        },
+    )
+    cfg_file.write_text(
+        "version: 1\nproviders:\n  ollama:\n    type: ollama\n"
+        "    base_url: http://localhost:11434\n    models:\n      - id: m1\n        tier: 1\n",
+        encoding="utf-8",
+    )
+
+    with db.connect(db_file) as conn:
+        consent.grant(conn, "ollama", cfg.providers["ollama"], db.local_now())
+
+    server = create_server(
+        ServerConfig(host="127.0.0.1", port=0, token="test-tok", config_path=cfg_file)
+    )
+    try:
+        code, headers, body = simulate_request(server, "GET", f"/api/home?token={server.token}")
+        assert code == 200
+        assert "application/json" in headers.get("content-type", "")
+        data = json.loads(body.decode("utf-8"))
+        assert "status" in data
+        assert "providers" in data
+        assert len(data["providers"]) == 1
+        assert data["providers"][0]["name"] == "ollama"
+        assert "today" in data
+        assert "pending" in data
+        assert "next_step" in data
+    finally:
+        server.server_close()
+
+
+def test_post_doctor_triggers_in_background(tmp_path: Path) -> None:
+    import json
+    import time
+
+    from orkestra.doctor import Check, DoctorReport
+
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text("version: 1\nproviders: {}\n", encoding="utf-8")
+
+    server = create_server(
+        ServerConfig(host="127.0.0.1", port=0, token="test-tok", config_path=cfg_file)
+    )
+    try:
+
+        def fake_run_doctor(**kwargs: Any) -> DoctorReport:
+            time.sleep(0.2)
+            return DoctorReport(checks=(Check("config", "ok", "mock ok"),))
+
+        server.doctor_runner = fake_run_doctor  # type: ignore
+
+        code, _, body = simulate_request(server, "POST", f"/api/doctor?token={server.token}")
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        assert data["status"] in ("running", "done")
+
+        # Non-blocking check
+        code_h, _, body_h = simulate_request(server, "GET", f"/api/health?token={server.token}")
+        assert code_h == 200
+        assert json.loads(body_h.decode("utf-8"))["ok"] is True
+
+        time.sleep(0.3)
+        code_d, _, body_d = simulate_request(server, "GET", f"/api/doctor?token={server.token}")
+        assert code_d == 200
+        data_d = json.loads(body_d.decode("utf-8"))
+        assert data_d["status"] == "done"
+        assert len(data_d["checks"]) >= 1
+    finally:
+        server.server_close()
+
+
+def test_post_notify_test(tmp_path: Path) -> None:
+    import json
+
+    from orkestra.notify.notify import Delivery
+
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text("version: 1\nnotify:\n  desktop: true\nproviders: {}\n", encoding="utf-8")
+
+    server = create_server(
+        ServerConfig(host="127.0.0.1", port=0, token="test-tok", config_path=cfg_file)
+    )
+    try:
+
+        def fake_notify_send(*args: Any, **kwargs: Any) -> list[Delivery]:
+            return [Delivery(channel="desktop", state="sent")]
+
+        server.notify_sender = fake_notify_send  # type: ignore
+
+        code, _, body = simulate_request(server, "POST", f"/api/notify/test?token={server.token}")
+        assert code == 200
+        data = json.loads(body.decode("utf-8"))
+        assert data["ok"] is True
+        assert "deliveries" in data
     finally:
         server.server_close()
