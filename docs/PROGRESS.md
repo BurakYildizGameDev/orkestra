@@ -27,7 +27,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
-| 11c – Web arayüzü (ek) | ⏳ | 2026-11-21 | kod bitti: 11c-a (D-121), 11c-b ana ekran, 11c-c ekip, 11c-d anahtarlar (D-122), 11c-e kullanım, rehber, gelişmiş ve pencere (D-123); faz sonu kod denetimi yapıldı (Claude); **kalan kabul kriteri: kullanıcının elle denemesi** |
+| 11c – Web arayüzü (ek) | ✅ | 2026-11-22 | 11c-a (D-121), 11c-b ana ekran, 11c-c ekip, 11c-d anahtarlar (D-122), 11c-e kullanım, rehber, gelişmiş ve pencere (D-123); faz sonu kod denetimi ve yeniden tasarım (Claude); kullanıcı elle denedi, beğendi; PR #48–#52 birleşti |
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (ek) | ✅ | 2026-11-20 | `gc` eski `runs`/`usage`/`queue` satırlarını siler (en az 35 gün kalır), `queue remove --finished`, `notify.ntfy_url`, `desktop-notifier<7`, `doctor` düzenlenebilir kurulum uyarısı (D-104) |
@@ -72,6 +72,11 @@ agy 11c-b düzeltmelerini ve 11c-c, d, e'yi kesintisiz yaptı (PR #49–#52); Cl
 13. Belgeler kodla eşitlendi: rehber (en + tr) "günlük harcama grafiği" → günlük iş grafiği, "kurtarma sayaçları" → neden/bitiş saati, Gelişmiş'in yalnız gösterdiği; bu kayıttaki 11c-e maddeleri.
 Doğrulama: sayfanın JS'i 5 dilde `node --check` ile geçerli; gerçek config ile canlı sunucu: anahtarsız 403, `/`, `/api/home|team|keys|usage|advanced|doctor` 200, `days=5` 400.
 **Ertelenen / bilinen:** `providers/pricing.py` fiyat çekerken anahtarı yalnız ortam değişkeninden okur (OpenRouter'ın model listesi anahtarsız da açık; etkisi yok). Ekranlar arası tarayıcı testi (Playwright) yok; plan gereği kullanıcının elle denemesi (patron Claude, agy + OpenRouter ekleme, anahtar girme, kullanım ekranı) bekliyor.
+
+### Faz 11c – Kapanış (2026-11-22)
+
+- Kullanıcı yeniden tasarlanan arayüzü elle denedi ve beğendi (planın son kabul kriteri). PR #48 → #52 sırayla `main`'e birleşti (merge commit; her biri CI 9/9).
+- Kurulu araçta yeni bağımlılık (`keyring`) yoktu: `ModuleNotFoundError`. Çözüm `uv tool install --reinstall -e .`; kalıcı çözüm Faz 14'ün normal kurulumu.
 
 ### Faz 11c – Arayüzün yeniden tasarımı (kullanıcı isteği, 2026-11-21)
 
