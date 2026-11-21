@@ -27,7 +27,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 10b – Devretme (`handoff to`) | ✅ | 2026-11-13 | `handoff to`, `install-hook`, sahte şef, `handoffs` kaydı (D-065); Claude denetimi (D-066); elle Claude → agy senaryosu geçti |
 | 11a – Algılama, sihirbaz (`--plain`, `--defaults`), config yazma | ✅ | 2026-11-14 | `tui/detect.py`, `tui/wizard.py`, `config/writer.py` (D-068); kod denetimi (D-069) |
 | 11b – Terminal arayüzü, 5 dil | ✅ | 2026-11-14 | `orkestra ui`, arayüzlü sihirbaz, de/es/fr (Orkestra + agy ile çevrildi) (D-070); kod denetimi (D-071) |
-| 11c – Web arayüzü (ek) | ✅ | 2026-11-21 | 11c-a (D-121), 11c-b ana ekran, 11c-c ekip, 11c-d anahtarlar (D-122), 11c-e kullanım, rehber, gelişmiş ve pencere (D-123) |
+| 11c – Web arayüzü (ek) | ⏳ | 2026-11-21 | kod bitti: 11c-a (D-121), 11c-b ana ekran, 11c-c ekip, 11c-d anahtarlar (D-122), 11c-e kullanım, rehber, gelişmiş ve pencere (D-123); faz sonu kod denetimi yapıldı (Claude); **kalan kabul kriteri: kullanıcının elle denemesi** |
 | 12a – Kuyruk ve bildirim | ✅ | 2026-11-15 | `queue add/list/remove/run`, kilit, kurtarma, `notify test`, `batch --notify`, `status` kuyruk satırı, `docs/recipes.md` (D-072); kod denetimi (D-073) |
 | 12b – Öğrenen yönlendirme, arayüzde kuyruk | ✅ | 2026-11-15 | `routing/adaptive.py`, router'da kademe içi skor, `--dry-run` skoru, arayüzde Kuyruk sekmesi ve bildirim ayarı, skill (D-074); kod denetimi (D-075) |
 | düzeltme-fable a – `gc` satırları, kuyruk, ntfy adresi, kurulum uyarısı (ek) | ✅ | 2026-11-20 | `gc` eski `runs`/`usage`/`queue` satırlarını siler (en az 35 gün kalır), `queue remove --finished`, `notify.ntfy_url`, `desktop-notifier<7`, `doctor` düzenlenebilir kurulum uyarısı (D-104) |
@@ -54,16 +54,35 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Faz 11c – Faz sonu kod denetimi (Claude, 2026-11-21)
+
+agy 11c-b düzeltmelerini ve 11c-c, d, e'yi kesintisiz yaptı (PR #49–#52); Claude hepsini birlikte denetledi. Öncesi: ruff/pyright temiz, 2037 test. Bulunan ve düzeltilen (önce kırmızı test, `tests/unit/test_web_11c_review.py`):
+1. **Testler gerçek keyring'e gidiyordu.** `read_api_key` ve `redact` artık keyring'e de bakıyor ama yalnız `test_keys.py` sahte depo kullanıyordu: arayüzden anahtar kaydeden geliştiricide "anahtar yok" testleri bozulurdu. `tests/conftest.py`'de autouse `memory_keyring` (D-122 notu).
+2. **Ekrandan kaydedilen ntfy konusu kullanılmıyordu.** Anahtarlar ekranı `ntfy_topic_env`'i listeliyor, keyring'e yazıyordu; bildirim yalnız ortam değişkenini okuyordu. `notify.send` de `get_key` ile okur (D-122 notu).
+3. **`--window` çöküyordu.** pywebview kurulu ama açılamıyorsa (GUI arka ucu yok) iz basıp çıkıyordu. Artık sunucu iş parçacığı durur, `ui.web.window_failed` (5 dil) ve tarayıcıya düşer (D-123 notu).
+4. **Gelişmiş ekranı config'te olmayan değerler gösteriyordu.** `config.budget`, `defaults.privacy`, `circuit_breaker` alanları yok; ekranda hep "Global daily limit: None", "Privacy: any". Kaldırıldı; yerine gerçek sağlayıcı sınırlarının hepsi, devre kesicinin nedeni ve bitiş saati (`health.until_text`), plandaki **devir özeti** (eksikti) ve dil/şef/profil.
+5. **Koda gömülü İngilizce/Türkçe metinler** (AGENTS kuralı; öz denetim "yok" diyordu): Gelişmiş ve Kullanım ekranındaki "Global daily limit", "Active profile", "min tier", "failures", "Language/Chief/Privacy", " runs (… ok)", " tok", "unnamed", "Save failed", "Kuyruk: …" ve İngilizce yedek metinler. 22 yeni anahtar, 5 dil; sayfada `fill()` ile yer tutucu.
+6. **Rehber bağlantıları kırıktı:** `href="docs/guide.md"` bu sunucuya gidiyordu (anahtarsız → 403 JSON). GitHub'daki `docs/guide*.md`'ye mutlak bağlantı, `rel="noopener noreferrer"`.
+7. **Kullanım ekranında 7/30 gün seçici yoktu** (PROGRESS ve rehber var diyordu; sunucu `days`'i yok sayıyordu). `GET /api/usage?days=7|30` (başka değer 400), sayfada seçici; kullanım ve gelişmiş yerel saatle (`db.local_now`, `stats` ile aynı).
+8. **Kademe/model yanlış dosyaya gidebiliyordu:** proje `orkestra.yaml`'ı sağlayıcıyı yalnız kapatıyorsa (`enabled: false`) kademe ve model değişikliği oraya yönelip hiçbir şey yazmadan "kaydedildi" diyordu. Artık alanı tanımlayan dosyaya yazılır (`providers.<ad>.models` / `tier` / `model`).
+9. **`"enabled": "false"` açık sayılıyordu** (`bool("false")`): yalnız JSON true/false kabul, yoksa 400 (`team.error.enabled_bool`).
+10. **Devir sırası yanlış gösteriliyordu** (config sırası; patron ortada olabiliyordu). `team_summary.handoff_order`: patron, sonra `chief.limits`'in seçeceği sırayla öteki şefler.
+11. **Arayüzden eklenen API servisi anahtarsız yazılıyordu:** değişken alanı boş bırakılınca (OpenRouter gibi) `api_key_env` hiç yazılmıyor, servis Anahtarlar ekranında görünmüyor, anahtar girilemiyordu. `providers add` gibi: boşsa önerilen `<AD>_API_KEY`; yerel sunucu için formda "anahtar yok" kutusu (`no_key`, `team.add.no_key` 5 dil).
+12. **Tanımsız CSS sınıfları:** `tag-enabled`, `tag-warn`, `empty-text` hiç tanımlı değildi (rozetler renksiz); eklendi, sayfanın kullandığı her rozet sınıfının stili olduğunu denetleyen test.
+13. Belgeler kodla eşitlendi: rehber (en + tr) "günlük harcama grafiği" → günlük iş grafiği, "kurtarma sayaçları" → neden/bitiş saati, Gelişmiş'in yalnız gösterdiği; bu kayıttaki 11c-e maddeleri.
+Doğrulama: sayfanın JS'i 5 dilde `node --check` ile geçerli; gerçek config ile canlı sunucu: anahtarsız 403, `/`, `/api/home|team|keys|usage|advanced|doctor` 200, `days=5` 400.
+**Ertelenen / bilinen:** `providers/pricing.py` fiyat çekerken anahtarı yalnız ortam değişkeninden okur (OpenRouter'ın model listesi anahtarsız da açık; etkisi yok). Ekranlar arası tarayıcı testi (Playwright) yok; plan gereği kullanıcının elle denemesi (patron Claude, agy + OpenRouter ekleme, anahtar girme, kullanım ekranı) bekliyor.
+
 ### Faz 11c-e – Kullanım, Rehber, Gelişmiş ve Masaüstü Penceresi (2026-11-21)
 
 - İsteğe bağlı bağımlılık: `pywebview>=5.0` `[project.optional-dependencies]` altında `window = ["pywebview>=5.0"]` olarak eklendi (D-123). `orkestra ui --window` seçeneği eklendi; `pywebview` yoksa CLI çökmez, stderr'e `ui.web.window_fallback` uyarısını basar ve varsayılan tarayıcı moduna düşer. Kurulu olduğunda 1280x800 çözünürlüğünde yerel masaüstü penceresi açar.
 - `chief/usage.py`: `usage_summary(conn, days, now) -> dict` veri katmanı servisi yazıldı. Veritabanındaki `runs` ve `usage` tablolarından son N günün (varsayılan 7, desteklenen 30) toplam koşu, başarı/başarısızlık oranı, kesinleşen prompt/tamamlama tokenları, toplam harcama ($), şefin bağlamından tasarruf edilen işçi çıktı tokenları ve maliyet tasarrufu tahminini hesaplar. Sağlayıcı bazlı döküm ve günlük zaman serisi döner.
-- `chief/advanced.py`: `advanced_summary(config, conn, now) -> dict` veri katmanı servisi yazıldı. Sağlayıcı bütçelerini (günlük USD, token, istek, koşu sınırları ve bugünkü harcama), çalışma profillerini (etkin profil, kademe sınırları `min_tier`/`max_tier`), gece kuyruğu bekleyen işlerini, sağlayıcı devre kesici durumlarını (`health.is_open(now)`, hata sayısı, `open_until` ve son hata nedeni) ve genel ayarları inceler.
+- `chief/advanced.py`: `advanced_summary(config, conn, now) -> dict` veri katmanı servisi yazıldı. Sağlayıcı bütçe sınırlarını (günlük USD, token, istek, koşu), çalışma profillerini (etkin profil, kademe sınırları `min_tier`/`max_tier`), gece kuyruğunu, sağlayıcı devre kesicilerini (açık mı, neden, ne zamana kadar, art arda hata sayısı), devir özetini ve temel ayarları (dil, şef, profil) yalnız okur.
 - Web API: `GET /api/usage?days=7` ve `GET /api/advanced` uç noktaları eklendi; token denetimiyle korunur.
 - Web UI sekmeleri (`web/ui.py`):
-  - "Kullanım" sekmesi: Özet istatistik kartları (toplam koşu, başarı oranı, toplam harcama, tasarruf edilen tokenlar), saf SVG ile çizilen duyarlı (responsive `viewBox="0 0 600 200"`) günlük harcama grafiği (CSS değişkenleriyle uyumlu temalama), 7 gün / 30 gün filtre seçicisi ve sağlayıcı bazında döküm tablosu.
+  - "Kullanım" sekmesi: Özet istatistik kartları (toplam koşu, başarı oranı, toplam harcama, tasarruf edilen tokenlar), saf SVG ile çizilen duyarlı (responsive `viewBox="0 0 600 200"`) günlük iş grafiği (başarılı/başarısız; CSS değişkenleriyle uyumlu temalama), 7 gün / 30 gün seçici ve sağlayıcı bazında döküm tablosu.
   - "Rehber" sekmesi: Orkestra'nın patron-çalışan mimarisi, yönlendirme sistemi, görev dosyaları, gece kuyruğu ve güvenlik ilkelerini anlatan 5 rehber kartı ve proje dokümanlarına doğrudan bağlantılar.
-  - "Gelişmiş" sekmesi: Sağlayıcı bütçeleri tablosu (limit ve harcama), profiller listesi, devre kesici durumları kartı (sağlıklı veya açık devre uyarısı), gece kuyruğu listesi ve sistem ayarları kartı.
+  - "Gelişmiş" sekmesi: Sağlayıcı bütçe sınırları, profiller listesi, gece kuyruğu listesi, devre kesiciler (neden ve ne zamana kadar), devir özeti ve temel ayarlar kartı.
   - Sıfır harici CDN bağımlılığı; DOM düğümleri `createElement` ve `textContent` ile oluşturulur; kaçışsız `innerHTML` kullanılmaz.
 - Çoklu dil: `usage.*`, `guide.*`, `advanced.*`, `cli.ui.option.window`, `ui.web.window_fallback` anahtarları 5 dile (`en`, `tr`, `de`, `es`, `fr`) eklendi.
 - Dokümantasyon: `README.md`, `README.tr.md`, `docs/guide.md`, `docs/guide.tr.md`, `docs/DECISIONS.md` (D-123) güncellendi.

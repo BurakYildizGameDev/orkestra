@@ -842,9 +842,9 @@ orkestra ui --tui            # launches the terminal interface (Textual)
 - **Home:** System health at a glance (green/yellow/red banner), active providers with doctor status, today's runs and spend, Claude quota tracking (5-hour and 7-day usage), pending changes, night queue count, and prioritized "Next Step" action. Includes buttons to trigger a background doctor check or test notifications.
 - **Team:** Manage your chief (patron) and workers. Select active chief (`claude`, `codex`, `agy`), reorder worker priority, toggle providers on/off, change default tiers and models, grant consent, and add new providers (Ollama, OpenAI-compatible APIs, CLI agents).
 - **Keys:** Manage API keys safely. Keys are stored in your operating system's secure credential locker via `keyring` (Windows Credential Locker, macOS Keychain, Linux SecretService) under the service name `orkestra`. Secret values never appear in config files, git commits, or API responses.
-- **Usage:** Run history across 7 or 30 days, success/failure counts, settled prompt/completion tokens, total USD spend, an interactive responsive pure SVG daily spending chart, per-provider breakdown, and an estimate of tokens saved from the chief's context.
+- **Usage:** Run history across 7 or 30 days, success/failure counts, settled prompt/completion tokens, total USD spend, a daily chart of runs (successful and failed, plain SVG, no external scripts), per-provider breakdown, and an estimate of tokens saved from the chief's context.
 - **Guide:** Quick-start overview of Orkestra's architecture, patron-worker model, task flows, and documentation links.
-- **Advanced:** Detailed view of provider daily budgets, execution profiles (`min_tier` / `max_tier`), night queue items, circuit breaker status with recovery timers, and global settings.
+- **Advanced:** Detailed view of provider daily budgets, execution profiles (`min_tier` / `max_tier`), night queue items, circuit breakers (why a provider is paused and until when), the handoff brief the next chief would read, and the main settings (language, chief, profile). Read-only: change them in `orkestra ui --tui` or in the config file.
 
 ## Result envelope and exit codes
 

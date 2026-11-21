@@ -11,6 +11,9 @@ import json
 from orkestra import __version__
 from orkestra.i18n import get_language, t
 
+# The guide's long form: relative links would hit this server (no token: 403).
+REPO_URL = "https://github.com/BurakYildizGameDev/orkestra"
+
 
 def render_home_html(token: str) -> str:
     current_lang = get_language()
@@ -46,6 +49,7 @@ def render_home_html(token: str) -> str:
     lbl_add_url = html.escape(t("team.add.base_url"))
     lbl_add_key = html.escape(t("team.add.key_env"))
     lbl_add_cmd = html.escape(t("team.add.command"))
+    lbl_add_no_key = html.escape(t("team.add.no_key"))
     lbl_add_sub = html.escape(t("team.add.submit"))
     lbl_add_can = html.escape(t("team.add.cancel"))
     lbl_work_title = html.escape(t("team.workers.title"))
@@ -77,6 +81,11 @@ def render_home_html(token: str) -> str:
     lbl_adv_queue = html.escape(t("advanced.card.queue"))
     lbl_adv_breakers = html.escape(t("advanced.card.circuit_breakers"))
     lbl_adv_settings = html.escape(t("advanced.card.settings"))
+    lbl_adv_handoff = html.escape(t("advanced.card.handoff"))
+    lbl_usage_days_7 = html.escape(t("usage.days.7"))
+    lbl_usage_days_30 = html.escape(t("usage.days.30"))
+    guide_url = html.escape(f"{REPO_URL}/blob/main/docs/guide.md")
+    guide_tr_url = html.escape(f"{REPO_URL}/blob/main/docs/guide.tr.md")
 
     i18n_dict = {
         "error_prefix": t("home.error_prefix"),
@@ -152,6 +161,23 @@ def render_home_html(token: str) -> str:
         "advanced_breaker_ok": t("advanced.breaker.ok"),
         "advanced_breaker_open": t("advanced.breaker.open"),
         "advanced_budget_none": t("advanced.budget.none"),
+        "advanced_budget_limits": {
+            limit: t(f"advanced.budget.{limit}", value="{value}")
+            for limit in ("daily_usd", "daily_tokens", "daily_requests", "daily_runs")
+        },
+        "advanced_profile_active": t("advanced.profile.active", name="{name}"),
+        "advanced_profile_line": t(
+            "advanced.profile.line", name="{name}", min="{min}", max="{max}"
+        ),
+        "advanced_breaker_failures": t("advanced.breaker.failures", count="{count}"),
+        "advanced_breaker_until": t("advanced.breaker.until", until="{until}"),
+        "advanced_settings_language": t("advanced.settings.language", value="{value}"),
+        "advanced_settings_chief": t("advanced.settings.chief", value="{value}"),
+        "advanced_settings_profile": t("advanced.settings.profile", value="{value}"),
+        "usage_provider_line": t(
+            "usage.provider_line", runs="{runs}", ok="{ok}", cost="{cost}", tokens="{tokens}"
+        ),
+        "usage_savings_value": t("usage.savings_value", tokens="{tokens}"),
     }
     safe_i18n_json = (
         json.dumps(i18n_dict, ensure_ascii=True)
@@ -493,6 +519,10 @@ def render_home_html(token: str) -> str:
         .tag-check_failed {{ background: var(--fail-bg); color: var(--fail-text); }}
         .tag-disabled {{ background: var(--btn-sec-bg); color: var(--text-muted); }}
         .tag-local {{ background: var(--tag-local-bg); color: var(--tag-local-text); }}
+        .tag-enabled {{ background: var(--ok-bg); color: var(--ok-text); }}
+        .tag-warn {{ background: var(--warn-bg); color: var(--warn-text); }}
+        .tag-fail {{ background: var(--fail-bg); color: var(--fail-text); }}
+        .empty-text {{ font-size: 0.9rem; color: var(--text-muted); padding: 0.5rem 0; }}
         .doc-badge {{
             font-size: 0.75rem;
             padding: 0.1rem 0.35rem;
@@ -689,6 +719,9 @@ def render_home_html(token: str) -> str:
                         </label>
                         <input id="add-worker-key-env" type="text" class="input-sm"
                                style="width:100%; height:34px;" placeholder="SERVICE_API_KEY">
+                        <label style="display:block; font-size:0.8rem; margin-top:0.3rem;">
+                            <input id="add-worker-no-key" type="checkbox"> {lbl_add_no_key}
+                        </label>
                     </div>
                     <div id="add-group-command" style="display: none;">
                         <label style="display:block; font-size:0.8rem; font-weight:600;
@@ -737,6 +770,12 @@ def render_home_html(token: str) -> str:
 
         <!-- USAGE TAB VIEW -->
         <div id="view-usage" style="display: none;">
+            <div style="margin-bottom: 1rem;">
+                <select id="usage-days" class="select-sm">
+                    <option value="7" selected>{lbl_usage_days_7}</option>
+                    <option value="30">{lbl_usage_days_30}</option>
+                </select>
+            </div>
             <div class="grid" style="margin-bottom: 1.5rem;">
                 <div class="card">
                     <div class="card-title">{lbl_usage_card_runs}</div>
@@ -816,9 +855,9 @@ def render_home_html(token: str) -> str:
                 <div style="font-size: 0.9rem;">
                     <strong>{lbl_guide_docs_link}</strong>
                     <div style="margin-top: 0.4rem; font-family: monospace; font-size: 0.85rem;">
-                        <a href="docs/guide.md" target="_blank"
+                        <a href="{guide_url}" target="_blank" rel="noopener noreferrer"
                            style="color: var(--btn-bg); text-decoration: none;">docs/guide.md</a> ·
-                        <a href="docs/guide.tr.md" target="_blank"
+                        <a href="{guide_tr_url}" target="_blank" rel="noopener noreferrer"
                            style="color: var(--btn-bg); text-decoration: none;">docs/guide.tr.md</a>
                     </div>
                 </div>
@@ -845,6 +884,13 @@ def render_home_html(token: str) -> str:
             <div class="card" style="margin-bottom: 1.5rem;">
                 <div class="card-title">{lbl_adv_breakers}</div>
                 <div id="adv-breakers-container" class="provider-list"></div>
+            </div>
+
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <div class="card-title">{lbl_adv_handoff}</div>
+                <div id="adv-handoff-container"
+                     style="font-size: 0.85rem; line-height: 1.5; white-space: pre-wrap;
+                            font-family: monospace;"></div>
             </div>
 
             <div class="card">
@@ -897,26 +943,26 @@ def render_home_html(token: str) -> str:
 
             if (target === "team") {{
                 viewTeam.style.display = "block";
-                titleEl.textContent = I18N.team_title || "Team";
+                titleEl.textContent = I18N.team_title;
                 loadTeam();
             }} else if (target === "keys") {{
                 viewKeys.style.display = "block";
-                titleEl.textContent = I18N.keys_title || "Keys";
+                titleEl.textContent = I18N.keys_title;
                 loadKeys();
             }} else if (target === "usage") {{
                 viewUsage.style.display = "block";
-                titleEl.textContent = I18N.usage_title || "Usage";
+                titleEl.textContent = I18N.usage_title;
                 loadUsage();
             }} else if (target === "guide") {{
                 viewGuide.style.display = "block";
-                titleEl.textContent = I18N.guide_title || "Guide";
+                titleEl.textContent = I18N.guide_title;
             }} else if (target === "advanced") {{
                 viewAdvanced.style.display = "block";
-                titleEl.textContent = I18N.advanced_title || "Advanced";
+                titleEl.textContent = I18N.advanced_title;
                 loadAdvanced();
             }} else {{
                 viewHome.style.display = "block";
-                titleEl.textContent = I18N.home_title || "Home";
+                titleEl.textContent = I18N.home_title;
                 loadHome();
             }}
         }}
@@ -966,8 +1012,7 @@ def render_home_html(token: str) -> str:
                     .replace("{{pending}}", qp)
                     .replace("{{running}}", qr)
                     .replace("{{failed}}", qf);
-                const queueFallback = "Kuyruk: " + qp + ", " + qr + ", " + qf;
-                document.getElementById("queue-count").textContent = qText || queueFallback;
+                document.getElementById("queue-count").textContent = qText;
             }}
 
             const claudeCard = document.getElementById("claude-card");
@@ -1090,7 +1135,7 @@ def render_home_html(token: str) -> str:
                     if (c.name === data.patron) opt.selected = true;
                     patronSel.appendChild(opt);
                 }});
-                const orderText = data.chiefs.map(c => c.name).join(" → ");
+                const orderText = (data.handoff_order || []).join(" → ");
                 document.getElementById("patron-handoff-order").textContent = orderText;
             }}
 
@@ -1409,6 +1454,7 @@ def render_home_html(token: str) -> str:
             const base_url = document.getElementById("add-worker-url").value.trim();
             const api_key_env = document.getElementById("add-worker-key-env").value.trim();
             const command = document.getElementById("add-worker-command").value.trim();
+            const noKey = document.getElementById("add-worker-no-key").checked;
 
             const payload = {{
                 type: tVal,
@@ -1416,8 +1462,10 @@ def render_home_html(token: str) -> str:
                 model: model,
                 tier: tier,
                 base_url: (tVal !== "cli_agent") ? base_url : null,
-                api_key_env: (tVal === "openai_compat" && api_key_env) ? api_key_env : null,
+                api_key_env: (tVal === "openai_compat" && !noKey && api_key_env)
+                    ? api_key_env : null,
                 command: (tVal === "cli_agent" && command) ? command : null,
+                no_key: tVal === "openai_compat" && noKey,
             }};
 
             try {{
@@ -1519,11 +1567,11 @@ def render_home_html(token: str) -> str:
 
         function renderKeys(keysList) {{
             const container = document.getElementById("keys-container");
-            container.innerHTML = "";
+            container.replaceChildren();
             if (!keysList || keysList.length === 0) {{
                 const empty = document.createElement("div");
                 empty.className = "empty-text";
-                empty.textContent = I18N.keys_empty || "No keys configured.";
+                empty.textContent = I18N.keys_empty;
                 container.appendChild(empty);
                 return;
             }}
@@ -1547,9 +1595,8 @@ def render_home_html(token: str) -> str:
                 const badgeClass = isEnv ? "tag-local" :
                     (isKeyring ? "tag-enabled" : "tag-disabled");
                 sourceBadge.className = "tag " + badgeClass;
-                sourceBadge.textContent = isEnv ? (I18N.keys_source_env || "Environment Variable") :
-                                         (isKeyring ? (I18N.keys_source_keyring || "Keyring") :
-                                         (I18N.keys_source_none || "Not Defined"));
+                sourceBadge.textContent = isEnv ? I18N.keys_source_env :
+                    (isKeyring ? I18N.keys_source_keyring : I18N.keys_source_none);
                 left.appendChild(sourceBadge);
 
                 if (k.providers && k.providers.length > 0) {{
@@ -1568,13 +1615,13 @@ def render_home_html(token: str) -> str:
                 const input = document.createElement("input");
                 input.type = "password";
                 input.className = "input-sm";
-                input.placeholder = I18N.keys_placeholder || "Paste secret key...";
+                input.placeholder = I18N.keys_placeholder;
                 input.style.width = "220px";
                 right.appendChild(input);
 
                 const saveBtn = document.createElement("button");
                 saveBtn.className = "btn btn-primary btn-sm";
-                saveBtn.textContent = I18N.keys_action_save || "Save";
+                saveBtn.textContent = I18N.keys_action_save;
                 saveBtn.onclick = async () => {{
                     const secretVal = input.value.trim();
                     if (!secretVal) return;
@@ -1587,15 +1634,15 @@ def render_home_html(token: str) -> str:
                         }});
                         const resData = await res.json();
                         if (res.ok) {{
-                            const saveMsg = (I18N.keys_feedback_saved || "Saved")
-                                .replace("{{var}}", k.var_name);
+                            const saveMsg = fill(I18N.keys_feedback_saved, {{ var: k.var_name }});
                             showFeedback(saveMsg);
                             renderKeys(resData.keys || []);
                         }} else {{
-                            showFeedback(resData.error || "Save failed", true);
+                            showFeedback(I18N.error_prefix + ": " +
+                                (resData.error || ("HTTP " + res.status)), true);
                         }}
                     }} catch (err) {{
-                        showFeedback(String(err), true);
+                        showFeedback(I18N.error_prefix + ": " + err.message, true);
                     }} finally {{
                         saveBtn.disabled = false;
                     }}
@@ -1605,10 +1652,9 @@ def render_home_html(token: str) -> str:
                 if (k.source === "keyring") {{
                     const delBtn = document.createElement("button");
                     delBtn.className = "btn btn-danger btn-sm";
-                    delBtn.textContent = I18N.keys_action_delete || "Delete";
+                    delBtn.textContent = I18N.keys_action_delete;
                     delBtn.onclick = async () => {{
-                        const confirmMsg = (I18N.keys_confirm_delete || "Delete?")
-                            .replace("{{var}}", k.var_name);
+                        const confirmMsg = fill(I18N.keys_confirm_delete, {{ var: k.var_name }});
                         if (!confirm(confirmMsg)) return;
                         delBtn.disabled = true;
                         try {{
@@ -1619,15 +1665,17 @@ def render_home_html(token: str) -> str:
                             }});
                             const resData = await res.json();
                             if (res.ok) {{
-                                const delMsg = (I18N.keys_feedback_deleted || "Deleted")
-                                    .replace("{{var}}", k.var_name);
+                                const delMsg = fill(I18N.keys_feedback_deleted, {{
+                                    var: k.var_name
+                                }});
                                 showFeedback(delMsg);
                                 renderKeys(resData.keys || []);
                             }} else {{
-                                showFeedback(resData.error || "Delete failed", true);
+                                showFeedback(I18N.error_prefix + ": " +
+                                    (resData.error || ("HTTP " + res.status)), true);
                             }}
                         }} catch (err) {{
-                            showFeedback(String(err), true);
+                            showFeedback(I18N.error_prefix + ": " + err.message, true);
                         }} finally {{
                             delBtn.disabled = false;
                         }}
@@ -1641,11 +1689,11 @@ def render_home_html(token: str) -> str:
         }}
 
         function renderDailyChart(container, daily) {{
-            container.innerHTML = "";
+            container.replaceChildren();
             if (!daily || daily.length === 0) {{
                 const empty = document.createElement("div");
                 empty.className = "empty-text";
-                empty.textContent = I18N.usage_chart_empty || "No activity.";
+                empty.textContent = I18N.usage_chart_empty;
                 container.appendChild(empty);
                 return;
             }}
@@ -1711,7 +1759,8 @@ def render_home_html(token: str) -> str:
 
         async function loadUsage() {{
             try {{
-                const res = await fetchWithToken("/api/usage");
+                const days = document.getElementById("usage-days").value;
+                const res = await fetchWithToken("/api/usage?days=" + encodeURIComponent(days));
                 if (!res.ok) throw new Error("HTTP " + res.status);
                 const data = await res.json();
                 renderUsage(data);
@@ -1719,6 +1768,8 @@ def render_home_html(token: str) -> str:
                 showFeedback(I18N.error_prefix + ": " + err.message, true);
             }}
         }}
+
+        document.getElementById("usage-days").addEventListener("change", () => loadUsage());
 
         function renderUsage(data) {{
             const totals = data.totals || {{}};
@@ -1734,15 +1785,14 @@ def render_home_html(token: str) -> str:
             const workerTokens = savings.worker_output_tokens || 0;
             const envTokens = savings.envelope_tokens || 0;
             const ratio = envTokens > 0 ? (workerTokens / envTokens).toFixed(1) : "-";
-            document.getElementById("usage-stat-savings").textContent =
-                workerTokens > 0 ? "~" + workerTokens + " tok" : "-";
+            document.getElementById("usage-stat-savings").textContent = workerTokens > 0
+                ? fill(I18N.usage_savings_value, {{ tokens: workerTokens }}) : "-";
 
             const detailEl = document.getElementById("usage-savings-detail");
             if (workerTokens > 0) {{
-                detailEl.textContent = (I18N.usage_savings_detail || "")
-                    .replace("{{out}}", String(workerTokens))
-                    .replace("{{env}}", String(envTokens))
-                    .replace("{{ratio}}", ratio);
+                detailEl.textContent = fill(I18N.usage_savings_detail, {{
+                    out: workerTokens, env: envTokens, ratio: ratio
+                }});
             }} else {{
                 detailEl.textContent = "";
             }}
@@ -1753,12 +1803,12 @@ def render_home_html(token: str) -> str:
             );
 
             const provContainer = document.getElementById("usage-providers-table");
-            provContainer.innerHTML = "";
+            provContainer.replaceChildren();
             const providers = data.providers || [];
             if (providers.length === 0) {{
                 const empty = document.createElement("div");
                 empty.className = "empty-text";
-                empty.textContent = I18N.usage_chart_empty || "No provider activity.";
+                empty.textContent = I18N.usage_chart_empty;
                 provContainer.appendChild(empty);
                 return;
             }}
@@ -1771,7 +1821,7 @@ def render_home_html(token: str) -> str:
                 left.className = "team-worker-left";
                 const name = document.createElement("span");
                 name.style.fontWeight = "600";
-                name.textContent = p.provider || "unnamed";
+                name.textContent = p.provider || "-";
                 left.appendChild(name);
 
                 const rateBadge = document.createElement("span");
@@ -1786,10 +1836,12 @@ def render_home_html(token: str) -> str:
                 right.className = "team-worker-right";
                 right.style.fontSize = "0.85rem";
                 right.style.color = "var(--text-muted)";
-                const runsText = (p.runs || 0) + " runs (" + (p.ok || 0) + " ok)";
-                const costText = "$" + (p.cost_usd || 0).toFixed(4);
-                const tokensText = ((p.prompt_tokens || 0) + (p.completion_tokens || 0)) + " tok";
-                right.textContent = runsText + " · " + costText + " · " + tokensText;
+                right.textContent = fill(I18N.usage_provider_line, {{
+                    runs: p.runs || 0,
+                    ok: p.ok || 0,
+                    cost: "$" + (p.cost_usd || 0).toFixed(4),
+                    tokens: (p.prompt_tokens || 0) + (p.completion_tokens || 0)
+                }});
                 row.appendChild(right);
 
                 provContainer.appendChild(row);
@@ -1807,127 +1859,125 @@ def render_home_html(token: str) -> str:
             }}
         }}
 
+        function fill(template, values) {{
+            let out = template || "";
+            Object.keys(values).forEach(k => {{
+                out = out.split("{{" + k + "}}").join(String(values[k]));
+            }});
+            return out;
+        }}
+
+        function addLine(container, text) {{
+            const line = document.createElement("div");
+            line.textContent = text;
+            container.appendChild(line);
+        }}
+
         function renderAdvanced(data) {{
             const bContainer = document.getElementById("adv-budgets-container");
-            bContainer.innerHTML = "";
-            const b = data.budgets || {{}};
-            const dailyB = b.daily ? "$" + b.daily.toFixed(2) :
-                (I18N.advanced_budget_none || "None");
-            const dLine = document.createElement("div");
-            dLine.textContent = "Global daily limit: " + dailyB;
-            bContainer.appendChild(dLine);
-
-            const pBudgets = b.providers || {{}};
+            bContainer.replaceChildren();
+            const pBudgets = (data.budgets || {{}}).providers || {{}};
             const pKeys = Object.keys(pBudgets);
-            if (pKeys.length > 0) {{
-                pKeys.forEach(pName => {{
-                    const line = document.createElement("div");
-                    const pb = pBudgets[pName];
-                    const usd = pb.daily_usd !== null && pb.daily_usd !== undefined ?
-                        "$" + pb.daily_usd : "-";
-                    line.textContent = pName + ": daily limit " + usd;
-                    bContainer.appendChild(line);
-                }});
+            if (pKeys.length === 0) {{
+                addLine(bContainer, I18N.advanced_budget_none);
             }}
+            pKeys.forEach(pName => {{
+                const limits = pBudgets[pName];
+                const parts = Object.keys(limits).map(limit =>
+                    fill(I18N.advanced_budget_limits[limit], {{ value: limits[limit] }}));
+                addLine(bContainer, pName + ": " + parts.join(", "));
+            }});
 
             const prContainer = document.getElementById("adv-profiles-container");
-            prContainer.innerHTML = "";
+            prContainer.replaceChildren();
             const pr = data.profiles || {{}};
-            const act = document.createElement("div");
-            act.textContent = "Active profile: " + (pr.active || "balanced");
-            prContainer.appendChild(act);
-
+            addLine(prContainer, fill(I18N.advanced_profile_active, {{ name: pr.active || "" }}));
             const defs = pr.definitions || {{}};
             Object.keys(defs).forEach(pName => {{
-                const line = document.createElement("div");
                 const def = defs[pName];
-                line.textContent = pName + ": min tier " + def.min_tier +
-                    ", max tier " + def.max_tier;
-                prContainer.appendChild(line);
+                addLine(prContainer, fill(I18N.advanced_profile_line, {{
+                    name: pName, min: def.min_tier, max: def.max_tier
+                }}));
             }});
 
             const qContainer = document.getElementById("adv-queue-container");
-            qContainer.innerHTML = "";
-            const q = data.queue || {{}};
-            const items = q.items || [];
+            qContainer.replaceChildren();
+            const items = (data.queue || {{}}).items || [];
             if (items.length === 0) {{
                 const empty = document.createElement("div");
                 empty.className = "empty-text";
-                empty.textContent = I18N.advanced_queue_empty || "Queue is empty.";
+                empty.textContent = I18N.advanced_queue_empty;
                 qContainer.appendChild(empty);
-            }} else {{
-                items.forEach(it => {{
-                    const row = document.createElement("div");
-                    row.className = "team-worker-row";
-
-                    const left = document.createElement("div");
-                    left.className = "team-worker-left";
-                    const idSpan = document.createElement("span");
-                    idSpan.style.fontWeight = "600";
-                    idSpan.textContent = "#" + it.id + " " + it.kind;
-                    left.appendChild(idSpan);
-
-                    const stBadge = document.createElement("span");
-                    stBadge.className = "tag " + (it.status === "ok" ? "tag-enabled" :
-                        (it.status === "failed" ? "tag-disabled" : "tag-local"));
-                    stBadge.textContent = it.status;
-                    left.appendChild(stBadge);
-
-                    const pathSpan = document.createElement("span");
-                    pathSpan.style.fontSize = "0.8rem";
-                    pathSpan.style.color = "var(--text-muted)";
-                    pathSpan.textContent = it.path;
-                    left.appendChild(pathSpan);
-                    row.appendChild(left);
-
-                    qContainer.appendChild(row);
-                }});
             }}
-
-            const cbContainer = document.getElementById("adv-breakers-container");
-            cbContainer.innerHTML = "";
-            const breakers = data.circuit_breakers || [];
-            breakers.forEach(br => {{
+            items.forEach(it => {{
                 const row = document.createElement("div");
                 row.className = "team-worker-row";
+                const left = document.createElement("div");
+                left.className = "team-worker-left";
+                const idSpan = document.createElement("span");
+                idSpan.style.fontWeight = "600";
+                idSpan.textContent = "#" + it.id + " " + it.kind;
+                left.appendChild(idSpan);
+                const stBadge = document.createElement("span");
+                stBadge.className = "tag " + (it.status === "done" ? "tag-enabled" :
+                    (it.status === "failed" ? "tag-fail" : "tag-local"));
+                stBadge.textContent = it.status;
+                left.appendChild(stBadge);
+                const pathSpan = document.createElement("span");
+                pathSpan.style.fontSize = "0.8rem";
+                pathSpan.style.color = "var(--text-muted)";
+                pathSpan.textContent = it.path;
+                left.appendChild(pathSpan);
+                row.appendChild(left);
+                qContainer.appendChild(row);
+            }});
 
+            const cbContainer = document.getElementById("adv-breakers-container");
+            cbContainer.replaceChildren();
+            (data.circuit_breakers || []).forEach(br => {{
+                const row = document.createElement("div");
+                row.className = "team-worker-row";
                 const left = document.createElement("div");
                 left.className = "team-worker-left";
                 const pName = document.createElement("span");
                 pName.style.fontWeight = "600";
                 pName.textContent = br.provider;
                 left.appendChild(pName);
-
                 const statusTag = document.createElement("span");
-                statusTag.className = "tag " + (br.is_open ? "tag-disabled" : "tag-enabled");
+                statusTag.className = "tag " + (br.is_open ? "tag-fail" : "tag-enabled");
                 statusTag.textContent = br.is_open ?
-                    (I18N.advanced_breaker_open || "Tripped") :
-                    (I18N.advanced_breaker_ok || "Healthy");
+                    I18N.advanced_breaker_open : I18N.advanced_breaker_ok;
                 left.appendChild(statusTag);
-
+                const notes = [];
+                if (br.is_open && br.reason_text) notes.push(br.reason_text);
+                if (br.is_open && br.until_text) {{
+                    notes.push(fill(I18N.advanced_breaker_until, {{ until: br.until_text }}));
+                }}
                 if (br.consecutive_failures > 0) {{
-                    const fails = document.createElement("span");
-                    fails.style.fontSize = "0.8rem";
-                    fails.style.color = "var(--fail-text)";
-                    fails.textContent = br.consecutive_failures + " failures";
-                    left.appendChild(fails);
+                    notes.push(fill(I18N.advanced_breaker_failures, {{
+                        count: br.consecutive_failures
+                    }}));
+                }}
+                if (notes.length > 0) {{
+                    const note = document.createElement("span");
+                    note.style.fontSize = "0.8rem";
+                    note.style.color = br.is_open ? "var(--fail-text)" : "var(--text-muted)";
+                    note.textContent = notes.join(" · ");
+                    left.appendChild(note);
                 }}
                 row.appendChild(left);
                 cbContainer.appendChild(row);
             }});
 
+            const hContainer = document.getElementById("adv-handoff-container");
+            hContainer.textContent = (data.handoff || {{}}).text || "";
+
             const stContainer = document.getElementById("adv-settings-container");
-            stContainer.innerHTML = "";
+            stContainer.replaceChildren();
             const st = data.settings || {{}};
-            const s1 = document.createElement("div");
-            s1.textContent = "Language: " + st.language;
-            stContainer.appendChild(s1);
-            const s2 = document.createElement("div");
-            s2.textContent = "Chief: " + st.chief;
-            stContainer.appendChild(s2);
-            const s3 = document.createElement("div");
-            s3.textContent = "Privacy: " + st.privacy;
-            stContainer.appendChild(s3);
+            addLine(stContainer, fill(I18N.advanced_settings_language, {{ value: st.language }}));
+            addLine(stContainer, fill(I18N.advanced_settings_chief, {{ value: st.chief }}));
+            addLine(stContainer, fill(I18N.advanced_settings_profile, {{ value: st.profile }}));
         }}
 
         loadHome();

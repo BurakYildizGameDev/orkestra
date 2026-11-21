@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
@@ -26,6 +26,9 @@ from orkestra.i18n import t
 from orkestra.security.redact import config_for_display
 from orkestra.state import db
 from orkestra.tui import detect, wizard
+
+if TYPE_CHECKING:
+    from orkestra.web.server import WebServer
 
 
 class _TyperPrompter:
@@ -117,6 +120,30 @@ def _init_interactive(config_flag: Path | None, *, project: bool) -> None:
         raise typer.Exit(int(ExitCode.USAGE))
     if interface.wizard_exit_code:
         raise typer.Exit(interface.wizard_exit_code)  # the error's own code, as --plain gives
+
+
+def _open_window(srv: WebServer, url: str) -> bool:
+    """The web interface in a pywebview window (``--window``, D-123); ``False`` when pywebview
+    is missing or cannot start (e.g. no GUI backend), after saying so: the caller then serves
+    for the browser instead. The server runs in a thread while the window is open."""
+    try:
+        import webview  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        typer.echo(t("ui.web.window_fallback"), err=True)
+        return False
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    try:
+        webview.create_window("Orkestra", url, width=1280, height=800)
+        webview.start()
+    except Exception as exc:  # pywebview raises its own errors per platform/backend
+        srv.shutdown()
+        thread.join()
+        typer.echo(t("ui.web.window_failed", reason=str(exc) or type(exc).__name__), err=True)
+        return False
+    srv.shutdown()
+    thread.join()
+    return True
 
 
 def register(app: typer.Typer, config_app: typer.Typer) -> None:
@@ -213,22 +240,11 @@ def register(app: typer.Typer, config_app: typer.Typer) -> None:
         typer.echo(t("ui.web.started", url=url))
         typer.echo(t("ui.web.press_ctrl_c"))
 
-        if window:
-            try:
-                import webview  # type: ignore
-
-                server_thread = threading.Thread(target=srv.serve_forever, daemon=True)
-                server_thread.start()
-                webview.create_window("Orkestra", url, width=1280, height=800)
-                webview.start()
-                srv.shutdown()
-                typer.echo(t("ui.web.stopped"))
-                return
-            except ImportError:
-                typer.echo(t("ui.web.window_fallback"), err=True)
-                if not no_browser:
-                    webbrowser.open(url)
-        elif not no_browser:
+        if window and _open_window(srv, url):
+            srv.server_close()
+            typer.echo(t("ui.web.stopped"))
+            return
+        if not no_browser:
             webbrowser.open(url)
 
         try:

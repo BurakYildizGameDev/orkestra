@@ -120,6 +120,7 @@ class WebServer(http.server.ThreadingHTTPServer):
 def _team_json(summary: team.TeamSummary) -> dict[str, Any]:
     return {
         "patron": summary.patron,
+        "handoff_order": list(summary.handoff_order),
         "chiefs": [
             {
                 "name": c.name,
@@ -147,6 +148,17 @@ def _team_json(summary: team.TeamSummary) -> dict[str, Any]:
             for w in summary.workers
         ],
     }
+
+
+USAGE_DAYS = (7, 30)
+
+
+def _usage_days(path: str) -> int:
+    """``?days=7`` (default) or ``?days=30``: the usage screen's two periods."""
+    raw = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query).get("days", ["7"])[0]
+    if not raw.isdigit() or int(raw) not in USAGE_DAYS:
+        raise UsageError(t("usage.error.days", value=raw[:20]))
+    return int(raw)
 
 
 class WebHandler(http.server.BaseHTTPRequestHandler):
@@ -298,9 +310,12 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed == "/api/usage":
             try:
+                days = _usage_days(self.path)
                 with closing(db.connect()) as conn:
-                    summary = usage.usage_summary(conn)
+                    summary = usage.usage_summary(conn, days=days, now=db.local_now())
                 self._send_json(200, summary)
+            except UsageError as exc:
+                self._send_error_json(400, str(exc))
             except Exception as exc:
                 self._send_error_json(500, str(exc))
             return
@@ -309,7 +324,7 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
             try:
                 loaded = load_config(self.server.config_path)
                 with closing(db.connect()) as conn:
-                    summary = advanced.advanced_summary(loaded.config, conn)
+                    summary = advanced.advanced_summary(loaded.config, conn, now=db.local_now())
                 self._send_json(200, summary)
             except Exception as exc:
                 self._send_error_json(500, str(exc))
@@ -359,7 +374,9 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                     team.set_patron(self.server.config_path, chief)
                 elif parsed == "/api/team/worker/toggle":
                     name = str(body.get("name", "")).strip()
-                    enabled = bool(body.get("enabled", True))
+                    enabled = body.get("enabled")
+                    if not isinstance(enabled, bool):
+                        raise UsageError(t("team.error.enabled_bool"))
                     team.toggle_worker(self.server.config_path, name, enabled)
                 elif parsed == "/api/team/worker/tier":
                     name = str(body.get("name", "")).strip()
@@ -380,6 +397,7 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                     base_url = body.get("base_url")
                     api_key_env = body.get("api_key_env")
                     command = body.get("command")
+                    no_key = body.get("no_key") is True
                     force = bool(body.get("force", False))
                     team.add_worker(
                         self.server.config_path,
@@ -390,6 +408,7 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                         base_url=str(base_url) if base_url else None,
                         api_key_env=str(api_key_env) if api_key_env else None,
                         command=str(command) if command else None,
+                        no_key=no_key,
                         force=force,
                     )
                 elif parsed == "/api/team/worker/remove":

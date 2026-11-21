@@ -837,9 +837,9 @@ orkestra ui --tui            # terminal arayüzünü (Textual) başlatır
 - **Ana Ekran:** Tek bakışta sistem sağlığı (yeşil/sarı/kırmızı durum bandı), doctor durumuyla birlikte sağlayıcılar, bugünkü koşular ve harcama, Claude kota takibi (5 saatlik ve 7 günlük kullanım), bekleyen değişiklikler, gece kuyruğu sayısı ve önceliklendirilmiş "Sonraki Adım" önerisi. Arka planda doctor testi veya bildirim denemesi başlatma düğmelerini içerir.
 - **Ekip:** Şef (patron) ve çalışanları yönetin. Aktif şefi (`claude`, `codex`, `agy`) belirleyin, çalışan önceliğini sıralayın, sağlayıcıları açıp kapatın, kademe ve model atayın, onay verin ve yeni çalışan ekleyin (Ollama, OpenAI uyumlu API'ler, CLI ajanları).
 - **Anahtarlar:** API anahtarlarını güvenle yönetin. Anahtarlar `keyring` aracılığıyla işletim sisteminizin güvenli kimlik deposunda (Windows Credential Locker, macOS Keychain, Linux SecretService) `orkestra` servis adıyla saklanır. Gizli değerler asla config dosyalarına, git commit'lerine ya da web API yanıtlarına girmez.
-- **Kullanım:** 7 veya 30 günlük koşu geçmişi, başarı/başarısızlık sayıları, kesinleşen prompt/tamamlama tokenları, toplam harcama ($), etkileşimli ve esnek saf SVG günlük harcama grafiği, sağlayıcı dökümü tablosu ve şefin bağlamından tasarruf edilen tahmini token sayısı.
+- **Kullanım:** 7 veya 30 günlük koşu geçmişi, başarı/başarısızlık sayıları, kesinleşen prompt/tamamlama tokenları, toplam harcama ($), günlük iş grafiği (başarılı ve başarısız; düz SVG, dış betik yok), sağlayıcı dökümü tablosu ve şefin bağlamından tasarruf edilen tahmini token sayısı.
 - **Rehber:** Orkestra mimarisine, patron-çalışan modeline, görev akışlarına hızlı genel bakış ve dokümantasyon bağlantıları.
-- **Gelişmiş:** Sağlayıcı günlük bütçeleri, çalışma profilleri (`min_tier` / `max_tier`), gece kuyruğu listesi, devre kesici durumları ve kurtarma sayaçları ile genel ayarların ayrıntılı görünümü.
+- **Gelişmiş:** Sağlayıcı günlük bütçeleri, çalışma profilleri (`min_tier` / `max_tier`), gece kuyruğu listesi, devre kesiciler (sağlayıcı neden ve ne zamana kadar duraklatıldı), sıradaki şefin okuyacağı devir özeti ve temel ayarlar (dil, şef, profil). Yalnız gösterir: değiştirmek için `orkestra ui --tui` ya da config dosyası.
 
 ## Sonuç zarfı ve çıkış kodları
 

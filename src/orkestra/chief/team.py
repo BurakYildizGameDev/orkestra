@@ -61,6 +61,9 @@ class TeamSummary:
     patron: str
     chiefs: tuple[ChiefSummary, ...]
     workers: tuple[WorkerSummary, ...]
+    # The patron, then the chiefs in config order: ``chief.limits`` hands off to the first
+    # chief that is not the current one.
+    handoff_order: tuple[str, ...] = ()
 
 
 def _worker_models(provider: Any) -> tuple[str, ...]:
@@ -126,10 +129,12 @@ def team_summary(config: Config, conn: sqlite3.Connection | None = None) -> Team
             )
         )
 
+    patron = config.defaults.chief
     return TeamSummary(
-        patron=config.defaults.chief,
+        patron=patron,
         chiefs=chiefs,
         workers=tuple(workers),
+        handoff_order=(patron, *(name for name in config.chiefs if name != patron)),
     )
 
 
@@ -152,19 +157,35 @@ def toggle_worker(
     )
 
 
+def _worker_type(config_path: Path | None, name: str, cwd: Path | None) -> str:
+    provider = loader.load_config(config_path, cwd).config.providers.get(name)
+    if provider is None:
+        raise UsageError(t("team.error.unknown_worker", name=name))
+    return provider.type
+
+
+def _target(
+    config_path: Path | None, name: str, field: str, cwd: Path | None
+) -> tuple[Path, Path | None]:
+    """The file that defines ``providers.<name>.<field>`` (a project file that only turns the
+    provider off has no models: writing there would change nothing)."""
+    return edits.target_for(("providers", name, field), config_flag=config_path, cwd=cwd)
+
+
 def set_worker_tier(
     config_path: Path | None, name: str, tier: int, *, cwd: Path | None = None
 ) -> writer.SaveResult:
     """Set provider tier (1, 2, or 3), updating models or provider definition."""
     if tier not in (1, 2, 3):
         raise UsageError(t("team.error.invalid_tier"))
-    target, base = edits.target_for(("providers", name), config_flag=config_path, cwd=cwd)
+    ptype = _worker_type(config_path, name, cwd)
+    field = "tier" if ptype == "cli_agent" else "models"
+    target, base = _target(config_path, name, field, cwd)
     doc = writer.load_document(target)
     entry = doc.get("providers", {}).get(name)
     if not isinstance(entry, CommentedMap):
         raise UsageError(t("team.error.unknown_worker", name=name))
 
-    ptype = entry.get("type")
     if ptype == "cli_agent":
         entry["tier"] = tier
     else:
@@ -184,13 +205,14 @@ def set_worker_model(
     model_id = model_id.strip()
     if not model_id:
         raise UsageError(t("providers.error.no_model"))
-    target, base = edits.target_for(("providers", name), config_flag=config_path, cwd=cwd)
+    ptype = _worker_type(config_path, name, cwd)
+    field = "model" if ptype == "cli_agent" else "models"
+    target, base = _target(config_path, name, field, cwd)
     doc = writer.load_document(target)
     entry = doc.get("providers", {}).get(name)
     if not isinstance(entry, CommentedMap):
         raise UsageError(t("team.error.unknown_worker", name=name))
 
-    ptype = entry.get("type")
     if ptype == "cli_agent":
         entry["model"] = model_id
     else:
@@ -251,6 +273,7 @@ def add_worker(
     base_url: str | None = None,
     api_key_env: str | None = None,
     command: str | None = None,
+    no_key: bool = False,
     force: bool = False,
     cwd: Path | None = None,
 ) -> writer.SaveResult:
@@ -273,12 +296,9 @@ def add_worker(
             raise UsageError(t("providers.error.base_url", value=url))
         if api_key_env is not None and not provider_entry.valid_key_env(api_key_env):
             raise UsageError(t("providers.error.key_env"))
-        api = provider_entry.ApiProvider(
-            name=name,
-            base_url=url,
-            api_key_env=api_key_env,
-            models=(model,),
-            tier=tier,
+        # Same as ``providers add``: no variable given → the suggested ``<NAME>_API_KEY``.
+        api = provider_entry.from_flags(
+            name, url, (model,), api_key_env=api_key_env, no_key=no_key, tier=tier
         )
         return provider_entry.add(target, api, force=force, base=base)
 
