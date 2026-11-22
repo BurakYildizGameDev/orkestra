@@ -21,5 +21,6 @@ verify:
     must_not_match: ["(?i)lorem ipsum"]
 limits:
   max_retries: 1             # one retry with feedback per model before moving up a tier
+# max_wait_s: 30             # optional: models with median duration > max_wait_s are moved to tier end
 privacy: normal              # local_only keeps the README on local models
 tags: [docs]

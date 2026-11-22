@@ -323,6 +323,7 @@ class _Prepared:
             allow_secrets=self.options.allow_secrets,
             edit_lines=self.edit.lines if self.edit else 0,
             edit_format=self.task.edit_format,
+            max_wait_s=self.task.max_wait_s,
         )
 
 
@@ -434,6 +435,7 @@ async def _route(
     snapshot = take_snapshot(
         conn, prep.config, moment, environ=prep.env, price_cache=cache,
         names=scope(needs, prep.config), extra_model=extra, tags=prep.task.tags,
+        with_scores=bool(needs.max_wait_s is not None),
     )  # fmt: skip
     return route(needs, prep.config, snapshot, profile=profile)
 

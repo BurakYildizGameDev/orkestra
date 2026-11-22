@@ -69,6 +69,7 @@ class TaskNeeds:
     edit_lines: int = 0  # edit tasks: lines of the largest context file
     edit_format: EditFormatSetting | None = None  # the task file's choice; None: each model's
     work: WorkKind | None = None  # kind of work for ``routing.by_kind``; None: ``kind`` (Faz 13l)
+    max_wait_s: int | None = None  # median duration > max_wait_s goes last in tier (Faz 13q)
 
 
 def _edit_format(needs: TaskNeeds, model: ModelSpec, config: Config) -> EditFormat:
@@ -117,6 +118,7 @@ class Candidate:
     edit_format: EditFormat | None = None  # how an API worker answers an edit task (Faz 9c)
     score: Score | None = None  # routing.adaptive: success score and sample count (Faz 12b)
     quota_low: bool = False  # running low on quota (Faz 13k): last in its tier
+    wait_exceeded: bool = False  # median duration > task's max_wait_s: last in its tier (Faz 13q)
     prefer_rank: int | None = None  # place in ``routing.by_kind``'s list; None: not named
 
     @property
@@ -398,10 +400,20 @@ def route(
     prefs = config.routing.by_kind.get(needs.work or needs.kind)
     if prefs is not None and prefs.prefer:
         candidates = [replace(c, prefer_rank=_prefer_rank(c, prefs.prefer)) for c in candidates]
-    if config.routing.adaptive or config.routing.prefer_fast:
+    if config.routing.adaptive or config.routing.prefer_fast or needs.max_wait_s is not None:
         neutral = Score(adaptive.NEUTRAL, 0, 0, config.routing.min_samples, scored=False)
         candidates = [
             replace(c, score=snapshot.scores.get(_score_key(c), neutral)) for c in candidates
+        ]
+    if needs.max_wait_s is not None:
+        candidates = [
+            replace(
+                c,
+                wait_exceeded=bool(
+                    c.median_duration_s is not None and c.median_duration_s > needs.max_wait_s
+                ),
+            )
+            for c in candidates
         ]
     if config.routing.prefer_fast:
         candidates.sort(key=functools.cmp_to_key(_candidate_cmp_fast))
@@ -458,6 +470,8 @@ def _candidate_cmp_fast(a: Candidate, b: Candidate) -> int:
         return -1 if a.tier < b.tier else 1
     if a.quota_low != b.quota_low:
         return 1 if a.quota_low else -1
+    if a.wait_exceeded != b.wait_exceeded:
+        return 1 if a.wait_exceeded else -1
     a_rank = math.inf if a.prefer_rank is None else float(a.prefer_rank)
     b_rank = math.inf if b.prefer_rank is None else float(b.prefer_rank)
     if a_rank != b_rank:
@@ -485,12 +499,12 @@ def _candidate_cmp_fast(a: Candidate, b: Candidate) -> int:
     return 0
 
 
-def _order_key(c: Candidate) -> tuple[int, bool, float, float, int, tuple[int, int]]:
-    """Tier first, always; running low on quota, the kind's preference and the score only
-    reorder inside a tier."""
+def _order_key(c: Candidate) -> tuple[int, bool, bool, float, float, int, tuple[int, int]]:
+    """Tier first, always; running low on quota, exceeding max_wait_s, the kind's preference
+    and the score only reorder inside a tier."""
     score = -(c.score.value if c.score is not None else 0.0)
     rank = math.inf if c.prefer_rank is None else float(c.prefer_rank)
-    return (c.tier, c.quota_low, rank, score, -c.model.priority, c.order)
+    return (c.tier, c.quota_low, c.wait_exceeded, rank, score, -c.model.priority, c.order)
 
 
 def take_snapshot(
@@ -503,6 +517,7 @@ def take_snapshot(
     names: Sequence[str] | None = None,
     extra_model: tuple[str, str] | None = None,
     tags: Sequence[str] = (),
+    with_scores: bool = False,
 ) -> Snapshot:
     """State for the providers in ``names`` (default: all) that ``route()`` will look at.
 
@@ -545,7 +560,7 @@ def take_snapshot(
                 name, cfg, model, conn=conn, cache=cache, history=history
             )
     scores: dict[ScoreKey, Score] = {}
-    if config.routing.adaptive or config.routing.prefer_fast:
+    if config.routing.adaptive or config.routing.prefer_fast or with_scores:
         outcomes = adaptive.load_outcomes(conn, now)
         scores = adaptive.scores(config, outcomes, tags, list(states), extra=extra_model)
     return Snapshot(now, states, prices, scores)
@@ -578,6 +593,7 @@ def describe_candidates(candidates: Sequence[Candidate]) -> list[dict[str, Any]]
             if (c.score and c.score.median_duration_s is not None)
             else None,
             "quota_low": c.quota_low,
+            "wait_exceeded": c.wait_exceeded,
             "prefer_rank": c.prefer_rank,
         }
         for c in candidates
