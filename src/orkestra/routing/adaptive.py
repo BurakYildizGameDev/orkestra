@@ -172,7 +172,8 @@ def load_outcomes(
 ) -> list[Outcome]:
     since = now - window
     rows = conn.execute(
-        "SELECT run_id, status, provider, model, tags, started_at, duration_s FROM runs "
+        "SELECT run_id, status, provider, model, tags, started_at, duration_s, attempts, "
+        "worker_output_tokens FROM runs "
         f"WHERE started_at >= ? AND status IN ({', '.join('?' for _ in SCORED)})",
         ((since - OFFSET_MARGIN).isoformat(), *SCORED),
     ).fetchall()
@@ -191,7 +192,22 @@ def load_outcomes(
             continue  # nothing answered: nothing to say about a model
         tags = parse_tags(row["tags"])
         is_ok = row["status"] == "ok" and bool(row["provider"])
-        duration = float(row["duration_s"]) if (is_ok and row["duration_s"] is not None) else None
+        replaced = _replaced(used, final)
+        duration = _own_duration(row) if is_ok and not replaced else None
         outcomes.append(Outcome(*final, tags, is_ok, duration))
-        outcomes.extend(Outcome(*pair, tags, False, None) for pair in _replaced(used, final))
+        outcomes.extend(Outcome(*pair, tags, False, None) for pair in replaced)
     return outcomes
+
+
+def _own_duration(row: sqlite3.Row) -> float | None:
+    """The run's duration when it measures the final model alone (D-127): not after a second
+    attempt (a retry, or another model before a failover) and not a cached answer (nothing
+    generated). NULL counts (older rows, agents that report no tokens) are not held against it.
+    """
+    if row["duration_s"] is None:
+        return None
+    if row["attempts"] is not None and row["attempts"] > 1:
+        return None
+    if row["worker_output_tokens"] == 0:
+        return None
+    return float(row["duration_s"])

@@ -355,9 +355,13 @@ def _is_small_task(task: TaskSpec, context: Context, options: RunOptions, config
     delegation = config.delegation
     if delegation.min_files <= 0 or delegation.min_lines <= 0:
         return False
-    files_count = len(context.files)
-    lines_count = sum(_line_count(f.text) for f in context.files)
+    files_count, lines_count = _size(context)
     return files_count < delegation.min_files and lines_count < delegation.min_lines
+
+
+def _size(context: Context) -> tuple[int, int]:
+    """The task's context files and their total lines (``small_task``, D-126)."""
+    return len(context.files), sum(_line_count(f.text) for f in context.files)
 
 
 def _prepare(
@@ -378,9 +382,8 @@ def _prepare(
     envelope_warnings: list[str] = []
     if _is_small_task(task, context, options, config):
         envelope_warnings.append("small_task")
-        f_count = len(context.files)
-        l_count = sum(_line_count(f.text) for f in context.files)
-        warnings.append(t("delegation.warning.small_task", files=f_count, lines=l_count))
+        files_count, lines_count = _size(context)
+        warnings.append(t("delegation.warning.small_task", files=files_count, lines=lines_count))
     json_output = task.output.format == "json"
     # The model is told the schema it is checked against (loaded once, by the verifier).
     schema = next((c.schema for c in checks if isinstance(c, JsonSchemaCheck) and c.schema), None)

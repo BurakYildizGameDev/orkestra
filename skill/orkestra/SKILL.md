@@ -9,6 +9,7 @@ Workers do the writing through the `orkestra` CLI; you plan, delegate and review
 
 ## Delegate or not
 Delegating has a fixed cost (writing the task, reading the result). Delegate only bulky, checkable work: 5+ files or ~100+ lines (docstrings, tests with a runnable check, mechanical refactors, summaries), **all at once** in one batch or `orkestra run --template <name> --files "<glob>"`, or when the user asks for Orkestra. Do small fixes, design decisions, security-sensitive or unclear work yourself. Use the project's own tests and linter as the verifier (`type: command`); never write a task-specific check script.
+If `--dry-run` or the envelope has `warnings: ["small_task"]`, do that part yourself.
 
 ## Run
 - A question, no edits: `orkestra ask "<prompt>" --context <file> --tier 1 --json`.
@@ -30,6 +31,8 @@ verify:
 ```
 
 Session start: `orkestra status --json`; review `unapplied` runs before new work.
+
+Long hand-off (a big batch, a code agent, minutes of work): do not wait for it in the open session. Put it in the queue (`orkestra queue add <file>`; the user runs it) or in the background and come back later with `orkestra status --json`; or update the handoff (`orkestra handoff update`) and end the session.
 
 Exit codes: 1 = task failed; 2 = usage error, or a batch estimate with `needs_confirmation`: show it to the user and add `--yes-cost` only if they accept; 3 = no provider (budget, offline, secrets): tell the user, never change budget limits yourself; 4 = consent needed: the user runs `orkestra providers enable <name>`; 5 = apply conflict.
 

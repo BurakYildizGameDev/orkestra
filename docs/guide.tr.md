@@ -40,7 +40,9 @@ listeler. Kademe her zaman önce gelir (en düşük önce); kademe içinde sıra
 `routing.prefer_fast` açıksa (varsayılan `false`), aynı kademede başarı skorları arasındaki fark
 0,05'in altında olan adaylar arasında son 30 günün ortanca süresi kısa olan öne geçer; süresi
 bilinmeyenler bilinenlerin arkasına kalır. Başarı farkı 0,05 ve üzerindeyse skoru yüksek olan
-model önde kalır (hız başarıyı ezmez).
+model önde kalır (hız başarıyı ezmez). Başarı skoru yalnız `routing.adaptive: true` iken vardır;
+kapalıyken `prefer_fast` kademeyi yalnız hıza göre sıralar. Ortanca yalnız tek denemede biten
+başarılı koşulardan hesaplanır (yedeğe geçiş ve önbellekten cevap sayılmaz).
 
 Bütçe sadece eler: limiti aşacak sağlayıcı atlanır, ama kalan bütçe sırayı değiştirmez. Kademeler profilden gelir
 (`--profile cheap|balanced|quality`, varsayılan config'ten); `--tier` en alt kademeyi belirler, üst
