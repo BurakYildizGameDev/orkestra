@@ -8,6 +8,7 @@ say). ``render`` keeps the lines to ``MAX_LINES``, ``--json`` has every section'
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from collections.abc import Callable, Mapping
@@ -17,6 +18,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any
 
+from orkestra import paths
 from orkestra.chief import limits
 from orkestra.config.schema import Config
 from orkestra.errors import UsageError
@@ -25,6 +27,7 @@ from orkestra.i18n import t
 from orkestra.providers import registry
 from orkestra.queue import store as queue_store
 from orkestra.state import forecast, health
+from orkestra.tasks.delegate import is_delegated
 from orkestra.workspace import service
 
 MAX_LINES = 15
@@ -227,6 +230,83 @@ def _queue(ctx: StatusContext) -> Section | None:
         return None
     return Section([t("status.queue.line", pending=found["pending"], running=found["running"],
                       failed=found["failed"])], data)  # fmt: skip
+
+
+@section("delegated", order=45)
+def _delegated(ctx: StatusContext) -> Section | None:
+    """Delegated milestone tasks in the queue (Faz 13r-a, D-129)."""
+    all_items = queue_store.items(ctx.conn)
+    delegated_items = [item for item in all_items if is_delegated(item, ctx.conn)]
+    if not delegated_items:
+        return None
+
+    items_data: list[dict[str, Any]] = []
+    lines: list[str] = [t("status.delegated.title")]
+
+    for item in delegated_items:
+        task_name = Path(item.path).stem
+        run_id = item.result_ref
+        worker: str | None = None
+        duration_s: float | None = None
+        failovers = 0
+
+        if run_id:
+            query = "SELECT task_id, provider, model, duration_s FROM runs WHERE run_id = ?"
+            row = ctx.conn.execute(query, (run_id,)).fetchone()
+            if row:
+                if row[0]:
+                    task_name = str(row[0])
+                prov = str(row[1]) if row[1] else None
+                mod = str(row[2]) if row[2] else None
+                if prov:
+                    worker = prov if prov == mod or not mod else f"{prov}/{mod}"
+                if row[3] is not None:
+                    duration_s = round(float(row[3]), 1)
+            env_file = paths.run_dir(run_id) / "envelope.json"
+            try:
+                env_doc = json.loads(env_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                env_doc = {}
+            # a failover is a change of worker (envelope), not a retry on the same one
+            if isinstance(env_doc, dict) and isinstance(env_doc.get("failovers"), list):
+                failovers = len(env_doc["failovers"])
+
+        if duration_s is None and item.started_at:
+            try:
+                start_dt = datetime.fromisoformat(item.started_at)
+                end_dt = datetime.fromisoformat(item.finished_at) if item.finished_at else ctx.now
+                duration_s = round((end_dt - start_dt).total_seconds(), 1)
+            except (ValueError, TypeError):
+                pass
+
+        doc = {
+            "id": item.id,
+            "task": task_name,
+            "status": item.status,
+            "worker": worker,
+            "duration_s": duration_s,
+            "failovers": failovers,
+            "run_id": run_id,
+        }
+        items_data.append(doc)
+
+    for doc in items_data[:SHOWN_RUNS]:
+        dur_str = f"{doc['duration_s']}s" if doc["duration_s"] is not None else "-"
+        lines.append(
+            t(
+                "status.delegated.item",
+                id=doc["id"],
+                task=doc["task"],
+                status=t(f"queue.status.{doc['status']}"),
+                worker=doc["worker"] or "-",
+                duration=dur_str,
+                failovers=doc["failovers"],
+            )
+        )
+    if len(items_data) > SHOWN_RUNS:
+        lines.append(t("status.delegated.more", count=len(items_data) - SHOWN_RUNS))
+
+    return Section(lines, items_data)
 
 
 def _limits_text(row: registry.ProviderRow) -> str:

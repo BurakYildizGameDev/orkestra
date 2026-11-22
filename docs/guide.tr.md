@@ -13,6 +13,7 @@
 - [Bir AI'nın kotası bitince](#bir-ainın-kotası-bitince)
 - [Batch: birçok görev birden](#batch-birçok-görev-birden)
 - [Gece kuyruğu ve bildirimler](#gece-kuyruğu-ve-bildirimler)
+- [Büyük bir işi tümden devret: orkestra delegate](#büyük-bir-işi-tümden-devret-orkestra-delegate)
 - [Şef araçları](#şef-araçları)
 - [Çapraz denetim: ikinci bir AI, şef için daha ucuz yazma](#çapraz-denetim-ikinci-bir-ai-şef-için-daha-ucuz-yazma)
 - [Uzun komut çıktısı: `orkestra exec`](#uzun-komut-çıktısı-orkestra-exec)
@@ -439,6 +440,26 @@ orkestra queue run --until 07:00 --notify                # terminali açık bır
   [ntfy](https://ntfy.sh) ile: `notify.ntfy_topic_env`'e konu adını tutan ortam değişkeninin
   adını yaz. `orkestra notify test` her kanalı dener.
 - Sabah: `orkestra status` → `orkestra review` → `orkestra apply`.
+
+## Büyük bir işi tümden devret: `orkestra delegate`
+
+Büyük ve sınırları belirli işlerde (bir faz ya da aşama planı), şefin açık oturumda beklemesi gereksiz token tüketir. `orkestra delegate` yazılmış bir plan dosyasını alır, test doğrulayıcısıyla bir düzenleme görevi üretir, kuyruğa ekler ve arka planda `orkestra queue run --notify` başlatır.
+
+```bash
+orkestra delegate docs/faz-plani.md --verify "pytest -q" --json
+```
+
+- **Seçenekler:**
+  - `--verify "<komut>"`: **Zorunlu** (en az bir tane). Doğrulama komutu (ör. projenin test komutu).
+  - `--context <dosya>`: İşçinin önce okuyacağı ek dosyalar (plan gibi korunur: işçi bunları değiştiremez).
+  - `--to <sağlayıcı>`: Görevi belirli bir sağlayıcıyla sınırla (ör. `agy`, `codex`).
+  - `--profile <ad>`: Yönlendirme profili (varsayılan: `balanced`). Görev, o profilde bir kod ajanının çalıştığı en düşük kademeden başlar.
+  - `--timeout <saniye>`: Görev zaman aşımı (varsayılan: 3600 saniye = 1 saat).
+  - `--id <ad>`: Görev kimliği (varsayılan: plan dosyasının adı).
+  - `--dry-run`: Dosya yazmadan veya başlatmadan yalnızca yönlendirmeyi ve görevi göster.
+  - `--json`: Yapılandırılmış JSON çıktısı.
+- **Hemen döner:** Komut kuyruk kimliği ve aday işçiyle hemen döner; açık oturumu kapatabilirsiniz.
+- **Durum ve bildirim:** İlerlemeyi `orkestra status --json` (`delegated` bölümü) ile izleyebilirsiniz. Arka plan koşusu tamamlandığında, çalışan bir kanal varsa bildirim gelir (masaüstü için `orkestra-cli[notify]` kurulu olmalı ya da `notify.ntfy_topic_env` ayarlı); hiçbiri yoksa `delegate` bunu söyler. Plan git'in yok saymadığı bir dosyada olmalı; yoksa işçi onu hiç görmez.
 
 ## Şef araçları
 

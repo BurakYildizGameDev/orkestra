@@ -28,7 +28,7 @@ from orkestra.i18n import t
 from orkestra.notify import notify
 from orkestra.queue import store
 from orkestra.state import db, forecast, health, process
-from orkestra.tasks import batch, runner, spec
+from orkestra.tasks import batch, delegate, runner, spec
 
 ItemStatus = Literal["done", "failed", "skipped"]
 Stop = Literal["until", "cost"]
@@ -153,11 +153,20 @@ def run_with_notify(
         raise
     if not notify_on:
         return report, []
+
+    delegated_items = [item for item, _ in report.results if delegate.is_delegated(item, conn)]
+    title = t("notify.title.delegated") if delegated_items else t("notify.title.queue")
+    base_counts = notify.counts_text(
+        report.finished, len(report.failed), skipped=len(report.skipped)
+    )
+    if delegated_items:
+        base_counts = f"{base_counts} ({t('notify.delegated_tag', count=len(delegated_items))})"
+
     deliveries = notify.send(
         config.notify,
-        t("notify.title.queue"),
+        title,
         notify.with_quota(
-            notify.counts_text(report.finished, len(report.failed), skipped=len(report.skipped)),
+            base_counts,
             health.new_quota_pauses(conn, before, db.local_now()),
             low=forecast.low_now(
                 conn, config, db.local_now(), skip=health.paused_names(conn, db.local_now())
