@@ -712,6 +712,7 @@ notify.state.topic_invalid: "gönderilmedi: {env} değeri yalnız harf, rakam, -
 # Faz 12b: adaptive routing, queue tab, notification settings
 route.dry.score: " | skor {score} ({ok}/{samples} başarılı)"
 route.dry.score_neutral: " | skor nötr (koşu {samples}/{needed}, henüz az)"
+route.dry.duration: " | ortanca {seconds} sn"
 ui.tab.queue: "Kuyruk"
 ui.button.remove: "Çıkar"
 ui.button.notify_test: "Deneme gönder"

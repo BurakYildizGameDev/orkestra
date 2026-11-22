@@ -713,6 +713,7 @@ notify.state.topic_invalid: "non envoyée : la valeur de {env} ne peut contenir 
 # Faz 12b: adaptive routing, queue tab, notification settings
 route.dry.score: " | score {score} ({ok}/{samples} réussies)"
 route.dry.score_neutral: " | score neutre ({samples} sur {needed} exécutions nécessaires)"
+route.dry.duration: " | médiane {seconds} s"
 ui.tab.queue: "File"
 ui.button.remove: "Retirer"
 ui.button.notify_test: "Envoyer un test"

@@ -713,6 +713,7 @@ notify.state.topic_invalid: "nicht gesendet: der Wert von {env} darf nur Buchsta
 # Faz 12b: adaptive routing, queue tab, notification settings
 route.dry.score: " | Wertung {score} ({ok}/{samples} ok)"
 route.dry.score_neutral: " | Wertung neutral ({samples} von {needed} nötigen Läufen)"
+route.dry.duration: " | Median {seconds} s"
 ui.tab.queue: "Warteschlange"
 ui.button.remove: "Entfernen"
 ui.button.notify_test: "Test senden"
