@@ -99,6 +99,9 @@ routing:
   adaptive: false                 # true: pick models by past success rate
   min_samples: 10
   # prefer_fast: false            # true: prefer faster model when success rates are close (< 0.05)
+# delegation:
+#   min_files: 5                  # warn if task has fewer files and lines (0 disables, D-126)
+#   min_lines: 100
 estimate:
   confirm_above_usd: 0.50         # batch estimate above this asks for confirmation
 notify:                           # queue run --notify, batch --notify (counts only)

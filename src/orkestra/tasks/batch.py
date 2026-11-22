@@ -28,7 +28,7 @@ import sqlite3
 import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -392,7 +392,11 @@ async def run_batch(
     """Run the batch; the document and the exit code (0: every task ok, else 1)."""
     started = clock()
     batch_id = new_batch_id()
-    options = options or runner.RunOptions()
+    options = (
+        replace(options, in_batch_run=True)
+        if options is not None
+        else runner.RunOptions(in_batch_run=True)
+    )
     tasks = {task.id: task for task in spec.tasks}
     slots = runner.ProviderSlots(config)
     gate = asyncio.Semaphore(parallel)

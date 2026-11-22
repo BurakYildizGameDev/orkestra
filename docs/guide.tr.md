@@ -40,7 +40,9 @@ listeler. Kademe her zaman önce gelir (en düşük önce); kademe içinde sıra
 `routing.prefer_fast` açıksa (varsayılan `false`), aynı kademede başarı skorları arasındaki fark
 0,05'in altında olan adaylar arasında son 30 günün ortanca süresi kısa olan öne geçer; süresi
 bilinmeyenler bilinenlerin arkasına kalır. Başarı farkı 0,05 ve üzerindeyse skoru yüksek olan
-model önde kalır (hız başarıyı ezmez).
+model önde kalır (hız başarıyı ezmez). Başarı skoru yalnız `routing.adaptive: true` iken vardır;
+kapalıyken `prefer_fast` kademeyi yalnız hıza göre sıralar. Ortanca yalnız tek denemede biten
+başarılı koşulardan hesaplanır (yedeğe geçiş ve önbellekten cevap sayılmaz).
 
 Bütçe sadece eler: limiti aşacak sağlayıcı atlanır, ama kalan bütçe sırayı değiştirmez. Kademeler profilden gelir
 (`--profile cheap|balanced|quality`, varsayılan config'ten); `--tier` en alt kademeyi belirler, üst
@@ -543,6 +545,12 @@ review:
   tamamı ya da henüz denetim yoksa `review`.
 - Skill şefe tek küçük işi devretmemesini, mekanik işi tek batch'le (ya da `run --template`)
   vermesini ve doğrulayıcı olarak projenin kendi testlerini kullanmasını söyler.
+- **Devir eşikleri (`small_task` uyarısı):** Küçük görevleri (< 5 dosya ve < 100 satır) devretmek
+  şefe sabit bir token ek yükü getirir. `orkestra run`, `--dry-run` veya `batch --estimate` çalışırken
+  her iki eşiğin altındaki görevlerde stderr'e ve zarfa (`warnings: ["small_task"]`) işi doğrudan yapmayı
+  öneren bir `small_task` uyarısı yazılır. Engelleyici değildir (koşu devam eder). Config'de
+  `delegation.min_files` ve `delegation.min_lines` ile ayarlanabilir (`0` kapatır). Doğrudan kullanımlarda
+  (`queue`, `--profile cheap`, `ask`) bu uyarı verilmez.
 
 ## Uzun komut çıktısı: `orkestra exec`
 

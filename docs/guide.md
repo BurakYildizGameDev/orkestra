@@ -40,7 +40,9 @@ The tier always comes first (lowest first); inside a tier the order is:
 If `routing.prefer_fast` is enabled (default `false`), candidates in the same tier whose success
 scores are close (difference < 0.05) are ordered by their median duration, fastest first; candidates
 without duration history go behind those with known duration. When the success difference is 0.05
-or larger, the higher-scoring model stays first (speed never overrides success).
+or larger, the higher-scoring model stays first (speed never overrides success). Success scores
+exist only with `routing.adaptive: true`; without it, `prefer_fast` orders a tier by speed alone.
+The median counts only successful single-attempt runs (no failover, no cached answer).
 
 Budgets only filter: a provider that would exceed its limit is left out, but remaining budget
 does not reorder. Tiers come from the
@@ -547,6 +549,12 @@ review:
   lines, the whole diff, or `review` when there is none yet.
 - The skill tells the chief not to delegate one small task, to hand over mechanical work in
   one batch (or `run --template`), and to use the project's own tests as the check.
+- **Delegation thresholds (`small_task` warning):** Delegating small tasks (< 5 files and < 100 lines)
+  imposes a fixed overhead on the chief. When running `orkestra run`, `--dry-run` or `batch --estimate`,
+  tasks below both thresholds produce a `small_task` warning in stderr and the envelope (`warnings: ["small_task"]`)
+  advising the chief to handle it directly. It is non-blocking (the task still executes). Configured via
+  `delegation.min_files` and `delegation.min_lines` (`0` disables). Direct runs (`queue`, `--profile cheap`, `ask`)
+  do not emit this warning.
 
 ## Long command output: `orkestra exec`
 

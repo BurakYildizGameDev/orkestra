@@ -533,3 +533,12 @@ def test_every_command_in_the_chief_guide_is_complete(guide_text: str) -> None:
 def test_the_chief_guide_points_at_rules_a_chief_can_reach(guide_text: str) -> None:
     assert "https://github.com/" in guide_text  # an installed package has no skill/ folder
     assert "in the Orkestra repository" not in guide_text
+
+
+def test_the_core_teaches_small_task_and_not_waiting(core_text: str) -> None:
+    """Faz 13q (items 2 and 4): a ``small_task`` warning means doing that part yourself, and
+    after a long hand-off the chief does not sit waiting in the open session (D-115, D-116)."""
+    assert "small_task" in core_text and "do that part yourself" in core_text
+    assert "orkestra queue add" in core_text
+    assert "do not wait" in core_text and "orkestra status --json" in core_text
+    assert "orkestra handoff update" in core_text

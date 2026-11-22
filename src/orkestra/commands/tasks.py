@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from contextlib import closing
 from pathlib import Path
 from typing import Annotated, Any
@@ -33,8 +34,8 @@ from orkestra.tasks import batch, runner, spec, templates
 from orkestra.workspace import service
 
 
-def _route_json(plan: Route) -> dict[str, Any]:
-    return {
+def _route_json(plan: Route, warnings: Sequence[str] = ()) -> dict[str, Any]:
+    doc: dict[str, Any] = {
         "profile": plan.profile,
         "tier_range": list(plan.tier_range),
         "prompt_tokens": plan.prompt_tokens,
@@ -44,6 +45,9 @@ def _route_json(plan: Route) -> dict[str, Any]:
             for e in plan.eliminated
         ],
     }
+    if warnings:
+        doc["warnings"] = list(warnings)
+    return doc
 
 
 def _route_text(plan: Route) -> str:
@@ -104,7 +108,7 @@ def _execute(
         for warning in plan.warnings:
             typer.echo(warning, err=True)
         if as_json:
-            _echo_json(_route_json(plan.route))
+            _echo_json(_route_json(plan.route, plan.envelope_warnings))
         else:
             typer.echo(_route_text(plan.route))
         if plan.exit_code:
@@ -299,7 +303,9 @@ def register(app: typer.Typer) -> None:
             context=tuple(context or ()),
             schema=schema,
         )
-        options = runner.RunOptions(profile=profile, allow_secrets=allow_secrets, no_cache=no_cache)
+        options = runner.RunOptions(
+            profile=profile, allow_secrets=allow_secrets, no_cache=no_cache, is_ask=True
+        )
         _execute(task, loaded.config, options, dry_run=dry_run, as_json=as_json)
 
     @app.command("run", help=t("cli.run.help"))

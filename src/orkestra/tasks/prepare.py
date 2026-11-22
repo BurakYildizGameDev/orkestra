@@ -176,6 +176,9 @@ class RunOptions:
     profile: str | None = None
     allow_secrets: bool = False
     no_cache: bool = False  # --no-cache: never answer an ask task from the cache (Faz 8a)
+    is_ask: bool = False
+    from_queue: bool = False
+    in_batch_run: bool = False
 
 
 @dataclass(frozen=True)
@@ -190,6 +193,7 @@ class TaskOutcome:
 class DryRun:
     route: Route
     warnings: tuple[str, ...] = ()
+    envelope_warnings: tuple[str, ...] = ()
 
     @property
     def exit_code(self) -> int:
@@ -287,6 +291,7 @@ class _Prepared:
     agent_user: str = ""  # the prompt for code agents
     # edit tasks: the answer format's rules, appended to ``user`` (the context is rendered once)
     edit_rules: Mapping[EditFormat, str] = field(default_factory=dict)
+    envelope_warnings: list[str] = field(default_factory=list)
 
     def messages(self, edit_format: EditFormat | None) -> tuple[str, str]:
         """``(system, user)`` for a chat worker; an edit task needs its answer format."""
@@ -344,6 +349,21 @@ def _warnings(context: Context, findings: Sequence[Finding]) -> list[str]:
     return warnings
 
 
+def _is_small_task(task: TaskSpec, context: Context, options: RunOptions, config: Config) -> bool:
+    if options.is_ask or options.from_queue or options.in_batch_run or options.profile == "cheap":
+        return False
+    delegation = config.delegation
+    if delegation.min_files <= 0 or delegation.min_lines <= 0:
+        return False
+    files_count, lines_count = _size(context)
+    return files_count < delegation.min_files and lines_count < delegation.min_lines
+
+
+def _size(context: Context) -> tuple[int, int]:
+    """The task's context files and their total lines (``small_task``, D-126)."""
+    return len(context.files), sum(_line_count(f.text) for f in context.files)
+
+
 def _prepare(
     task: TaskSpec, options: RunOptions, config: Config, env: Mapping[str, str], cwd: Path | None
 ) -> _Prepared:
@@ -359,6 +379,11 @@ def _prepare(
     findings = _scan(task.prompt, context, known)
     edit: _EditPlan | None = None
     warnings = _warnings(context, findings)
+    envelope_warnings: list[str] = []
+    if _is_small_task(task, context, options, config):
+        envelope_warnings.append("small_task")
+        files_count, lines_count = _size(context)
+        warnings.append(t("delegation.warning.small_task", files=files_count, lines=lines_count))
     json_output = task.output.format == "json"
     # The model is told the schema it is checked against (loaded once, by the verifier).
     schema = next((c.schema for c in checks if isinstance(c, JsonSchemaCheck) and c.schema), None)
@@ -389,7 +414,7 @@ def _prepare(
     return _Prepared(
         task, options, config, env, base, checks, context, Redactor(known),
         Redactor(known, passwords=False), findings, warnings, system, user, edit, agent_user,
-        rules,
+        rules, envelope_warnings,
     )  # fmt: skip
 
 
@@ -456,7 +481,7 @@ async def plan_task(
     state = db.connect() if conn is None else conn
     try:
         planned = await _route(prep, state, now(), fetch_prices=False)
-        return DryRun(planned, tuple(prep.warnings))
+        return DryRun(planned, tuple(prep.warnings), tuple(prep.envelope_warnings))
     finally:
         if conn is None:
             state.close()

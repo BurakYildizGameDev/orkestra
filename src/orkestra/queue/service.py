@@ -251,7 +251,7 @@ def execute_item(
         warnings = (t("queue.warning.changed", id=item.id, path=path),)
     with contextlib.chdir(workdir):
         config = item_config(loader.load_config(config_path).config, item.profile)
-        options = runner.RunOptions(profile=item.profile)
+        options = runner.RunOptions(profile=item.profile, from_queue=True)
         if item.kind == "batch":
             result = _execute_batch(path, config, options, remaining)
         else:

@@ -17,7 +17,6 @@ neutral.
 
 from __future__ import annotations
 
-import functools
 import math
 import os
 import sqlite3
@@ -120,6 +119,9 @@ class Candidate:
     quota_low: bool = False  # running low on quota (Faz 13k): last in its tier
     wait_exceeded: bool = False  # median duration > task's max_wait_s: last in its tier (Faz 13q)
     prefer_rank: int | None = None  # place in ``routing.by_kind``'s list; None: not named
+    # median duration of recent ok runs (Faz 13q); set apart from ``score``, which only
+    # ``routing.adaptive`` attaches (D-127)
+    median_duration_s: float | None = None
 
     @property
     def tier(self) -> int:
@@ -128,10 +130,6 @@ class Candidate:
     @property
     def label(self) -> str:
         return f"{self.provider}/{self.model.id}"
-
-    @property
-    def median_duration_s(self) -> float | None:
-        return self.score.median_duration_s if self.score is not None else None
 
 
 @dataclass(frozen=True)
@@ -400,26 +398,30 @@ def route(
     prefs = config.routing.by_kind.get(needs.work or needs.kind)
     if prefs is not None and prefs.prefer:
         candidates = [replace(c, prefer_rank=_prefer_rank(c, prefs.prefer)) for c in candidates]
-    if config.routing.adaptive or config.routing.prefer_fast or needs.max_wait_s is not None:
+    if config.routing.adaptive:
         neutral = Score(adaptive.NEUTRAL, 0, 0, config.routing.min_samples, scored=False)
         candidates = [
             replace(c, score=snapshot.scores.get(_score_key(c), neutral)) for c in candidates
         ]
+    if config.routing.adaptive or config.routing.prefer_fast or needs.max_wait_s is not None:
+        candidates = [replace(c, median_duration_s=_duration(c, snapshot)) for c in candidates]
     if needs.max_wait_s is not None:
+        limit_s = needs.max_wait_s
         candidates = [
             replace(
-                c,
-                wait_exceeded=bool(
-                    c.median_duration_s is not None and c.median_duration_s > needs.max_wait_s
-                ),
+                c, wait_exceeded=c.median_duration_s is not None and c.median_duration_s > limit_s
             )
             for c in candidates
         ]
+    candidates.sort(key=_order_key)
     if config.routing.prefer_fast:
-        candidates.sort(key=functools.cmp_to_key(_candidate_cmp_fast))
-    else:
-        candidates.sort(key=_order_key)
+        candidates = _faster_first(candidates)
     return Route(profile_name, (low, high), tokens, tuple(candidates), tuple(eliminated))
+
+
+def _duration(c: Candidate, snapshot: Snapshot) -> float | None:
+    found = snapshot.scores.get(_score_key(c))
+    return found.median_duration_s if found is not None else None
 
 
 def _score_key(c: Candidate) -> ScoreKey:
@@ -460,51 +462,53 @@ def unmatched_preferences(config: Config) -> list[tuple[str, str]]:
     ]
 
 
-def _candidate_cmp_fast(a: Candidate, b: Candidate) -> int:
-    """Compare candidates with ``routing.prefer_fast``: tier first, then quota_low, then by_kind.
-    Within the same tier, if success score difference is < 0.05, the one with shorter median
-    duration comes first (unknown duration goes behind known). When difference is >= 0.05,
-    higher score comes first (speed never overrides success). Priority and config order break ties.
+CLOSE_SCORE = 0.05  # routing.prefer_fast: success scores closer than this count as equal
+
+
+def _faster_first(ordered: Sequence[Candidate]) -> list[Candidate]:
+    """``routing.prefer_fast`` (D-124, D-127) on a list already in ``_order_key`` order.
+
+    Inside one tier, quota state, ``max_wait_s`` state and preference rank, candidates are
+    grouped from the best score down: a group takes every next candidate whose score is
+    within ``CLOSE_SCORE`` of the group's first (best) one. Inside a group the shorter
+    median duration goes first, unknown durations last; ties keep their order (score,
+    priority, config). Groups anchored at their best score keep this transitive, so the
+    result never depends on the order the models are written in. Without
+    ``routing.adaptive`` there are no scores: one group, speed alone.
     """
-    if a.tier != b.tier:
-        return -1 if a.tier < b.tier else 1
-    if a.quota_low != b.quota_low:
-        return 1 if a.quota_low else -1
-    if a.wait_exceeded != b.wait_exceeded:
-        return 1 if a.wait_exceeded else -1
-    a_rank = math.inf if a.prefer_rank is None else float(a.prefer_rank)
-    b_rank = math.inf if b.prefer_rank is None else float(b.prefer_rank)
-    if a_rank != b_rank:
-        return -1 if a_rank < b_rank else 1
-    score_a = a.score.value if a.score is not None else 0.5
-    score_b = b.score.value if b.score is not None else 0.5
-    score_diff = score_a - score_b
-    if abs(score_diff) >= 0.05:
-        return -1 if score_diff > 0 else 1
-    dur_a = a.median_duration_s
-    dur_b = b.median_duration_s
-    if dur_a is not None and dur_b is not None:
-        if dur_a != dur_b:
-            return -1 if dur_a < dur_b else 1
-    elif dur_a is not None and dur_b is None:
-        return -1
-    elif dur_a is None and dur_b is not None:
-        return 1
-    if abs(score_diff) > 1e-9:
-        return -1 if score_diff > 0 else 1
-    if a.model.priority != b.model.priority:
-        return -1 if a.model.priority > b.model.priority else 1
-    if a.order != b.order:
-        return -1 if a.order < b.order else 1
-    return 0
+    result: list[Candidate] = []
+    group: list[Candidate] = []
+    for c in ordered:
+        if group and (
+            _bucket(c) != _bucket(group[0]) or _value(group[0]) - _value(c) >= CLOSE_SCORE
+        ):
+            result.extend(sorted(group, key=_speed))
+            group = []
+        group.append(c)
+    result.extend(sorted(group, key=_speed))
+    return result
+
+
+def _bucket(c: Candidate) -> tuple[int, bool, bool, float]:
+    return (c.tier, c.quota_low, c.wait_exceeded, _rank(c))
+
+
+def _value(c: Candidate) -> float:
+    return c.score.value if c.score is not None else 0.0
+
+
+def _speed(c: Candidate) -> tuple[bool, float]:
+    return (c.median_duration_s is None, c.median_duration_s or 0.0)
+
+
+def _rank(c: Candidate) -> float:
+    return math.inf if c.prefer_rank is None else float(c.prefer_rank)
 
 
 def _order_key(c: Candidate) -> tuple[int, bool, bool, float, float, int, tuple[int, int]]:
     """Tier first, always; running low on quota, exceeding max_wait_s, the kind's preference
     and the score only reorder inside a tier."""
-    score = -(c.score.value if c.score is not None else 0.0)
-    rank = math.inf if c.prefer_rank is None else float(c.prefer_rank)
-    return (c.tier, c.quota_low, c.wait_exceeded, rank, score, -c.model.priority, c.order)
+    return (c.tier, c.quota_low, c.wait_exceeded, _rank(c), -_value(c), -c.model.priority, c.order)
 
 
 def take_snapshot(
@@ -589,9 +593,9 @@ def describe_candidates(candidates: Sequence[Candidate]) -> list[dict[str, Any]]
             "score": round(c.score.value, 4) if c.score is not None else None,
             "score_samples": c.score.samples if c.score is not None else None,
             "score_used": c.score.scored if c.score is not None else None,
-            "median_duration_s": round(c.score.median_duration_s, 2)
-            if (c.score and c.score.median_duration_s is not None)
-            else None,
+            "median_duration_s": (
+                round(c.median_duration_s, 2) if c.median_duration_s is not None else None
+            ),
             "quota_low": c.quota_low,
             "wait_exceeded": c.wait_exceeded,
             "prefer_rank": c.prefer_rank,

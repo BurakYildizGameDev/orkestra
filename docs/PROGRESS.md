@@ -50,9 +50,30 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13m – Toplu devretme ve çapraz denetim (ek) | ✅ | 2026-11-18 | denetçi yazardan başka sağlayıcı (`review.by`, `review.independent`); `apply --max-risk low`; `show --report` (patrona rapor); skill: küçük işi devretme, toplu devret, projenin testleri doğrulayıcı (D-098); kod denetimi (D-099) |
 | 13n – Claude dışı şef (ek) | ✅ | 2026-11-19 | kılavuz skill'in özü (30 satır, kopma testi), `handoff show --guide`, benchmark mod E (agy şef; agy tokenı ayrı satırda); ilk koşu 2/2 (D-102) |
 | 13o – Sağlayıcı ekleme komutu (ek) | ✅ | 2026-11-19 | herhangi bir OpenAI uyumlu servis: `providers add` / `import opencode` / `remove`, `--check` (= doctor), sihirbazda "başka bir OpenAI uyumlu servis"; anahtar asla kopyalanmaz; EVREN ile canlı test geçti (D-100) |
+| 13q – Hız farkındalığı ve devir uyarısı (ek) | ⏳ | | 13q-a ortanca süre, 13q-b `routing.prefer_fast` (D-124), 13q-c görev alanı `max_wait_s` (D-125), 13q-d `small_task` uyarısı (D-126) agy'den (PR #54–#57); faz sonu kod denetimi ve skill kuralları Claude (D-127); kalan: 3. madde ölçümü (G kolu yeniden, kullanıcıyla boş pencerede); 5. madde (yarış) ertelendi |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13q – Hız farkındalığı ve devir uyarısı (agy kodu + Claude denetimi, 2026-11-22/23)
+
+agy 1. ve 4. maddeleri dört yığılı parçada yaptı (PR #54 ← #55 ← #56 ← #57, CI 9/9 yeşil, 2073 → 2102 test):
+- **13q-a:** `adaptive.median_duration_for` (son 30 gün, yalnız `ok`, `min_samples` altı `None`); `--dry-run` metninde `| ortanca N sn`, `--dry-run --json`'da `median_duration_s`.
+- **13q-b:** `routing.prefer_fast` (varsayılan kapalı; D-124); iki örnek config'te yorumlu satır; rehber (en + tr).
+- **13q-c:** görev alanı `max_wait_s` (pozitif tam sayı); aşan aday kademesinde sona, silinmez; `--dry-run --json`'da `wait_exceeded` (D-125).
+- **13q-d:** `delegation.min_files`/`min_lines` (5/100, `0` kapatır); ikisinin de altındaki görevde zarfa `warnings: ["small_task"]` ve stderr'e 5 dilde bir satır; `run`, `--dry-run`, `batch --estimate`; kuyruk, `--profile cheap`, `ask` ve batch koşusunda yok; zarf sürümü aynı (D-126).
+
+**Faz sonu kod denetimi (Claude, 2026-11-23, D-127; önce kırmızı test `tests/unit/test_13q_review.py`, 8 test):**
+1. `adaptive` kapalıyken `prefer_fast`/`max_wait_s` başarı skorunu sıralamaya sokuyordu → skor yalnız `adaptive` ile; süre ayrı alan.
+2. `prefer_fast` ikili karşılaştırıcısı geçişsizdi (sıra config'teki yazılışa bağlıydı) → en iyi skora bağlı gruplar.
+3. Ortanca süre yedeğe geçişte önceki modelin süresini ve önbellek cevaplarını sayıyordu → yalnız tek deneme, üretim yapmış, yerine geçilmemiş koşular.
+4. Küçük: `small_task` sayımı tek yerde; Mimari §7 ve `RoutingCfg` koda eşitlendi; bu kayıt.
+
+**2. madde (Claude):** skill çekirdeğine `small_task` → "o parçayı kendin yap" ve "uzun devirden sonra açık oturumda bekleme" kuralları (4606 → 5004 bayt; `test_the_core_teaches_small_task_and_not_waiting`).
+
+**Ertelenen / kalan:** 3. madde ölçümü (13g G kolu yeniden: `--suite big --mode g --repeat 2 --worker agy --reviewer ollama`; Claude kotası yer, kullanıcıyla boş pencerede); 5. madde yarış (`race: true`) ertelendi.
+
+**Bilinen sorun:** ortanca süre ajanlarda (`attempts` tek, token bilinmiyor) koşunun tamamıdır; ajan içi bekleme (ör. agy'nin MCP beklemesi) de sayılır. Bu bilerek: şefin beklediği süre de odur.
 
 ### Faz 11c – Faz sonu kod denetimi (Claude, 2026-11-21)
 
