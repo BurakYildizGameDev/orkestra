@@ -98,6 +98,7 @@ cache:
 routing:
   adaptive: false                 # true: pick models by past success rate
   min_samples: 10
+  # prefer_fast: false            # true: prefer faster model when success rates are close (< 0.05)
 estimate:
   confirm_above_usd: 0.50         # batch estimate above this asks for confirmation
 notify:                           # queue run --notify, batch --notify (counts only)
