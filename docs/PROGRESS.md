@@ -50,7 +50,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13m – Toplu devretme ve çapraz denetim (ek) | ✅ | 2026-11-18 | denetçi yazardan başka sağlayıcı (`review.by`, `review.independent`); `apply --max-risk low`; `show --report` (patrona rapor); skill: küçük işi devretme, toplu devret, projenin testleri doğrulayıcı (D-098); kod denetimi (D-099) |
 | 13n – Claude dışı şef (ek) | ✅ | 2026-11-19 | kılavuz skill'in özü (30 satır, kopma testi), `handoff show --guide`, benchmark mod E (agy şef; agy tokenı ayrı satırda); ilk koşu 2/2 (D-102) |
 | 13o – Sağlayıcı ekleme komutu (ek) | ✅ | 2026-11-19 | herhangi bir OpenAI uyumlu servis: `providers add` / `import opencode` / `remove`, `--check` (= doctor), sihirbazda "başka bir OpenAI uyumlu servis"; anahtar asla kopyalanmaz; EVREN ile canlı test geçti (D-100) |
-| 13q – Hız farkındalığı ve devir uyarısı (ek) | ⏳ | | 13q-a ortanca süre, 13q-b `routing.prefer_fast` (D-124), 13q-c görev alanı `max_wait_s` (D-125), 13q-d `small_task` uyarısı (D-126) agy'den (PR #54–#57); faz sonu kod denetimi ve skill kuralları Claude (D-127); kalan: 3. madde ölçümü (G kolu yeniden, kullanıcıyla boş pencerede); 5. madde (yarış) ertelendi |
+| 13q – Hız farkındalığı ve devir uyarısı (ek) | ✅ | 2026-11-23 | 13q-a ortanca süre, 13q-b `routing.prefer_fast` (D-124), 13q-c görev alanı `max_wait_s` (D-125), 13q-d `small_task` uyarısı (D-126) agy'den; faz sonu kod denetimi ve skill kuralları Claude (D-127); PR #54–#57 birleşti; ölçüm (`bench/results/2026-11-23-0059`, G × 2, 2/2 geçti): görev başına $1,24 / 82,8k Claude tokenı (eski G $1,19 / 76,7k): **iyileşme yok**; devreden koşu yine ~1000 sn bekledi (bench tek oturumda bitmeyi şart koşuyor, bekleme kuralı burada işleyemez); 5. madde (yarış) ertelendi |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
@@ -71,7 +71,19 @@ agy 1. ve 4. maddeleri dört yığılı parçada yaptı (PR #54 ← #55 ← #56 
 
 **2. madde (Claude):** skill çekirdeğine `small_task` → "o parçayı kendin yap" ve "uzun devirden sonra açık oturumda bekleme" kuralları (4606 → 5004 bayt; `test_the_core_teaches_small_task_and_not_waiting`).
 
-**Ertelenen / kalan:** 3. madde ölçümü (13g G kolu yeniden: `--suite big --mode g --repeat 2 --worker agy --reviewer ollama`; Claude kotası yer, kullanıcıyla boş pencerede); 5. madde yarış (`race: true`) ertelendi.
+**3. madde ölçümü (2026-11-23, `bench/results/2026-11-23-0059`, `--suite big --mode g --repeat 2 --worker agy --reviewer ollama`, yeni skill `33593e10eb08`, 2/2 geçti; Claude kotasının ~%15'i):**
+
+| Koşu | Devir | Süre | Claude çıktı | Önbellekten okuma | Önbelleğe yazma | Maliyet |
+|---|---|---|---|---|---|---|
+| eski G #1 (2026-11-20) | agy, 2 iş | 1067 sn | 22,1k | 2,26M | 67,4k | $1,43 |
+| eski G #2 | yok | 153 sn | 18,0k | 1,12M | 45,9k | $0,95 |
+| yeni G #1 | agy, 3 iş (3/3 ok) | 997 sn | 21,3k | 2,27M | 70,7k | $1,44 |
+| yeni G #2 | yok | 209 sn | 22,8k | 0,86M | 50,7k | $1,03 |
+| (karşılaştırma: A, eski, ortalama) | – | 209 sn | 25,0k | 1,89M | 62,3k | $1,38 |
+
+Sonuç: **iyileşme yok** (görev başına $1,24 vs eski $1,19; fark gürültü içinde). Desen aynı: devreden koşu agy'yi ~1000 sn bekliyor ve A'dan pahalı; devretmeyen koşu ucuz. Neden: bench her koşuyu tek başsız `claude -p` oturumunda bitirip sonda testleri denetliyor; şefin "işi kuyruğa ver, sonra dön" seçeneği yok, yani 2. maddenin bekleme kuralı bu düzende işleyemez. Kural gerçek (etkileşimli) kullanımda geçerli; bench'te ölçmek için oturumu bölen bir mod gerekir (yapılmadı, gerek görülürse ayrı iş). 13g'nin vardığı yer değişmedi: kaldıraç bağlam süzgeci, büyük işte devretmek Claude tokenı kazandırmıyor.
+
+**Ertelenen:** 5. madde yarış (`race: true`).
 
 **Bilinen sorun:** ortanca süre ajanlarda (`attempts` tek, token bilinmiyor) koşunun tamamıdır; ajan içi bekleme (ör. agy'nin MCP beklemesi) de sayılır. Bu bilerek: şefin beklediği süre de odur.
 

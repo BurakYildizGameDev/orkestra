@@ -1,0 +1,158 @@
+{
+  "meta": {
+    "date": "2026-11-23T00:59+03:00",
+    "machine": "Windows 11, Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "python": "3.12.13",
+    "modes": "g",
+    "task_ids": [
+      "g01-ledger"
+    ],
+    "tasks": 1,
+    "ollama_model": "qwen2.5-coder:14b",
+    "ollama_model_2": null,
+    "claude_model": null,
+    "timeout_s": 2700.0,
+    "worker": "agy",
+    "windows": [
+      {
+        "date": "2026-11-23T00:59+03:00",
+        "claude": "2.1.330 (Claude Code)",
+        "orkestra": "orkestra 0.0.1",
+        "runs": 2,
+        "agy": "1.5.14",
+        "skill": "33593e10eb08"
+      }
+    ],
+    "suite": "big",
+    "reviewer": "ollama",
+    "claude_tools": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(python:*)",
+      "Bash(pytest:*)",
+      "Bash(git:*)",
+      "Bash(cd:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(pwd:*)",
+      "PowerShell(python:*)",
+      "PowerShell(pytest:*)",
+      "PowerShell(git:*)",
+      "PowerShell(cd:*)",
+      "PowerShell(ls:*)",
+      "PowerShell(dir:*)",
+      "PowerShell(cat:*)",
+      "PowerShell(type:*)",
+      "PowerShell(pwd:*)",
+      "PowerShell(Get-Content:*)",
+      "PowerShell(Get-ChildItem:*)",
+      "PowerShell(Select-String:*)",
+      "PowerShell(Set-Location:*)",
+      "PowerShell(Get-Location:*)"
+    ],
+    "orkestra_tools": [
+      "Bash(orkestra:*)",
+      "PowerShell(orkestra:*)"
+    ],
+    "repeat": 2
+  },
+  "summary": {
+    "g": {
+      "label": "G - Claude + filter + bulk delegation + cross review",
+      "tasks": 1,
+      "repeats": 2,
+      "complete_repeats": 2,
+      "partial_runs": 0,
+      "passed": {
+        "mean": 1.0,
+        "min": 1,
+        "max": 1
+      },
+      "by_difficulty": {
+        "big": {
+          "tasks": 1,
+          "passed_mean": 1.0
+        }
+      },
+      "claude_tokens_per_task": 82761.5,
+      "claude_cache_read_per_task": 1563860.0,
+      "claude_cost_per_task": 1.239,
+      "runs_without_usage": 0,
+      "agent_tokens_per_task": null,
+      "agent_runs_without_usage": null,
+      "permission_denials": 4,
+      "worker_cost_per_task": 0.0,
+      "worker_runs_per_task": 1.5,
+      "savings_estimate_per_task": 0.0,
+      "duration_per_task_s": 602.98,
+      "errors": 0
+    }
+  },
+  "records": [
+    {
+      "task": "g01-ledger",
+      "difficulty": "big",
+      "mode": "g",
+      "repeat": 1,
+      "passed": true,
+      "duration_s": 997.02,
+      "claude": {
+        "input_tokens": 80,
+        "output_tokens": 21251,
+        "cache_read_input_tokens": 2271539,
+        "cache_creation_input_tokens": 70664,
+        "cost_usd": 1.4449598000000003,
+        "turns": 13,
+        "permission_denials": 1
+      },
+      "workers": {
+        "runs": 3,
+        "ok": 3,
+        "cost_usd": 0.0,
+        "prompt_tokens": 12720,
+        "completion_tokens": 917,
+        "savings_tokens": 0,
+        "by_provider": {
+          "agy": 3
+        }
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....................................                                     [100%]\n36 passed in 0.81s\n",
+      "agent": null
+    },
+    {
+      "task": "g01-ledger",
+      "difficulty": "big",
+      "mode": "g",
+      "repeat": 2,
+      "passed": true,
+      "duration_s": 208.94,
+      "claude": {
+        "input_tokens": 38,
+        "output_tokens": 22827,
+        "cache_read_input_tokens": 856181,
+        "cache_creation_input_tokens": 50663,
+        "cost_usd": 1.0332322,
+        "turns": 33,
+        "permission_denials": 3
+      },
+      "workers": {
+        "runs": 0,
+        "ok": 0,
+        "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "savings_tokens": 0,
+        "by_provider": {}
+      },
+      "error": null,
+      "check_passed": true,
+      "output_tail": "....................................                                     [100%]\n36 passed in 0.87s\n",
+      "agent": null
+    }
+  ]
+}
