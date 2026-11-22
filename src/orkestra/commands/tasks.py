@@ -26,11 +26,12 @@ from orkestra.config.schema import Config
 from orkestra.errors import ExitCode, OrkestraError, UsageError
 from orkestra.i18n import t
 from orkestra.notify import notify
+from orkestra.notify.notify import EXTRA as notify_extra
 from orkestra.providers import display
 from orkestra.routing.router import Route, describe_candidates
 from orkestra.security.redact import Redactor, configured_secrets
 from orkestra.state import db
-from orkestra.tasks import batch, runner, spec, templates
+from orkestra.tasks import batch, delegate, runner, spec, templates
 from orkestra.workspace import service
 
 
@@ -513,3 +514,74 @@ def register(app: typer.Typer) -> None:
         typer.echo(t("apply.done", count=len(done.files), run_id=run_id, repo=done.repo))
         if done.merged:
             typer.echo(t("apply.merged", files=", ".join(done.merged)))
+
+    @app.command("delegate", help=t("cli.delegate.help"))
+    def delegate_command(
+        ctx: typer.Context,
+        plan: Annotated[Path, typer.Argument(metavar="PLAN", help=t("cli.delegate.arg.plan"))],
+        verify: Annotated[
+            list[str] | None,
+            typer.Option("--verify", metavar="COMMAND", help=t("cli.delegate.option.verify")),
+        ] = None,
+        context: Annotated[
+            list[Path] | None,
+            typer.Option("--context", metavar="FILE", help=t("cli.delegate.option.context")),
+        ] = None,
+        to: Annotated[
+            str | None,
+            typer.Option("--to", metavar="PROVIDER", help=t("cli.delegate.option.to")),
+        ] = None,
+        profile: Annotated[
+            str | None,
+            typer.Option("--profile", metavar="NAME", help=t("cli.delegate.option.profile")),
+        ] = None,
+        timeout: Annotated[
+            int | None,
+            typer.Option(
+                "--timeout", min=1, metavar="SECONDS", help=t("cli.delegate.option.timeout")
+            ),
+        ] = None,
+        task_id: Annotated[
+            str | None,
+            typer.Option("--id", metavar="NAME", help=t("cli.delegate.option.id")),
+        ] = None,
+        dry_run: Annotated[
+            bool, typer.Option("--dry-run", help=t("cli.delegate.option.dry_run"))
+        ] = False,
+        as_json: Annotated[bool, _json_option()] = False,
+    ) -> None:
+        loaded = loader.load_config(ctx.ensure_object(_State).config_path)
+
+        res = delegate.delegate_task(
+            plan_path=plan,
+            verify_commands=verify or (),
+            config=loaded.config,
+            config_path=ctx.ensure_object(_State).config_path,
+            context_files=context or (),
+            to_provider=to,
+            profile=profile,
+            timeout_s=timeout,
+            task_id=task_id,
+            dry_run=dry_run,
+        )
+        if dry_run:
+            if as_json:
+                _echo_json(res.to_dict())
+            else:
+                typer.echo(t("delegate.dry_run.header", path=str(res.task_file)))
+                typer.echo(_route_text(res.route))
+            return
+        if as_json:
+            _echo_json(res.to_dict())
+        else:
+            typer.echo(
+                t(
+                    "delegate.submitted",
+                    id=res.queue_id,
+                    path=str(res.task_file),
+                    candidate=res.first_candidate,
+                )
+            )
+            typer.echo(t("delegate.close_session"))
+            if not res.notify_ready:
+                typer.echo(t("delegate.no_notify", extra=notify_extra), err=True)

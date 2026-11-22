@@ -210,6 +210,14 @@ orkestra show <run_id> --json     # zarfı tekrar al
 
 **Gece kuyruğu.** Kullanıcı işi sonraya (ör. geceye, yerel modellere) bırakmak isterse görev veya batch dosyasını kuyruğa ekle: `orkestra queue add .orkestra/tasks/batch.yaml --json` (dosya şimdi denetlenir). Kuyruğu sen çalıştırma (saatler sürebilir): kullanıcıya `orkestra queue run --until 07:00 --notify` komutunu ve zamanlama için `docs/recipes.md`'yi öner. Sonra `orkestra queue list --json` her işin `status` ve `result_ref` (koşu için `run_id`, batch için `batch_id`) alanlarını verir; sonuçları 6. bölümdeki gibi denetle.
 
+**Büyük bir işi tümden devret: `orkestra delegate`.** Bir fazın veya büyük görevin planını yazdıktan sonra tüm işi tek seferde arka planda kod ajanına devret:
+
+```bash
+orkestra delegate .orkestra/plan.md --verify "python -m pytest -q" --json
+```
+
+Seçenekler: `--verify "<komut>"` (en az bir tane, zorunlu), `--context <dosya>` (işçinin önce okuyacağı, değiştiremeyeceği ek dosya), `--to <sağlayıcı>` (belirli sağlayıcı), `--profile <ad>` (varsayılan: `balanced`), `--timeout <sn>` (varsayılan 3600), `--id <ad>` (görev kimliği), `--dry-run`, `--json`. Komut görevi `.orkestra/tasks/<id>.yaml` dosyasına yazar, kuyruğa ekler, arka planda çalışan bir kuyruk koşucusu yoksa `orkestra queue run --notify` başlatır ve hemen döner. Oturumu kapatabilirsin; iş bitince (bir bildirim kanalı varsa) bildirim gelir. Durumu `orkestra status --json` çıktısındaki `delegated` bölümünden izleyebilirsin.
+
 ## 6. Denetim (atlanamaz)
 
 `status: ok` olsa bile:

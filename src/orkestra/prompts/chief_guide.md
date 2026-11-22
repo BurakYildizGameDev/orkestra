@@ -16,7 +16,8 @@
   flags: read `orkestra show <run_id> --diff --only-flagged`; anything else: read the whole diff. Batches:
   `orkestra apply --batch <batch_id> --only-ok --max-risk low`. Reject with `orkestra discard <run_id>`.
   Never use `--force` unless the user asks.
-- Work for later: `orkestra queue add <file>` (the user runs the queue). Reports: `orkestra stats --since 7d`,
+- Work for later: `orkestra queue add <file>` (the user runs the queue). A whole phase with a written plan:
+  `orkestra delegate <plan.md> --verify "<test command>"`, then stop. Reports: `orkestra stats --since 7d`,
   `orkestra budget --json`. Clean up: `orkestra gc --dry-run`.
 - Keep `.orkestra/HANDOFF.md` current: after each meaningful step
   `orkestra handoff update --chief <you> --section done --add "..."`; before stopping, write the file, branch and

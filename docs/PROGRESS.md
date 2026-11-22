@@ -51,9 +51,42 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13n – Claude dışı şef (ek) | ✅ | 2026-11-19 | kılavuz skill'in özü (30 satır, kopma testi), `handoff show --guide`, benchmark mod E (agy şef; agy tokenı ayrı satırda); ilk koşu 2/2 (D-102) |
 | 13o – Sağlayıcı ekleme komutu (ek) | ✅ | 2026-11-19 | herhangi bir OpenAI uyumlu servis: `providers add` / `import opencode` / `remove`, `--check` (= doctor), sihirbazda "başka bir OpenAI uyumlu servis"; anahtar asla kopyalanmaz; EVREN ile canlı test geçti (D-100) |
 | 13q – Hız farkındalığı ve devir uyarısı (ek) | ✅ | 2026-11-23 | 13q-a ortanca süre, 13q-b `routing.prefer_fast` (D-124), 13q-c görev alanı `max_wait_s` (D-125), 13q-d `small_task` uyarısı (D-126) agy'den; faz sonu kod denetimi ve skill kuralları Claude (D-127); PR #54–#57 birleşti; ölçüm (`bench/results/2026-11-23-0059`, G × 2, 2/2 geçti): görev başına $1,24 / 82,8k Claude tokenı (eski G $1,19 / 76,7k): **iyileşme yok**; devreden koşu yine ~1000 sn bekledi (bench tek oturumda bitmeyi şart koşuyor, bekleme kuralı burada işleyemez); 5. madde (yarış) ertelendi |
+| 13r-a – Fazı tümden devret: delegate, bildirim ve durum (ek) | ⏳ | 2026-11-23 | agy yazdı (Orkestra kuyruğuyla verildi, doğrulamada düştü), Claude denetledi ve düzeltti (D-128, D-129, D-130); kalan: 13r-b (`on_failover`) `orkestra delegate` ile, 13r-c |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13r-a – Fazı tümden devret: delegate, bildirim ve durum (agy kodu + Claude denetimi, 2026-11-23)
+
+**Nasıl verildi:** elle devir değil, Orkestra'nın kendisiyle: `.orkestra/tasks/faz-13r-a.yaml` (agy, çalışma ağacı, doğrulayıcı ruff + pyright + pytest), `queue add` + arka planda `queue run --notify`. agy 01:42–02:15 iki denemede yazdı; iki denemede de `ruff check`'e takıldı, koşu `failed`. Bildirim gitmedi (masaüstü eklentisi kurulu değil). Claude farkı `faz-13r-a` dalına aldı.
+
+**Faz sonu kod denetimi (Claude, D-130; önce kırmızı test `tests/unit/test_13r_a_review.py`, 8 test):** (1) `tier: 3` sabitti, agy kademe 1'de olduğu için kullanıcının config'inde komut hiç çalışmazdı → profildeki en düşük kod ajanı kademesi; (2) plan edit görevinde "değiştirilecek dosya" olarak gidiyordu → istemde "oku, değiştirme" + `protect_paths`, git'in yok saydığı plan reddedilir; (3) `.orkestra/tasks/` altındaki her görev "devredilmiş" sayılıyordu → yalnız `delegated` etiketi; (4) `status` devir sayısı tekrarları sayıyordu → zarfın `failovers`'ı; (5) `--verify` komutları 300 sn'de kesilirdi → görevin zaman aşımı; (6) bildirim kanalı yoksa `delegate` söyler; (7) agy'nin testlerinin 8/12'si agy'nin kendi kodunda başarısızdı (depo ve onay yoktu) → fikstür, hatayı kodlayan iki iddia düzeltildi.
+
+**Orkestra neden faz taşıyamadı (D-130, 8. bulgu):** agy komut satırından test koşamıyor (D-048), Orkestra'nın geri bildirimi kırpıldı (9 başarısız test agy'ye ulaşmadı), tek düzeltme turu vardı. 13r-b planına eklendi: faz boyu test döngüsü, `exec` süzgeçleriyle kısa ve tam geri bildirim, `fix:` komutları (biçim hatalarını Orkestra düzeltir), yalnız kod ajanı adayları.
+
+**Bilinen sorun:** yönlendirme kod ajanından sonra sohbet işçilerini (evren, Ollama) de yedek dener; faz işini yapamazlar (13r-b'de ele alınacak, D-130). Kullanıcının makinesinde masaüstü bildirimi için `orkestra-cli[notify]` kurulu değil.
+
+agy 13r-a1 ve 13r-a2 maddelerini uyguladı (D-128, D-129; 12 yeni birim testi `tests/unit/test_delegate.py`):
+- **13r-a1 (`orkestra delegate`):**
+  - Yeni komut `orkestra delegate PLAN [--verify "<komut>"]... [--context <dosya>]... [--to <sağlayıcı>] [--profile <ad>] [--timeout <sn>] [--id <ad>] [--dry-run] [--json]`.
+  - İş mantığı `src/orkestra/tasks/delegate.py`, komut `src/orkestra/commands/tasks.py`.
+  - Plandan `kind: edit`, kod ajanının kademesi (D-130), `tags: ["delegated"]` görev dosyası üretir. `prompt` İngilizce ve öz; plan ve `--context`'ler istemde "oku, değiştirme" ve `protect_paths`'te (D-130); her `--verify` bir `type: command` doğrulayıcısı; `limits.timeout_s` = `--timeout` (varsayılan 3600 sn).
+  - `--verify` zorunlu (en az bir tane; yoksa açık `UsageError`, çıkış kodu 2).
+  - `--profile` verilmezse kod ajanlarını kapsayan `balanced` seçilir (`min_tier=1, max_tier=3`); kuyruğun varsayılan `cheap` profilinin kod ajanlarını dışlaması engellenir (D-128).
+  - Görevi `.orkestra/tasks/<id>.yaml`'a ruamel round-trip ile yazar; dosya varsa üzerine yazmaz (açık hata).
+  - Yazmadan önce `plan_task` ile kuru yönlendirir; adaylar arasında en az bir `CliAgentProvider` yoksa açık hata (`UsageError`), dosya yazılmaz ve kuyruğa eklenmez.
+  - `queue_store.add` ile kuyruğa ekler; çalışan bir `queue run` yoksa `orkestra queue run --notify` ayrık süreç (Windows `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`, POSIX `start_new_session=True`, stdin/stdout/stderr log dosyasına) olarak başlatılır; çalışan varsa başlatılmaz. Testte enjekte edilebilir (`launcher`).
+  - Hemen döner; `--json`: `{queue_id, task_file, candidates, started_runner}`. `--dry-run`: hiçbir dosya yazmaz, kuyruğa eklemez, başlatmaz.
+- **13r-a2 (Bildirim ve durum):**
+  - Delegate edilmiş iş bitince bildirim gider (`queue run --notify` içinde tamamlananlar arasında delegate işi varsa başlık `notify.title.delegated` ve mesajda `{count} delegated` belirtilir; çift bildirim yok, tek bildirim).
+  - `orkestra status` (metin ve `--json`) için `@section("delegated", order=45)` bölümü: kimlik, görev, durum (`pending/running/done/failed`), işçi, geçen süre, devir (failover) sayısı, run kimliği. Delegate işi yokken bölüm `None` döner (çıktı eskisiyle bit bit aynı kalır).
+  - Migration'sız tespit: `tags: ["delegated"]` (görev dosyası ya da `runs.tags`; yol ölçütü D-130'da kaldırıldı).
+- **Belgeler ve dil:**
+  - 21 yeni i18n anahtarı 5 dilde (`en`, `tr`, `de`, `es`, `fr`).
+  - `docs/DECISIONS.md`'ye D-128 ve D-129.
+  - `docs/guide.md` ve `docs/guide.tr.md`'ye "Büyük bir işi tümden devret: `orkestra delegate`" bölümü.
+  - `skill/orkestra/reference.md`'ye komut ve bayrak referansı.
+
 
 ### Faz 13q – Hız farkındalığı ve devir uyarısı (agy kodu + Claude denetimi, 2026-11-22/23)
 

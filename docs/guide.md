@@ -13,6 +13,7 @@ The details behind the [README](../README.md): how routing works, task files, ed
 - [When an AI runs out](#when-an-ai-runs-out)
 - [Batches: many tasks at once](#batches-many-tasks-at-once)
 - [Night queue and notifications](#night-queue-and-notifications)
+- [Hand off a whole milestone: orkestra delegate](#hand-off-a-whole-milestone-orkestra-delegate)
 - [Chief tools](#chief-tools)
 - [A second AI reviews: cheaper writing for the chief](#a-second-ai-reviews-cheaper-writing-for-the-chief)
 - [Long command output: `orkestra exec`](#long-command-output-orkestra-exec)
@@ -443,6 +444,26 @@ orkestra queue run --until 07:00 --notify                # leave the terminal op
   notifications go to [ntfy](https://ntfy.sh): set `notify.ntfy_topic_env` to the name of an
   environment variable that holds the topic. `orkestra notify test` tries every channel.
 - In the morning: `orkestra status` → `orkestra review` → `orkestra apply`.
+
+## Hand off a whole milestone: `orkestra delegate`
+
+For large, self-contained tasks (an entire milestone or phase), having the chief write code in an open interactive session burns unnecessary tokens. `orkestra delegate` takes a written plan file, builds an edit task with test verification, places it on the queue, and launches `orkestra queue run --notify` in the background.
+
+```bash
+orkestra delegate docs/phase-plan.md --verify "pytest -q" --json
+```
+
+- **Options:**
+  - `--verify "<command>"`: **Required** (at least one). Verification command (e.g. your test suite or linter).
+  - `--context <file>`: Additional files the worker reads first (like the plan, they are protected: the worker may not change them).
+  - `--to <provider>`: Target a specific provider (e.g. `agy`, `codex`).
+  - `--profile <name>`: Routing profile (default: `balanced`). The task starts on the lowest tier a code agent works on in that profile.
+  - `--timeout <seconds>`: Task timeout (default: 3600 seconds = 1 hour).
+  - `--id <name>`: Task ID (default: derived from the plan file name).
+  - `--dry-run`: Plan routing and preview task without creating files or queueing.
+  - `--json`: Output as structured JSON.
+- **Immediate exit:** The command returns immediately with the queue ID and candidate worker, so you can close your terminal session.
+- **Status and notifications:** Track progress with `orkestra status --json` (under the `delegated` section). When the background run finishes, a notification is sent if a channel works (desktop needs `orkestra-cli[notify]`, or set `notify.ntfy_topic_env`); `delegate` says so when none does. The plan must be a file git does not ignore, or the worker never sees it.
 
 ## Chief tools
 
