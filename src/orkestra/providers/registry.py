@@ -43,6 +43,12 @@ class ProviderRow:
     key_present: bool | None
 
 
+def usable(config: Provider) -> bool:
+    """Is the provider on for the router? An experimental one needs an explicit
+    ``enabled: true``; without it the list said "enabled" while routing dropped it (D-144)."""
+    return config.enabled and not (config.experimental and "enabled" not in config.model_fields_set)
+
+
 def provider_overview(
     config: Config,
     conn: sqlite3.Connection,
@@ -57,7 +63,7 @@ def provider_overview(
             ProviderRow(
                 name=name,
                 type=cfg.type,
-                enabled=cfg.enabled,
+                enabled=usable(cfg),
                 local=cfg.local,
                 consent=consent.state(conn, name, cfg),
                 health=health.get(conn, name),

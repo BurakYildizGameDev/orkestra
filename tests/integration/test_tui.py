@@ -98,6 +98,7 @@ async def test_the_wizard_with_only_openrouter_writes_no_ollama_and_keeps_commen
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:  # fmt: skip
     monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()  # a project: the project question is asked (D-143)
     target = tmp_path / "home" / "config.yaml"
     app = OrkestraApp(config_flag=target, mode="wizard", found=_found(keys=("OPENROUTER_API_KEY",)))
     from orkestra.tui import wizard
@@ -349,6 +350,7 @@ async def test_an_unexpected_failure_in_the_wizard_is_not_reported_as_success(
     from orkestra.tui import wizard
 
     monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()  # a project: the project question is asked (D-143)
 
     def broken(*args: object, **kwargs: object) -> object:
         raise OSError("disk full")

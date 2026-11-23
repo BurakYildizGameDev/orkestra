@@ -317,6 +317,8 @@ def register(app: typer.Typer, providers_app: typer.Typer) -> None:
         with closing(db.connect()) as conn:
             registry.enable_provider(conn, name, cfg, db.local_now())
         typer.echo(t("consent.granted", name=name))
+        if not registry.usable(cfg) and cfg.enabled:  # experimental: consent is not enough
+            typer.echo(t("providers.enable.experimental_hint", name=name))
 
     @providers_app.command("disable", help=t("cli.providers.disable.help"))
     def providers_disable(

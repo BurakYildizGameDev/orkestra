@@ -61,6 +61,21 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Faz kayıtları
 
+### Elle kullanım turu (2026-11-23, kullanıcı + Claude)
+
+| Adım | Sonuç | Not |
+|---|---|---|
+| 1a – GitHub'dan kurulum (`uv tool install git+…`, `--reinstall`) | ✅ | `orkestra --version` → 0.9.0; desktop-notifier kuruldu |
+| 1b – `doctor` (Ollama kapalı / açık) | ✅ | kapalıyken temiz HATA + "Sorun var", açıkken "Engelleyici sorun bulunmadı"; Türkçe tutarlı |
+| 1c – `init` sihirbazı | ⚠️ → düzeltildi | dil, ajanlar, günlük koşu, şef soruldu; System32'de "yalnız bu projeye" yazılamadı (D-143) |
+| 1d – `init` (depo içinde, Ollama açık) | ✅ / ⚠️ → düzeltildi | 4 Ollama modeli, kademeler, onaylar, `doctor` temiz; agy "evet" denmesine rağmen router'da elendi (D-144) |
+| 2a – `ask --dry-run` | ✅ | adaylar doğru sırada (kademe 1 yerel → 14b → codex), sebepler okunur |
+| 2b – `ask` (Ollama) | ✅ | 1.5b "yapamam" dedi → aynı komutta kademe 2 (14b), 13,8 sn, doğru Türkçe cevap; atlanan aday gerekçesiyle görünür |
+| 2c – `ask --context README.md` | ✅ | 4281 token bağlam, 3,4 sn; 1.5b'nin Türkçe özeti zayıf (model sınırı; özet için 7b/14b `routing.by_kind` önerilir) |
+| 3 – `orkestra ui` (web) | ✅ | ana ekran, ekip (agy açma, kademe), anahtarlar (ekle/test/sil), kullanım, rehber, bildirim testi çalıştı; devir özeti depoda bayattı (2026-11-21, kullanım hatası değil) |
+| 4 – bildirim | ✅ masaüstü / ntfy denenmedi | arayüzün bildirim testiyle masaüstü geldi |
+| 5–8 | ⏳ | kullanıcı sonraki oturuma erteledi: düzenleme döngüsü, kesintisizlik (öncelikli); `delegate` (13r-c'de gerçek ajanlarla denendi), gece kuyruğu (isteğe bağlı) |
+
 ### v0.9 öncesi bakış ve kırma testi (2026-11-23)
 
 - **Bakış (Opus, Fable yerine; `FABLE_BAKIS.md`):** yayına engel yok. `uv build` + temiz ortamda kurulum, CI, sızıntı taraması, web arayüzü güvenliği temiz. Düzeltilen: sürüm `0.9.0`, README'nin 13r sonucu ve `delegate` (PR #66).

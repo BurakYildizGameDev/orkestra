@@ -478,3 +478,26 @@ def test_an_existing_file_keeps_the_limits_the_wizard_did_not_ask_about(tmp_path
         "daily_runs": 20,
         "daily_usd": 1.0,
     }
+
+
+def test_outside_a_repository_the_project_question_is_not_asked(
+    english: None, tmp_path: Path
+) -> None:
+    """Run from System32 (where an admin terminal starts), "save to this project"
+    tried to write orkestra.yaml there and failed (usage tour 2026-11-23, D-143)."""
+    script = Script("en", _number_of("codex"), "", "")  # language, providers, runs, chief
+    answers = wizard.run_plain(
+        script, _found(agents=("codex",)), set_language=i18n.set_language, cwd=tmp_path
+    )
+    assert answers.project is False
+    assert t("wizard.ask.project") not in script.asked
+    assert not script.answers
+
+
+def test_inside_a_repository_the_project_question_is_asked(english: None, tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    script = Script("en", _number_of("codex"), "", "", "y")
+    answers = wizard.run_plain(
+        script, _found(agents=("codex",)), set_language=i18n.set_language, cwd=tmp_path
+    )
+    assert answers.project is True
