@@ -271,6 +271,7 @@ def delegate_task(
                 notify_ready=notify_ready(config),
             )
 
+        paths.ensure_project_dir(where)
         task_dir.mkdir(parents=True, exist_ok=True)
         yaml = YAML()
         yaml.default_flow_style = False

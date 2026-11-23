@@ -65,7 +65,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 - **Bakış (Opus, Fable yerine; `FABLE_BAKIS.md`):** yayına engel yok. `uv build` + temiz ortamda kurulum, CI, sızıntı taraması, web arayüzü güvenliği temiz. Düzeltilen: sürüm `0.9.0`, README'nin 13r sonucu ve `delegate` (PR #66).
 - **Kırma testi (alt ajan, ayrı `ORKESTRA_HOME`, ücretli servis yok):** 24 bulgu (8 orta, 16 küçük), engel yok; eşzamanlılık sağlam (4 batch × 40 görev + `ask` + `status` aynı home'da, 160/160), sır sızmadı. Düzeltilenler: D-139 (HTML yanıtta çökme, zaman aşımının 4 kat beklemesi, Windows'un tutamayacağı yollar, eksik çeviri anahtarları, boş `budget`, loopback adresine "Remote") ve D-140 (fiyatsız modelle `daily_usd`'nin delinmesi, düz http ile anahtar, yanlış "onay gerekiyor" başlığı, repo dışı `delegate` planı, `doctor`'un `.cmd` ajanda asılı kalması, `ORKESTRA_HOME` dosya, `--config` klasör).
-- **Bilinen sorunlar:** `error` ile biten düzenleme koşusunun worktree'si `status`'ta görünmüyor (`gc` 30 günde toplar); kod ajanı yasak adlı dosyayı kendisi yazarsa iç hata; `runner.py` ~900 satır (~800 sınırı aşıldı, bölme Faz 14 sonrası); küçükler B-10, B-11, B-12, B-14, B-15, B-16, B-21, B-22, B-23 (ayrıntı D-140).
+- **Bilinen sorunlar:** `error` ile biten düzenleme koşusunun worktree'si `status`'ta görünmüyor (`gc` 30 günde toplar); kod ajanı yasak adlı dosyayı kendisi yazarsa iç hata; `runner.py` ~900 satır (~800 sınırı aşıldı, bölme Faz 14 sonrası); Typer'ın kendi ayrıştırıcı mesajları ("No such option" …) İngilizce kalır (D-141). Küçük bulgular B-10…B-23 D-141'de düzeltildi.
 
 ### Faz 13r-c – Kabul denemesi ve tokens --compare (2026-11-23)
 

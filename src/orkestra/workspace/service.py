@@ -86,6 +86,8 @@ def show(
         return review.extract_flagged_lines(patch, flags, context_lines=5)
     path = run_dir / _PART_FILES[part]
     if not path.is_file():
+        if part == "envelope":  # stopped (Ctrl+C, killed) or still running (B-21)
+            raise UsageError(t("show.unfinished", run_id=run_id))
         raise UsageError(t("show.missing", run_id=run_id, file=path.name))
     text = path.read_bytes().decode("utf-8", errors="replace")
     return json.loads(text) if part == "envelope" else text

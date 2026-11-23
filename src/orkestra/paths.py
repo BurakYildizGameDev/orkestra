@@ -5,6 +5,7 @@ Nothing here creates directories; callers create what they need.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from pathlib import Path
 
@@ -23,6 +24,26 @@ def orkestra_home() -> Path:
             raise UsageError(t("paths.error.home_not_dir", path=home))
         return home
     return Path.home() / ".orkestra"
+
+
+PROJECT_DIR = ".orkestra"
+_PROJECT_IGNORE = (
+    "# Written by Orkestra: its generated files stay out of git.\n"
+    "# HANDOFF.md and templates/ are yours to commit.\n"
+    ".gitignore\ncache/\nBRIEF.md\nMAP.md\ntasks/\n"
+)
+
+
+def ensure_project_dir(root: Path) -> Path:
+    """``<root>/.orkestra``, created with a ``.gitignore`` for Orkestra's own generated files,
+    so ``map``, ``delegate`` and the brief leave ``git status`` clean (B-22, D-141)."""
+    folder = root / PROJECT_DIR
+    folder.mkdir(parents=True, exist_ok=True)
+    ignore = folder / ".gitignore"
+    if not ignore.exists():
+        with contextlib.suppress(OSError):  # only tidiness is lost
+            ignore.write_text(_PROJECT_IGNORE, encoding="utf-8")
+    return folder
 
 
 def global_config_path() -> Path:

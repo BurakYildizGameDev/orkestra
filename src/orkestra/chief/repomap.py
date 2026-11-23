@@ -29,6 +29,7 @@ from pathlib import Path
 import pathspec
 import psutil
 
+from orkestra import paths
 from orkestra.chief.call import prompt_has_secrets, query_chief_model
 from orkestra.config.loader import find_git_root
 from orkestra.config.schema import Config
@@ -483,6 +484,7 @@ def after_commit(root: Path, config: Config) -> int:
     over. Files deleted since are skipped. Returns how many files were mapped.
     """
     root = root.resolve()
+    paths.ensure_project_dir(root)
     folder = get_map_cache_dir(root)
     folder.mkdir(parents=True, exist_ok=True)
     pending = folder / AFTER_COMMIT_PENDING
@@ -612,8 +614,7 @@ def render_markdown(files: list[FileMap]) -> str:
 
 
 def write_map_file(root: Path, content: str) -> Path:
-    out_dir = root / ".orkestra"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = paths.ensure_project_dir(root)
     out_file = out_dir / MAP_FILE_NAME
     out_file.write_text(content, encoding="utf-8")
     return out_file

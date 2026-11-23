@@ -1434,5 +1434,15 @@ Claude, agy'nin 13r-b2 (PR #61) ve 13r-b3 (PR #62) farkını denetledi. Özü do
 4. **`delegate` repo dışındaki plan (B-18):** ham `git check-ignore` hatası (kod 10) yerine kullanım hatası "planı projenin içine koy".
 5. **`doctor` asılı kalıyordu (B-24):** `probe_version` `subprocess.run(timeout=)` kullanıyordu; Windows'ta npm `.cmd` kabuğunda yalnız `cmd.exe` öldürülüyor, başlattığı program boruları açık tuttuğu için bekleme bitmiyordu (`doctor`, sihirbaz, arayüz). Artık `Popen` + `stdin=DEVNULL`, süre dolunca `kill_tree`.
 6. **Küçükler:** `ORKESTRA_HOME` bir dosyaysa temiz hata (B-19); `--config <klasör>` "bu bir klasör" der (B-20).
-**Ertelenen (bilinen sorun, PROGRESS):** B-10 (`find` 2 MB üstünü sessiz atlar), B-11 (`find ""`), B-12 (`read <klasör>` mesajı), B-14 (`.bak.N` birikir), B-15 (arayüz API'sinde ham hata metni, gövde sınırı yok), B-16 (`localhost` adresine 403), B-21 (öldürülen koşuda `show` mesajı), B-22 (`map`/handoff `.orkestra/` bırakır: HANDOFF.md'nin izlenip izlenmeyeceği kullanıcı kararı), B-23 (Typer'ın kendi metinleri çevrilmiyor).
+**Ertelenen:** küçük bulgular B-10 … B-23; sonra D-141'de düzeltildi.
 **Testler:** `tests/unit/test_v09_break_fixes.py`; `test_router.py` sahte sağlayıcısına fiyat (`PRICED`), `test_state_cli.py::test_unknown_price_with_daily_usd_is_not_sent`.
+
+## D-141 – v0.9 kırma testi, 3. tur: küçük bulgular (2026-11-23, Faz 14 öncesi)
+1. **`find` (B-10, B-11):** 2 MB'tan büyük dosyalar yine aranmaz ama artık söylenir (`skipped_large`, metinde ve JSON'da); boş desen kullanım hatası.
+2. **Klasör verilen bağlam (B-12):** `read sub` "dosya bulunamadı" yerine "bu bir klasör, içindeki dosyaları ver".
+3. **Config yedekleri (B-14):** içerik değişmediyse dosya hiç yazılmaz, yedek alınmaz; numaralı yedeklerden en yeni 5'i kalır, ilk `<ad>.bak` hiç silinmez (D-104'ün "eski yedek asla ezilmez" kuralı ilk yedek için sürer).
+4. **Web arayüzü API'si (B-15, B-16):** 1 MB üstü gövde 413; JSON olmayan gövde, sayı olmayan `tier`, liste olmayan `names` okunur hata (ham Python metni değil); model adı boş ya da çok satırlıysa reddedilir ve mesaj `--model` bayrağından söz etmez. Sunucu `localhost:<port>` adresini de kabul eder (Host/Origin): DNS rebinding saldırısında Host saldırganın alan adıdır, `localhost` olamaz; belirteç denetimi değişmedi.
+5. **Bitmemiş koşu (B-21):** `envelope.json` yoksa `show` "koşu bitmedi (durduruldu ya da sürüyor), günlüğü: `show --log`" der.
+6. **`.orkestra/` git'te görünüyordu (B-22):** Orkestra projede `.orkestra/` oluştururken içine kendi `.gitignore`'unu yazar (`cache/`, `BRIEF.md`, `MAP.md`, `tasks/` ve kendisi). `HANDOFF.md` ve `templates/` bilerek görünür kalır: paylaşılmak için. `delegate`'in görev dosyaları da artık git'e girmez.
+7. **Typer metinleri (B-23), kısmen:** yardım panellerinin başlıkları ("Options", "Commands", "Arguments", "Error"), `[default: …]`, `[required]`, "Try … for help" seçili dilde. Typer'ın ayrıştırıcı mesajları ("No such option", "Missing option", "Show this message and exit.") Typer'ın içinde sabit yazılı; gizli modülü yamamak Typer güncellemesinde CLI'yi bozabileceği için İngilizce kalır (bilinen sorun).
+**Testler:** `tests/unit/test_v09_small_fixes.py`.

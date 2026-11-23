@@ -200,7 +200,8 @@ def collect_context(
         seen.add(path)
         display = _display(path, base)
         if not path.is_file():
-            raise UsageError(t("context.error.not_found", path=raw))
+            key = "context.error.is_folder" if path.is_dir() else "context.error.not_found"
+            raise UsageError(t(key, path=raw))
         excluded_by = _ignored_by(display, specs)
         if excluded_by:
             ignored.append((display, excluded_by))

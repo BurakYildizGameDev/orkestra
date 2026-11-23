@@ -52,11 +52,40 @@ def _at_terminal() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
+_TYPER_TEXTS = {  # typer's help panel words, in the chosen language (B-23, D-141)
+    "ARGUMENTS_PANEL_TITLE": "cli.typer.arguments",
+    "OPTIONS_PANEL_TITLE": "cli.typer.options",
+    "COMMANDS_PANEL_TITLE": "cli.typer.commands",
+    "ERRORS_PANEL_TITLE": "cli.typer.error",
+    "ABORTED_TEXT": "cli.typer.aborted",
+}
+
+
+def _translate_typer() -> None:
+    """Typer's panel titles are module constants; unknown ones (another typer) are skipped.
+    Its parser's messages ("No such option" …) are hard-coded inside typer and stay English."""
+    from typer import rich_utils
+
+    for name, key in _TYPER_TEXTS.items():
+        if hasattr(rich_utils, name):
+            setattr(rich_utils, name, t(key))
+    if hasattr(rich_utils, "DEFAULT_STRING"):
+        rich_utils.DEFAULT_STRING = "[" + t("cli.typer.default") + ": {}]"
+    if hasattr(rich_utils, "REQUIRED_LONG_STRING"):
+        rich_utils.REQUIRED_LONG_STRING = "[" + t("cli.typer.required") + "]"
+    if hasattr(rich_utils, "RICH_HELP"):
+        rich_utils.RICH_HELP = t(
+            "cli.typer.try_help",
+            command="[blue]'{command_path} {help_option}'[/]",
+        )
+
+
 def build_app() -> typer.Typer:
     """Build the typer app. Help texts are translated here, so set the language first."""
     # Imported here: the command modules look up the hooks above on ``cli`` at call time.
     from orkestra.commands import chief, handoff, providers, queue, setup, tasks, tools
 
+    _translate_typer()
     app = typer.Typer(name="orkestra", help=t("cli.help"), no_args_is_help=True)
     config_app = typer.Typer(name="config", help=t("cli.config.help"), no_args_is_help=True)
     app.add_typer(config_app)
