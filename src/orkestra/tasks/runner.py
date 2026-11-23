@@ -245,6 +245,13 @@ def continuation_note(
     )
 
 
+def _stop_reason(exc: BaseException) -> str:
+    """For the log: an interruption, or an unexpected error (not "interrupted", B-04)."""
+    if isinstance(exc, KeyboardInterrupt | asyncio.CancelledError):
+        return "interrupted"
+    return f"unexpected {type(exc).__name__}"
+
+
 class _TaskRun(RunRecord):
     """The attempts of one run: candidates, answers, checks, agents, failover."""
 
@@ -465,9 +472,9 @@ class _TaskRun(RunRecord):
                         if action is retry.Action.RETRY:
                             action = retry.give_up(exc)
                         return self._fail(candidate, exc, tries, action)
-                except BaseException:
+                except BaseException as exc:
                     budget.release(self.conn, reservation)  # interrupted: nothing to pay for
-                    self.log.warning("interrupted; reservation released")
+                    self.log.warning("%s; reservation released", _stop_reason(exc))
                     raise
             finally:
                 slot.release()
@@ -662,9 +669,9 @@ class _TaskRun(RunRecord):
                     if action is retry.Action.RETRY:
                         action = retry.give_up(exc)
                     return self._fail(candidate, exc, tries, action)
-                except BaseException:
+                except BaseException as exc:
                     budget.release(self.conn, reservation)  # interrupted: nothing to pay for
-                    self.log.warning("interrupted; reservation released")
+                    self.log.warning("%s; reservation released", _stop_reason(exc))
                     raise
             usage = self._agent_usage(len(prompt), result)
             budget.settle(

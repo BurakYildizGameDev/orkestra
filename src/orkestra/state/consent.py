@@ -13,6 +13,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from orkestra.config.schema import CliAgentProvider, OllamaProvider, Provider
 from orkestra.i18n import t
@@ -57,6 +58,12 @@ def grant(conn: sqlite3.Connection, name: str, config: Provider, now: datetime) 
         )
 
 
+def _loopback(url: str) -> bool:
+    """Is the address on this computer (LM Studio, vLLM … without ``local: true``)?"""
+    host = (urlsplit(url if "//" in url else f"//{url}").hostname or "").lower()
+    return host == "localhost" or host == "::1" or host.startswith("127.")
+
+
 def describe(
     name: str,
     config: Provider,
@@ -87,6 +94,8 @@ def describe(
     else:
         key = "consent.describe.local" if config.local else "consent.describe.remote"
         lines.append(t(key, url=config.base_url))
+        if not config.local and _loopback(config.base_url):
+            lines.append(t("consent.describe.loopback_hint"))
         if not isinstance(config, OllamaProvider):
             if config.api_key_env:
                 lines.append(t("consent.describe.key", var=config.api_key_env))

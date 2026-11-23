@@ -324,7 +324,7 @@ def add_worker(
     elif provider_type == "cli_agent":
         cmd = (command or name).strip()
         if not cmd:
-            raise UsageError(t("config.validation.command_required"))
+            raise UsageError(t("team.error.command_required"))
         entry_data = {
             "type": "cli_agent",
             "command": cmd,
@@ -334,7 +334,13 @@ def add_worker(
         if model:
             entry_data["model"] = model
     else:
-        raise UsageError(t("config.validation.unknown_type", type=provider_type))
+        raise UsageError(
+            t(
+                "config.validation.provider_type_unknown",
+                tag=provider_type,
+                expected="ollama, openai_compat, cli_agent",
+            )
+        )
 
     providers[name] = writer.to_yaml(entry_data)
     return writer.save(target, doc, base=base)

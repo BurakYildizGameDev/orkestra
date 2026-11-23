@@ -125,6 +125,10 @@ class OpenAICompatChat:
         return self._result(response)
 
     def _result(self, response: ChatCompletion) -> CompletionResult:
+        if not isinstance(response, ChatCompletion):  # the SDK returns a str for non-JSON
+            raise ProviderBadOutput(
+                t("provider.error.not_api", provider=self.name, url=self.config.base_url)
+            )
         if not response.choices:
             raise ProviderBadOutput(t("provider.error.empty", provider=self.name))
         choice = response.choices[0]
