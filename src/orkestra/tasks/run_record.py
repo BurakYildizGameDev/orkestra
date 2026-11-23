@@ -128,6 +128,9 @@ class RunRecord:
         self.cache_key: str | None = None  # ask tasks: the first prompt's key (Faz 8a)
         self.cache_hit = False  # the answer being judged came from the cache
         self.last_failures: frozenset[tuple[int, str, str]] | None = None  # Faz 13r-b2
+        self.partial_dropped = False  # Faz 13r-b3
+        self.continuation_note: str | None = None  # Faz 13r-b3
+        self.last_verify_failures: list[str] = []  # masked; continuation note (D-135)
         self.log = logging.getLogger("orkestra")
         self.started = clock()
 
@@ -235,6 +238,8 @@ class RunRecord:
         }
         if self.prep.envelope_warnings:
             base["warnings"] = list(self.prep.envelope_warnings)
+        if self.partial_dropped:
+            base["partial_dropped"] = True
         return base
 
     def _answer_envelope(

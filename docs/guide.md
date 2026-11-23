@@ -155,11 +155,14 @@ fix:                         # optional commands run before verifiers (changes k
   - run: "ruff check --fix ."
   - run: "ruff format ."
 agents_only: true              # optional; true = only CLI coding agents may run the task
+on_failover: continue          # restart (default) | continue (keep worktree when failing over between coding agents)
 ```
 
 **Fix commands (`fix`):** Optional list of commands (`run`, `timeout_s`, `shell: false`) to run sequentially in the worktree after each worker answer and before verifiers. Exit codes are ignored (formatters often exit 1 when files are modified), changes become part of the worker's diff, and logs are kept in `attempts/<n>/fix.log`. This avoids wasting worker attempts on mechanical formatting issues. (`fix` is not allowed on `ask` tasks and produces a validation error.)
 
 **Coding agents only (`agents_only`):** Optional boolean (`default: false`). When set to `true` (written automatically by `orkestra delegate`), the router only considers CLI coding agents (`cli_agent`, e.g. Codex or Antigravity); chat workers (API models and Ollama) are eliminated with reason `agents_only` because full phase implementation cannot be carried by chat models.
+
+**Failover continuation (`on_failover`):** Optional literal (`restart` | `continue`, default `restart`). When set to `continue` (written automatically by `orkestra delegate`), failover from one coding agent to another does not reset the worktree; the next agent continues from the partial work and receives a continuation note with the previous worker's stop reason, changed files, and last verification summary. If failover moves to a chat worker, partial work is discarded and recorded as `partial_dropped: true` in the envelope.
 
 API workers answer in one of two formats; `edit_format` (in the task file, or per model in the
 config) picks it, and the default `auto` chooses by file size:

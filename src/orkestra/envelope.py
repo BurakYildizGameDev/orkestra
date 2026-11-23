@@ -87,12 +87,15 @@ class ResultEnvelope(BaseModel):
     review: EnvelopeReview | None = None
     error: str | None = None
     warnings: list[str] | None = None
+    partial_dropped: bool | None = None
 
     @model_serializer(mode="wrap")
     def _serialize(self, handler: Any) -> dict[str, Any]:
         data = handler(self)
         if data.get("warnings") is None:
             data.pop("warnings", None)
+        if data.get("partial_dropped") is None:
+            data.pop("partial_dropped", None)
         return data
 
 

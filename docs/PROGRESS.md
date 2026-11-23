@@ -51,12 +51,23 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13n – Claude dışı şef (ek) | ✅ | 2026-11-19 | kılavuz skill'in özü (30 satır, kopma testi), `handoff show --guide`, benchmark mod E (agy şef; agy tokenı ayrı satırda); ilk koşu 2/2 (D-102) |
 | 13o – Sağlayıcı ekleme komutu (ek) | ✅ | 2026-11-19 | herhangi bir OpenAI uyumlu servis: `providers add` / `import opencode` / `remove`, `--check` (= doctor), sihirbazda "başka bir OpenAI uyumlu servis"; anahtar asla kopyalanmaz; EVREN ile canlı test geçti (D-100) |
 | 13q – Hız farkındalığı ve devir uyarısı (ek) | ✅ | 2026-11-23 | 13q-a ortanca süre, 13q-b `routing.prefer_fast` (D-124), 13q-c görev alanı `max_wait_s` (D-125), 13q-d `small_task` uyarısı (D-126) agy'den; faz sonu kod denetimi ve skill kuralları Claude (D-127); PR #54–#57 birleşti; ölçüm (`bench/results/2026-11-23-0059`, G × 2, 2/2 geçti): görev başına $1,24 / 82,8k Claude tokenı (eski G $1,19 / 76,7k): **iyileşme yok**; devreden koşu yine ~1000 sn bekledi (bench tek oturumda bitmeyi şart koşuyor, bekleme kuralı burada işleyemez); 5. madde (yarış) ertelendi |
+| 13r-b3 – Yarım işin üstünden devam + bildirim uyarısı (ek) | ✅ | 2026-11-23 | on_failover (restart/continue), kod ajanından kod ajanına çalışma ağacı koruma ve devam notu, ajan→sohbet geçişinde partial_dropped, doctor bildirim uyarısı (D-134) |
 | 13r-b2 – Faz boyu test döngüsü + yalnız ajan (ek) | ✅ | 2026-11-23 | agy yazdı; limits.max_retries (varsayılan 5), delegate --rounds, ilerlemesiz turda erken durma, TaskSpec.agents_only (D-133) |
 | 13r-b1 – Kısa ve tam geri bildirim + fix komutları (ek) | ✅ | 2026-11-23 | agy yazdı (elle, uygulamada); outparse ile özetlenen ve adil paylaşılan geri bildirim, TaskSpec.fix ve delegate --fix (D-131); Claude denetledi ve düzeltti (D-132) |
 | 13r-a – Fazı tümden devret: delegate, bildirim ve durum (ek) | ⏳ | 2026-11-23 | agy yazdı (Orkestra kuyruğuyla verildi, doğrulamada düştü), Claude denetledi ve düzeltti (D-128, D-129, D-130); kalan: 13r-b (`on_failover`) `orkestra delegate` ile, 13r-c |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13r-b3 – Yarım işin üstünden devam ve bildirim uyarısı (2026-11-23)
+
+- **Yarım işin üstünden devam (`TaskSpec.on_failover`):** `on_failover: Literal["restart", "continue"] = "restart"` alanı eklendi (`delegate` bunu varsayılan olarak `"continue"` yazar). Alan yokken veya `"restart"` iken var olan davranış bit bit korunur (`gw.reset` her aday başında çalışır).
+- **Kod ajanından kod ajanına devir:** `on_failover: continue` durumunda çalışma ağacı sıfırlanmaz (`gw.reset` atlanır); yeni ajanın istemine önceki işçinin durma sebebi, değişen dosyaların listesi (`gw.diff`), son doğrulama özeti ve "Continue from the current state, do not rewrite what is done." talimatını içeren İngilizce bir devam notu eklenir. İki ajanın ürettiği değişiklikler tek bir sonuç zarfında ve nihai diff'te birleşir.
+- **Ajan→sohbet işçisi devri:** `agents_only: false` olan ve `on_failover: continue` içeren görevlerde, bir ajandan sohbet işçisine devredilirse yarım iş korunmaz (sohbet modelleri faz boyu yarım işi taşıyamaz); çalışma ağacı sıfırlanır ve sonuç zarfına `partial_dropped: true` eklenir (`ResultEnvelope.partial_dropped`).
+- **`doctor` bildirim kanalı uyarısı:** `orkestra doctor` çalıştırıldığında, config'te çalışan bir bildirim kanalı yoksa (masaüstü eklentisi `desktop_notifier` bulunamıyorsa ve ntfy konusu tanımlı değilse) bir uyarı satırı (`t("doctor.warning.no_notify")`, 5 dilde) ve kurulum ipucu (`hint: pip install orkestra-cli[notify]`) gösterilir. Kanallardan en az biri çalışıyorsa uyarı gizlenir.
+- **Kabul kriterleri:** 8 yeni test yazıldı (`tests/unit/test_continuity_and_notify_warning.py`); ruff, pyright, pytest temiz; Mimari, rehber, skill ve 5 dilde yerel YAML'lar güncellendi.
+- **Kod denetimi (Claude, D-135):** PR #61 ve #62 birlikte denetlendi; 4 bulgu düzeltildi (devam notunda geniş `except`, maskeleme/sınırın geri bildirimle aynı yoldan gitmesi, nottaki sebebin İngilizce hata sınıfıyla yazılması, ajan hiçbir şey yazmadıysa `partial_dropped` yazılmaması), Mimari §8 güncellendi; 2 test (`tests/unit/test_13r_b_review.py`).
+- **Bilinen sorun:** `doctor` bildirim ipucu `notify.desktop: false` iken de masaüstü eklentisini önerir; arada kurulu olmayan bir ajan varsa devam notundaki "önceki işçi" o ajan olur.
 
 ### Faz 13r-b2 – Faz boyu test döngüsü + yalnız ajan (2026-11-23)
 
