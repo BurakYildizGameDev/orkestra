@@ -57,7 +57,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13r-b2 – Faz boyu test döngüsü + yalnız ajan (ek) | ✅ | 2026-11-23 | agy yazdı; limits.max_retries (varsayılan 5), delegate --rounds, ilerlemesiz turda erken durma, TaskSpec.agents_only (D-133) |
 | 13r-b1 – Kısa ve tam geri bildirim + fix komutları (ek) | ✅ | 2026-11-23 | agy yazdı (elle, uygulamada); outparse ile özetlenen ve adil paylaşılan geri bildirim, TaskSpec.fix ve delegate --fix (D-131); Claude denetledi ve düzeltti (D-132) |
 | 13r-a – Fazı tümden devret: delegate, bildirim ve durum (ek) | ✅ | 2026-11-23 | agy yazdı (Orkestra kuyruğuyla verildi, doğrulamada düştü), Claude denetledi ve düzeltti (D-128, D-129, D-130); 13r-b ve 13r-c ile tamamlandı |
-| 14 – Yayın | ⏳ | | |
+| 14 – Yayın | ⏳ | | v0.9 öncesi bakış (2026-11-23, Opus; Fable yerine): sürüm `0.9.0`, README (en + tr) 13r sonucu (fazı tümden devretmek ~%68 az), `delegate` satırı, uyku sınırı, yol haritasına 11c ve 13q–r |
 
 ## Faz kayıtları
 

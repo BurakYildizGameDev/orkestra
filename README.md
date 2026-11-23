@@ -10,9 +10,10 @@
 
 > **Status: early release, in development.** Everything in the table below works and is
 > covered by about 1,900 offline tests on Linux, macOS and Windows, but it has seen little
-> real-world use yet. It is not on PyPI yet. Measured: handing work to workers does **not**
-> save the chief tokens; the context filter cuts a big job's cost by ~20%. Read
-> [Known limits](#known-limits) before you rely on it. What is done and what is next:
+> real-world use yet. It is not on PyPI yet. Measured: handing a **whole phase** to a code
+> agent (`orkestra delegate`) and reviewing it in a fresh session cost the chief ~68% fewer
+> tokens per line; handing over small tasks does **not** save tokens, and the context filter
+> cuts a big job's cost by ~20%. Read [Known limits](#known-limits) before you rely on it. What is done and what is next:
 > [Roadmap](#roadmap).
 
 ```text
@@ -57,12 +58,13 @@ things about it:
 | Task files: verify the answer, retry with feedback, move up a tier | `orkestra run task.yaml [--json]` |
 | Edit tasks: a worker changes code in an isolated git worktree, your tests decide | `orkestra run edit.yaml`, `show RUN_ID --diff`, `apply RUN_ID`, `discard RUN_ID` |
 | Code agents (Codex CLI, Antigravity) as workers, in the worktree | `cli_agent` providers |
+| Hand a whole phase to a code agent in the background: your plan in, your tests decide, another agent continues if one stops, a notification at the end | `orkestra delegate PLAN.md --verify "pytest -q"` |
 | Batches with dependencies, in parallel; cost estimate first; apply the passing runs | `orkestra batch tasks.yaml [--estimate]`, `apply --batch ID --only-ok` |
 | Task templates (docstring, type hints, tests, summary, rename, translate, your own) | `orkestra run --template docstring --files "src/*.py"`, `templates list` |
 | A second AI reviews a worker's change; apply only the low-risk ones | `orkestra review RUN_ID`, `apply RUN_ID --max-risk low` |
 | Long command output for the chief: test/lint findings with `file:line`, the rest summarised | `orkestra exec -- pytest` |
 | A worker reads files or search hits and answers with checked `file:line` pointers | `orkestra read FILE "question"`, `orkestra find PATTERN` |
-| Where Claude Code's tokens go (reads its transcripts, uses no quota) | `orkestra tokens [--since 7d]` |
+| Where Claude Code's tokens go (reads its transcripts, uses no quota); per phase against git history | `orkestra tokens [--since 7d]`, `tokens --compare` |
 | The chief's view at a glance (at most 15 lines) | `orkestra status` |
 | Handoff file and brief for the next chief; hand over to another one | `orkestra handoff init`, `handoff show --brief`, `handoff to codex` |
 | Night queue: add now, run later on local models; stop at a set hour or cost | `orkestra queue add FILE`, `queue run --until 07:00 --notify`, `queue remove --finished` |
@@ -134,7 +136,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 
 ## Known limits
 
-- **Delegating does not save Claude tokens; the context filter does a little.** Benchmark
+- **Only handing over a whole phase saves Claude tokens; the context filter does a little.** Benchmark
   (Faz 13, Claude Code 2.1.329 with Opus 5.5, Windows 11, i9-13900HX, 32 GB, RTX 5070 Ti 12 GB;
   details in [`bench/README.md`](bench/README.md#results)):
 
@@ -148,10 +150,16 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
   | the same with the context filter (`exec`/`read`/`find`) | 2/2 | 76.9k (−12%) | $1.10 (−20%) |
   | the same plus delegation and cross-review | 2/2 | 76.7k (−12%) | $1.19 (−13%) |
 
-  The 25% saving the project aimed for was not reached. What Orkestra gives a Claude user is
-  continuity (another provider or chief takes over when one runs out) and a context filter
-  (−46% context re-reading on the big task); delegating costs the chief more than it saves,
-  on small and on big tasks alike.
+  On these tasks the 25% saving the project aimed for was not reached: delegating small tasks,
+  or pieces of a big task inside one session, costs the chief more than it saves. What did save
+  was handing a **whole phase** to a code agent with `orkestra delegate` and having Claude
+  review it in a fresh session: ~0.85M weighted Claude tokens per 1,000 added lines, against
+  ~2.65M for the phases Claude wrote itself (~68% less; measured on this repository with
+  `orkestra tokens --compare`, a rough measure, since the lines include tests and docs).
+  Orkestra also gives continuity (another provider or chief takes over when one runs out) and
+  a context filter (−46% context re-reading on the big task).
+- **Delegated work stops while the computer sleeps.** Turn sleep off for long
+  `orkestra delegate` runs.
 - **Little real-world use.** The night queue, notifications, the terminal interface and the
   wizard are covered by tests but have had little use on real models and real terminals. The
   code was written and reviewed with AI help. Expect rough edges and please
@@ -163,7 +171,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
   terminals; `doctor` suggests model sizes for your RAM/GPU.
 - **Translations:** German, Spanish and French were translated with AI and not yet reviewed by
   native speakers.
-- **Not on PyPI yet**, and no release version yet (see the roadmap).
+- **Not on PyPI yet.** v0.9.0 is the first numbered release, on GitHub (see the roadmap).
 
 ## Security
 
@@ -195,11 +203,12 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 | 9 | Claude skill; SEARCH/REPLACE edits for cheap models | ✅ |
 | 10 | Chief handoff (Claude ↔ Codex ↔ Antigravity) | ✅ |
 | 11 | Terminal interface, setup wizard, 5 languages | ✅ |
+| 11c | Web interface | ✅ |
 | 12 | Night queue, notifications, adaptive routing | ✅ |
-| 13a–c | Benchmark tool, 20 tasks, first trial | ✅ |
+| 13a–e, 13g, 13p | Benchmark tool, 20 tasks, full rounds, the big-task experiment, a short skill | ✅ |
 | 13f–o | Quota continuity, token map, context filter (`exec`/`read`/`find`), short sessions, quota forecast, model by kind of work, cross-review, non-Claude chief, `providers add` | ✅ |
+| 13q–r | Speed awareness; hand a whole phase to a code agent (`delegate`), another agent continues when one stops; `tokens --compare` | ✅ |
 | fixes | `gc` database cleanup, file splits and this README are done; a manual usage tour on real models is next | ⏳ |
-| 13d, 13e, 13g, 13p | Full benchmark rounds, the big-task experiment, a short skill | ✅ |
 | 14 | Packaging, docs, PyPI release | ⏳ |
 
 ## Development
