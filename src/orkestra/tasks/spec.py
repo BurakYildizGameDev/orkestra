@@ -179,6 +179,7 @@ class TaskSpec(_Model):
     tags: list[str] = Field(default_factory=list)
     max_wait_s: PosInt | None = None
     fix: list[FixCommand] = Field(default_factory=list)
+    agents_only: bool = False
 
     @field_validator("fix", mode="before")
     @classmethod

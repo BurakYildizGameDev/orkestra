@@ -69,6 +69,7 @@ class TaskNeeds:
     edit_format: EditFormatSetting | None = None  # the task file's choice; None: each model's
     work: WorkKind | None = None  # kind of work for ``routing.by_kind``; None: ``kind`` (Faz 13l)
     max_wait_s: int | None = None  # median duration > max_wait_s goes last in tier (Faz 13q)
+    agents_only: bool = False  # only code agents (CliAgentProvider) allowed (Faz 13r-b2)
 
 
 def _edit_format(needs: TaskNeeds, model: ModelSpec, config: Config) -> EditFormat:
@@ -350,6 +351,9 @@ def route(
                 candidates.append(
                     replace(agent, order=(provider_order[name], 0), quota_low=state.quota_low)
                 )
+            continue
+        if needs.agents_only:
+            drop(name, None, "agents_only", "route.reason.agents_only")
             continue
         models = _models_for(name, cfg, needs, low)
         if not models and needs.model is not None:

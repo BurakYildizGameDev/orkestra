@@ -127,6 +127,7 @@ class RunRecord:
         self.used: list[Usage] = []  # every answered request of the run (envelope usage)
         self.cache_key: str | None = None  # ask tasks: the first prompt's key (Faz 8a)
         self.cache_hit = False  # the answer being judged came from the cache
+        self.last_failures: frozenset[tuple[int, str, str]] | None = None  # Faz 13r-b2
         self.log = logging.getLogger("orkestra")
         self.started = clock()
 

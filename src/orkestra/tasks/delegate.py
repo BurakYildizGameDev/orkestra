@@ -27,6 +27,7 @@ from orkestra.tasks import prepare, runner, spec
 from orkestra.workspace import git_worktree as gw
 
 DEFAULT_TIMEOUT_S = 3600
+DEFAULT_ROUNDS = 5
 DEFAULT_PROFILE = "balanced"
 LOG_FILE = "queue_runner.log"
 
@@ -159,6 +160,7 @@ def delegate_task(
     is_alive: process.Alive = process.process_alive,
     now: db.Clock = db.local_now,
     fix_commands: Sequence[str] = (),
+    rounds: int | None = None,
 ) -> DelegateResult:
     if not verify_commands:
         raise UsageError(t("delegate.error.verify_required"))
@@ -202,10 +204,12 @@ def delegate_task(
         raise UsageError(t("delegate.error.no_agent"))
 
     effective_timeout = timeout_s or DEFAULT_TIMEOUT_S
+    effective_rounds = DEFAULT_ROUNDS if rounds is None else rounds
     task_dict: dict[str, Any] = {
         "id": tid,
         "kind": "edit",
         "tier": tier,
+        "agents_only": True,
         "prompt": (
             f"Read these files first (do not change them): {', '.join(read_first)}. "
             "Implement the plan exactly as described. Do not go beyond its scope. "
@@ -220,6 +224,7 @@ def delegate_task(
         ],
         "limits": {
             "timeout_s": effective_timeout,
+            "max_retries": effective_rounds,
         },
         "tags": ["delegated"],
     }
