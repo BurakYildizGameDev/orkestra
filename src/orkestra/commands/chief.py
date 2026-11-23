@@ -12,7 +12,7 @@ import typer
 from orkestra.chief import execute as executor
 from orkestra.chief import finder as file_finder
 from orkestra.chief import reader as file_reader
-from orkestra.chief import status
+from orkestra.chief import status, token_compare
 from orkestra.chief import tokens as token_map
 from orkestra.commands.common import (
     _echo_json,
@@ -20,6 +20,7 @@ from orkestra.commands.common import (
     _State,
 )
 from orkestra.config import loader
+from orkestra.errors import UsageError
 from orkestra.i18n import t
 from orkestra.state import db, retention, stats
 
@@ -147,8 +148,25 @@ def register(app: typer.Typer) -> None:
         top: Annotated[
             int | None, typer.Option("--top", min=1, help=t("cli.tokens.option.top"))
         ] = None,
+        compare: Annotated[
+            bool, typer.Option("--compare", help=t("cli.tokens.option.compare"))
+        ] = False,
         as_json: Annotated[bool, _json_option()] = False,
     ) -> None:
+        if compare:
+            if session is not None or top is not None:
+                raise UsageError(t("tokens.compare.error.conflict"))
+            compare_report = token_compare.compare(
+                project=(project or Path.cwd()).absolute(),
+                since=stats.parse_since(since) if since else None,
+                config_flag=ctx.ensure_object(_State).config_path,
+            )
+            if as_json:
+                _echo_json(token_compare.to_dict(compare_report))
+            else:
+                typer.echo(token_compare.render(compare_report))
+            return
+
         start = db.local_now() - stats.parse_since(since) if since else None
         report = token_map.collect(
             project=(project or Path.cwd()).absolute(), session=session, since=start, top=top,

@@ -1387,3 +1387,31 @@ Claude, agy'nin 13r-b2 (PR #61) ve 13r-b3 (PR #62) farkını denetledi. Özü do
 4. **Yanlış `partial_dropped`:** ajan hiçbir şey yazmadan düşse de (ör. ilk istekte kota) ajan→sohbet geçişinde `partial_dropped: true` yazılıyordu. Artık yalnız çalışma ağacında ajanın değişikliği varsa.
 5. Mimari §8 döngüsüne `on_failover` geçişi eklendi (agy yalnız şema satırlarını güncellemişti).
 **Bilinen sorun (engelleyici değil):** `doctor` bildirim uyarısının ipucu her zaman `pip install orkestra-cli[notify]`; config'te `notify.desktop: false` ise ipucu ntfy'ı önermeli. Araya kurulu olmayan bir ajan girerse (A → B kurulu değil → C) nottaki "önceki işçi" B olur (değişen dosyalar yine doğru).
+
+## D-136 – Faz 13r-c kabul denemesi: geri sarma `.venv`'i korur, ajanın değişikliği önce diske (2026-11-23, Faz 13r-c)
+**Bağlam:** 13r-c'nin 6. maddesi (`tokens --compare`) `orkestra delegate` ile agy'ye verildi (kuyruk #4, doğrulayıcılar `uv run ruff check .`, `uv run pyright`, `uv run pytest -q`; `fix:` ruff). agy 20 dakikada işi yazdı (yeni modül, 11 test, CLI, 5 dil, rehber); `fix:` 5 ruff hatasını düzeltti, 2 hata kaldı (bir uzun satır, var olmayan bir yardımcının içe aktarımı): tam da düzeltme turunun çözeceği türden. Ama tur hiç başlamadı: doğrulayıcıların `uv run`'ı çalışma ağacında `.venv` kurdu, doğrulamadan sonraki geri sarma (`git clean -fdx`) Windows'ta `.venv/Scripts/python.exe`'yi silemedi ("Invalid argument") ve koşu `InternalError` ile bitti. `reset --hard` önceden çalıştığı için agy'nin dosyaları çalışma ağacından silinmişti; iş yalnız git'in sahipsiz nesnelerinden (farkı hesaplarken `git add` edilmişti) elle kurtarılabildi.
+**Kararlar:**
+1. `git_worktree.reset` `.venv`'i silmez (`git clean -fdx -e .venv`, `KEEP_ON_RESET`). Sanal ortam işçinin farkına girmez (uv ve venv 3.13+ içine `*` yazan bir `.gitignore` koyar); öteki yok sayılan dosyalar (derleme çıktısı vb.) eskisi gibi silinir. Yan kazanç: her turda sanal ortam baştan kurulmaz.
+2. Ajan yolunda (`_check_agent_edit`) değişiklik, yıkıcı geri sarmadan önce `attempts/<n>/changes.patch`'e yazılır (son `changes.patch` ile aynı biçim, maskeli). Geri sarma bir gün yine çökerse saatlik iş kaybolmaz.
+**Testler:** `tests/unit/test_13r_c_worktree.py`.
+
+## D-137 – Faz 13r-c madde 6: `orkestra tokens --compare` (2026-11-23, Faz 13r-c)
+**Bağlam:** Şefin (Claude Code) projenin fazları boyunca harcadığı token miktarını model çağırmadan ve kota harcamadan Claude Code oturum dökümleri ve git commit geçmişinden ölçmek.
+**Kararlar:**
+1. `orkestra tokens --compare [--project PATH] [--since DURATION] [--json]` seçeneği eklendi.
+2. İş mantığı yeni `src/orkestra/chief/token_compare.py` modülüne konuldu; `cli` ince tutuldu.
+3. Faz commit'leri `^\w+\(faz-([0-9]+[a-z]*)\)` deseniyle belirlenir; commit zamanına göre sıralanıp istekler ilk faz commit'ine, son commit'ten sonrakiler `uncommitted` satırına atanır.
+4. `--session` ve `--top` seçenekleri `--compare` ile birlikte kullanım hatasıdır (kod 2).
+5. 5 dilde (`en`, `tr`, `de`, `es`, `fr`) i18n anahtarları eklendi.
+**Testler:** `tests/unit/test_token_compare.py` (11 test).
+
+## D-138 – Faz 13r-c kod denetimi ve kabul denemesi (2026-11-23, Faz 13r-c)
+**Bağlam:** 13r-c'nin kod kısmı (`tokens --compare`, D-137) planıyla (`faz-13r-c.md`) `orkestra delegate` üzerinden agy'ye verildi; bu, 13r'nin elle kabul denemesiydi. 1. deneme (kuyruk #4) Windows'ta çalışma ağacının `.venv`'i silinemediği için çöktü (D-136 ile düzeltildi). 2. deneme (kuyruk #5, koşu `20261123-064448-f30c`) agy ile 2 turda, ~33 dk'da `ok` bitti; kimse araya girmedi. 1. turda ruff/pyright geçti, yük altında eski bir test (`test_batch_cli::test_parallel_limits_the_tasks_in_flight`, tepe 1 ≠ 2) düştü; 2. turda agy sahte Ollama'nın gecikmesini 0,02 → 0,05/0,08 sn yaptı, hiçbir doğrulama gevşetilmedi (kabul edildi).
+**Denetimde düzeltilenler** (`tests/unit/test_13r_c_review.py`):
+1. **Devam ettirilen oturum iki kez sayılıyordu:** `message.id` tekilleştirmesi dosya başınaydı; Claude Code devam ettirilen oturumun eski mesajlarını yeni dosyaya kopyalar. Artık bütün dosyalarda tek; zaman damgasız istekler de istek başına bir kez `skipped`.
+2. **Alt fazlar yok sayılıyordu:** plandaki desen `faz-13i-a` gibi tireli kapsamı tanımıyordu (bu depoda 13i'nin 4 commit'i sonraki faza yazılıyordu). Desen `^\w+\(faz-([0-9]+[a-z]*(?:-[a-z0-9]+)*)\)` oldu (plandan sapma).
+3. **Saniye sınırı:** `%ct` tam saniye; commit'le aynı saniyedeki (kesirli) istek sonraki faza gidiyordu. Karşılaştırma isteğin saniyesiyle; atama `bisect` ile (istek × commit taraması yerine).
+4. **Bozuk config sessizce yutuluyordu:** `tokens.load`'ın uyarısı atılıyordu; artık rapordadır (metin ve `--json` `warnings`).
+5. **CLI'de ikinci hata yolu:** `--compare` dalı `UsageError`'ı kendisi JSON'a çeviriyordu; giriş noktası (`cli._report_error`) zaten yapıyor. Kaldırıldı, `cli` ince.
+**Ölçüm (`orkestra tokens --compare`, bu depo, 2026-11-23):** 13f–13o (Claude'un kendisi yazdığı fazlar) havuzda 1.000 eklenen satır başına ~2,65M ağırlıklı token; agy'nin yazıp Claude'un denetlediği fazlar: 11c ~0,85M, 13g ~0,70M, 13q ~1,43M; 13r-c ~0,85M (kabul ölçütü "%25 altında" tuttu, ~%68). 13r-a/b satırı (`13r`, Claude'un 13r-a kurtarması dahil) ~2,06M. Satır sayısı test ve belgeyi de içerir; kaba bir ölçü.
+**Yapılmayan:** kabul denemesinin "agy bilerek yarıda kesilir, codex devam eder" kısmı gerçek ajanlarla denenmedi (sahte iki ajanla uçtan uca testi var: `tests/unit/test_continuity_and_notify_warning.py`, D-134).

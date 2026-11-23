@@ -54,6 +54,7 @@ class FakeOllama:
         self.active_edits = 0
         self.peak_edits = 0
         self.answers: dict[str, str] = {}  # prompt substring -> answer
+        self.delay = 0.05
 
     async def complete(self, req: CompletionRequest) -> CompletionResult:
         edit = "Output format" in req.user and '"files"' in req.user
@@ -63,7 +64,7 @@ class FakeOllama:
         self.peak_edits = max(self.peak_edits, self.active_edits)
         self.calls.append(req.user)
         try:
-            await asyncio.sleep(0.02)
+            await asyncio.sleep(self.delay)
             text = next((a for key, a in self.answers.items() if key in req.user), "fine")
             return CompletionResult(text, Usage(10, 5, 0.0), "stop")
         finally:
@@ -141,6 +142,7 @@ def test_a_provider_with_concurrency_3_gets_three_at_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
     capsys: pytest.CaptureFixture[str],
 ) -> None:  # fmt: skip
+    fake.delay = 0.08
     work = _setup(tmp_path, monkeypatch, concurrency=3)
     tasks = [_ask(f"t{n}") for n in range(9)]
     code, out, _ = _run(["batch", _batch(work, tasks, parallel=5), "--json"], capsys)
@@ -152,6 +154,7 @@ def test_parallel_limits_the_tasks_in_flight(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake: FakeOllama,
     capsys: pytest.CaptureFixture[str],
 ) -> None:  # fmt: skip
+    fake.delay = 0.08
     work = _setup(tmp_path, monkeypatch, concurrency=8)
     tasks = [_ask(f"t{n}") for n in range(8)]
     code, out, _ = _run(["batch", _batch(work, tasks), "--parallel", "2", "--json"], capsys)

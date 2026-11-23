@@ -296,10 +296,16 @@ def status_snapshot(repo: Path) -> dict[str, str]:
     return snapshot
 
 
+# Kept by ``reset``: a verifier's ``uv run`` builds it in the worktree. Deleting it rebuilt it
+# every round and, on Windows, failed on a still locked python.exe and crashed the run (D-136).
+KEEP_ON_RESET = (".venv",)
+
+
 def reset(wt: Worktree) -> None:
     """Back to the baseline between attempts (inside the worktree only)."""
     _destructive_git(["reset", "-q", "--hard", wt.baseline], wt.path)
-    _destructive_git(["clean", "-q", "-fdx"], wt.path)
+    keep = [arg for name in KEEP_ON_RESET for arg in ("-e", name)]
+    _destructive_git(["clean", "-q", "-fdx", *keep], wt.path)
 
 
 # --- apply -----------------------------------------------------------------------------

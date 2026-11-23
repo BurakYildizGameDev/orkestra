@@ -704,6 +704,8 @@ Yani maliyetin yaklaşık %85'i Claude'un yazması değil, bağlamın yeniden ok
 oturumun başındaki büyük komut çıktıları ve dosya okumaları asıl kaldıraç. Sonraki fazlar
 (bağlam süzgeci ve kısa oturumlar) buna yöneliyor.
 
+`--compare` ile `orkestra tokens --compare [--project PATH] [--since DURATION] [--json]`, Claude Code dökümlerini git commit geçmişiyle (`feat(faz-13r): ...` ya da `fix(faz-13i-a): ...` gibi konular) eşleştirerek şefin faz başına ve henüz commit'lenmemiş işlerde ne harcadığını ölçer: commit sayısı, eklenen satır, istek, ham ve ağırlıklı token ile 1.000 satır başına ağırlıklı token.
+
 ## Kısa oturumlar: işe yaradığında yeni bağlam
 
 Uzun bir oturumda her istek bağlamın tamamını yeniden okur (token haritasına bak), yani bir
