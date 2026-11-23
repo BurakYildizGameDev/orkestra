@@ -8,6 +8,7 @@ it; operational settings such as ``enabled``, budget, timeouts or tiers do not (
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import sqlite3
 from datetime import datetime
@@ -60,8 +61,16 @@ def grant(conn: sqlite3.Connection, name: str, config: Provider, now: datetime) 
 
 def _loopback(url: str) -> bool:
     """Is the address on this computer (LM Studio, vLLM … without ``local: true``)?"""
-    host = (urlsplit(url if "//" in url else f"//{url}").hostname or "").lower()
-    return host == "localhost" or host == "::1" or host.startswith("127.")
+    try:
+        host = (urlsplit(url if "//" in url else f"//{url}").hostname or "").lower()
+    except ValueError:  # a malformed address: no hint, never a crash (D-142)
+        return False
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:  # a name such as 127.example.com is not this computer
+        return False
 
 
 def describe(

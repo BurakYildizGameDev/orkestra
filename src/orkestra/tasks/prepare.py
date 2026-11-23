@@ -450,14 +450,15 @@ async def _route(
     profile = prep.options.profile
     if needs.provider is not None and needs.provider not in prep.config.providers:
         return route(needs, prep.config, Snapshot(moment), profile=profile)  # raises
+    extra = (needs.provider, needs.model) if needs.provider and needs.model else None
     if fetch_prices:
         async with price_lock or contextlib.nullcontext():
             cache = await pricing.refresh(
-                prep.config, moment, only=_price_targets(prep, conn), environ=prep.env
-            )
+                prep.config, moment, only=_price_targets(prep, conn), environ=prep.env,
+                extra=extra,
+            )  # fmt: skip
     else:  # --dry-run sends nothing: use whatever prices are cached
         cache = pricing.load_cache()
-    extra = (needs.provider, needs.model) if needs.provider and needs.model else None
     snapshot = take_snapshot(
         conn, prep.config, moment, environ=prep.env, price_cache=cache,
         names=scope(needs, prep.config), extra_model=extra, tags=prep.task.tags,

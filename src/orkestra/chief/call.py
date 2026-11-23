@@ -23,6 +23,7 @@ from orkestra.errors import (
     ProviderTimeout,
 )
 from orkestra.i18n import t
+from orkestra.providers import pricing
 from orkestra.providers.base import (
     AgentRequest,
     CompletionRequest,
@@ -105,7 +106,9 @@ async def query_chief_model(
         should_close_conn = True
 
     try:
-        snapshot = take_snapshot(conn, config, current_time, environ=env)
+        snapshot = take_snapshot(
+            conn, config, current_time, environ=env, price_cache=pricing.load_cache()
+        )
         route_result = route(needs, config, snapshot, profile=None)
         last_error: OrkestraError | None = None
         candidates = [

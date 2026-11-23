@@ -811,8 +811,9 @@ Eşlemeler derin birleştirilir, listeler değiştirilir, `providers.<ad>: null`
 Yazım hataları sessizce geçmesin diye bilinmeyen anahtarlar reddedilir. `daily_usd` sınırı her
 istekten önce `price_per_mtok` ile kontrol edilir; o yoksa sağlayıcının yayınladığı fiyat listesi
 (OpenRouter, bir gün önbelleklenir), o da yoksa geçmiş isteklerde görülen maliyet kullanılır.
-Fiyatı bilinmeyen uzak model `daily_usd` sınırı altında kullanılmaz (`--dry-run`'da `no_price`):
-modele `price_per_mtok` ekle. Yorumlu tam örnek:
+`daily_usd` sınırı altında, sağlayıcının taze okunmuş fiyat listesinde fiyatı olmayan uzak model
+kullanılmaz (`--dry-run`'da `no_price`): modele `price_per_mtok` ekle. Liste okunamadıysa istek
+uyarıyla gider ve yalnız sağlayıcının bildirdiği maliyet sayılır. Yorumlu tam örnek:
 [`examples/orkestra.example.yaml`](../examples/orkestra.example.yaml).
 
 ```yaml

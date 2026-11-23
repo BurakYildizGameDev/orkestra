@@ -11,8 +11,9 @@
 - Model missing (404): only that model is skipped; the next candidate may be the same provider.
 - Worker answered CANNOT_DO: next candidate on a higher tier (Mimari §8.1).
 - Context too long: next candidate with a bigger context window.
-- Timeout: next candidate at once. The provider already had the whole ``timeout_s``;
-  retrying a hung provider three more times quadrupled the wait before failover (D-139).
+- Timeout: next candidate at once, without the same-candidate retries (D-139). The next
+  candidate may be another model of the same provider; the circuit breaker opens after
+  three failures in a row (D-142: a slow big model says nothing about a small one).
 - Anything else (bad output, other 4xx, budget race): next candidate.
 
 The circuit breaker counts every failed attempt; once it opens, retrying stops at once.

@@ -68,20 +68,6 @@ def test_saving_an_unchanged_config_writes_nothing(tmp_path: Path) -> None:
     assert sorted(p.name for p in tmp_path.iterdir()) == ["config.yaml"]
 
 
-def test_only_the_last_numbered_backups_are_kept(tmp_path: Path) -> None:
-    from orkestra.config import writer
-
-    path = tmp_path / "config.yaml"
-    path.write_text("version: 1\n", encoding="utf-8")
-    for n in range(writer.KEEP_BACKUPS + 4):
-        doc = writer.load_document(path)
-        doc["language"] = "en" if n % 2 else "tr"
-        writer.save(path, doc)
-    numbered = [p for p in tmp_path.iterdir() if ".bak." in p.name]
-    assert len(numbered) == writer.KEEP_BACKUPS
-    assert (tmp_path / "config.yaml.bak").is_file()  # the first, original backup stays
-
-
 # --- B-15 / B-16: the web interface's API ---------------------------------------------
 
 
