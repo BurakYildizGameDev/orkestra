@@ -10,9 +10,10 @@
 
 > **Durum: erken sürüm, geliştirme aşamasında.** Aşağıdaki tablodaki her şey çalışıyor ve
 > Linux, macOS ve Windows'ta ağsız çalışan yaklaşık 1.900 testle denetleniyor; ama gerçek
-> kullanımda henüz az denendi. PyPI'de henüz yok. Ölçüldü: işi işçilere devretmek şefin
-> tokenını **azaltmıyor**; bağlam süzgeci büyük bir işin maliyetini ~%20 düşürüyor. Güvenmeden
-> önce [Bilinen sınırlar](#bilinen-sınırlar) bölümünü oku. Ne bitti, sırada ne var:
+> kullanımda henüz az denendi. PyPI'de henüz yok. Ölçüldü: **bütün bir fazı** bir kod ajanına
+> devretmek (`orkestra delegate`) ve taze bir oturumda denetlemek şefe satır başına ~%68 daha az
+> tokena mal oldu; küçük işleri devretmek tokenı **azaltmıyor**, bağlam süzgeci büyük bir işin
+> maliyetini ~%20 düşürüyor. Güvenmeden önce [Bilinen sınırlar](#bilinen-sınırlar) bölümünü oku. Ne bitti, sırada ne var:
 > [Yol haritası](#yol-haritası).
 
 ```text
@@ -56,12 +57,13 @@ Güçlü modellerin kotası az; kotası bol modeller daha az güvenilir. Orkestr
 | Görev dosyaları: cevabı doğrula, geri bildirimle tekrar dene, üst kademeye geç | `orkestra run task.yaml [--json]` |
 | Düzenleme görevleri: işçi kodu yalıtılmış bir git worktree'de değiştirir, karar senin testlerinin | `orkestra run edit.yaml`, `show RUN_ID --diff`, `apply RUN_ID`, `discard RUN_ID` |
 | Kod ajanları (Codex CLI, Antigravity) işçi olarak, worktree içinde | `cli_agent` sağlayıcıları |
+| Bütün bir fazı arka planda bir kod ajanına devretme: plan senden, karar testlerinden, biri durursa başka ajan devam eder, sonunda bildirim | `orkestra delegate PLAN.md --verify "pytest -q"` |
 | Bağımlılıklı, paralel batch; önce maliyet tahmini; geçen koşuları uygulama | `orkestra batch tasks.yaml [--estimate]`, `apply --batch ID --only-ok` |
 | Görev şablonları (docstring, tip ipucu, test, özet, yeniden adlandırma, çeviri, kendi şablonun) | `orkestra run --template docstring --files "src/*.py"`, `templates list` |
 | İşçinin değişikliğini ikinci bir AI denetler; yalnız düşük riskliyi uygula | `orkestra review RUN_ID`, `apply RUN_ID --max-risk low` |
 | Şef için uzun komut çıktısı: test/lint bulguları `dosya:satır` ile, gerisi özet | `orkestra exec -- pytest` |
 | İşçi dosyaları ya da arama sonuçlarını okur, denetlenmiş `dosya:satır` işaretçileriyle cevaplar | `orkestra read FILE "soru"`, `orkestra find PATTERN` |
-| Claude Code'un tokenı nereye gidiyor (dökümlerini okur, kota harcamaz) | `orkestra tokens [--since 7d]` |
+| Claude Code'un tokenı nereye gidiyor (dökümlerini okur, kota harcamaz); git geçmişine göre faz faz | `orkestra tokens [--since 7d]`, `tokens --compare` |
 | Şefin tek bakışta görünümü (en çok 15 satır) | `orkestra status` |
 | Sonraki şef için devir dosyası ve özeti; başka bir şefe devretme | `orkestra handoff init`, `handoff show --brief`, `handoff to codex` |
 | Gece kuyruğu: şimdi ekle, sonra yerel modellerle çalıştır; belirli saatte ya da maliyette dur | `orkestra queue add FILE`, `queue run --until 07:00 --notify`, `queue remove --finished` |
@@ -134,7 +136,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 
 ## Bilinen sınırlar
 
-- **Devretmek Claude tokenını azaltmıyor; bağlam süzgeci biraz azaltıyor.** Benchmark
+- **Claude tokenını yalnız bütün bir fazı devretmek azaltıyor; bağlam süzgeci biraz azaltıyor.** Benchmark
   (Faz 13, Claude Code 2.1.329 + Opus 5.5, Windows 11, i9-13900HX, 32 GB, RTX 5070 Ti 12 GB;
   ayrıntı [`bench/README.md`](bench/README.md#results)):
 
@@ -148,10 +150,16 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
   | aynısı, bağlam süzgeciyle (`exec`/`read`/`find`) | 2/2 | 76,9k (−%12) | $1,10 (−%20) |
   | aynısı, + devir ve çapraz denetim | 2/2 | 76,7k (−%12) | $1,19 (−%13) |
 
-  Projenin hedeflediği %25 tasarruf tutmadı. Orkestra'nın Claude kullanıcısına verdiği şey
+  Bu görevlerde projenin hedeflediği %25 tasarruf tutmadı: küçük işleri ya da büyük bir işin
+  parçalarını aynı oturum içinde devretmek şefe kazandırdığından fazlasına mal oluyor.
+  Kazandıran, **bütün bir fazı** `orkestra delegate` ile bir kod ajanına vermek ve Claude'a
+  taze bir oturumda denetletmek oldu: 1.000 eklenen satır başına ~0,85M ağırlıklı Claude tokenı,
+  Claude'un kendi yazdığı fazlarda ~2,65M (~%68 az; bu depoda `orkestra tokens --compare` ile
+  ölçüldü; satırlar test ve belgeyi de içerdiği için kaba bir ölçü). Orkestra ayrıca
   kesintisizlik (biri bitince başka sağlayıcı ya da şef devralır) ve bağlam süzgeci (büyük
-  görevde bağlamı yeniden okuma −%46); devretmek küçük görevde de büyük görevde de şefe
-  kazandırdığından fazlasına mal oluyor.
+  görevde bağlamı yeniden okuma −%46) veriyor.
+- **Bilgisayar uyurken devredilen iş de durur.** Uzun `orkestra delegate` işlerinde uykuyu
+  kapat.
 - **Gerçek kullanım az.** Gece kuyruğu, bildirimler, terminal arayüzü ve sihirbaz testlerle
   denetleniyor ama gerçek modellerle, gerçek terminallerde az kullanıldı. Kod AI yardımıyla
   yazıldı ve denetlendi. Pürüz bekle; lütfen
@@ -163,7 +171,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
   çalışır; `doctor` RAM/GPU'na göre model boyutu önerir.
 - **Çeviriler:** Almanca, İspanyolca ve Fransızca AI ile çevrildi; ana dili konuşan biri
   henüz gözden geçirmedi.
-- **Henüz PyPI'de yok** ve sürüm numarası yok (bkz. yol haritası).
+- **Henüz PyPI'de yok.** İlk numaralı sürüm v0.9.0, GitHub'da (bkz. yol haritası).
 
 ## Güvenlik
 
@@ -195,11 +203,12 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
 | 9 | Claude skill; ucuz modeller için SEARCH/REPLACE düzenleme | ✅ |
 | 10 | Şef devri (Claude ↔ Codex ↔ Antigravity) | ✅ |
 | 11 | Terminal arayüzü, kurulum sihirbazı, 5 dil | ✅ |
+| 11c | Web arayüzü | ✅ |
 | 12 | Gece kuyruğu, bildirimler, öğrenen yönlendirme | ✅ |
-| 13a–c | Benchmark aracı, 20 görev, ilk deneme | ✅ |
+| 13a–e, 13g, 13p | Benchmark aracı, 20 görev, tam turlar, büyük görev deneyi, kısa skill | ✅ |
 | 13f–o | Kota kesintisizliği, token haritası, bağlam süzgeci (`exec`/`read`/`find`), kısa oturumlar, kota tahmini, işe göre model, çapraz denetim, Claude dışı şef, `providers add` | ✅ |
+| 13q–r | Hız farkındalığı; bütün bir fazı kod ajanına devretme (`delegate`), biri durunca başka ajan devam eder; `tokens --compare` | ✅ |
 | düzeltmeler | `gc` ile veritabanı temizliği, dosya bölme ve bu README bitti; sırada gerçek modellerle elle kullanım turu | ⏳ |
-| 13d, 13e, 13g, 13p | Tam benchmark turları, büyük görev deneyi, kısa skill | ✅ |
 | 14 | Paketleme, belgeler, PyPI sürümü | ⏳ |
 
 ## Geliştirme
