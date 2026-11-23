@@ -199,25 +199,29 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
     def _send_error_json(self, status_code: int, message: str) -> None:
         self._send_json(status_code, {"error": message})
 
-    def _read_json(self) -> dict[str, Any]:
+    def _content_length(self) -> int:
         try:
-            length = int(self.headers.get("Content-Length", 0))
-            if length <= 0:
-                return {}
-            raw = self.rfile.read(length)
-            data = json.loads(raw.decode("utf-8"))
-            if not isinstance(data, dict):
-                return {}
-            return data
-        except Exception as exc:
-            raise UsageError(str(exc)) from exc
+            return int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            return 0
+
+    def _read_json(self) -> dict[str, Any]:
+        length = self._content_length()
+        if length <= 0:
+            return {}
+        try:
+            data = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as exc:  # B-15: no raw parser message
+            raise UsageError(t("web.error.bad_json")) from exc
+        return data if isinstance(data, dict) else {}
 
     def _check_security(self) -> bool:
         """Validate Host, Origin, and Token. Returns True if request is allowed."""
         # 1. Host header validation
         host_header = self.headers.get("Host", "").strip()
         port = self.server.server_port
-        allowed_hosts = {f"127.0.0.1:{port}", "127.0.0.1"}
+        # localhost too (B-16): a rebinding attack's Host is the attacker's name, never these.
+        allowed_hosts = {f"127.0.0.1:{port}", "127.0.0.1", f"localhost:{port}", "localhost"}
         if host_header not in allowed_hosts:
             self._send_error_json(403, "Invalid Host header")
             return False
@@ -225,8 +229,8 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
         # 2. CORS / Origin check
         origin_header = self.headers.get("Origin")
         if origin_header is not None:
-            allowed_origin = f"http://127.0.0.1:{port}"
-            if origin_header.rstrip("/") != allowed_origin:
+            allowed_origins = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
+            if origin_header.rstrip("/") not in allowed_origins:
                 self._send_error_json(403, "Cross-origin requests forbidden")
                 return False
 
@@ -355,6 +359,9 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         if not self._check_security():
             return
+        if self._content_length() > MAX_BODY_BYTES:  # B-15
+            self._send_error_json(413, t("web.error.too_large"))
+            return
 
         parsed = urllib.parse.urlsplit(self.path).path
         if parsed == "/api/doctor":
@@ -400,20 +407,22 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                     team.toggle_worker(self.server.config_path, name, enabled)
                 elif parsed == "/api/team/worker/tier":
                     name = str(body.get("name", "")).strip()
-                    tier = int(body.get("tier", 2))
-                    team.set_worker_tier(self.server.config_path, name, tier)
+                    team.set_worker_tier(self.server.config_path, name, _tier(body))
                 elif parsed == "/api/team/worker/model":
                     name = str(body.get("name", "")).strip()
                     model = str(body.get("model", "")).strip()
                     team.set_worker_model(self.server.config_path, name, model)
                 elif parsed == "/api/team/worker/reorder":
-                    names = [str(n).strip() for n in body.get("names", []) if str(n).strip()]
+                    raw_names = body.get("names", [])
+                    if not isinstance(raw_names, list):  # B-15: a string is not a list of names
+                        raise UsageError(t("web.error.bad_field", field="names"))
+                    names = [str(n).strip() for n in raw_names if str(n).strip()]
                     team.reorder_workers(self.server.config_path, names)
                 elif parsed == "/api/team/worker/add":
                     name = str(body.get("name", "")).strip()
                     ptype = str(body.get("type", "openai_compat")).strip()
                     model = str(body.get("model", "")).strip()
-                    tier = int(body.get("tier", 2))
+                    tier = _tier(body)
                     base_url = body.get("base_url")
                     api_key_env = body.get("api_key_env")
                     command = body.get("command")
@@ -483,6 +492,17 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
             return
 
         self._send_error_json(404, "Not found")
+
+
+MAX_BODY_BYTES = 1_000_000  # the interface sends small JSON; more is refused (413)
+
+
+def _tier(body: dict[str, Any]) -> int:
+    """The ``tier`` field as a number, or a readable error (B-15)."""
+    try:
+        return int(body.get("tier", 2))
+    except (TypeError, ValueError) as exc:
+        raise UsageError(t("team.error.invalid_tier")) from exc
 
 
 def create_server(config: ServerConfig) -> WebServer:

@@ -97,6 +97,16 @@ def _worker_consent(
     return state, desc
 
 
+def _model_name(raw: str) -> str:
+    """A model name from the interface: not empty, one line (B-15, D-141)."""
+    name = raw.strip()
+    if not name:
+        raise UsageError(t("team.error.no_model"))
+    if any(ord(c) < 32 for c in name):
+        raise UsageError(t("team.error.invalid_model"))
+    return name
+
+
 def team_summary(config: Config, conn: sqlite3.Connection | None = None) -> TeamSummary:
     """Summarize patron, available chiefs, and worker providers."""
     chiefs = tuple(
@@ -202,9 +212,7 @@ def set_worker_model(
     config_path: Path | None, name: str, model_id: str, *, cwd: Path | None = None
 ) -> writer.SaveResult:
     """Set the primary model for a provider."""
-    model_id = model_id.strip()
-    if not model_id:
-        raise UsageError(t("providers.error.no_model"))
+    model_id = _model_name(model_id)
     ptype = _worker_type(config_path, name, cwd)
     field = "model" if ptype == "cli_agent" else "models"
     target, base = _target(config_path, name, field, cwd)
@@ -284,9 +292,7 @@ def add_worker(
 
     sources, base = edits._sources(config_path, cwd)  # pyright: ignore[reportPrivateUsage]
     target = sources[0].path
-    model = model.strip()
-    if not model:
-        raise UsageError(t("providers.error.no_model"))
+    model = _model_name(model)
     if tier not in (1, 2, 3):
         raise UsageError(t("team.error.invalid_tier"))
 
@@ -324,7 +330,7 @@ def add_worker(
     elif provider_type == "cli_agent":
         cmd = (command or name).strip()
         if not cmd:
-            raise UsageError(t("config.validation.command_required"))
+            raise UsageError(t("team.error.command_required"))
         entry_data = {
             "type": "cli_agent",
             "command": cmd,
@@ -334,7 +340,13 @@ def add_worker(
         if model:
             entry_data["model"] = model
     else:
-        raise UsageError(t("config.validation.unknown_type", type=provider_type))
+        raise UsageError(
+            t(
+                "config.validation.provider_type_unknown",
+                tag=provider_type,
+                expected="ollama, openai_compat, cli_agent",
+            )
+        )
 
     providers[name] = writer.to_yaml(entry_data)
     return writer.save(target, doc, base=base)

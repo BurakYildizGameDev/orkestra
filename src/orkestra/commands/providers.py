@@ -349,5 +349,7 @@ def register(app: typer.Typer, providers_app: typer.Typer) -> None:
             )
             return
         typer.echo(t("budget.title", day=now.date().isoformat()))
+        if not rows:
+            typer.echo(t("select.no_providers"))
         for row in rows:
             typer.echo(display.budget_text(row))

@@ -12,6 +12,7 @@ The setup wizard (``--plain`` now, the terminal interface in Faz 11b) writes onl
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from io import StringIO
@@ -125,6 +126,8 @@ def save(path: Path, document: CommentedMap, *, base: Path | None = None) -> Sav
     old = path.read_bytes() if path.exists() else None
     if old is not None and b"\r\n" in old:
         text = text.replace("\n", "\r\n")
+    if old is not None and old == text.encode("utf-8"):
+        return SaveResult(path, None, config)  # nothing changed: no write, no backup (B-14)
     backup: Path | None = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,4 +137,19 @@ def save(path: Path, document: CommentedMap, *, base: Path | None = None) -> Sav
         loader.atomic_write(path, text.encode("utf-8"))
     except OSError as exc:
         raise ConfigError(t("config.error.write", path=path, reason=exc)) from exc
+    _prune_backups(path)
     return SaveResult(path, backup, config)
+
+
+KEEP_BACKUPS = 5  # numbered backups kept; ``<name>.bak`` (the first one) always stays
+
+
+def _prune_backups(path: Path) -> None:
+    """Every edit leaves a backup; keep the newest numbered ones only (B-14, D-141)."""
+    numbered = [
+        p for p in path.parent.glob(f"{path.name}.bak.*") if p.name.rsplit(".", 1)[-1].isdigit()
+    ]
+    numbered.sort(key=lambda p: p.stat().st_mtime_ns, reverse=True)
+    for old in numbered[KEEP_BACKUPS:]:
+        with contextlib.suppress(OSError):
+            old.unlink()

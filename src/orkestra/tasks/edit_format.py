@@ -368,7 +368,24 @@ def normalize_path(raw: str) -> str | None:
     parts = [p for p in raw.replace("\\", "/").split("/") if p not in ("", ".")]
     if not parts or any(p == ".." or p.lower() == ".git" for p in parts):
         return None
+    if not all(_portable(p) for p in parts):
+        return None
     return PurePosixPath(*parts).as_posix()
+
+
+_WINDOWS_DEVICES = frozenset(
+    {"con", "prn", "aux", "nul"} | {f"{d}{n}" for d in ("com", "lpt") for n in range(1, 10)}
+)
+_NOT_IN_NAMES = frozenset('<>:"|?*')
+
+
+def _portable(part: str) -> bool:
+    """A name every system can hold: on Windows ``CON``/``nul.txt`` open a device, ``a:b``
+    writes an alternate data stream and a trailing dot or space is dropped, so git and the
+    written file would disagree (D-139). Rejected everywhere: the repository is shared."""
+    if part != part.rstrip(". ") or any(c in _NOT_IN_NAMES or ord(c) < 32 for c in part):
+        return False
+    return part.split(".", 1)[0].lower() not in _WINDOWS_DEVICES
 
 
 def check_paths(

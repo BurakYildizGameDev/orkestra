@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from orkestra import paths
 from orkestra.config.schema import Config
 from orkestra.errors import HandoffNotClean, UsageError
 from orkestra.handoff import brief, store
@@ -181,8 +182,7 @@ def to(
     elif mode == "stdin":
         stdin_text = content.text
     else:
-        brief_path = root / BRIEF_RELATIVE
-        brief_path.parent.mkdir(parents=True, exist_ok=True)
+        brief_path = paths.ensure_project_dir(root) / BRIEF_RELATIVE.name
         brief_path.write_bytes(content.text.encode("utf-8"))
         argv.append(BRIEF_INSTRUCTION)
 

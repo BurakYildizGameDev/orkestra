@@ -70,6 +70,7 @@ class FindResult:
     model: str | None = None
     cached: bool = False
     truncated: bool = False
+    skipped_large: list[str] = field(default_factory=list)  # too big to search (B-10)
 
     @property
     def files(self) -> int:
@@ -94,6 +95,8 @@ def find(
         # Its ignore file and its keys are unknown: searching anyway could show what the
         # user keeps out (D-091).
         raise ConfigError(config_problem)
+    if not pattern:  # an empty pattern matches every line (B-11)
+        raise UsageError(t("find.error.empty"))
     try:
         matcher = re.compile(pattern if regex else re.escape(pattern))
     except re.error as exc:
@@ -109,13 +112,15 @@ def find(
     hits: list[Hit] = []
     per_file: dict[str, list[Hit]] = {}
     texts: dict[str, list[str]] = {}  # only for --ask: the worker reads around each hit
+    too_large: list[str] = []
     for path in files:
         rel = ptr.relative(path, here)
         if wanted and not any(w.fullmatch(rel) for w in wanted):
             continue
         try:
             if path.stat().st_size > MAX_FILE_BYTES:
-                continue  # a log or a data dump: not source to search
+                too_large.append(rel)  # a log or a data dump: said, not searched (B-10)
+                continue
             lines = ptr.lines(path.read_bytes().decode("utf-8-sig", errors="replace"))
         except OSError:
             continue
@@ -132,7 +137,9 @@ def find(
             texts[rel] = [redact(line) for line in lines]
         if len(hits) >= MAX_HITS:
             break
-    result = FindResult(pattern, hits, limit, truncated=len(hits) >= MAX_HITS)
+    result = FindResult(
+        pattern, hits, limit, truncated=len(hits) >= MAX_HITS, skipped_large=too_large
+    )
     if len(hits) > limit:
         result.groups = _groups(per_file, root, here)
     if question and hits:
@@ -182,6 +189,13 @@ def render(result: FindResult) -> str:
             lines.append("  " + ", ".join(h.pointer for h in group.first))
     else:
         lines += [f"{h.pointer}: {h.text}" for h in result.hits]
+    if result.skipped_large:
+        shown = ", ".join(result.skipped_large[:3])
+        more = len(result.skipped_large) - 3
+        lines.append(
+            t("find.skipped_large", count=len(result.skipped_large), files=shown)
+            + (f" (+{more})" if more > 0 else "")
+        )
     if result.answer is not None:
         lines += ["", result.answer]
         if result.pointers:
@@ -199,4 +213,5 @@ def to_dict(result: FindResult) -> dict[str, Any]:
                     "first": [h.pointer for h in g.first]} for g in result.groups],
         "answer": result.answer, "pointers": reader.pointers_json(result.pointers),
         "model": result.model, "cached": result.cached, "truncated": result.truncated,
+        "skipped_large": result.skipped_large,
     }  # fmt: skip

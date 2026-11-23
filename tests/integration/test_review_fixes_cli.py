@@ -295,8 +295,8 @@ def test_timeout_counts_the_reserved_estimate(
     code, _, _ = _run(["ask", "hi", "--provider", "router", "--model", "provider/model"], capsys)
     assert code == 3
     used = _used(capsys)
-    assert used["requests"] == 3  # the third timeout opens the circuit
-    assert used["tokens"] >= 3 * 4096  # the provider may have billed every timed-out request
+    assert used["requests"] == 1  # a timeout is not retried on the same candidate (D-139)
+    assert used["tokens"] >= 4096  # the provider may have billed the timed-out request
 
 
 @respx.mock

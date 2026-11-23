@@ -6,6 +6,7 @@ Key values are never read into messages: only whether the variable is set.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib
 import os
 import shutil
@@ -32,6 +33,7 @@ from orkestra.config.schema import (
     OllamaProvider,
     OpenAICompatProvider,
     Provider,
+    plain_http_key,
 )
 from orkestra.errors import ConfigError, ProviderBadOutput, ProviderError
 from orkestra.i18n import t
@@ -74,19 +76,28 @@ GitConfig = Callable[[str], str | None]
 
 def probe_version(executable: str) -> str | None:
     """First non-empty line of ``<executable> --version``, or ``None``."""
+    # Not subprocess.run(timeout=): on Windows it kills only cmd.exe of an npm .cmd shim,
+    # and the program it started keeps the pipes open, so the wait never ends (B-24, D-140).
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             [executable, "--version"],
-            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=VERSION_TIMEOUT_S,
-            check=False,
         )
-    except (OSError, subprocess.SubprocessError):
+    except OSError:
         return None
-    for line in (proc.stdout or proc.stderr or "").splitlines():
+    try:
+        stdout, stderr = proc.communicate(timeout=VERSION_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        cli_agent.kill_tree(proc.pid)
+        with contextlib.suppress(subprocess.SubprocessError, OSError):
+            proc.communicate(timeout=VERSION_TIMEOUT_S)
+        return None
+    for line in (stdout or stderr or "").splitlines():
         if line.strip():
             return line.strip()
     return None
@@ -159,6 +170,9 @@ async def _check_openai(
     check_name = f"provider:{name}"
     chat = OpenAICompatChat(name, cfg, environ)
     checks: list[Check] = []
+    if plain_http_key(cfg):  # B-13, D-140
+        checks.append(Check(check_name, "warn", t("consent.describe.plain_http"),
+                            {"url": cfg.base_url, "plain_http": True}))  # fmt: skip
     if cfg.api_key_env is not None:
         present = chat.key_present()
         checks.append(

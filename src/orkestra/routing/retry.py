@@ -1,6 +1,6 @@
 """What to do after a provider error (Mimari §7.1, D-029, D-032).
 
-- Timeouts, 5xx, rate limits: wait and retry the same candidate (1 s, 2 s, 4 s plus jitter,
+- 5xx, rate limits: wait and retry the same candidate (1 s, 2 s, 4 s plus jitter,
   or the server's ``retry-after``), at most 3 times. These retries do not count against
   ``max_retries`` (that one is for verification feedback, Faz 5a).
 - No connection at all (offline, DNS, refused): one quick retry after 0.5 s to ride out a
@@ -11,6 +11,8 @@
 - Model missing (404): only that model is skipped; the next candidate may be the same provider.
 - Worker answered CANNOT_DO: next candidate on a higher tier (Mimari §8.1).
 - Context too long: next candidate with a bigger context window.
+- Timeout: next candidate at once. The provider already had the whole ``timeout_s``;
+  retrying a hung provider three more times quadrupled the wait before failover (D-139).
 - Anything else (bad output, other 4xx, budget race): next candidate.
 
 The circuit breaker counts every failed attempt; once it opens, retrying stops at once.
@@ -32,6 +34,7 @@ from orkestra.errors import (
     ProviderModelNotFound,
     ProviderQuotaExhausted,
     ProviderRateLimit,
+    ProviderTimeout,
     ProviderTransient,
     ProviderUnavailable,
 )
@@ -59,6 +62,8 @@ class RetryPolicy:
 def classify(error: ProviderError | BudgetExhausted) -> Action:
     if isinstance(error, ProviderQuotaExhausted):
         return Action.NEXT if error.model_only else Action.SKIP_PROVIDER
+    if isinstance(error, ProviderTimeout):
+        return Action.NEXT
     if isinstance(error, ProviderTransient | ProviderRateLimit | ProviderConnectionError):
         return Action.RETRY
     if isinstance(error, ProviderModelNotFound):

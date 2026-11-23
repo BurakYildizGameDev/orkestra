@@ -245,6 +245,13 @@ def continuation_note(
     )
 
 
+def _stop_reason(exc: BaseException) -> str:
+    """For the log: an interruption, or an unexpected error (not "interrupted", B-04)."""
+    if isinstance(exc, KeyboardInterrupt | asyncio.CancelledError):
+        return "interrupted"
+    return f"unexpected {type(exc).__name__}"
+
+
 class _TaskRun(RunRecord):
     """The attempts of one run: candidates, answers, checks, agents, failover."""
 
@@ -374,10 +381,6 @@ class _TaskRun(RunRecord):
         if isinstance(config, CliAgentProvider):
             return await self._try_agent(candidate, config)
         provider = create_chat_provider(candidate.provider, config, self.prep.env)
-        if config.budget.daily_usd is not None and candidate.price is None:
-            self.prep.warnings.append(
-                t("budget.warning.no_price", provider=candidate.provider, model=candidate.model.id)
-            )
         self.edit_format = self.prep.edit_format(candidate)
         base_user = self.prep.messages(self.edit_format)[1]
         user = base_user
@@ -465,9 +468,9 @@ class _TaskRun(RunRecord):
                         if action is retry.Action.RETRY:
                             action = retry.give_up(exc)
                         return self._fail(candidate, exc, tries, action)
-                except BaseException:
+                except BaseException as exc:
                     budget.release(self.conn, reservation)  # interrupted: nothing to pay for
-                    self.log.warning("interrupted; reservation released")
+                    self.log.warning("%s; reservation released", _stop_reason(exc))
                     raise
             finally:
                 slot.release()
@@ -662,9 +665,9 @@ class _TaskRun(RunRecord):
                     if action is retry.Action.RETRY:
                         action = retry.give_up(exc)
                     return self._fail(candidate, exc, tries, action)
-                except BaseException:
+                except BaseException as exc:
                     budget.release(self.conn, reservation)  # interrupted: nothing to pay for
-                    self.log.warning("interrupted; reservation released")
+                    self.log.warning("%s; reservation released", _stop_reason(exc))
                     raise
             usage = self._agent_usage(len(prompt), result)
             budget.settle(
