@@ -707,6 +707,8 @@ So about 85% of the cost is context being read again, not Claude's writing: big 
 outputs and file reads early in a long session are the levers, which is what the next phases
 (a context filter and shorter sessions) go after.
 
+With `--compare`, `orkestra tokens --compare [--project PATH] [--since DURATION] [--json]` matches Claude Code transcripts against git commit history (subjects like `feat(faz-13r): ...` or `fix(faz-13i-a): ...`) to measure what the chief spent per phase and for uncommitted work: commits, added lines, requests, raw and weighted tokens, and weighted tokens per 1,000 added lines.
+
 ## Short sessions: a fresh context when it pays off
 
 In a long session every request reads the whole context again (see the token map), so the
