@@ -523,6 +523,10 @@ def register(app: typer.Typer) -> None:
             list[str] | None,
             typer.Option("--verify", metavar="COMMAND", help=t("cli.delegate.option.verify")),
         ] = None,
+        fix: Annotated[
+            list[str] | None,
+            typer.Option("--fix", metavar="COMMAND", help=t("cli.delegate.option.fix")),
+        ] = None,
         context: Annotated[
             list[Path] | None,
             typer.Option("--context", metavar="FILE", help=t("cli.delegate.option.context")),
@@ -563,6 +567,7 @@ def register(app: typer.Typer) -> None:
             timeout_s=timeout,
             task_id=task_id,
             dry_run=dry_run,
+            fix_commands=fix or (),
         )
         if dry_run:
             if as_json:

@@ -51,10 +51,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13n – Claude dışı şef (ek) | ✅ | 2026-11-19 | kılavuz skill'in özü (30 satır, kopma testi), `handoff show --guide`, benchmark mod E (agy şef; agy tokenı ayrı satırda); ilk koşu 2/2 (D-102) |
 | 13o – Sağlayıcı ekleme komutu (ek) | ✅ | 2026-11-19 | herhangi bir OpenAI uyumlu servis: `providers add` / `import opencode` / `remove`, `--check` (= doctor), sihirbazda "başka bir OpenAI uyumlu servis"; anahtar asla kopyalanmaz; EVREN ile canlı test geçti (D-100) |
 | 13q – Hız farkındalığı ve devir uyarısı (ek) | ✅ | 2026-11-23 | 13q-a ortanca süre, 13q-b `routing.prefer_fast` (D-124), 13q-c görev alanı `max_wait_s` (D-125), 13q-d `small_task` uyarısı (D-126) agy'den; faz sonu kod denetimi ve skill kuralları Claude (D-127); PR #54–#57 birleşti; ölçüm (`bench/results/2026-11-23-0059`, G × 2, 2/2 geçti): görev başına $1,24 / 82,8k Claude tokenı (eski G $1,19 / 76,7k): **iyileşme yok**; devreden koşu yine ~1000 sn bekledi (bench tek oturumda bitmeyi şart koşuyor, bekleme kuralı burada işleyemez); 5. madde (yarış) ertelendi |
+| 13r-b1 – Kısa ve tam geri bildirim + fix komutları (ek) | ✅ | 2026-11-23 | outparse ile özetlenen ve adil paylaşılan geri bildirim, TaskSpec.fix ve delegate --fix (D-131) |
 | 13r-a – Fazı tümden devret: delegate, bildirim ve durum (ek) | ⏳ | 2026-11-23 | agy yazdı (Orkestra kuyruğuyla verildi, doğrulamada düştü), Claude denetledi ve düzeltti (D-128, D-129, D-130); kalan: 13r-b (`on_failover`) `orkestra delegate` ile, 13r-c |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13r-b1 – Kısa ve tam geri bildirim + fix komutları (2026-11-23)
+
+- **Kısa ve tam geri bildirim:** Komut doğrulayıcılarının çıktısı `outparse.parse` ile tanınıyorsa (pytest, ruff, pyright, derleyici) `outparse.render_items` ile özetlenir (`dosya:satır` + ileti; test adları asla düşmez); tanınmıyorsa eskisi gibi ham ve kırpılmış.
+- **Adil paylaşımlı bütçe:** `build_retry_message` içinde toplam sınır (`FEEDBACK_CHARS = 2000`) doğrulayıcılar arasında su doldurma (water-filling) ile adil paylaştırılır. Hiçbir doğrulayıcı diğerini kırpamaz. 13 ruff hatası + 9 başarısız pytest testinde 9 test adının tamamı istemde yer alır.
+- **`TaskSpec.fix: list[FixCommand]`:** Düzenleme görevinde işçinin her cevabından sonra, doğrulayıcılardan önce çalışma ağacında sırayla çalışır. Çıkış kodu önemsenmez, değişiklikler farka katılır, log `attempts/<n>/fix.log` dosyasına yazılır. `ask` görevinde şema hatası verir.
+- **`orkestra delegate --fix "<komut>"`:** Tekrarlanabilir `--fix` seçeneği eklendi; görevin `fix:` alanına yazar.
+- **Skill ve rehber:** `skill/orkestra/reference.md` "Alanlar:" satırına `fix` ve komut seçeneklerine `--fix` eklendi; `docs/guide.md` ve `docs/guide.tr.md` güncellendi.
+- **Testler:** `tests/unit/test_feedback_and_fix.py` (11 yeni test). D-131 kararı eklendi.
 
 ### Faz 13r-a – Fazı tümden devret: delegate, bildirim ve durum (agy kodu + Claude denetimi, 2026-11-23)
 

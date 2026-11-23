@@ -19,6 +19,7 @@ from pathlib import Path
 
 import psutil
 
+from orkestra.chief import outparse
 from orkestra.verify.base import DETAIL_CHARS, CheckResult, Message, VerifyContext, failed, passed
 
 KILL_GRACE_S = 5.0  # after a timeout: how long to wait for the killed process's output
@@ -73,6 +74,15 @@ def _tail(text: str) -> str:
     return text[-DETAIL_CHARS:]
 
 
+def _format_detail(output: str, cwd: Path | None) -> str:
+    digest = outparse.parse(output, cwd=str(cwd) if cwd else None)
+    if digest is not None and digest.items:
+        return outparse.render_items(digest)
+    if digest is not None and digest.headline:
+        return digest.headline
+    return _tail(output)
+
+
 @dataclass(frozen=True)
 class CommandCheck:
     run: str
@@ -100,7 +110,9 @@ class CommandCheck:
             _kill_tree(proc)
             output = (await _drain(proc)).decode("utf-8", errors="replace")
             message = Message("verify.command.timeout", {"seconds": self.timeout_s})
-            return failed(self.type, message, f"\n{_tail(output)}".rstrip(), log=output)
+            return failed(
+                self.type, message, f"\n{_format_detail(output, ctx.workdir)}".rstrip(), log=output
+            )
         except BaseException:
             _kill_tree(proc)  # Ctrl+C: leave no test run behind
             raise
@@ -108,7 +120,9 @@ class CommandCheck:
         if proc.returncode == 0:
             return passed(self.type, _tail(output), log=output)
         message = Message("verify.command.exit", {"code": proc.returncode})
-        return failed(self.type, message, f"\n{_tail(output)}".rstrip(), log=output)
+        return failed(
+            self.type, message, f"\n{_format_detail(output, ctx.workdir)}".rstrip(), log=output
+        )
 
 
 async def _drain(proc: subprocess.Popen[bytes]) -> bytes:

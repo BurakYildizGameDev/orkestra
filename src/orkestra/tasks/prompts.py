@@ -11,6 +11,7 @@ from functools import cache
 from importlib import resources
 from typing import Any
 
+from orkestra.chief import outparse
 from orkestra.config.schema import EditFormat
 from orkestra.tasks.context import Context, render_context
 
@@ -145,13 +146,72 @@ def _cut(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + "\n[... truncated]"
 
 
+def _allocate_shares(lengths: Sequence[int], budget: int) -> list[int]:
+    n = len(lengths)
+    if n == 0:
+        return []
+    if budget <= 0:
+        return [0] * n
+    allocations = [0] * n
+    remaining_indices = set(range(n))
+    remaining_budget = budget
+    while remaining_indices:
+        share = remaining_budget // len(remaining_indices)
+        if share == 0:
+            for idx in remaining_indices:
+                allocations[idx] = remaining_budget // len(remaining_indices)
+            break
+        satisfied = [i for i in remaining_indices if lengths[i] <= share]
+        if not satisfied:
+            each = remaining_budget // len(remaining_indices)
+            remainder = remaining_budget % len(remaining_indices)
+            for j, idx in enumerate(sorted(remaining_indices)):
+                allocations[idx] = each + (1 if j < remainder else 0)
+            break
+        for idx in satisfied:
+            allocations[idx] = lengths[idx]
+            remaining_budget -= lengths[idx]
+            remaining_indices.remove(idx)
+    return allocations
+
+
+def _digest_failure(text: str) -> str:
+    lines = text.split("\n", 1)
+    if len(lines) == 2:
+        prefix, rest = lines[0], lines[1]
+        digest = outparse.parse(rest)
+        if digest is not None and digest.items:
+            return f"{prefix}\n{outparse.render_items(digest)}"
+        if digest is not None and digest.headline:
+            return f"{prefix}\n{digest.headline}"
+    digest = outparse.parse(text)
+    if digest is not None and digest.items:
+        return outparse.render_items(digest)
+    if digest is not None and digest.headline:
+        return digest.headline
+    return text
+
+
+def format_failures(failures: Sequence[str], limit: int = FEEDBACK_CHARS) -> str:
+    """Format failures with rule-based digests and fair budget division (Faz 13r-b1)."""
+    if not failures:
+        return ""
+    digested = [_digest_failure(f) for f in failures]
+    n = len(digested)
+    overhead = 3 * n
+    budget = max(0, limit - overhead)
+    allocations = _allocate_shares([len(s) for s in digested], budget)
+    cut_items = [_cut(s, alloc) for s, alloc in zip(digested, allocations, strict=True)]
+    return "\n".join(f"- {item}" for item in cut_items)
+
+
 def build_retry_message(user: str, answer: str, failures: list[str], *, edit: bool = False) -> str:
     """The original task plus what went wrong last time (``prompts/retry_feedback.md``).
 
     ``edit``: say that the previous change was discarded. Otherwise a model may read an error
     such as "duplicated export" as a fault of the original file and give up (Faz 9c).
     """
-    details = _cut("\n".join(f"- {f}" for f in failures), FEEDBACK_CHARS)
+    details = _cut(format_failures(failures, FEEDBACK_CHARS), FEEDBACK_CHARS)
     feedback = (
         load_prompt("retry_feedback.md")
         .strip()

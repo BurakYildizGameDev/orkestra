@@ -83,6 +83,7 @@ from orkestra.routing.router import (
 )
 from orkestra.state import budget, db, health
 from orkestra.tasks import edit_format as ef
+from orkestra.tasks.fix import run_fix_commands
 from orkestra.tasks.prepare import (
     AGENT_CONTINUE,
     OUTPUT_TRUNCATED,
@@ -624,9 +625,9 @@ class _TaskRun(RunRecord):
     ) -> list[CheckResult]:
         """``scope`` is set for code agents (they write themselves; see ``_scope_checks``)."""
         if self.wt is not None and scope is not None:
-            checks = await self._check_agent_edit(self.wt, text, scope)
+            checks = await self._check_agent_edit(self.wt, text, scope, attempt_dir)
         elif self.wt is not None:
-            checks = await self._check_edit(self.wt, text)
+            checks = await self._check_edit(self.wt, text, attempt_dir)
         else:
             checks = self._scope_checks(scope)
             if self.prep.checks:
@@ -641,7 +642,7 @@ class _TaskRun(RunRecord):
         self._write(attempt_dir / "verify.log", log + "\n")
         return checks
 
-    async def _check_edit(self, wt: gw.Worktree, text: str) -> list[CheckResult]:
+    async def _check_edit(self, wt: gw.Worktree, text: str, attempt_dir: Path) -> list[CheckResult]:
         """Write an edit answer into the worktree (from the baseline) and verify it."""
         assert self.prep.edit is not None
         gw.reset(wt)  # every answer starts from the user's files, not the last answer
@@ -668,18 +669,30 @@ class _TaskRun(RunRecord):
             ef.write(answer, self.workdir)
         except ef.EditFormatError as exc:
             return [failed(ef.FORMAT_CHECK, exc.problem)]
+        if self.task.fix:
+            await run_fix_commands(self.task.fix, self.workdir, attempt_dir)
         self.note = answer.note
-        ctx = VerifyContext(workdir=self.workdir, output=text, changes=self._changes(wt))
+        change = gw.diff(wt) if self.task.fix else None
+        ctx = VerifyContext(
+            workdir=self.workdir,
+            output=text,
+            changes=self._changes(wt, change) if change else self._changes(wt),
+        )
         checks = await run_verifiers(self.prep.checks, ctx) if self.prep.checks else []
         # Verifier commands leave files behind (__pycache__, build output): keep the answer only.
         gw.reset(wt)
-        ef.write(answer, self.workdir)
+        if self.task.fix and change is not None:
+            gw.restore(wt, change.patch)
+        else:
+            ef.write(answer, self.workdir)
         return checks
 
     async def _check_agent_edit(
-        self, wt: gw.Worktree, text: str, scope: _Scope
+        self, wt: gw.Worktree, text: str, scope: _Scope, attempt_dir: Path
     ) -> list[CheckResult]:
         """Verify what an agent changed in the worktree; keep only its change afterwards."""
+        if self.task.fix:
+            await run_fix_commands(self.task.fix, self.workdir, attempt_dir)
         outside = self._scope_checks(scope)
         change = gw.diff(wt)  # against the baseline, so the agent's own commits count too
         self.note = text
