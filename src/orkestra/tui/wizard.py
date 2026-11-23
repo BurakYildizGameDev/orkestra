@@ -176,7 +176,10 @@ def agent_settings(name: str, *, daily_runs: int, enabled: bool = True) -> dict[
     }
     if name == "agy":
         settings["experimental"] = True
-    if not enabled:
+        # An experimental provider is used only with an explicit ``enabled: true`` (Mimari
+        # §5.5): "yes" in the wizard must write it, or agy is listed but never used (D-144).
+        settings["enabled"] = enabled
+    elif not enabled:
         settings["enabled"] = False
     return settings
 
@@ -221,10 +224,13 @@ def run_plain(
     set_language: Callable[[str], None],
     project: bool | None = None,
     current: Config | None = None,
+    cwd: Path | None = None,
 ) -> Answers:
     """Ask every step; a wrong answer is asked again with the reason.
 
-    ``current``: the config being edited; its values are the defaults.
+    ``current``: the config being edited; its values are the defaults. "Only this project?"
+    is asked only inside a git repository: elsewhere (an admin terminal starts in System32)
+    there is no project to save to (D-143).
     """
     choices = ", ".join(LANGUAGE_CHOICES)
     default_language = current.language if current is not None else "auto"
@@ -251,7 +257,8 @@ def run_plain(
         chief = _choice(ask, t("wizard.ask.chief", choices=", ".join(CHIEFS)), CHIEFS,
                         default_chief if default_chief in CHIEFS else CHIEFS[0])  # fmt: skip
     if project is None:
-        project = ask.confirm(t("wizard.ask.project"), default=False)
+        in_repo = loader.find_git_root((cwd or Path.cwd()).resolve()) is not None
+        project = ask.confirm(t("wizard.ask.project"), default=False) if in_repo else False
     return Answers(providers=picks, language=language, chief=chief, project=project)
 
 

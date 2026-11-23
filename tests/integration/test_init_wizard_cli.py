@@ -47,6 +47,7 @@ def _found(*, models: tuple[str, ...] = (), agents: tuple[str, ...] = (),
 def work(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "work"
     path.mkdir()
+    (path / ".git").mkdir()  # a project: "only this project?" is asked only there (D-143)
     monkeypatch.chdir(path)
     return path
 
@@ -156,7 +157,7 @@ def test_init_plain_writes_the_answers_and_grants_only_the_confirmed_consent(
 def test_init_plain_into_a_project_file_adds_the_gitignore_entry(
     work: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:  # fmt: skip
-    (work / ".git").mkdir()
+    assert (work / ".git").is_dir()  # the fixture made it a repository
     _detect_returns(monkeypatch, _found(agents=("codex",)))
     number = str(wizard.candidate_names().index("codex") + 1)
     answers = ["en", number, "", "", "y", "n", "n"]  # runs, chief, project, consent, doctor
