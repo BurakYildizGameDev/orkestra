@@ -151,7 +151,12 @@ verify:
   - type: protect_paths      # changing a test to make it pass is a failure
     paths: ["tests/**"]
 allow_new_files: true        # default; false: only the context files may change
+fix:                         # optional commands run before verifiers (changes kept in diff)
+  - run: "ruff check --fix ."
+  - run: "ruff format ."
 ```
+
+**Fix commands (`fix`):** Optional list of commands (`run`, `timeout_s`, `shell: false`) to run sequentially in the worktree after each worker answer and before verifiers. Exit codes are ignored (formatters often exit 1 when files are modified), changes become part of the worker's diff, and logs are kept in `attempts/<n>/fix.log`. This avoids wasting worker attempts on mechanical formatting issues. (`fix` is not allowed on `ask` tasks and produces a validation error.)
 
 API workers answer in one of two formats; `edit_format` (in the task file, or per model in the
 config) picks it, and the default `auto` chooses by file size:
@@ -455,6 +460,7 @@ orkestra delegate docs/phase-plan.md --verify "pytest -q" --json
 
 - **Options:**
   - `--verify "<command>"`: **Required** (at least one). Verification command (e.g. your test suite or linter).
+  - `--fix "<command>"`: Command to run in the worktree before verifiers to fix formatting (repeatable, e.g. `ruff check --fix .`, `ruff format .`). Exit codes are ignored and changes become part of the diff.
   - `--context <file>`: Additional files the worker reads first (like the plan, they are protected: the worker may not change them).
   - `--to <provider>`: Target a specific provider (e.g. `agy`, `codex`).
   - `--profile <name>`: Routing profile (default: `balanced`). The task starts on the lowest tier a code agent works on in that profile.

@@ -523,3 +523,31 @@ def test_a_json_cannot_do_literal_inside_a_block_is_code_not_a_refusal(
     code, out, _ = _run(["run", task, "--json"], capsys)
     assert code == 0, out
     assert json.loads(out)["status"] == "ok"
+
+
+# --- fix commands (Faz 13r-b1, D-132) --------------------------------------------------
+
+FIXER = (
+    "from pathlib import Path\n"
+    "p = Path('calc.py')\n"
+    "p.write_text('# formatted' + chr(10) + p.read_text())\n"
+)
+
+
+@respx.mock
+def test_fix_commands_run_for_a_chat_worker_and_their_change_is_kept(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fixer = tmp_path / "fixer.py"
+    fixer.write_text(FIXER, encoding="utf-8")
+    respx.post(f"{OLLAMA}/api/chat").mock(side_effect=[_ollama(_edit(("calc.py", RIGHT)))])
+    task = _task(tmp_path, fix=[{"run": f'"{sys.executable}" "{fixer}"'}])
+    code, out, _ = _run(["run", task, "--json"], capsys)
+    assert code == 0, out
+    envelope = json.loads(out)
+    assert envelope["status"] == "ok"
+    log = paths.run_dir(envelope["run_id"]) / "attempts" / "1" / "fix.log"
+    assert "(exit 0)" in log.read_text(encoding="utf-8")
+    code, diff, _ = _run(["show", envelope["run_id"], "--diff"], capsys)
+    assert "+# formatted" in diff and "+    return a + b" in diff
+    assert "__pycache__" not in diff

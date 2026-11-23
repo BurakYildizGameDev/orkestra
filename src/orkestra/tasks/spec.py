@@ -38,6 +38,14 @@ class _Model(BaseModel):
 Paths = Annotated[list[Annotated[str, Field(min_length=1)]], Field(min_length=1)]
 
 
+class FixCommand(_Model):
+    """A command to run in the worktree before verifiers (Faz 13r-b1)."""
+
+    run: Annotated[str, Field(min_length=1)]
+    timeout_s: PosInt = 300
+    shell: bool = False
+
+
 # --- verifiers -------------------------------------------------------------------------
 
 
@@ -170,6 +178,26 @@ class TaskSpec(_Model):
     depends_on: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     max_wait_s: PosInt | None = None
+    fix: list[FixCommand] = Field(default_factory=list)
+
+    @field_validator("fix", mode="before")
+    @classmethod
+    def _coerce_fix(cls, value: Any) -> Any:
+        if isinstance(value, list):
+            coerced: list[Any] = []
+            for item in value:
+                if isinstance(item, str):
+                    coerced.append({"run": item})
+                else:
+                    coerced.append(item)
+            return coerced
+        return value
+
+    @model_validator(mode="after")
+    def _validate_task(self) -> TaskSpec:
+        if self.kind == "ask" and self.fix:
+            raise ValueError(t("task.validation.fix_not_allowed_for_ask"))
+        return self
 
     @field_validator("id")
     @classmethod

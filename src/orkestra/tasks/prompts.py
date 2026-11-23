@@ -138,11 +138,62 @@ def build_agent_prompt(
 
 
 FEEDBACK_CHARS = 2000  # failed-check details sent back (Mimari §8)
+TRUNCATED = "\n[... truncated]"
 PREVIOUS_ANSWER_CHARS = 8000
 
 
 def _cut(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[:limit] + "\n[... truncated]"
+    return text if len(text) <= limit else text[:limit] + TRUNCATED
+
+
+def _allocate_shares(lengths: Sequence[int], budget: int) -> list[int]:
+    n = len(lengths)
+    if n == 0:
+        return []
+    if budget <= 0:
+        return [0] * n
+    allocations = [0] * n
+    remaining_indices = set(range(n))
+    remaining_budget = budget
+    while remaining_indices:
+        share = remaining_budget // len(remaining_indices)
+        if share == 0:
+            for idx in remaining_indices:
+                allocations[idx] = remaining_budget // len(remaining_indices)
+            break
+        satisfied = [i for i in remaining_indices if lengths[i] <= share]
+        if not satisfied:
+            each = remaining_budget // len(remaining_indices)
+            remainder = remaining_budget % len(remaining_indices)
+            for j, idx in enumerate(sorted(remaining_indices)):
+                allocations[idx] = each + (1 if j < remainder else 0)
+            break
+        for idx in satisfied:
+            allocations[idx] = lengths[idx]
+            remaining_budget -= lengths[idx]
+            remaining_indices.remove(idx)
+    return allocations
+
+
+def _cut_within(text: str, limit: int) -> str:
+    """Like ``_cut``, but the truncation mark counts towards ``limit`` (D-132)."""
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - len(TRUNCATED))] + TRUNCATED
+
+
+def format_failures(failures: Sequence[str], limit: int = FEEDBACK_CHARS) -> str:
+    """Every failed check gets its fair share of ``limit`` (Faz 13r-b1).
+
+    Command output is already digested by the check itself (``verify/command.py``); digesting
+    it again here could drop lines (D-132).
+    """
+    if not failures:
+        return ""
+    overhead = 3 * len(failures)  # "- " and the newline per item
+    allocations = _allocate_shares([len(s) for s in failures], max(0, limit - overhead))
+    cut_items = [_cut_within(s, a) for s, a in zip(failures, allocations, strict=True)]
+    return "\n".join(f"- {item}" for item in cut_items)
 
 
 def build_retry_message(user: str, answer: str, failures: list[str], *, edit: bool = False) -> str:
@@ -151,7 +202,7 @@ def build_retry_message(user: str, answer: str, failures: list[str], *, edit: bo
     ``edit``: say that the previous change was discarded. Otherwise a model may read an error
     such as "duplicated export" as a fault of the original file and give up (Faz 9c).
     """
-    details = _cut("\n".join(f"- {f}" for f in failures), FEEDBACK_CHARS)
+    details = _cut(format_failures(failures, FEEDBACK_CHARS), FEEDBACK_CHARS)
     feedback = (
         load_prompt("retry_feedback.md")
         .strip()

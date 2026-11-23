@@ -158,6 +158,7 @@ def delegate_task(
     launcher: RunnerLauncher | None = None,
     is_alive: process.Alive = process.process_alive,
     now: db.Clock = db.local_now,
+    fix_commands: Sequence[str] = (),
 ) -> DelegateResult:
     if not verify_commands:
         raise UsageError(t("delegate.error.verify_required"))
@@ -222,6 +223,8 @@ def delegate_task(
         },
         "tags": ["delegated"],
     }
+    if fix_commands:
+        task_dict["fix"] = [{"run": cmd} for cmd in fix_commands]
     if to_provider is not None:
         task_dict["provider"] = to_provider
 

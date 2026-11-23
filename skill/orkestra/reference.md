@@ -122,7 +122,7 @@ verify:
 allow_new_files: false
 ```
 
-Alanlar: `id` (harf veya rakamla başlar, sonra harf/rakam, `.`, `_`, `-`), `kind` (`ask` | `edit`), `tier` (1–3), `prompt`, `context.files` / `context.globs`, `verify`, `verify_defaults` (bkz. aşağı), `privacy` (`normal` | `local_only`), `allow_new_files`, `output` (`format: json`, `schema: dosya.json`), `limits` (`timeout_s`, `max_retries`), `workspace`, `provider`, `model`, `edit_format` (`auto` | `replace` | `whole`, bkz. aşağı), `tags` (kayıtta ve `orkestra stats` içinde görünen etiketler), `depends_on` (batch içinde: bu görevler `ok` bitmeden başlamaz), `max_wait_s` (isteğe bağlı azami ortanca süre, sn). Bilinmeyen alan hata verir (kod 2).
+Alanlar: `id` (harf veya rakamla başlar, sonra harf/rakam, `.`, `_`, `-`), `kind` (`ask` | `edit`), `tier` (1–3), `prompt`, `context.files` / `context.globs`, `verify`, `verify_defaults` (bkz. aşağı), `privacy` (`normal` | `local_only`), `allow_new_files`, `output` (`format: json`, `schema: dosya.json`), `limits` (`timeout_s`, `max_retries`), `workspace`, `provider`, `model`, `edit_format` (`auto` | `replace` | `whole`, bkz. aşağı), `tags` (kayıtta ve `orkestra stats` içinde görünen etiketler), `depends_on` (batch içinde: bu görevler `ok` bitmeden başlamaz), `max_wait_s` (isteğe bağlı azami ortanca süre, sn), `fix` (doğrulayıcılardan önce çalışma ağacında çalışan komutlar). Bilinmeyen alan hata verir (kod 2).
 
 Doğrulayıcılar (`verify`):
 - `command`: komut 0 ile bitmeli (`run`, `timeout_s`; boru veya `&&` gerekiyorsa `shell: true`).
@@ -216,7 +216,7 @@ orkestra show <run_id> --json     # zarfı tekrar al
 orkestra delegate .orkestra/plan.md --verify "python -m pytest -q" --json
 ```
 
-Seçenekler: `--verify "<komut>"` (en az bir tane, zorunlu), `--context <dosya>` (işçinin önce okuyacağı, değiştiremeyeceği ek dosya), `--to <sağlayıcı>` (belirli sağlayıcı), `--profile <ad>` (varsayılan: `balanced`), `--timeout <sn>` (varsayılan 3600), `--id <ad>` (görev kimliği), `--dry-run`, `--json`. Komut görevi `.orkestra/tasks/<id>.yaml` dosyasına yazar, kuyruğa ekler, arka planda çalışan bir kuyruk koşucusu yoksa `orkestra queue run --notify` başlatır ve hemen döner. Oturumu kapatabilirsin; iş bitince (bir bildirim kanalı varsa) bildirim gelir. Durumu `orkestra status --json` çıktısındaki `delegated` bölümünden izleyebilirsin.
+Seçenekler: `--verify "<komut>"` (en az bir tane, zorunlu), `--fix "<komut>"` (doğrulayıcılardan önce biçimi düzelten komut, tekrarlanabilir), `--context <dosya>` (işçinin önce okuyacağı, değiştiremeyeceği ek dosya), `--to <sağlayıcı>` (belirli sağlayıcı), `--profile <ad>` (varsayılan: `balanced`), `--timeout <sn>` (varsayılan 3600), `--id <ad>` (görev kimliği), `--dry-run`, `--json`. Komut görevi `.orkestra/tasks/<id>.yaml` dosyasına yazar, kuyruğa ekler, arka planda çalışan bir kuyruk koşucusu yoksa `orkestra queue run --notify` başlatır ve hemen döner. Oturumu kapatabilirsin; iş bitince (bir bildirim kanalı varsa) bildirim gelir. Durumu `orkestra status --json` çıktısındaki `delegated` bölümünden izleyebilirsin.
 
 ## 6. Denetim (atlanamaz)
 

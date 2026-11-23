@@ -148,7 +148,12 @@ verify:
   - type: protect_paths      # testi değiştirerek geçirmek başarısızlık sayılır
     paths: ["tests/**"]
 allow_new_files: true        # varsayılan; false: sadece bağlamdaki dosyalar değişebilir
+fix:                         # doğrulayıcılardan önce çalışacak komutlar (değişiklik farka katılır)
+  - run: "ruff check --fix ."
+  - run: "ruff format ."
 ```
+
+**Düzeltme komutları (`fix`):** Düzenleme görevinde işçinin her cevabından sonra ve doğrulayıcılardan önce çalışma ağacında sırayla çalıştırılacak isteğe bağlı komut listesi (`run`, `timeout_s`, `shell: false`). Çıkış kodu önemsenmez (biçimlendiriciler dosya değişince 1 dönebilir), yapılan değişiklikler işçinin farkına katılır ve çıktılar `attempts/<n>/fix.log` dosyasına yazılır. Böylece işçinin düzeltme turları mekanik biçim hatalarına harcanmaz. (`fix` alanı `ask` görevlerinde kullanılamaz ve şema hatası verir.)
 
 API işçileri iki biçimden biriyle cevap verir. Biçimi `edit_format` seçer (görev dosyasında ya
 da config'te model bazında). Varsayılan `auto`, dosya boyutuna göre seçer:
@@ -451,6 +456,7 @@ orkestra delegate docs/faz-plani.md --verify "pytest -q" --json
 
 - **Seçenekler:**
   - `--verify "<komut>"`: **Zorunlu** (en az bir tane). Doğrulama komutu (ör. projenin test komutu).
+  - `--fix "<komut>"`: Doğrulayıcılardan önce çalışma ağacında biçimi düzeltmek için çalıştırılacak komut (tekrarlanabilir, ör. `ruff check --fix .`, `ruff format .`). Çıkış kodu önemsenmez, değişiklikler farka katılır.
   - `--context <dosya>`: İşçinin önce okuyacağı ek dosyalar (plan gibi korunur: işçi bunları değiştiremez).
   - `--to <sağlayıcı>`: Görevi belirli bir sağlayıcıyla sınırla (ör. `agy`, `codex`).
   - `--profile <ad>`: Yönlendirme profili (varsayılan: `balanced`). Görev, o profilde bir kod ajanının çalıştığı en düşük kademeden başlar.
