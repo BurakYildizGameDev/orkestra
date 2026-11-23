@@ -152,11 +152,14 @@ fix:                         # doğrulayıcılardan önce çalışacak komutlar 
   - run: "ruff check --fix ."
   - run: "ruff format ."
 agents_only: true              # isteğe bağlı; true = yalnızca CLI kod ajanları görevi çalıştırabilir
+on_failover: continue          # restart (varsayılan) | continue (kod ajanları arası devirde çalışma ağacını korur)
 ```
 
 **Düzeltme komutları (`fix`):** Düzenleme görevinde işçinin her cevabından sonra ve doğrulayıcılardan önce çalışma ağacında sırayla çalıştırılacak isteğe bağlı komut listesi (`run`, `timeout_s`, `shell: false`). Çıkış kodu önemsenmez (biçimlendiriciler dosya değişince 1 dönebilir), yapılan değişiklikler işçinin farkına katılır ve çıktılar `attempts/<n>/fix.log` dosyasına yazılır. Böylece işçinin düzeltme turları mekanik biçim hatalarına harcanmaz. (`fix` alanı `ask` görevlerinde kullanılamaz ve şema hatası verir.)
 
 **Yalnızca kod ajanları (`agents_only`):** İsteğe bağlı boole (`varsayılan: false`). `true` yapıldığında (`orkestra delegate` tarafından otomatik yazılır), yönlendirici yalnızca CLI kod ajanlarını (`cli_agent`, ör. Codex veya Antigravity) aday yapar; sohbet işçileri (API modelleri ve Ollama) `agents_only` gerekçesiyle elenir çünkü faz büyüklüğündeki işleri sohbet modelleri taşıyamaz.
+
+**Yarım işten devam (`on_failover`):** İsteğe bağlı (`restart` | `continue`, varsayılan `restart`). `continue` yapıldığında (`orkestra delegate` tarafından otomatik yazılır), bir kod ajanından diğerine geçişte çalışma ağacı sıfırlanmaz; yeni ajan yarım kalan işin üstünden devam eder ve isteminde önceki işçinin durma sebebi, değişen dosyalar ve son doğrulama özetini içeren bir devam notu alır. Sohbet işçisine geçilirse yarım iş korunmaz, sıfırlanır ve zarfta `partial_dropped: true` olarak kaydedilir.
 
 API işçileri iki biçimden biriyle cevap verir. Biçimi `edit_format` seçer (görev dosyasında ya
 da config'te model bazında). Varsayılan `auto`, dosya boyutuna göre seçer:

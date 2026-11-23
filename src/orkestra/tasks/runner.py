@@ -280,6 +280,21 @@ class _TaskRun(RunRecord):
                     Escalation(provider=last.provider, model=last.model, tier=last.tier,
                                reason=last.reason)
                 )  # fmt: skip
+            if previous is not None:
+                prev_agent = isinstance(previous.config, CliAgentProvider)
+                curr_agent = isinstance(candidate.config, CliAgentProvider)
+                if self.task.on_failover == "continue":
+                    if prev_agent and curr_agent:
+                        self.continuation_note = self._build_continuation_note(previous)
+                    elif prev_agent and not curr_agent:
+                        if self.wt is not None:
+                            gw.reset(self.wt)
+                        self.partial_dropped = True
+                        self.continuation_note = None
+                    else:
+                        self.continuation_note = None
+                else:
+                    self.continuation_note = None
             previous = candidate
             outcome = await self._try(candidate)
             if isinstance(outcome, TaskOutcome):
@@ -504,6 +519,8 @@ class _TaskRun(RunRecord):
         if self.wt is not None:
             self.rejected_patch = gw.diff(self.wt).patch
         failures = [c.feedback for c in checks if not c.result.ok]
+        if failures:
+            self.last_verify_summary = "\n".join(failures)
         self.log.info("attempt %d failed checks: %s", self.attempts, failures)
         if answers >= self.max_answers:
             names = ", ".join(c.result.type for c in checks if not c.result.ok)
@@ -550,6 +567,8 @@ class _TaskRun(RunRecord):
         timeout = self.task.limits.timeout_s or agent_timeout(cfg, self.prep.config.defaults)
         repo = self.wt.repo if self.wt is not None else _repo_of(self.prep.base_dir)
         prompt = self.prep.agent_user
+        if self.task.on_failover == "continue" and self.continuation_note is not None:
+            prompt = f"{self.prep.agent_user}\n\n{self.continuation_note}"
         tries = answers = 0
         while True:
             amount = budget.estimate(
@@ -588,7 +607,13 @@ class _TaskRun(RunRecord):
                 self.log.info(
                     "attempt %d: %s (agent, try %d)", self.attempts, candidate.label, tries
                 )
-                if self.wt is not None and tries == 1:
+                if (
+                    self.wt is not None
+                    and tries == 1
+                    and not (
+                        self.task.on_failover == "continue" and self.continuation_note is not None
+                    )
+                ):
                     gw.reset(self.wt)  # a new candidate starts from the user's files
                 before = gw.status_snapshot(repo) if repo is not None else None
                 scope = _Scope(repo, before)
@@ -652,6 +677,28 @@ class _TaskRun(RunRecord):
             None,
             estimated=True,
         )
+
+    def _build_continuation_note(self, previous: Candidate) -> str:
+        last = self.failovers[-1] if self.failovers else None
+        reason = last.reason if last is not None else "Unknown"
+        changed_files: list[str] = []
+        if self.wt is not None:
+            try:
+                diff = gw.diff(self.wt)
+                changed_files = [f.path for f in diff.files]
+            except Exception:
+                pass
+        files_str = ", ".join(changed_files) if changed_files else "none"
+        summary = self.last_verify_summary or "None"
+
+        lines = [
+            "## Continuation Note",
+            f"Previous worker ({previous.label}) stopped: {reason}",
+            f"Changed files in worktree: {files_str}",
+            f"Last verification summary: {summary}",
+            "Continue from the current state, do not rewrite what is done.",
+        ]
+        return "\n".join(lines)
 
     def _scope_checks(self, scope: _Scope | None) -> list[CheckResult]:
         """Did the agent write into the user's repository? (Snapshots around the run.)"""

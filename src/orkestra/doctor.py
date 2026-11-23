@@ -6,6 +6,7 @@ Key values are never read into messages: only whether the variable is set.
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
 import shutil
 import sqlite3
@@ -20,18 +21,21 @@ from pathlib import Path
 from typing import Any, Literal
 
 from orkestra import hardware, install
+from orkestra.chief.keys import get_key
 from orkestra.config.loader import load_config
 from orkestra.config.schema import (
     CliAgentProvider,
     Config,
     Defaults,
     ForecastCfg,
+    NotifyCfg,
     OllamaProvider,
     OpenAICompatProvider,
     Provider,
 )
 from orkestra.errors import ConfigError, ProviderBadOutput, ProviderError
 from orkestra.i18n import t
+from orkestra.notify.notify import EXTRA, is_variable_name
 from orkestra.providers import cli_agent, mcp_probe, pricing
 from orkestra.providers.base import CompletionRequest
 from orkestra.providers.ollama import OllamaChat, has_model
@@ -459,6 +463,39 @@ def _check_tool(tool: str, which: Which, probe: VersionProbe, *, required: bool)
     )
 
 
+def _check_notify(
+    cfg: NotifyCfg,
+    env: Mapping[str, str],
+    *,
+    has_desktop: Callable[[], bool] | None = None,
+) -> Check | None:
+    desktop_avail = False
+    if cfg.desktop:
+        if has_desktop is not None:
+            desktop_avail = has_desktop()
+        else:
+            try:
+                importlib.import_module("desktop_notifier")
+                desktop_avail = True
+            except ImportError:
+                desktop_avail = False
+
+    ntfy_avail = False
+    if cfg.ntfy_topic_env and is_variable_name(cfg.ntfy_topic_env):
+        topic = get_key(cfg.ntfy_topic_env, env)
+        if topic:
+            ntfy_avail = True
+
+    if not desktop_avail and not ntfy_avail:
+        return Check(
+            "notify",
+            "warn",
+            t("doctor.warning.no_notify"),
+            {"hint": f"pip install {EXTRA}"},
+        )
+    return None
+
+
 async def run_doctor(
     *,
     config_flag: Path | None = None,
@@ -477,6 +514,7 @@ async def run_doctor(
     mcp: bool = False,
     mcp_prober: mcp_probe.Prober = mcp_probe.probe_all,
     mcp_timeout_s: float = mcp_probe.DEFAULT_TIMEOUT_S,
+    has_desktop: Callable[[], bool] | None = None,
 ) -> DoctorReport:
     env = os.environ if environ is None else environ
     checks: list[Check] = []
@@ -531,6 +569,9 @@ async def run_doctor(
         if any(c.local and c.enabled for c in loaded.config.providers.values()):
             # Faz 13l: which model sizes this computer runs comfortably (a suggestion only).
             checks.extend(hardware.checks(loaded.config, machine or hardware.detect(which=which)))
+        notify_check = _check_notify(loaded.config.notify, env, has_desktop=has_desktop)
+        if notify_check is not None:
+            checks.append(notify_check)
     checks.append(_check_tool("git", which, probe, required=True))
     if (installed := install_check(install_info())) is not None:
         checks.append(installed)

@@ -210,6 +210,7 @@ def delegate_task(
         "kind": "edit",
         "tier": tier,
         "agents_only": True,
+        "on_failover": "continue",
         "prompt": (
             f"Read these files first (do not change them): {', '.join(read_first)}. "
             "Implement the plan exactly as described. Do not go beyond its scope. "

@@ -180,6 +180,7 @@ class TaskSpec(_Model):
     max_wait_s: PosInt | None = None
     fix: list[FixCommand] = Field(default_factory=list)
     agents_only: bool = False
+    on_failover: Literal["restart", "continue"] = "restart"
 
     @field_validator("fix", mode="before")
     @classmethod
