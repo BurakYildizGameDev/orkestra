@@ -66,7 +66,8 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 - **Ajan→sohbet işçisi devri:** `agents_only: false` olan ve `on_failover: continue` içeren görevlerde, bir ajandan sohbet işçisine devredilirse yarım iş korunmaz (sohbet modelleri faz boyu yarım işi taşıyamaz); çalışma ağacı sıfırlanır ve sonuç zarfına `partial_dropped: true` eklenir (`ResultEnvelope.partial_dropped`).
 - **`doctor` bildirim kanalı uyarısı:** `orkestra doctor` çalıştırıldığında, config'te çalışan bir bildirim kanalı yoksa (masaüstü eklentisi `desktop_notifier` bulunamıyorsa ve ntfy konusu tanımlı değilse) bir uyarı satırı (`t("doctor.warning.no_notify")`, 5 dilde) ve kurulum ipucu (`hint: pip install orkestra-cli[notify]`) gösterilir. Kanallardan en az biri çalışıyorsa uyarı gizlenir.
 - **Kabul kriterleri:** 8 yeni test yazıldı (`tests/unit/test_continuity_and_notify_warning.py`); ruff, pyright, pytest temiz; Mimari, rehber, skill ve 5 dilde yerel YAML'lar güncellendi.
-- **Not:** Claude denetimi bekliyor.
+- **Kod denetimi (Claude, D-135):** PR #61 ve #62 birlikte denetlendi; 4 bulgu düzeltildi (devam notunda geniş `except`, maskeleme/sınırın geri bildirimle aynı yoldan gitmesi, nottaki sebebin İngilizce hata sınıfıyla yazılması, ajan hiçbir şey yazmadıysa `partial_dropped` yazılmaması), Mimari §8 güncellendi; 2 test (`tests/unit/test_13r_b_review.py`).
+- **Bilinen sorun:** `doctor` bildirim ipucu `notify.desktop: false` iken de masaüstü eklentisini önerir; arada kurulu olmayan bir ajan varsa devam notundaki "önceki işçi" o ajan olur.
 
 ### Faz 13r-b2 – Faz boyu test döngüsü + yalnız ajan (2026-11-23)
 

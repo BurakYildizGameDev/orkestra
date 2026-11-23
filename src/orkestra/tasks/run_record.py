@@ -130,7 +130,7 @@ class RunRecord:
         self.last_failures: frozenset[tuple[int, str, str]] | None = None  # Faz 13r-b2
         self.partial_dropped = False  # Faz 13r-b3
         self.continuation_note: str | None = None  # Faz 13r-b3
-        self.last_verify_summary: str | None = None  # Faz 13r-b3
+        self.last_verify_failures: list[str] = []  # masked; continuation note (D-135)
         self.log = logging.getLogger("orkestra")
         self.started = clock()
 

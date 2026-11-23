@@ -127,7 +127,9 @@ from orkestra.tasks.prepare import (
     plan_task as plan_task,
 )
 from orkestra.tasks.prompts import (
+    FEEDBACK_CHARS,
     build_retry_message,
+    format_failures,
 )
 from orkestra.tasks.run_record import RunRecord, _Answer
 from orkestra.tasks.spec import TaskSpec
@@ -221,6 +223,28 @@ def failure_signature(checks: Sequence[CheckResult]) -> frozenset[tuple[int, str
     return frozenset(items)
 
 
+def continuation_note(
+    label: str, last: Failover | None, changed: Sequence[str], failures: Sequence[str]
+) -> str:
+    """What the next code agent is told when it continues the previous one's work (D-134).
+
+    ``last.error`` is the English error class; ``last.reason`` is in the user's language (it
+    carries e.g. the agent's own "quota exhausted" text). ``failures`` are already masked; they
+    get the same budget as retry feedback (D-135).
+    """
+    stopped = f"{last.error}: {last.reason}" if last is not None else "unknown"
+    summary = format_failures(failures, FEEDBACK_CHARS) if failures else "none"
+    return "\n".join(
+        [
+            "## Continuation Note",
+            f"Previous worker ({label}) stopped with {stopped}",
+            f"Changed files in worktree: {', '.join(changed) if changed else 'none'}",
+            f"Last verification summary:\n{summary}",
+            "Continue from the current state, do not rewrite what is done.",
+        ]
+    )
+
+
 class _TaskRun(RunRecord):
     """The attempts of one run: candidates, answers, checks, agents, failover."""
 
@@ -287,9 +311,10 @@ class _TaskRun(RunRecord):
                     if prev_agent and curr_agent:
                         self.continuation_note = self._build_continuation_note(previous)
                     elif prev_agent and not curr_agent:
-                        if self.wt is not None:
+                        if self.wt is not None and gw.diff(self.wt).files:
+                            # Only work the agent actually left behind is "dropped" (D-135).
                             gw.reset(self.wt)
-                        self.partial_dropped = True
+                            self.partial_dropped = True
                         self.continuation_note = None
                     else:
                         self.continuation_note = None
@@ -519,8 +544,11 @@ class _TaskRun(RunRecord):
         if self.wt is not None:
             self.rejected_patch = gw.diff(self.wt).patch
         failures = [c.feedback for c in checks if not c.result.ok]
-        if failures:
-            self.last_verify_summary = "\n".join(failures)
+        # Feedback goes to a model: mask everything secret, as in the records (also for the
+        # continuation note of a later agent, D-135).
+        masked = [self.prep.redact(f) for f in failures]
+        if masked:
+            self.last_verify_failures = masked
         self.log.info("attempt %d failed checks: %s", self.attempts, failures)
         if answers >= self.max_answers:
             names = ", ".join(c.result.type for c in checks if not c.result.ok)
@@ -545,14 +573,13 @@ class _TaskRun(RunRecord):
                     error=VERIFICATION_FAILED,
                 )
             self.last_failures = current_signature
-        # Feedback goes to a model: mask everything secret, as in the records. An API worker's
-        # answer is undone before the retry; a code agent continues from its change instead
-        # (``AGENT_CONTINUE``), so only chat workers are told their change was discarded.
+        # An API worker's answer is undone before the retry; a code agent continues from its
+        # change instead (``AGENT_CONTINUE``), so only chat workers are told it was discarded.
         api_edit = self.prep.edit is not None and not isinstance(candidate.config, CliAgentProvider)
         return build_retry_message(
             base_prompt,
             self.prep.redact_output(result.text),
-            [self.prep.redact(f) for f in failures],
+            masked,
             edit=api_edit,
         )
 
@@ -679,26 +706,13 @@ class _TaskRun(RunRecord):
         )
 
     def _build_continuation_note(self, previous: Candidate) -> str:
-        last = self.failovers[-1] if self.failovers else None
-        reason = last.reason if last is not None else "Unknown"
-        changed_files: list[str] = []
-        if self.wt is not None:
-            try:
-                diff = gw.diff(self.wt)
-                changed_files = [f.path for f in diff.files]
-            except Exception:
-                pass
-        files_str = ", ".join(changed_files) if changed_files else "none"
-        summary = self.last_verify_summary or "None"
-
-        lines = [
-            "## Continuation Note",
-            f"Previous worker ({previous.label}) stopped: {reason}",
-            f"Changed files in worktree: {files_str}",
-            f"Last verification summary: {summary}",
-            "Continue from the current state, do not rewrite what is done.",
-        ]
-        return "\n".join(lines)
+        changed = [f.path for f in gw.diff(self.wt).files] if self.wt is not None else []
+        return continuation_note(
+            previous.label,
+            self.failovers[-1] if self.failovers else None,
+            changed,
+            self.last_verify_failures,
+        )
 
     def _scope_checks(self, scope: _Scope | None) -> list[CheckResult]:
         """Did the agent write into the user's repository? (Snapshots around the run.)"""
