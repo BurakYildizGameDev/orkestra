@@ -75,12 +75,15 @@ def _tail(text: str) -> str:
 
 
 def _format_detail(output: str, cwd: Path | None) -> str:
+    """The digest of known tool output (Faz 13r-b1), else the raw tail.
+
+    The summary line stays first and the result is capped like the raw tail (D-132).
+    """
     digest = outparse.parse(output, cwd=str(cwd) if cwd else None)
-    if digest is not None and digest.items:
-        return outparse.render_items(digest)
-    if digest is not None and digest.headline:
-        return digest.headline
-    return _tail(output)
+    if digest is None or not (digest.items or digest.headline):
+        return _tail(output)
+    items = outparse.render_items(digest) if digest.items else ""
+    return "\n".join(p for p in (digest.headline, items) if p)[:DETAIL_CHARS]
 
 
 @dataclass(frozen=True)

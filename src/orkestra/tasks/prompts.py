@@ -11,7 +11,6 @@ from functools import cache
 from importlib import resources
 from typing import Any
 
-from orkestra.chief import outparse
 from orkestra.config.schema import EditFormat
 from orkestra.tasks.context import Context, render_context
 
@@ -139,11 +138,12 @@ def build_agent_prompt(
 
 
 FEEDBACK_CHARS = 2000  # failed-check details sent back (Mimari §8)
+TRUNCATED = "\n[... truncated]"
 PREVIOUS_ANSWER_CHARS = 8000
 
 
 def _cut(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[:limit] + "\n[... truncated]"
+    return text if len(text) <= limit else text[:limit] + TRUNCATED
 
 
 def _allocate_shares(lengths: Sequence[int], budget: int) -> list[int]:
@@ -175,33 +175,24 @@ def _allocate_shares(lengths: Sequence[int], budget: int) -> list[int]:
     return allocations
 
 
-def _digest_failure(text: str) -> str:
-    lines = text.split("\n", 1)
-    if len(lines) == 2:
-        prefix, rest = lines[0], lines[1]
-        digest = outparse.parse(rest)
-        if digest is not None and digest.items:
-            return f"{prefix}\n{outparse.render_items(digest)}"
-        if digest is not None and digest.headline:
-            return f"{prefix}\n{digest.headline}"
-    digest = outparse.parse(text)
-    if digest is not None and digest.items:
-        return outparse.render_items(digest)
-    if digest is not None and digest.headline:
-        return digest.headline
-    return text
+def _cut_within(text: str, limit: int) -> str:
+    """Like ``_cut``, but the truncation mark counts towards ``limit`` (D-132)."""
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - len(TRUNCATED))] + TRUNCATED
 
 
 def format_failures(failures: Sequence[str], limit: int = FEEDBACK_CHARS) -> str:
-    """Format failures with rule-based digests and fair budget division (Faz 13r-b1)."""
+    """Every failed check gets its fair share of ``limit`` (Faz 13r-b1).
+
+    Command output is already digested by the check itself (``verify/command.py``); digesting
+    it again here could drop lines (D-132).
+    """
     if not failures:
         return ""
-    digested = [_digest_failure(f) for f in failures]
-    n = len(digested)
-    overhead = 3 * n
-    budget = max(0, limit - overhead)
-    allocations = _allocate_shares([len(s) for s in digested], budget)
-    cut_items = [_cut(s, alloc) for s, alloc in zip(digested, allocations, strict=True)]
+    overhead = 3 * len(failures)  # "- " and the newline per item
+    allocations = _allocate_shares([len(s) for s in failures], max(0, limit - overhead))
+    cut_items = [_cut_within(s, a) for s, a in zip(failures, allocations, strict=True)]
     return "\n".join(f"- {item}" for item in cut_items)
 
 

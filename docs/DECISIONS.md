@@ -1351,3 +1351,12 @@ Davranış değişmedi; yalnız taşıma. Var olan testlere dokunulmadı.
 4. *`delegate --fix "<komut>"`:* `orkestra delegate` komutuna tekrarlanabilir `--fix` seçeneği eklendi; görevin `fix:` alanına yazar.
 5. *Geriye uyumluluk:* `fix` alanı tanımlanmamış görevlerde hiçbir davranış değişmez; `fix.log` oluşturulmaz; var olan testler bit bit eskisi gibi çalışır.
 **Sonuç:** 13 ruff hatası + 9 başarısız test durumunda 9 test adının tamamı işçinin istemine ulaşır; biçimlendirme hataları işçinin turunu tüketmeden otomatik düzeltilir.
+
+## D-132 – Faz 13r-b1 kod denetimi (2026-11-23, Faz 13r-b1)
+Claude, agy'nin 13r-b1 farkını denetledi. Özü doğru: gerçek doğrulayıcı hattında (13 ruff + 9 pytest) 9 test adının hepsi işçiye ulaşıyor; `fix:` hem ajan hem sohbet işçisi yolunda çalışıyor, değişikliği farkta. Düzeltilenler:
+1. **Bütçe taşması:** her doğrulayıcı kendi payıyla kırpılıyordu ama `[... truncated]` işareti paya sayılmıyordu; iki uzun çıktıda toplam 2031 karaktere çıktı ve dıştaki `_cut` fazlalığı **son doğrulayıcının** kuyruğundan kesti (biri ötekini kırpamaz kuralının küçük bir ihlali). İşaret artık paya dahil (`_cut_within`); toplam sınırın altında.
+2. **Özet ayrıntısı:** `verify/command.py` tanınan çıktıda yalnız öğeleri veriyordu: özet satırı ("9 failed, 120 passed") düşüyordu ve uzunluk sınırsızdı (pytest öğeleri sınırsız; zarftaki `detail` eskiden en çok 2000 karakterdi). Artık özet satırı başta, toplam en çok `DETAIL_CHARS`.
+3. **Çift özet kaldırıldı:** `prompts.format_failures` zaten özetlenmiş komut çıktısını yeniden `outparse.parse`'tan geçiriyordu (gereksiz; satır düşürme riski). Özet tek yerde, doğrulayıcıda.
+4. **Eksik test:** `fix:` yalnız ajan yolunda test edilmişti; sohbet işçisi yolu için uçtan uca test eklendi (`test_edit_cli.py`), bütçe ve ayrıntı için `test_13r_b1_review.py`.
+5. Mimari bölümü (görev şeması `fix`, §8 döngü ve geri bildirim, `command` doğrulayıcısı) D-131/D-132 ile güncellendi; agy güncellememişti.
+**Bilinen sorun (engelleyici değil):** `fix:` komutu kullanıcının depodaki önceden biçimsiz dosyalarına da dokunursa bu değişiklik de işçinin farkına girer (ajan yolunda kapsam dışı dosya sayılabilir); görev yazarı `fix:`'i işçinin dosyalarıyla sınırlamalı.
