@@ -381,6 +381,10 @@ class _TaskRun(RunRecord):
         if isinstance(config, CliAgentProvider):
             return await self._try_agent(candidate, config)
         provider = create_chat_provider(candidate.provider, config, self.prep.env)
+        if config.budget.daily_usd is not None and candidate.price is None:
+            self.prep.warnings.append(
+                t("budget.warning.no_price", provider=candidate.provider, model=candidate.model.id)
+            )
         self.edit_format = self.prep.edit_format(candidate)
         base_user = self.prep.messages(self.edit_format)[1]
         user = base_user

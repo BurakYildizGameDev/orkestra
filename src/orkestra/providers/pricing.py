@@ -86,6 +86,12 @@ def _is_fresh(entry: Mapping[str, Any], base_url: str, now: datetime) -> bool:
     return now - fetched < (PRICES_TTL if entry.get("ok") else FAILED_RETRY)
 
 
+def list_is_current(entry: Mapping[str, Any], base_url: str, now: datetime) -> bool:
+    """The provider's price list was read successfully and is still fresh: a model missing
+    from it really has no published price (D-142). A failed or stale fetch says nothing."""
+    return entry.get("ok") is True and _is_fresh(entry, base_url, now)
+
+
 def _parse_prices(payload: Any) -> dict[str, dict[str, float]]:
     """OpenRouter: ``{"data": [{"id": …, "pricing": {"prompt": "0.000001", …}}]}`` (USD/token)."""
     prices: dict[str, dict[str, float]] = {}
@@ -124,6 +130,7 @@ async def refresh(
     only: Collection[str],
     environ: Mapping[str, str] | None = None,
     force: bool = False,
+    extra: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     """Fetch stale price lists for the providers in ``only`` that need one; returns the cache.
 
@@ -136,7 +143,12 @@ async def refresh(
     for name, provider in config.providers.items():
         if name not in only or not isinstance(provider, OpenAICompatProvider):
             continue
-        if not provider.enabled or not needs_price(provider):
+        # ``extra``: an explicitly chosen model the config does not list (D-142).
+        unlisted = (
+            extra is not None and extra[0] == name and provider.budget.daily_usd is not None
+            and all(m.id != extra[1] for m in provider.models)
+        )  # fmt: skip
+        if not provider.enabled or not (needs_price(provider) or unlisted):
             continue
         entry = cache.get(name, {})
         if not force and _is_fresh(entry, provider.base_url, now):

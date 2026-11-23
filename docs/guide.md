@@ -814,9 +814,10 @@ Orkestra reads a base file and a project file, and the project file wins:
 Mappings are merged deeply, lists are replaced, and `providers.<name>: null` removes a provider.
 Unknown keys are rejected so that typos do not pass silently. A `daily_usd` limit is checked
 before each request using `price_per_mtok`; without it Orkestra uses the provider's published
-price list (OpenRouter, cached for a day) or, failing that, the cost seen in past requests. A
-remote model with no known price is not used under a `daily_usd` limit (`--dry-run` shows it as
-`no_price`): add `price_per_mtok` to it. The full example with comments is
+price list (OpenRouter, cached for a day) or, failing that, the cost seen in past requests. Under a
+`daily_usd` limit, a remote model that its provider's freshly read price list does not price is
+not used (`--dry-run` shows `no_price`): add `price_per_mtok` to it. If the list could not be
+read, the request goes ahead with a warning and counts only the cost the provider reports. The full example with comments is
 [`examples/orkestra.example.yaml`](../examples/orkestra.example.yaml).
 
 ```yaml

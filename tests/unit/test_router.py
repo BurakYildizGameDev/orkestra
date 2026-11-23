@@ -66,6 +66,7 @@ class Case:
     profile: str | None = None
     providers: dict[str, Any] | None = None
     prices: dict[tuple[str, str], Price | None] = field(default_factory=dict)
+    price_lists: frozenset[str] = frozenset()
 
 
 CASES = [
@@ -233,6 +234,7 @@ CASES = [
     Case(
         "daily_usd without a price: the limit could never be checked (D-140)",
         prices={("router", "r1"): None, ("router", "r2"): None},
+        price_lists=frozenset({"router"}),  # its list was read and does not price them (D-142)
         expected=["local/small", "local/big", "local/mid"],
         eliminated={"router/r1": "no_price", "router/r2": "no_price"},
     ),
@@ -341,7 +343,7 @@ def test_route_table(case: Case) -> None:
     result = route(
         case.needs,
         _config(case.providers),
-        Snapshot(NOW, case.states, {**PRICED, **case.prices}),
+        Snapshot(NOW, case.states, {**PRICED, **case.prices}, price_lists=case.price_lists),
         profile=case.profile,
     )
     assert [c.label for c in result.candidates] == case.expected

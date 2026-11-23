@@ -9,6 +9,7 @@ user comments and formatting, with atomic writing and backups.
 from __future__ import annotations
 
 import sqlite3
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -102,7 +103,8 @@ def _model_name(raw: str) -> str:
     name = raw.strip()
     if not name:
         raise UsageError(t("team.error.no_model"))
-    if any(ord(c) < 32 for c in name):
+    if any(unicodedata.category(c)[0] == "C" or unicodedata.category(c) in ("Zl", "Zp")
+           for c in name):  # fmt: skip
         raise UsageError(t("team.error.invalid_model"))
     return name
 

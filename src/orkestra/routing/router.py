@@ -105,6 +105,8 @@ class Snapshot:
     providers: Mapping[str, ProviderState] = field(default_factory=dict)
     prices: Mapping[tuple[str, str], Price | None] = field(default_factory=dict)
     scores: Mapping[ScoreKey, Score] = field(default_factory=dict)  # routing.adaptive only
+    # Providers whose price list was read and is fresh: only there is "no price" certain.
+    price_lists: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -156,10 +158,10 @@ class Route:
 
     def error(self) -> ConsentRequired | NoProviderAvailable:
         details = [e.reason for e in self.eliminated]
-        # "Needs consent" only when consent is what blocks: a provider the user switched off
-        # must not hide the real reason (secrets, context size …; B-09, D-140).
-        blocking = [e for e in self.eliminated if e.code not in ("disabled", "experimental")]
-        if blocking and all(e.consent for e in blocking):
+        # "Needs consent" unless the task itself rules providers out (secrets, local only):
+        # then consenting would not help and the heading would hide the reason (B-09, D-142).
+        task_rules_out = any(e.code in ("secrets_remote", "not_local") for e in self.eliminated)
+        if any(e.consent for e in self.eliminated) and not task_rules_out:
             return ConsentRequired(t("select.consent_needed"), details=details)
         return NoProviderAvailable(t("select.none"), details=details)
 
@@ -388,8 +390,12 @@ def route(
                 )  # fmt: skip
                 continue
             price = snapshot.prices.get((name, model.id))
-            if price is None and cfg.budget.daily_usd is not None and not cfg.local:
-                # Without a price the daily_usd limit can never be checked (D-140).
+            if (
+                price is None and cfg.budget.daily_usd is not None and not cfg.local
+                and name in snapshot.price_lists
+            ):  # fmt: skip
+                # Its own price list does not price it: daily_usd could never be checked
+                # (D-140). Without a read list the run goes on; a reported cost counts (D-142).
                 drop(name, label, "no_price", "route.reason.no_price", model=label)
                 continue
             amount = budget.estimate(
@@ -546,6 +552,7 @@ def take_snapshot(
     cache = price_cache or {}
     states: dict[str, ProviderState] = {}
     prices: dict[tuple[str, str], Price | None] = {}
+    price_lists: set[str] = set()
     for name in config.providers if names is None else names:
         cfg = config.providers[name]
         if not cfg.enabled:
@@ -567,6 +574,8 @@ def take_snapshot(
         if isinstance(cfg, CliAgentProvider):
             continue
         history = cfg.budget.daily_usd is not None
+        if history and pricing.list_is_current(cache.get(name, {}), cfg.base_url, now):
+            price_lists.add(name)
         models = list(cfg.models)
         if extra_model and extra_model[0] == name and all(m.id != extra_model[1] for m in models):
             models.append(ModelSpec.model_validate({"id": extra_model[1], "tier": 1}))
@@ -578,7 +587,7 @@ def take_snapshot(
     if config.routing.adaptive or config.routing.prefer_fast or with_scores:
         outcomes = adaptive.load_outcomes(conn, now)
         scores = adaptive.scores(config, outcomes, tags, list(states), extra=extra_model)
-    return Snapshot(now, states, prices, scores)
+    return Snapshot(now, states, prices, scores, price_lists=frozenset(price_lists))
 
 
 def _running_low(
