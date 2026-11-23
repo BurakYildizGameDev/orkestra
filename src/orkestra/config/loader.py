@@ -167,7 +167,8 @@ def find_sources(
     if base.is_file():
         sources.append(ConfigSource(base, kind))
     elif kind != "global":
-        raise ConfigError(t("config.error.not_found", path=base))
+        key = "config.error.is_folder" if base.is_dir() else "config.error.not_found"
+        raise ConfigError(t(key, path=base))
     project = find_project_config(Path.cwd() if cwd is None else cwd)
     if project is not None and not (sources and same_file(project, sources[0].path)):
         sources.append(ConfigSource(project, "project"))

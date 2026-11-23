@@ -282,7 +282,11 @@ def test_fetched_price_stops_request_before_it_overspends(
 
 
 @respx.mock
-def test_unknown_price_warns(home: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_unknown_price_with_daily_usd_is_not_sent(
+    home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Without a price the daily_usd limit could never be checked: the cost stayed unknown
+    after the request too, so the limit never tripped (v0.9 break test B-17, D-140)."""
     config = home / "config.yaml"
     config.write_text(
         config.read_text(encoding="utf-8").replace("daily_requests: 5", "daily_usd: 1.0"),
@@ -290,15 +294,11 @@ def test_unknown_price_warns(home: Path, capsys: pytest.CaptureFixture[str]) -> 
     )
     _enable(capsys, "router")
     respx.get(f"{ROUTER}/models").mock(return_value=httpx.Response(200, json={"data": []}))
-    respx.post(f"{ROUTER}/chat/completions").mock(return_value=_router_ok())
+    sent = respx.post(f"{ROUTER}/chat/completions").mock(return_value=_router_ok())
     code, _, err = _run(["--lang", "en", "ask", "hi", "--provider", "router"], capsys)
-    assert code == 0
-    assert "no price known for router/provider/model" in err
-
-    respx.get(f"{OLLAMA}/api/tags").mock(return_value=httpx.Response(200, json={"models": []}))
-    _, out, _ = _run(["--lang", "en", "doctor"], capsys)
-    # After one real request the cost per token is known from history.
-    assert "estimated from past usage" in out
+    assert code == 3
+    assert not sent.called
+    assert "price_per_mtok" in err
 
 
 @respx.mock

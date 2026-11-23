@@ -264,6 +264,18 @@ def ntfy_url_ok(value: str) -> bool:
     return parts.scheme == "https" or (parts.scheme == "http" and _local_host(host.lower()))
 
 
+def plain_http_key(provider: object) -> bool:
+    """Would an API key travel unencrypted (``http://``) to another computer? (B-13, D-140)"""
+    if not getattr(provider, "api_key_env", None):
+        return False
+    try:
+        parts = urlsplit(str(getattr(provider, "base_url", "")).strip())
+        host = (parts.hostname or "").lower()
+    except ValueError:
+        return False
+    return parts.scheme == "http" and bool(host) and not _local_host(host)
+
+
 class QueueCfg(_Model):
     default_profile: str = "cheap"
 

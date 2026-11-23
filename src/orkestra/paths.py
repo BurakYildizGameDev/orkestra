@@ -15,7 +15,13 @@ def orkestra_home() -> Path:
     """``$ORKESTRA_HOME`` if set and non-empty, otherwise ``~/.orkestra``."""
     value = os.environ.get(HOME_ENV, "").strip()
     if value:
-        return Path(value).expanduser()
+        home = Path(value).expanduser()
+        if home.exists() and not home.is_dir():  # B-19, D-140
+            from orkestra.errors import UsageError
+            from orkestra.i18n import t
+
+            raise UsageError(t("paths.error.home_not_dir", path=home))
+        return home
     return Path.home() / ".orkestra"
 
 

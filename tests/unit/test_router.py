@@ -34,6 +34,12 @@ BASE_PROVIDERS: dict[str, Any] = {
         "budget": {"daily_usd": 1.0, "daily_requests": 100},
     },
 }
+# The router's daily_usd needs a price (D-140): these tests are not about prices.
+PRICED: dict[tuple[str, str], Price | None] = {
+    ("router", "r1"): Price(0.1, 0.1, "config"),
+    ("router", "r2"): Price(0.1, 0.1, "config"),
+}
+
 AGENTS = {
     "local": BASE_PROVIDERS["local"],
     "codex": {"type": "cli_agent", "command": "codex"},
@@ -225,6 +231,12 @@ CASES = [
         eliminated={"router": "key_missing"},
     ),
     Case(
+        "daily_usd without a price: the limit could never be checked (D-140)",
+        prices={("router", "r1"): None, ("router", "r2"): None},
+        expected=["local/small", "local/big", "local/mid"],
+        eliminated={"router/r1": "no_price", "router/r2": "no_price"},
+    ),
+    Case(
         "budget exhausted (requests)",
         states=_granted(router=ProviderState(consent="granted", used=Amount(requests=100))),
         expected=["local/small", "local/big", "local/mid"],
@@ -329,7 +341,7 @@ def test_route_table(case: Case) -> None:
     result = route(
         case.needs,
         _config(case.providers),
-        Snapshot(NOW, case.states, case.prices),
+        Snapshot(NOW, case.states, {**PRICED, **case.prices}),
         profile=case.profile,
     )
     assert [c.label for c in result.candidates] == case.expected
@@ -417,7 +429,7 @@ def test_project_provider_comes_after_global_ones() -> None:
 
 def test_explicit_model_is_not_dropped_by_the_profile() -> None:
     result = route(
-        TaskNeeds(provider="router", model="r2"), _config(), Snapshot(NOW, _granted()),
+        TaskNeeds(provider="router", model="r2"), _config(), Snapshot(NOW, _granted(), PRICED),
         profile="cheap",
     )  # fmt: skip
     assert [c.label for c in result.candidates] == ["router/r2"]
@@ -425,7 +437,7 @@ def test_explicit_model_is_not_dropped_by_the_profile() -> None:
 
 def test_task_tier_above_default_profile_narrows_to_that_tier() -> None:
     cfg = _config(defaults={"profile": "cheap"})
-    result = route(TaskNeeds(tier=2), cfg, Snapshot(NOW, _granted()))
+    result = route(TaskNeeds(tier=2), cfg, Snapshot(NOW, _granted(), PRICED))
     assert result.tier_range == (2, 2)
     assert [c.label for c in result.candidates] == ["local/mid", "router/r2"]
 

@@ -142,6 +142,15 @@ def _ignored(where: Path, rels: Sequence[str]) -> set[str]:
     return gw.ignored(where, rels)
 
 
+def _outside_repo(where: Path, rels: Sequence[str]) -> list[str]:
+    """Files outside the repository never reach the worker's worktree (B-18, D-140)."""
+    try:
+        root = gw.repo_root(where)
+    except OrkestraError:
+        return []  # not a repository: the run itself says it needs one
+    return [rel for rel in rels if not (where / rel).resolve().is_relative_to(root)]
+
+
 def delegate_task(
     plan_path: Path,
     verify_commands: Sequence[str],
@@ -185,6 +194,9 @@ def delegate_task(
         if not rcf.is_file():
             raise UsageError(t("delegate.error.plan_not_found", path=rcf))
         read_first.append(_rel_path(rcf, where))
+    outside = _outside_repo(where, read_first)
+    if outside:
+        raise UsageError(t("delegate.error.plan_outside", path=", ".join(outside)))
     hidden = _ignored(where, read_first)
     if hidden:
         raise UsageError(t("delegate.error.plan_ignored", path=", ".join(sorted(hidden))))

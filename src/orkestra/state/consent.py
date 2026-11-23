@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from orkestra.config.schema import CliAgentProvider, OllamaProvider, Provider
+from orkestra.config.schema import CliAgentProvider, OllamaProvider, Provider, plain_http_key
 from orkestra.i18n import t
 from orkestra.state.db import transaction
 
@@ -96,6 +96,8 @@ def describe(
         lines.append(t(key, url=config.base_url))
         if not config.local and _loopback(config.base_url):
             lines.append(t("consent.describe.loopback_hint"))
+        if plain_http_key(config):
+            lines.append(t("consent.describe.plain_http"))
         if not isinstance(config, OllamaProvider):
             if config.api_key_env:
                 lines.append(t("consent.describe.key", var=config.api_key_env))

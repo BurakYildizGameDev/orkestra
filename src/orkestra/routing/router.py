@@ -156,7 +156,10 @@ class Route:
 
     def error(self) -> ConsentRequired | NoProviderAvailable:
         details = [e.reason for e in self.eliminated]
-        if any(e.consent for e in self.eliminated):
+        # "Needs consent" only when consent is what blocks: a provider the user switched off
+        # must not hide the real reason (secrets, context size …; B-09, D-140).
+        blocking = [e for e in self.eliminated if e.code not in ("disabled", "experimental")]
+        if blocking and all(e.consent for e in blocking):
             return ConsentRequired(t("select.consent_needed"), details=details)
         return NoProviderAvailable(t("select.none"), details=details)
 
@@ -385,6 +388,10 @@ def route(
                 )  # fmt: skip
                 continue
             price = snapshot.prices.get((name, model.id))
+            if price is None and cfg.budget.daily_usd is not None and not cfg.local:
+                # Without a price the daily_usd limit can never be checked (D-140).
+                drop(name, label, "no_price", "route.reason.no_price", model=label)
+                continue
             amount = budget.estimate(
                 needs.prompt_chars,
                 max_output_tokens or model.max_output_tokens or config.defaults.max_output_tokens,
