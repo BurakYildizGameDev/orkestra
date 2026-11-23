@@ -549,6 +549,10 @@ def register(app: typer.Typer) -> None:
             str | None,
             typer.Option("--id", metavar="NAME", help=t("cli.delegate.option.id")),
         ] = None,
+        rounds: Annotated[
+            int | None,
+            typer.Option("--rounds", min=0, metavar="N", help=t("cli.delegate.option.rounds")),
+        ] = None,
         dry_run: Annotated[
             bool, typer.Option("--dry-run", help=t("cli.delegate.option.dry_run"))
         ] = False,
@@ -568,6 +572,7 @@ def register(app: typer.Typer) -> None:
             task_id=task_id,
             dry_run=dry_run,
             fix_commands=fix or (),
+            rounds=rounds,
         )
         if dry_run:
             if as_json:

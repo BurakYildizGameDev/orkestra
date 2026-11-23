@@ -41,9 +41,10 @@ import asyncio
 import json
 import os
 import random
+import re
 import sqlite3
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -193,6 +194,33 @@ def _repo_of(path: Path) -> Path | None:
         return None
 
 
+_TIME_PATTERN = re.compile(r"\s+in\s+[\d.]+s(?:\s*\([^)]*\))?")
+_PYTEST_LINE_NORM = re.compile(r"^(.+?):\d+: ((?:FAILED|ERROR) .+)$")
+
+
+def failure_signature(checks: Sequence[CheckResult]) -> frozenset[tuple[int, str, str]]:
+    """The set of failed verifiers and their itemised failure lines (Mimari §8, Faz 13r-b2)."""
+    items: set[tuple[int, str, str]] = set()
+    for idx, c in enumerate(checks):
+        if c.result.ok:
+            continue
+        vtype = c.result.type
+        feedback = c.feedback.strip()
+        if not feedback:
+            items.add((idx, vtype, ""))
+            continue
+        for raw_line in feedback.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            line = _TIME_PATTERN.sub("", line)
+            m = _PYTEST_LINE_NORM.match(line)
+            if m:
+                line = f"{m.group(1)}: {m.group(2)}"
+            items.add((idx, vtype, line))
+    return frozenset(items)
+
+
 class _TaskRun(RunRecord):
     """The attempts of one run: candidates, answers, checks, agents, failover."""
 
@@ -301,6 +329,7 @@ class _TaskRun(RunRecord):
         Returns the outcome when an answer passed, otherwise what to do next.
         """
         self.cache_key = None  # set per candidate, so no other candidate's key is reused
+        self.last_failures = None  # reset per candidate (Faz 13r-b2)
         config = candidate.config
         if isinstance(config, CliAgentProvider):
             return await self._try_agent(candidate, config)
@@ -481,6 +510,24 @@ class _TaskRun(RunRecord):
             message = t("verify.failed", checks=names)
             return self._fail(candidate, None, tries, retry.Action.ESCALATE, reason=message,
                               error=VERIFICATION_FAILED)  # fmt: skip
+        if self.task.limits.max_retries is not None and self.task.limits.max_retries > 1:
+            current_signature = failure_signature(checks)
+            if self.last_failures is not None and current_signature == self.last_failures:
+                self.log.info(
+                    "attempt %d made no progress (identical failures); stopping candidate",
+                    self.attempts,
+                )
+                names = ", ".join(c.result.type for c in checks if not c.result.ok)
+                message = t("verify.failed", checks=names)
+                return self._fail(
+                    candidate,
+                    None,
+                    tries,
+                    retry.Action.ESCALATE,
+                    reason=message,
+                    error=VERIFICATION_FAILED,
+                )
+            self.last_failures = current_signature
         # Feedback goes to a model: mask everything secret, as in the records. An API worker's
         # answer is undone before the retry; a code agent continues from its change instead
         # (``AGENT_CONTINUE``), so only chat workers are told their change was discarded.

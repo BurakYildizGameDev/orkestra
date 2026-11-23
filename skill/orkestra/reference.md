@@ -122,7 +122,7 @@ verify:
 allow_new_files: false
 ```
 
-Alanlar: `id` (harf veya rakamla başlar, sonra harf/rakam, `.`, `_`, `-`), `kind` (`ask` | `edit`), `tier` (1–3), `prompt`, `context.files` / `context.globs`, `verify`, `verify_defaults` (bkz. aşağı), `privacy` (`normal` | `local_only`), `allow_new_files`, `output` (`format: json`, `schema: dosya.json`), `limits` (`timeout_s`, `max_retries`), `workspace`, `provider`, `model`, `edit_format` (`auto` | `replace` | `whole`, bkz. aşağı), `tags` (kayıtta ve `orkestra stats` içinde görünen etiketler), `depends_on` (batch içinde: bu görevler `ok` bitmeden başlamaz), `max_wait_s` (isteğe bağlı azami ortanca süre, sn), `fix` (doğrulayıcılardan önce çalışma ağacında çalışan komutlar). Bilinmeyen alan hata verir (kod 2).
+Alanlar: `id` (harf veya rakamla başlar, sonra harf/rakam, `.`, `_`, `-`), `kind` (`ask` | `edit`), `tier` (1–3), `prompt`, `context.files` / `context.globs`, `verify`, `verify_defaults` (bkz. aşağı), `privacy` (`normal` | `local_only`), `allow_new_files`, `output` (`format: json`, `schema: dosya.json`), `limits` (`timeout_s`, `max_retries`), `workspace`, `provider`, `model`, `edit_format` (`auto` | `replace` | `whole`, bkz. aşağı), `tags` (kayıtta ve `orkestra stats` içinde görünen etiketler), `depends_on` (batch içinde: bu görevler `ok` bitmeden başlamaz), `max_wait_s` (isteğe bağlı azami ortanca süre, sn), `fix` (doğrulayıcılardan önce çalışma ağacında çalışan komutlar), `agents_only` (yalnızca kod ajanlarını aday yapar). Bilinmeyen alan hata verir (kod 2).
 
 Doğrulayıcılar (`verify`):
 - `command`: komut 0 ile bitmeli (`run`, `timeout_s`; boru veya `&&` gerekiyorsa `shell: true`).

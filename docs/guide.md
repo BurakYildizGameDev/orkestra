@@ -154,9 +154,12 @@ allow_new_files: true        # default; false: only the context files may change
 fix:                         # optional commands run before verifiers (changes kept in diff)
   - run: "ruff check --fix ."
   - run: "ruff format ."
+agents_only: true              # optional; true = only CLI coding agents may run the task
 ```
 
 **Fix commands (`fix`):** Optional list of commands (`run`, `timeout_s`, `shell: false`) to run sequentially in the worktree after each worker answer and before verifiers. Exit codes are ignored (formatters often exit 1 when files are modified), changes become part of the worker's diff, and logs are kept in `attempts/<n>/fix.log`. This avoids wasting worker attempts on mechanical formatting issues. (`fix` is not allowed on `ask` tasks and produces a validation error.)
+
+**Coding agents only (`agents_only`):** Optional boolean (`default: false`). When set to `true` (written automatically by `orkestra delegate`), the router only considers CLI coding agents (`cli_agent`, e.g. Codex or Antigravity); chat workers (API models and Ollama) are eliminated with reason `agents_only` because full phase implementation cannot be carried by chat models.
 
 API workers answer in one of two formats; `edit_format` (in the task file, or per model in the
 config) picks it, and the default `auto` chooses by file size:
@@ -461,6 +464,7 @@ orkestra delegate docs/phase-plan.md --verify "pytest -q" --json
 - **Options:**
   - `--verify "<command>"`: **Required** (at least one). Verification command (e.g. your test suite or linter).
   - `--fix "<command>"`: Command to run in the worktree before verifiers to fix formatting (repeatable, e.g. `ruff check --fix .`, `ruff format .`). Exit codes are ignored and changes become part of the diff.
+  - `--rounds <n>`: Number of correction rounds (`limits.max_retries`; default: 5). If a round brings no progress (identical failures), the loop stops early without wasting rounds.
   - `--context <file>`: Additional files the worker reads first (like the plan, they are protected: the worker may not change them).
   - `--to <provider>`: Target a specific provider (e.g. `agy`, `codex`).
   - `--profile <name>`: Routing profile (default: `balanced`). The task starts on the lowest tier a code agent works on in that profile.

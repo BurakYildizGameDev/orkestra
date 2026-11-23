@@ -329,6 +329,7 @@ class _Prepared:
             edit_lines=self.edit.lines if self.edit else 0,
             edit_format=self.task.edit_format,
             max_wait_s=self.task.max_wait_s,
+            agents_only=self.task.agents_only,
         )
 
 

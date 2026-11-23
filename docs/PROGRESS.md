@@ -51,11 +51,20 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 | 13n – Claude dışı şef (ek) | ✅ | 2026-11-19 | kılavuz skill'in özü (30 satır, kopma testi), `handoff show --guide`, benchmark mod E (agy şef; agy tokenı ayrı satırda); ilk koşu 2/2 (D-102) |
 | 13o – Sağlayıcı ekleme komutu (ek) | ✅ | 2026-11-19 | herhangi bir OpenAI uyumlu servis: `providers add` / `import opencode` / `remove`, `--check` (= doctor), sihirbazda "başka bir OpenAI uyumlu servis"; anahtar asla kopyalanmaz; EVREN ile canlı test geçti (D-100) |
 | 13q – Hız farkındalığı ve devir uyarısı (ek) | ✅ | 2026-11-23 | 13q-a ortanca süre, 13q-b `routing.prefer_fast` (D-124), 13q-c görev alanı `max_wait_s` (D-125), 13q-d `small_task` uyarısı (D-126) agy'den; faz sonu kod denetimi ve skill kuralları Claude (D-127); PR #54–#57 birleşti; ölçüm (`bench/results/2026-11-23-0059`, G × 2, 2/2 geçti): görev başına $1,24 / 82,8k Claude tokenı (eski G $1,19 / 76,7k): **iyileşme yok**; devreden koşu yine ~1000 sn bekledi (bench tek oturumda bitmeyi şart koşuyor, bekleme kuralı burada işleyemez); 5. madde (yarış) ertelendi |
+| 13r-b2 – Faz boyu test döngüsü + yalnız ajan (ek) | ✅ | 2026-11-23 | agy yazdı; limits.max_retries (varsayılan 5), delegate --rounds, ilerlemesiz turda erken durma, TaskSpec.agents_only (D-133) |
 | 13r-b1 – Kısa ve tam geri bildirim + fix komutları (ek) | ✅ | 2026-11-23 | agy yazdı (elle, uygulamada); outparse ile özetlenen ve adil paylaşılan geri bildirim, TaskSpec.fix ve delegate --fix (D-131); Claude denetledi ve düzeltti (D-132) |
 | 13r-a – Fazı tümden devret: delegate, bildirim ve durum (ek) | ⏳ | 2026-11-23 | agy yazdı (Orkestra kuyruğuyla verildi, doğrulamada düştü), Claude denetledi ve düzeltti (D-128, D-129, D-130); kalan: 13r-b (`on_failover`) `orkestra delegate` ile, 13r-c |
 | 14 – Yayın | ⏳ | | |
 
 ## Faz kayıtları
+
+### Faz 13r-b2 – Faz boyu test döngüsü + yalnız ajan (2026-11-23)
+
+- **Faz boyu test döngüsü ve varsayılan retries:** `orkestra delegate` görevlerinde `limits.max_retries` varsayılanı 5 olarak belirlendi. CLI'ye `--rounds <n>` seçeneği eklendi. Var olan görevlerin varsayılanı (`defaults.max_retries = 2`) değişmedi.
+- **İlerlemesiz turda erken durma:** Çok turlu görevlerde (`max_retries > 1`) bir turun başarısız doğrulayıcı kümesi (doğrulayıcı indeksi + türü + normalleştirilmiş hata/test satırları, değişken süreler ayıklanarak) bir önceki turla birebir aynıysa döngü erken durdurulur (`Action.ESCALATE`) ve sıradaki adaya/kademeye geçer; boşa tur harcanmaz. `max_retries <= 1` olan veya `max_retries` belirtilmemiş eski görevlerde davranış bit bit aynı kalır.
+- **Yalnızca kod ajanları (`agents_only`):** `TaskSpec` şemasına `agents_only: bool = False` eklendi (`delegate` bunu `True` yazar). Router `agents_only: true` iken yalnızca CLI kod ajanlarını (`CliAgentProvider`) aday yapar; sohbet işçileri `agents_only` gerekçesiyle elenir (`--dry-run --json`'da görünür).
+- **İki yolda da doğrulama:** İlerlemesiz turda erken durma ve test döngüsü hem kod ajanı hem sohbet işçisi yollarında test edildi (`tests/unit/test_loop_and_agents_only.py`).
+- **Kabul kriterleri:** 10 yeni test yazıldı; ruff, pyright, pytest temiz; Mimari, rehber ve skill güncellendi.
 
 ### Faz 13r-b1 – Kısa ve tam geri bildirim + fix komutları (2026-11-23)
 

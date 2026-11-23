@@ -151,9 +151,12 @@ allow_new_files: true        # varsayılan; false: sadece bağlamdaki dosyalar d
 fix:                         # doğrulayıcılardan önce çalışacak komutlar (değişiklik farka katılır)
   - run: "ruff check --fix ."
   - run: "ruff format ."
+agents_only: true              # isteğe bağlı; true = yalnızca CLI kod ajanları görevi çalıştırabilir
 ```
 
 **Düzeltme komutları (`fix`):** Düzenleme görevinde işçinin her cevabından sonra ve doğrulayıcılardan önce çalışma ağacında sırayla çalıştırılacak isteğe bağlı komut listesi (`run`, `timeout_s`, `shell: false`). Çıkış kodu önemsenmez (biçimlendiriciler dosya değişince 1 dönebilir), yapılan değişiklikler işçinin farkına katılır ve çıktılar `attempts/<n>/fix.log` dosyasına yazılır. Böylece işçinin düzeltme turları mekanik biçim hatalarına harcanmaz. (`fix` alanı `ask` görevlerinde kullanılamaz ve şema hatası verir.)
+
+**Yalnızca kod ajanları (`agents_only`):** İsteğe bağlı boole (`varsayılan: false`). `true` yapıldığında (`orkestra delegate` tarafından otomatik yazılır), yönlendirici yalnızca CLI kod ajanlarını (`cli_agent`, ör. Codex veya Antigravity) aday yapar; sohbet işçileri (API modelleri ve Ollama) `agents_only` gerekçesiyle elenir çünkü faz büyüklüğündeki işleri sohbet modelleri taşıyamaz.
 
 API işçileri iki biçimden biriyle cevap verir. Biçimi `edit_format` seçer (görev dosyasında ya
 da config'te model bazında). Varsayılan `auto`, dosya boyutuna göre seçer:
@@ -457,6 +460,7 @@ orkestra delegate docs/faz-plani.md --verify "pytest -q" --json
 - **Seçenekler:**
   - `--verify "<komut>"`: **Zorunlu** (en az bir tane). Doğrulama komutu (ör. projenin test komutu).
   - `--fix "<komut>"`: Doğrulayıcılardan önce çalışma ağacında biçimi düzeltmek için çalıştırılacak komut (tekrarlanabilir, ör. `ruff check --fix .`, `ruff format .`). Çıkış kodu önemsenmez, değişiklikler farka katılır.
+  - `--rounds <n>`: Düzeltme turu sayısı (`limits.max_retries`; varsayılan: 5). Bir tur ilerleme getirmezse (aynı başarısızlık kümesi iki tur üst üste), döngü boşa tur harcamadan erken durur.
   - `--context <dosya>`: İşçinin önce okuyacağı ek dosyalar (plan gibi korunur: işçi bunları değiştiremez).
   - `--to <sağlayıcı>`: Görevi belirli bir sağlayıcıyla sınırla (ör. `agy`, `codex`).
   - `--profile <ad>`: Yönlendirme profili (varsayılan: `balanced`). Görev, o profilde bir kod ajanının çalıştığı en düşük kademeden başlar.
