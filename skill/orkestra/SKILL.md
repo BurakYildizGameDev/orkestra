@@ -32,6 +32,8 @@ verify:
 
 Session start: `orkestra status --json`; review `unapplied` runs before new work.
 
+Phase-sized work with a written plan (a whole feature): write the plan to a file, run `orkestra delegate <plan.md> --verify "<project test command>"` (plus `--fix "<formatter>"`), tell the user it runs in the background and end the session; when the user says it is done, review in a fresh session (`orkestra status --json`, `orkestra show <run_id> --diff`), fix, apply. Never split such work into pieces delegated inside the session: that costs more than it saves.
+
 Long hand-off (a big batch, a code agent, minutes of work): do not wait for it in the open session. Put it in the queue (`orkestra queue add <file>`; the user runs it) or in the background and come back later with `orkestra status --json`; or update the handoff (`orkestra handoff update`) and end the session.
 
 Exit codes: 1 = task failed; 2 = usage error, or a batch estimate with `needs_confirmation`: show it to the user and add `--yes-cost` only if they accept; 3 = no provider (budget, offline, secrets): tell the user, never change budget limits yourself; 4 = consent needed: the user runs `orkestra providers enable <name>`; 5 = apply conflict.

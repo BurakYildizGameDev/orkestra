@@ -216,7 +216,7 @@ orkestra show <run_id> --json     # zarfı tekrar al
 orkestra delegate .orkestra/plan.md --verify "python -m pytest -q" --json
 ```
 
-Seçenekler: `--verify "<komut>"` (en az bir tane, zorunlu), `--fix "<komut>"` (doğrulayıcılardan önce biçimi düzelten komut, tekrarlanabilir), `--context <dosya>` (işçinin önce okuyacağı, değiştiremeyeceği ek dosya), `--to <sağlayıcı>` (belirli sağlayıcı), `--profile <ad>` (varsayılan: `balanced`), `--timeout <sn>` (varsayılan 3600), `--id <ad>` (görev kimliği), `--dry-run`, `--json`. Komut görevi `.orkestra/tasks/<id>.yaml` dosyasına yazar, kuyruğa ekler, arka planda çalışan bir kuyruk koşucusu yoksa `orkestra queue run --notify` başlatır ve hemen döner. Oturumu kapatabilirsin; iş bitince (bir bildirim kanalı varsa) bildirim gelir. Durumu `orkestra status --json` çıktısındaki `delegated` bölümünden izleyebilirsin.
+Seçenekler: `--verify "<komut>"` (en az bir tane, zorunlu), `--fix "<komut>"` (doğrulayıcılardan önce biçimi düzelten komut, tekrarlanabilir), `--context <dosya>` (işçinin önce okuyacağı, değiştiremeyeceği ek dosya), `--to <sağlayıcı>` (belirli sağlayıcı), `--profile <ad>` (varsayılan: `balanced`), `--timeout <sn>` (varsayılan 3600), `--rounds <n>` (düzeltme turu, varsayılan 5; ilerlemesiz turda durur), `--id <ad>` (görev kimliği), `--dry-run`, `--json`. Komut görevi `.orkestra/tasks/<id>.yaml` dosyasına yazar, kuyruğa ekler, arka planda çalışan bir kuyruk koşucusu yoksa `orkestra queue run --notify` başlatır ve hemen döner. Oturumu kapatabilirsin; iş bitince (bir bildirim kanalı varsa) bildirim gelir. Durumu `orkestra status --json` çıktısındaki `delegated` bölümünden izleyebilirsin.
 
 ## 6. Denetim (atlanamaz)
 

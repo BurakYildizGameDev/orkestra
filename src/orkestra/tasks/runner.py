@@ -806,6 +806,10 @@ class _TaskRun(RunRecord):
         self.note = text
         ctx = VerifyContext(workdir=self.workdir, output=text, changes=self._changes(wt, change))
         checks = await run_verifiers(self.prep.checks, ctx) if self.prep.checks else []
+        # The agent's work is on disk before the destructive reset: a failing reset must not
+        # lose an attempt that may have taken an hour (D-136).
+        self._write(attempt_dir / workspaces.PATCH_FILE,
+                    change.patch.decode("utf-8", errors="replace"), answer=True)  # fmt: skip
         gw.reset(wt)  # drop what the verifiers left behind
         gw.restore(wt, change.patch)
         return [*outside, *checks]
