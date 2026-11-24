@@ -625,6 +625,27 @@ def test_team_api_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
         worker_names = [w["name"] for w in data["workers"]]
         assert "cloud-api" in worker_names
 
+        # A string must not be coerced to True and silently enable overwrite behavior.
+        code, _, _ = simulate_request(
+            server,
+            "POST",
+            f"/api/team/worker/add?token={server.token}",
+            body=json.dumps(
+                {
+                    "name": "invalid-force",
+                    "type": "openai_compat",
+                    "base_url": "https://api.example.test/v1",
+                    "model": "model",
+                    "api_key_env": "CLOUD_API_KEY",
+                    "force": "false",
+                }
+            ).encode("utf-8"),
+        )
+        assert code == 400
+        from orkestra.config.loader import load_config
+
+        assert "invalid-force" not in load_config(cfg_file).config.providers
+
         # 8. POST /api/team/worker/reorder
         code, _, body = simulate_request(
             server,

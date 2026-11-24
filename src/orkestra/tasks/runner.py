@@ -555,9 +555,7 @@ class _TaskRun(RunRecord):
         self.rejected = _Answer(candidate, result.text, checks, result)
         self.last_problem = "checks"
         if self.wt is not None:
-            self.rejected_patch = (
-                None if self.agent_nonportable_paths else gw.diff(self.wt).patch
-            )
+            self.rejected_patch = None if self.agent_nonportable_paths else gw.diff(self.wt).patch
         failures = [c.feedback for c in checks if not c.result.ok]
         # Feedback goes to a model: mask everything secret, as in the records (also for the
         # continuation note of a later agent, D-135).

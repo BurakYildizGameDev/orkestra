@@ -318,6 +318,15 @@ def test_add_form_has_a_no_key_choice() -> None:
     assert "no_key" in page.split("<script>", 1)[1]
 
 
+def test_navigation_and_worker_reorder_have_accessible_labels() -> None:
+    page = ui.render_home_html("tok")
+    script = page.split("<script>", 1)[1]
+    assert 'id="nav-home" class="nav-item active" data-tab="home" aria-pressed="true"' in page
+    assert 'item.setAttribute("aria-pressed", String(active))' in script
+    assert 'up.setAttribute("aria-label", up.title)' in script
+    assert 'down.setAttribute("aria-label", down.title)' in script
+
+
 # 13. Redesign (2026-11-21, user: "çok AI gibi"): texts the script shows come from the catalog
 # by key, so a placeholder can never leak ("0 {count} bekleyen").
 def test_script_translations_are_the_catalog_keys_it_uses() -> None:

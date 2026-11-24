@@ -92,6 +92,7 @@ class WebServer(http.server.ThreadingHTTPServer):
         # The Keys screen's "try" button: the doctor checks of one provider (network).
         self.provider_checker: Callable[[str, Config], list[Check]] = _default_provider_checker
         self._doctor_lock = threading.RLock()
+        self._config_lock = threading.RLock()
         super().__init__((config.host, config.port), WebHandler)
 
     def server_bind(self) -> None:
@@ -394,6 +395,7 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if parsed.startswith("/api/team/"):
+            self.server._config_lock.acquire()
             try:
                 body = self._read_json()
                 if parsed == "/api/team/patron":
@@ -464,6 +466,8 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                 self._send_error_json(400, str(exc))
             except Exception as exc:
                 self._send_error_json(500, str(exc))
+            finally:
+                self.server._config_lock.release()
             return
 
         if parsed.startswith("/api/keys/"):

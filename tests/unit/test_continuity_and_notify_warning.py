@@ -369,6 +369,29 @@ async def test_doctor_warns_when_no_notification_channel(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
+async def test_doctor_suggests_configuration_when_desktop_notifications_are_disabled(
+    tmp_path: Path,
+) -> None:
+    from orkestra.i18n import t
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "version: 1\nnotify:\n  desktop: false\nproviders: {}\n",
+        encoding="utf-8",
+    )
+    report = await doctor.run_doctor(
+        config_flag=config_path,
+        which=lambda tool: "/usr/bin/git" if tool == "git" else None,
+        probe=lambda path: "git version 2.50.0",
+        platform="linux",
+        has_desktop=lambda: False,
+    )
+
+    check = next(c for c in report.checks if c.name == "notify")
+    assert check.data["hint"] == t("doctor.hint.configure_notify")
+
+
+@pytest.mark.asyncio
 async def test_doctor_suppresses_warning_when_channel_available(tmp_path: Path) -> None:
     # 1. Desktop available
     report_desktop = await doctor.run_doctor(

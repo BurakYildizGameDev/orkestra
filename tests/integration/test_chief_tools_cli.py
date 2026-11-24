@@ -351,9 +351,14 @@ def test_status_lists_unapplied_runs(
     run_id = json.loads(out)["results"][0]["run_id"]
     code, out, _ = _run(["--lang", "en", "status"], capsys)
     assert code == 0 and run_id in out
+    with closing(db.connect()) as conn:
+        conn.execute("UPDATE runs SET status = 'error' WHERE run_id = ?", (run_id,))
     code, out, _ = _run(["status", "--json"], capsys)
     unapplied = json.loads(out)["sections"]["unapplied"]["runs"]
     assert [r["run_id"] for r in unapplied] == [run_id]
+    assert unapplied[0]["status"] == "error"
+    with closing(db.connect()) as conn:
+        conn.execute("UPDATE runs SET status = 'ok' WHERE run_id = ?", (run_id,))
     assert _run(["apply", run_id], capsys)[0] == 0
     code, out, _ = _run(["status", "--json"], capsys)
     assert json.loads(out)["sections"]["unapplied"]["runs"] == []

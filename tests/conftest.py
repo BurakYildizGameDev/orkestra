@@ -10,7 +10,8 @@ from orkestra import i18n
 
 @pytest.fixture(autouse=True)
 def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    """No test sees the developer's home, language or locale."""
+    """No test sees the developer's home, locale, or project config from the repo cwd."""
+    monkeypatch.chdir(tmp_path)
     for var in (i18n.LANG_ENV, "LC_ALL", "LC_MESSAGES", "LANG", "ORKESTRA_CONFIG"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(i18n, "_platform_locale", lambda: None)

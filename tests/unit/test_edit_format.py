@@ -134,6 +134,11 @@ def test_unsafe_paths_are_rejected(raw: str) -> None:
     assert ef.normalize_path(raw) is None
 
 
+@pytest.mark.parametrize("raw", ["CON", "nul.txt", "aux.log", "bad:name", "trailing.", "trailing "])
+def test_nonportable_windows_paths_are_rejected(raw: str) -> None:
+    assert ef.normalize_path(raw) is None
+
+
 def _workdir(tmp_path: Path) -> Path:
     work = tmp_path / "work"
     (work / "src").mkdir(parents=True)

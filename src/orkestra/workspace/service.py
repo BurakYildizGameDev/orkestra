@@ -371,7 +371,9 @@ def unapplied_runs(conn: sqlite3.Connection) -> list[Unapplied]:
         summary = data.get("summary") if isinstance(data, dict) else None
         started = datetime.fromisoformat(row["started_at"])
         item = Unapplied(
-            row["run_id"], row["task_id"], summary if isinstance(summary, str) else "",
+            row["run_id"],
+            row["task_id"],
+            summary if isinstance(summary, str) else "",
             row["status"],
         )
         waiting.append((started, item))
