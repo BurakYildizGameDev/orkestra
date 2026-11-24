@@ -204,15 +204,17 @@ def _chief_quota(ctx: StatusContext) -> Section | None:
 @section("unapplied", order=30)
 def _unapplied(ctx: StatusContext) -> Section:
     runs = service.unapplied_runs(ctx.conn)
-    data = {"runs": [{"run_id": r.run_id, "task_id": r.task_id, "summary": r.summary}
+    data = {"runs": [{"run_id": r.run_id, "task_id": r.task_id,
+                      "status": r.status, "summary": r.summary}
                      for r in runs]}  # fmt: skip
     if not runs:
         return Section([t("status.unapplied.none")], data)
     lines = [t("status.unapplied.title", count=len(runs))]
     for run in runs[:SHOWN_RUNS]:
         summary = " ".join(run.summary.split())[:70]
+        state = t(f"status.unapplied.state.{run.status}")
         lines.append(t("status.unapplied.run", run_id=run.run_id, task_id=run.task_id,
-                       summary=summary or "-"))  # fmt: skip
+                       status=state, summary=summary or "-"))  # fmt: skip
     if len(runs) > SHOWN_RUNS:
         lines.append(t("status.unapplied.more", count=len(runs) - SHOWN_RUNS))
     return Section(lines, data)

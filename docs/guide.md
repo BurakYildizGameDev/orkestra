@@ -583,10 +583,10 @@ review:
   lines, the whole diff, or `review` when there is none yet.
 - The skill tells the chief not to delegate one small task, to hand over mechanical work in
   one batch (or `run --template`), and to use the project's own tests as the check.
-- **Delegation thresholds (`small_task` warning):** Delegating small tasks (< 5 files and < 100 lines)
-  imposes a fixed overhead on the chief. When running `orkestra run`, `--dry-run` or `batch --estimate`,
-  tasks below both thresholds produce a `small_task` warning in stderr and the envelope (`warnings: ["small_task"]`)
-  advising the chief to handle it directly. It is non-blocking (the task still executes). Configured via
+- **Delegation thresholds (`small_task` warning):** The warning measures only supplied context (< 5 files and < 100 lines), not the requested task scope.
+  When running `orkestra run`, `--dry-run` or `batch --estimate`, tasks below both thresholds produce a
+  `small_task` warning in stderr and the envelope (`warnings: ["small_task"]`). Use it to weigh delegation
+  overhead; a small context can still describe a large task. It is non-blocking (the task still executes). Configured via
   `delegation.min_files` and `delegation.min_lines` (`0` disables). Direct runs (`queue`, `--profile cheap`, `ask`)
   do not emit this warning.
 
@@ -819,6 +819,11 @@ price list (OpenRouter, cached for a day) or, failing that, the cost seen in pas
 not used (`--dry-run` shows `no_price`): add `price_per_mtok` to it. If the list could not be
 read, the request goes ahead with a warning and counts only the cost the provider reports. The full example with comments is
 [`examples/orkestra.example.yaml`](../examples/orkestra.example.yaml).
+
+Project configuration does not isolate Orkestra's state. Consent, usage, cache and worktrees
+live under `ORKESTRA_HOME` when set, otherwise `~/.orkestra`, even when the project has its own
+`orkestra.yaml`. Set `ORKESTRA_HOME` to a project-local directory when you want isolated state
+and provider consents for that project.
 
 ```yaml
 version: 1

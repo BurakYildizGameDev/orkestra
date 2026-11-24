@@ -579,10 +579,10 @@ review:
   tamamı ya da henüz denetim yoksa `review`.
 - Skill şefe tek küçük işi devretmemesini, mekanik işi tek batch'le (ya da `run --template`)
   vermesini ve doğrulayıcı olarak projenin kendi testlerini kullanmasını söyler.
-- **Devir eşikleri (`small_task` uyarısı):** Küçük görevleri (< 5 dosya ve < 100 satır) devretmek
-  şefe sabit bir token ek yükü getirir. `orkestra run`, `--dry-run` veya `batch --estimate` çalışırken
-  her iki eşiğin altındaki görevlerde stderr'e ve zarfa (`warnings: ["small_task"]`) işi doğrudan yapmayı
-  öneren bir `small_task` uyarısı yazılır. Engelleyici değildir (koşu devam eder). Config'de
+- **Devir eşikleri (`small_task` uyarısı):** Uyarı yalnızca sağlanan bağlamı ölçer (< 5 dosya ve < 100 satır); istenen işin kapsamını ölçmez.
+  `orkestra run`, `--dry-run` veya `batch --estimate` çalışırken her iki eşiğin altındaki görevlerde stderr'e
+  ve zarfa (`warnings: ["small_task"]`) uyarı yazılır. Bunu devir ek yükünü tartmak için kullanın; küçük bağlam
+  büyük bir işi tarif ediyor olabilir. Engelleyici değildir (koşu devam eder). Config'de
   `delegation.min_files` ve `delegation.min_lines` ile ayarlanabilir (`0` kapatır). Doğrudan kullanımlarda
   (`queue`, `--profile cheap`, `ask`) bu uyarı verilmez.
 
@@ -815,6 +815,11 @@ istekten önce `price_per_mtok` ile kontrol edilir; o yoksa sağlayıcının yay
 kullanılmaz (`--dry-run`'da `no_price`): modele `price_per_mtok` ekle. Liste okunamadıysa istek
 uyarıyla gider ve yalnız sağlayıcının bildirdiği maliyet sayılır. Yorumlu tam örnek:
 [`examples/orkestra.example.yaml`](../examples/orkestra.example.yaml).
+
+Proje yapılandırması Orkestra durumunu kendiliğinden ayırmaz. Onaylar, kullanım kayıtları,
+önbellek ve worktree'ler proje `orkestra.yaml` dosyası olsa da `ORKESTRA_HOME` altında,
+ayarlanmamışsa `~/.orkestra` içinde tutulur. Projeye özel durum ve sağlayıcı onayları için
+`ORKESTRA_HOME` değişkenini proje içindeki ayrı bir dizine ayarlayın.
 
 ```yaml
 version: 1

@@ -1455,3 +1455,11 @@ Claude, agy'nin 13r-b2 (PR #61) ve 13r-b3 (PR #62) farkını denetledi. Özü do
 4. **"Önce onay gerekiyor" (D-140'ı düzeltir):** onay gerekiyorsa başlık yine "onay"; yalnız görevin kendisi sağlayıcıları dışlıyorsa (`secrets_remote`, `not_local`: onay vermek işe yaramaz) "sağlayıcı yok". Kademe, model yok, duraklatma gibi sebepler onay başlığını artık bozmaz (çıkış kodu 4'e bakan betikler).
 5. **Küçükler:** bozuk adres (`http://[::1:8000`) onay ekranını çökertmiyor, `127.example.com` artık loopback sayılmıyor (`ipaddress`); model adında her türlü denetim karakteri ve satır ayırıcı (U+0085, U+2028, U+2029, DEL) reddedilir; zaman aşımı notu: D-139 yalnız aynı adayda yeniden denemeyi kaldırdı, sıradaki aday aynı sağlayıcının başka modeli olabilir, devre kesici 3 hatada açılır (büyük modelin yavaşlığı küçüğü hakkında bir şey söylemez; bilinçli).
 **Testler:** `tests/unit/test_v09_review_fixes.py`; `test_router.py` `Case.price_lists`.
+
+## D-143 — Config yazımında süreçler arası çakışma koruması (2026-11-24, Faz 14 hazırlığı)
+**Bağlam:** Web sunucusu thread'li çalışırken CLI ayrı bir süreçte aynı config'i kaydedebilir. Atomik `os.replace` yarım yazmayı önlese de iki süreç eski kopyayı okuyup birbirinin güncellemesini silebilirdi.
+**Kararlar:**
+1. Her config yolu için geçici dizinde, yolun SHA-256 özetinden türetilen ortak kilit dosyası kullanılır. Windows'ta `msvcrt.locking`, POSIX'te `fcntl.flock`; `writer.save` ve `loader.init_config` bu protokolü kullanır; yeni bağımlılık eklenmez.
+2. `writer.load_document` kaynak dosyanın SHA-256 özetini belgeye bağlar. `writer.save` kilit altında mevcut özeti karşılaştırır; dosya arada değişmişse yedek veya yazma yapmadan çevrilmiş bir çakışma hatası verir.
+3. Başarılı kayıttan sonra aynı belge nesnesinin özeti yenilenir; mevcut ardışık düzenlemeler ve yedek davranışı korunur.
+**Testler:** eski belgeyle sessiz üstüne yazmanın reddi, ayrı süreçte kilidin bloklaması ve config writer regresyon paketi.

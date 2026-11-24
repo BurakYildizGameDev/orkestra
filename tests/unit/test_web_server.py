@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -625,6 +626,27 @@ def test_team_api_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
         worker_names = [w["name"] for w in data["workers"]]
         assert "cloud-api" in worker_names
 
+        # A string must not be coerced to True and silently enable overwrite behavior.
+        code, _, _ = simulate_request(
+            server,
+            "POST",
+            f"/api/team/worker/add?token={server.token}",
+            body=json.dumps(
+                {
+                    "name": "invalid-force",
+                    "type": "openai_compat",
+                    "base_url": "https://api.example.test/v1",
+                    "model": "model",
+                    "api_key_env": "CLOUD_API_KEY",
+                    "force": "false",
+                }
+            ).encode("utf-8"),
+        )
+        assert code == 400
+        from orkestra.config.loader import load_config
+
+        assert "invalid-force" not in load_config(cfg_file).config.providers
+
         # 8. POST /api/team/worker/reorder
         code, _, body = simulate_request(
             server,
@@ -659,6 +681,62 @@ def test_team_api_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
         data = json.loads(body.decode("utf-8"))
         assert "cloud-api" not in [w["name"] for w in data["workers"]]
     finally:
+        server.server_close()
+
+
+def test_team_api_serializes_concurrent_config_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import json
+
+    db_file = tmp_path / "state.db"
+    monkeypatch.setattr("orkestra.paths.state_db_path", lambda: db_file)
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text(
+        "version: 1\ndefaults:\n  chief: claude\n"
+        "chiefs:\n  claude:\n    launch: ['claude']\n  agy:\n    launch: ['agy']\n"
+        "providers: {}\n",
+        encoding="utf-8",
+    )
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    second_entered = threading.Event()
+    second_started = threading.Event()
+
+    def hold_first_write(_path: Path, chief: str) -> None:
+        if chief == "agy":
+            first_entered.set()
+            assert release_first.wait(timeout=3)
+        else:
+            second_entered.set()
+
+    monkeypatch.setattr("orkestra.chief.team.set_patron", hold_first_write)
+    server = create_server(ServerConfig(port=0, token="tok", config_path=cfg_file))
+    results: list[int] = []
+
+    def post(chief: str, *, started: threading.Event | None = None) -> None:
+        if started is not None:
+            started.set()
+        body = json.dumps({"chief": chief}).encode("utf-8")
+        code, _, _ = simulate_request(server, "POST", "/api/team/patron?token=tok", body=body)
+        results.append(code)
+
+    first = threading.Thread(target=post, args=("agy",))
+    second = threading.Thread(target=post, args=("claude",), kwargs={"started": second_started})
+    try:
+        first.start()
+        assert first_entered.wait(timeout=2)
+        second.start()
+        assert second_started.wait(timeout=2)
+        assert not second_entered.wait(timeout=0.2)
+        release_first.set()
+        first.join(timeout=3)
+        second.join(timeout=3)
+        assert not first.is_alive() and not second.is_alive()
+        assert second_entered.is_set()
+        assert results == [200, 200]
+    finally:
+        release_first.set()
         server.server_close()
 
 

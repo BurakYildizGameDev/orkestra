@@ -262,6 +262,28 @@ def diff(wt: Worktree) -> ChangeSet:
     return ChangeSet(patch, tuple(files))
 
 
+def changed_paths(wt: Worktree) -> tuple[str, ...]:
+    """Changed and untracked paths relative to the run baseline, without staging files."""
+    tracked = _git(
+        ["diff", "--name-only", "-z", "--no-renames", wt.baseline, "--", ".", *_EXCLUDES],
+        wt.path,
+    ).stdout
+    untracked = _git(
+        ["ls-files", "--others", "--exclude-standard", "-z", "--", ".", *_EXCLUDES],
+        wt.path,
+    ).stdout
+    return tuple(
+        sorted(
+            {
+                path.decode("utf-8", errors="surrogateescape")
+                for blob in (tracked, untracked)
+                for path in blob.split(b"\0")
+                if path
+            }
+        )
+    )
+
+
 def _pairs(name_status: bytes) -> dict[str, str]:
     parts = [p.decode("utf-8", errors="surrogateescape") for p in name_status.split(b"\0")]
     return {parts[i + 1]: parts[i][:1] for i in range(0, len(parts) - 1, 2) if parts[i]}

@@ -134,6 +134,16 @@ def test_unsafe_paths_are_rejected(raw: str) -> None:
     assert ef.normalize_path(raw) is None
 
 
+@pytest.mark.parametrize("raw", ["CON", "nul.txt", "aux.log", "bad:name", "trailing.", "trailing "])
+def test_nonportable_windows_paths_are_rejected(raw: str) -> None:
+    assert ef.normalize_path(raw) is None
+
+
+def test_changed_nonportable_paths_are_detected_before_git_staging() -> None:
+    assert ef.nonportable_paths(("src/app.py", "CON", "nul.txt")) == ("CON", "nul.txt")
+    assert ef.nonportable_paths(("src/app.py",)) == ()
+
+
 def _workdir(tmp_path: Path) -> Path:
     work = tmp_path / "work"
     (work / "src").mkdir(parents=True)

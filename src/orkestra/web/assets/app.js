@@ -109,7 +109,9 @@ const LOADERS = {
 function switchTab(target) {
     const tab = Object.prototype.hasOwnProperty.call(LOADERS, target) ? target : "home";
     document.querySelectorAll(".nav-item").forEach(item => {
-        item.classList.toggle("active", item.dataset.tab === tab);
+        const active = item.dataset.tab === tab;
+        item.classList.toggle("active", active);
+        item.setAttribute("aria-pressed", String(active));
     });
     Object.keys(LOADERS).forEach(name => {
         document.getElementById("view-" + name).hidden = (name !== tab);
@@ -279,10 +281,12 @@ function workerRow(w, idx) {
     const reorder = el("span", "reorder");
     const up = el("button", "btn btn-quiet btn-icon", "▲");
     up.title = tr("team.worker.move_up");
+    up.setAttribute("aria-label", up.title);
     up.disabled = idx === 0;
     up.addEventListener("click", () => moveWorker(idx, -1));
     const down = el("button", "btn btn-quiet btn-icon", "▼");
     down.title = tr("team.worker.move_down");
+    down.setAttribute("aria-label", down.title);
     down.disabled = idx === teamWorkers.length - 1;
     down.addEventListener("click", () => moveWorker(idx, 1));
     reorder.appendChild(up);

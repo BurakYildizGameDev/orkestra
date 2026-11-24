@@ -9,7 +9,7 @@
 **Güçlü bir "şef" modelin (ör. Claude) işi birçok ucuz veya yerel "işçi" modele dağıtmasını, sonuçları doğrulamasını ve bir sağlayıcı çöktüğünde ya da kotası bittiğinde işin başka bir sağlayıcıda sürmesini sağlayan, bütçe farkındalıklı komut satırı aracı.**
 
 > **Durum: erken sürüm, geliştirme aşamasında.** Aşağıdaki tablodaki her şey çalışıyor ve
-> Linux, macOS ve Windows'ta ağsız çalışan yaklaşık 1.900 testle denetleniyor; ama gerçek
+> 2.268 ağsız testle denetleniyor; CI Linux, macOS ve Windows'u hedefliyor ama gerçek
 > kullanımda henüz az denendi. PyPI'de henüz yok. Ölçüldü: **bütün bir fazı** bir kod ajanına
 > devretmek (`orkestra delegate`) ve taze bir oturumda denetlemek şefe satır başına ~%68 daha az
 > tokena mal oldu; küçük işleri devretmek tokenı **azaltmıyor**, bağlam süzgeci büyük bir işin
@@ -91,6 +91,8 @@ uv tool install git+https://github.com/BurakYildizGameDev/orkestra
 # masaüstü bildirimiyle:
 uv tool install git+https://github.com/BurakYildizGameDev/orkestra --with "desktop-notifier>=6.0,<7"
 orkestra --help
+# İsteğe bağlı: geçerli kabuk için tamamlamayı kur
+orkestra --install-completion
 ```
 
 Henüz PyPI'de yok (`orkestra-cli` adıyla planlanıyor). Bir klondan `uv sync` ve
@@ -189,6 +191,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
   ajanları, kota ve kesintisizlik, batch, gece kuyruğu, şef araçları, çapraz denetim,
   `exec`/`read`/`find`, token haritası, yapılandırma, sonuç zarfı ve çıkış kodları.
 - [Tarifler](docs/recipes.tr.md): hazır iş akışları.
+- [JSON sonuç şeması](schemas/envelope.schema.json): `run`, `batch` ve `batch --estimate` JSON çıktısı için şema. `uv run python scripts/generate_envelope_schema.py` ile yeniden üret.
 - [Örnek config](examples/orkestra.example.yaml) ve [örnek görevler](examples/tasks/).
 - [`docs/PROGRESS.md`](docs/PROGRESS.md): her fazda ne yapıldı; [`docs/DECISIONS.md`](docs/DECISIONS.md): plandan her sapma ve gerekçesi.
 

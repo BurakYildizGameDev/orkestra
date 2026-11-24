@@ -11,7 +11,9 @@ import pytest
 import respx
 from conftest import git
 
-from orkestra.config.schema import Config
+from orkestra.config.schema import Config, ModelSpec
+from orkestra.envelope import Failover
+from orkestra.routing.router import Candidate
 from orkestra.state import consent
 from orkestra.tasks import runner, spec
 from orkestra.tasks.prompts import FEEDBACK_CHARS
@@ -52,6 +54,50 @@ CHAT = {
     "api_key_env": "TEST_KEY",
     "models": [{"id": "model-1", "tier": 3, "edit_format": "whole"}],
 }
+
+
+def test_continuation_note_names_last_agent_when_an_unavailable_candidate_intervened() -> None:
+    config = Config.model_validate(
+        {
+            "version": 1,
+            "providers": {
+                "agent-a": {
+                    "type": "cli_agent",
+                    "command": "python",
+                    "kind": "generic",
+                    "tier": 1,
+                },
+                "agent-b": {
+                    "type": "cli_agent",
+                    "command": "python",
+                    "kind": "generic",
+                    "tier": 1,
+                },
+            },
+        }
+    )
+    model = ModelSpec(id="generic", tier=1)
+    last_agent = Candidate("agent-a", config.providers["agent-a"], model, 1.0, None)
+    unavailable = Candidate("agent-b", config.providers["agent-b"], model, 1.0, None)
+    task_run = object.__new__(runner._TaskRun)
+    task_run.wt = None
+    task_run.failovers = [
+        Failover(
+            provider="agent-b",
+            model="generic",
+            tier=1,
+            error="ProviderCommandNotFound",
+            reason="not installed",
+            attempts=0,
+        )
+    ]
+    task_run.last_agent_candidate = last_agent
+    task_run.last_verify_failures = []
+
+    note = task_run._build_continuation_note(unavailable)
+
+    assert "Previous worker (agent-a/generic) last ran" in note
+    assert "candidate agent-b/generic (ProviderCommandNotFound: not installed) failed" in note
 
 
 async def test_continuation_note_is_masked_capped_and_english(

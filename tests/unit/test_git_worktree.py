@@ -124,6 +124,15 @@ def test_reset_restores_the_baseline(make_repo: MakeRepo) -> None:
     assert gw.diff(wt).files == ()
 
 
+def test_changed_paths_includes_untracked_and_tracked_changes(make_repo: MakeRepo) -> None:
+    repo = make_repo(FILES)
+    wt = gw.create(repo, "20261110-120000-abcd")
+    (wt.path / "README.md").write_text("changed\n", encoding="utf-8")
+    (wt.path / "new.txt").write_text("new\n", encoding="utf-8")
+
+    assert gw.changed_paths(wt) == ("README.md", "new.txt")
+
+
 def test_destructive_git_never_runs_in_the_main_repository(make_repo: MakeRepo) -> None:
     repo = make_repo(FILES)
     (repo / "README.md").write_bytes(b"precious uncommitted work\n")

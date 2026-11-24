@@ -1,0 +1,788 @@
+{
+  "$defs": {
+    "BatchEnvelope": {
+      "description": "``orkestra batch --json``: one document for the whole batch (Mimari §13).",
+      "properties": {
+        "batch_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Batch Version",
+          "type": "integer"
+        },
+        "batch_id": {
+          "title": "Batch Id",
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/BatchItem"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "totals": {
+          "$ref": "#/$defs/BatchTotals"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "duration_s": {
+          "default": 0.0,
+          "title": "Duration S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "batch_id"
+      ],
+      "title": "BatchEnvelope",
+      "type": "object"
+    },
+    "BatchEstimate": {
+      "description": "``orkestra batch --estimate --json`` (and a batch stopped for its cost) (Faz 7b).",
+      "properties": {
+        "estimate_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Estimate Version",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/EstimateItem"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "totals": {
+          "$ref": "#/$defs/EstimateTotals"
+        },
+        "confirm_above_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confirm Above Usd"
+        },
+        "needs_confirmation": {
+          "default": false,
+          "title": "Needs Confirmation",
+          "type": "boolean"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "title": "BatchEstimate",
+      "type": "object"
+    },
+    "BatchItem": {
+      "description": "One task of a batch: its envelope, or why it has none (skipped, failed to start).",
+      "properties": {
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "failed",
+            "escalate",
+            "error",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "exit_code": {
+          "title": "Exit Code",
+          "type": "integer"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Id"
+        },
+        "envelope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResultEnvelope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "required": [
+        "task_id",
+        "status",
+        "exit_code"
+      ],
+      "title": "BatchItem",
+      "type": "object"
+    },
+    "BatchTotals": {
+      "properties": {
+        "ok": {
+          "default": 0,
+          "title": "Ok",
+          "type": "integer"
+        },
+        "failed": {
+          "default": 0,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "escalate": {
+          "default": 0,
+          "title": "Escalate",
+          "type": "integer"
+        },
+        "error": {
+          "default": 0,
+          "title": "Error",
+          "type": "integer"
+        },
+        "skipped": {
+          "default": 0,
+          "title": "Skipped",
+          "type": "integer"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Usd"
+        }
+      },
+      "title": "BatchTotals",
+      "type": "object"
+    },
+    "Changes": {
+      "properties": {
+        "files": {
+          "title": "Files",
+          "type": "integer"
+        },
+        "insertions": {
+          "title": "Insertions",
+          "type": "integer"
+        },
+        "deletions": {
+          "title": "Deletions",
+          "type": "integer"
+        },
+        "patch_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Patch Path"
+        }
+      },
+      "required": [
+        "files",
+        "insertions",
+        "deletions"
+      ],
+      "title": "Changes",
+      "type": "object"
+    },
+    "EnvelopeReview": {
+      "properties": {
+        "risk": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "unknown"
+          ],
+          "title": "Risk",
+          "type": "string"
+        },
+        "flags_count": {
+          "title": "Flags Count",
+          "type": "integer"
+        },
+        "by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "By"
+        },
+        "independent": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Independent"
+        },
+        "patch_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Patch Sha256"
+        }
+      },
+      "required": [
+        "risk",
+        "flags_count"
+      ],
+      "title": "EnvelopeReview",
+      "type": "object"
+    },
+    "EnvelopeUsage": {
+      "properties": {
+        "prompt_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Tokens"
+        },
+        "completion_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completion Tokens"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Usd"
+        }
+      },
+      "title": "EnvelopeUsage",
+      "type": "object"
+    },
+    "Escalation": {
+      "properties": {
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "tier": {
+          "title": "Tier",
+          "type": "integer"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "model",
+        "tier",
+        "reason"
+      ],
+      "title": "Escalation",
+      "type": "object"
+    },
+    "EstimateItem": {
+      "description": "One task of ``batch --estimate``: its first request, or why it cannot run.",
+      "properties": {
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        },
+        "prompt_tokens": {
+          "default": 0,
+          "title": "Prompt Tokens",
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Output Tokens"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Usd"
+        },
+        "agent": {
+          "default": false,
+          "title": "Agent",
+          "type": "boolean"
+        },
+        "exit_code": {
+          "default": 0,
+          "title": "Exit Code",
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "required": [
+        "task_id"
+      ],
+      "title": "EstimateItem",
+      "type": "object"
+    },
+    "EstimateTotals": {
+      "properties": {
+        "tasks": {
+          "default": 0,
+          "title": "Tasks",
+          "type": "integer"
+        },
+        "tokens": {
+          "default": 0,
+          "title": "Tokens",
+          "type": "integer"
+        },
+        "cost_usd": {
+          "default": 0.0,
+          "title": "Cost Usd",
+          "type": "number"
+        },
+        "unpriced": {
+          "default": 0,
+          "title": "Unpriced",
+          "type": "integer"
+        },
+        "unpriced_remote": {
+          "default": 0,
+          "title": "Unpriced Remote",
+          "type": "integer"
+        },
+        "cannot_run": {
+          "default": 0,
+          "title": "Cannot Run",
+          "type": "integer"
+        }
+      },
+      "title": "EstimateTotals",
+      "type": "object"
+    },
+    "Failover": {
+      "description": "A candidate that failed at runtime; the run moved on to the next one.",
+      "properties": {
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "tier": {
+          "title": "Tier",
+          "type": "integer"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "attempts": {
+          "title": "Attempts",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "provider",
+        "model",
+        "tier",
+        "error",
+        "reason",
+        "attempts"
+      ],
+      "title": "Failover",
+      "type": "object"
+    },
+    "ResultEnvelope": {
+      "properties": {
+        "envelope_version": {
+          "default": 4,
+          "enum": [
+            2,
+            3,
+            4
+          ],
+          "title": "Envelope Version",
+          "type": "integer"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "failed",
+            "escalate",
+            "error"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        },
+        "edit_format": {
+          "anyOf": [
+            {
+              "enum": [
+                "replace",
+                "whole"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Edit Format"
+        },
+        "attempts": {
+          "default": 0,
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "escalations": {
+          "items": {
+            "$ref": "#/$defs/Escalation"
+          },
+          "title": "Escalations",
+          "type": "array"
+        },
+        "failovers": {
+          "items": {
+            "$ref": "#/$defs/Failover"
+          },
+          "title": "Failovers",
+          "type": "array"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "verification": {
+          "items": {
+            "$ref": "#/$defs/VerificationResult"
+          },
+          "title": "Verification",
+          "type": "array"
+        },
+        "changes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Changes"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "output_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Path"
+        },
+        "usage": {
+          "$ref": "#/$defs/EnvelopeUsage"
+        },
+        "duration_s": {
+          "default": 0.0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "cached": {
+          "default": false,
+          "title": "Cached",
+          "type": "boolean"
+        },
+        "review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EnvelopeReview"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "warnings": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Warnings"
+        },
+        "partial_dropped": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Partial Dropped"
+        }
+      },
+      "required": [
+        "run_id",
+        "task_id",
+        "status"
+      ],
+      "title": "ResultEnvelope",
+      "type": "object"
+    },
+    "VerificationResult": {
+      "properties": {
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "detail": {
+          "default": "",
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "ok"
+      ],
+      "title": "VerificationResult",
+      "type": "object"
+    }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/ResultEnvelope"
+    },
+    {
+      "$ref": "#/$defs/BatchEnvelope"
+    },
+    {
+      "$ref": "#/$defs/BatchEstimate"
+    }
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Orkestra JSON result document",
+  "description": "One of the JSON documents emitted by orkestra run, batch, or batch --estimate."
+}
