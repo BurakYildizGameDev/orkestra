@@ -91,7 +91,7 @@ uv tool install git+https://github.com/BurakYildizGameDev/orkestra
 # masaüstü bildirimiyle:
 uv tool install git+https://github.com/BurakYildizGameDev/orkestra --with "desktop-notifier>=6.0,<7"
 orkestra --help
-# İsteğe bağlı kabuk tamamlaması (kabuğuna kurulum komutunu gösterir)
+# İsteğe bağlı: geçerli kabuk için tamamlamayı kur
 orkestra --install-completion
 ```
 

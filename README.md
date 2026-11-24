@@ -92,7 +92,7 @@ uv tool install git+https://github.com/BurakYildizGameDev/orkestra
 # with desktop notifications:
 uv tool install git+https://github.com/BurakYildizGameDev/orkestra --with "desktop-notifier>=6.0,<7"
 orkestra --help
-# Optional shell completion (prints the command to install for your shell)
+# Optional: install shell completion for the current shell
 orkestra --install-completion
 ```
 
