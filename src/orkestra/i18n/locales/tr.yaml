@@ -41,6 +41,7 @@ config.error.yaml_started: "(ilgili yapı {line}. satırda başlıyor)"
 config.error.not_mapping: "{path}: en üst seviye bir eşleme (anahtar: değer) olmalı."
 config.error.invalid: "Geçersiz yapılandırma ({sources}):"
 config.error.write: "{path} yazılamıyor: {reason}"
+config.error.concurrent_update: "{path} yüklendikten sonra değişti; yeniden yükleyip tekrar deneyin."
 
 config.validation.or: "veya"
 config.validation.missing: "zorunlu alan eksik"

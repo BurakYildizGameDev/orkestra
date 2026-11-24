@@ -42,6 +42,7 @@ config.error.yaml_started: "(la structure commence à la ligne {line})"
 config.error.not_mapping: "{path} : le niveau supérieur doit être un dictionnaire (clé: valeur)."
 config.error.invalid: "Configuration invalide ({sources}) :"
 config.error.write: "Impossible d'écrire {path} : {reason}"
+config.error.concurrent_update: "La configuration {path} a changé depuis son chargement ; rechargez-la et réessayez."
 
 config.validation.or: "ou"
 config.validation.missing: "le champ obligatoire est manquant"

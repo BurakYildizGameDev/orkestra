@@ -42,6 +42,7 @@ config.error.yaml_started: "(das Konstrukt beginnt in Zeile {line})"
 config.error.not_mapping: "{path}: Die oberste Ebene muss ein Mapping (Schlüssel: Wert) sein."
 config.error.invalid: "Ungültige Konfiguration ({sources}):"
 config.error.write: "{path} kann nicht geschrieben werden: {reason}"
+config.error.concurrent_update: "{path} wurde seit dem Laden geändert; laden Sie die Datei neu und versuchen Sie es erneut."
 
 config.validation.or: "oder"
 config.validation.missing: "erforderliches Feld fehlt"

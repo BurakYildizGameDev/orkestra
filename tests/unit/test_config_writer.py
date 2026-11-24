@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -77,6 +80,54 @@ def test_saving_over_a_file_keeps_the_previous_version_as_bak(tmp_path: Path) ->
     assert second.backup == tmp_path / "config.yaml.bak.1"  # the first backup is never replaced
     assert "language: en" in (tmp_path / "config.yaml.bak.1").read_text(encoding="utf-8")
     assert backup.read_bytes() == USER_FILE.encode("utf-8")
+
+
+def test_stale_config_document_cannot_overwrite_a_concurrent_update(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_bytes(USER_FILE.encode("utf-8"))
+    first = writer.load_document(path)
+    second = writer.load_document(path)
+
+    first["language"] = "en"
+    writer.save(path, first)
+    second["language"] = "de"
+
+    with pytest.raises(ConfigError) as exc_info:
+        writer.save(path, second)
+
+    assert exc_info.value.message == t("config.error.concurrent_update", path=path)
+    assert "language: en" in path.read_text(encoding="utf-8")
+    assert "language: de" not in path.read_text(encoding="utf-8")
+
+
+def test_process_lock_blocks_a_separate_process(tmp_path: Path) -> None:
+    target = tmp_path / "config.yaml"
+    acquired = tmp_path / "acquired.txt"
+    child_code = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "from orkestra.config.writer import process_lock\n"
+        "target, acquired = map(Path, sys.argv[1:])\n"
+        "with process_lock(target):\n"
+        "    acquired.write_text('locked', encoding='utf-8')\n"
+    )
+    child: subprocess.Popen[bytes] | None = None
+    try:
+        with writer.process_lock(target):
+            child = subprocess.Popen(
+                [sys.executable, "-c", child_code, str(target), str(acquired)],
+                cwd=Path.cwd(),
+            )
+            deadline = time.monotonic() + 2
+            while child.poll() is None and not acquired.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert not acquired.exists()
+        assert child is not None and child.wait(timeout=5) == 0
+        assert acquired.read_text(encoding="utf-8") == "locked"
+    finally:
+        if child is not None and child.poll() is None:
+            child.terminate()
+            child.wait(timeout=5)
 
 
 def test_a_new_file_has_no_backup(tmp_path: Path) -> None:

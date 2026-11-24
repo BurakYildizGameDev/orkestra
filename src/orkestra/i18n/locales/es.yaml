@@ -42,6 +42,7 @@ config.error.yaml_started: "(la estructura comienza en la línea {line})"
 config.error.not_mapping: "{path}: el nivel superior debe ser un mapeo (clave: valor)."
 config.error.invalid: "Configuración no válida ({sources}):"
 config.error.write: "No se puede escribir {path}: {reason}"
+config.error.concurrent_update: "La configuración {path} cambió después de cargarla; vuelva a cargarla e inténtelo de nuevo."
 
 config.validation.or: "o"
 config.validation.missing: "falta el campo obligatorio"

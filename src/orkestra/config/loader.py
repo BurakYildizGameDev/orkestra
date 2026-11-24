@@ -25,6 +25,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.error import MarkedYAMLError, YAMLError
 
 from orkestra import paths
+from orkestra.config.file_lock import process_lock
 from orkestra.config.schema import CONFIG_VERSION, PROVIDER_TYPES, Config
 from orkestra.errors import ConfigError
 from orkestra.i18n import t
@@ -419,12 +420,13 @@ def init_config(
     gitignore: Path | None = None
     example = example_config_text().encode("utf-8")
     try:
-        if not target.exists() or force:
-            if target.exists() and target.read_bytes() != example:
-                backup = free_backup_path(target)
-                atomic_write(backup, target.read_bytes())
-            atomic_write(target, example)
-            written = True
+        with process_lock(target):
+            if not target.exists() or force:
+                if target.exists() and target.read_bytes() != example:
+                    backup = free_backup_path(target)
+                    atomic_write(backup, target.read_bytes())
+                atomic_write(target, example)
+                written = True
         root = find_git_root((Path.cwd() if cwd is None else cwd).resolve()) if project else None
         if root is not None and ensure_gitignore_entry(root / ".gitignore"):
             gitignore = root / ".gitignore"
