@@ -373,6 +373,11 @@ def normalize_path(raw: str) -> str | None:
     return PurePosixPath(*parts).as_posix()
 
 
+def nonportable_paths(paths: Collection[str]) -> tuple[str, ...]:
+    """Changed repository paths that cannot be represented portably in git."""
+    return tuple(sorted(path for path in paths if normalize_path(path) is None))
+
+
 _WINDOWS_DEVICES = frozenset(
     {"con", "prn", "aux", "nul"} | {f"{d}{n}" for d in ("com", "lpt") for n in range(1, 10)}
 )

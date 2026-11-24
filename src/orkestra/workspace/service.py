@@ -349,14 +349,16 @@ class Unapplied:
     run_id: str
     task_id: str
     summary: str
+    status: str = "ok"
 
 
 def unapplied_runs(conn: sqlite3.Connection) -> list[Unapplied]:
-    """Edit runs that passed and still wait for ``apply`` or ``discard``, newest first
-    (``status``, Faz 8a)."""
+    """Edit runs with changes that still wait for ``apply`` or ``discard``, newest first
+    (``status``, Faz 8a). Failed runs are included and require ``apply --force``."""
     rows = conn.execute(
-        "SELECT run_id, task_id, started_at FROM runs "
-        "WHERE kind = 'edit' AND status = 'ok' AND applied = 0 AND worktree IS NOT NULL"
+        "SELECT run_id, task_id, status, started_at FROM runs "
+        "WHERE kind = 'edit' AND status IN ('ok', 'error') AND applied = 0 "
+        "AND worktree IS NOT NULL"
     ).fetchall()
     waiting: list[tuple[datetime, Unapplied]] = []
     for row in rows:
@@ -368,7 +370,10 @@ def unapplied_runs(conn: sqlite3.Connection) -> list[Unapplied]:
             data = {}
         summary = data.get("summary") if isinstance(data, dict) else None
         started = datetime.fromisoformat(row["started_at"])
-        item = Unapplied(row["run_id"], row["task_id"], summary if isinstance(summary, str) else "")
+        item = Unapplied(
+            row["run_id"], row["task_id"], summary if isinstance(summary, str) else "",
+            row["status"],
+        )
         waiting.append((started, item))
     waiting.sort(key=lambda pair: pair[0], reverse=True)
     return [item for _, item in waiting]

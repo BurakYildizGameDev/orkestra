@@ -501,11 +501,12 @@ def _check_notify(
             ntfy_avail = True
 
     if not desktop_avail and not ntfy_avail:
+        hint = f"pip install {EXTRA}" if cfg.desktop else t("doctor.hint.configure_notify")
         return Check(
             "notify",
             "warn",
             t("doctor.warning.no_notify"),
-            {"hint": f"pip install {EXTRA}"},
+            {"hint": hint},
         )
     return None
 

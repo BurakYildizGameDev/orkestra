@@ -427,7 +427,10 @@ class WebHandler(http.server.BaseHTTPRequestHandler):
                     api_key_env = body.get("api_key_env")
                     command = body.get("command")
                     no_key = body.get("no_key") is True
-                    force = bool(body.get("force", False))
+                    force_value = body.get("force", False)
+                    if not isinstance(force_value, bool):
+                        raise UsageError(t("web.error.bad_field", field="force"))
+                    force = force_value
                     team.add_worker(
                         self.server.config_path,
                         name=name,

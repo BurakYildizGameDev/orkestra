@@ -232,12 +232,18 @@ def continuation_note(
     carries e.g. the agent's own "quota exhausted" text). ``failures`` are already masked; they
     get the same budget as retry feedback (D-135).
     """
-    stopped = f"{last.error}: {last.reason}" if last is not None else "unknown"
+    if last is None:
+        stopped_line = f"Previous worker ({label}) stopped with unknown"
+    elif f"{last.provider}/{last.model}" == label:
+        stopped_line = f"Previous worker ({label}) stopped with {last.error}: {last.reason}"
+    else:
+        failed = f"{last.provider}/{last.model} ({last.error}: {last.reason})"
+        stopped_line = f"Previous worker ({label}) last ran; candidate {failed} failed"
     summary = format_failures(failures, FEEDBACK_CHARS) if failures else "none"
     return "\n".join(
         [
             "## Continuation Note",
-            f"Previous worker ({label}) stopped with {stopped}",
+            stopped_line,
             f"Changed files in worktree: {', '.join(changed) if changed else 'none'}",
             f"Last verification summary:\n{summary}",
             "Continue from the current state, do not rewrite what is done.",
@@ -549,7 +555,9 @@ class _TaskRun(RunRecord):
         self.rejected = _Answer(candidate, result.text, checks, result)
         self.last_problem = "checks"
         if self.wt is not None:
-            self.rejected_patch = gw.diff(self.wt).patch
+            self.rejected_patch = (
+                None if self.agent_nonportable_paths else gw.diff(self.wt).patch
+            )
         failures = [c.feedback for c in checks if not c.result.ok]
         # Feedback goes to a model: mask everything secret, as in the records (also for the
         # continuation note of a later agent, D-135).
@@ -558,6 +566,8 @@ class _TaskRun(RunRecord):
             self.last_verify_failures = masked
         self.log.info("attempt %d failed checks: %s", self.attempts, failures)
         if answers >= self.max_answers:
+            if outcome := self._escalate_nonportable_agent_path():
+                return outcome
             names = ", ".join(c.result.type for c in checks if not c.result.ok)
             message = t("verify.failed", checks=names)
             return self._fail(candidate, None, tries, retry.Action.ESCALATE, reason=message,
@@ -569,6 +579,8 @@ class _TaskRun(RunRecord):
                     "attempt %d made no progress (identical failures); stopping candidate",
                     self.attempts,
                 )
+                if outcome := self._escalate_nonportable_agent_path():
+                    return outcome
                 names = ", ".join(c.result.type for c in checks if not c.result.ok)
                 message = t("verify.failed", checks=names)
                 return self._fail(
@@ -651,6 +663,7 @@ class _TaskRun(RunRecord):
                     gw.reset(self.wt)  # a new candidate starts from the user's files
                 before = gw.status_snapshot(repo) if repo is not None else None
                 scope = _Scope(repo, before)
+                self.last_agent_candidate = candidate
                 try:
                     result = await agent.run(req)
                 except ProviderError as exc:
@@ -665,6 +678,8 @@ class _TaskRun(RunRecord):
                     self.log.warning("attempt %d failed: %s %s", self.attempts,
                                      type(exc).__name__, exc.message)  # fmt: skip
                     self._scope_checks(scope)  # a crashed agent may still have written outside
+                    if outcome := self._escalate_nonportable_agent_path():
+                        return outcome
                     action = retry.classify(exc)
                     if action is retry.Action.RETRY:
                         action = retry.give_up(exc)
@@ -712,10 +727,20 @@ class _TaskRun(RunRecord):
             estimated=True,
         )
 
+    def _escalate_nonportable_agent_path(self) -> TaskOutcome | None:
+        if not self.agent_nonportable_paths:
+            return None
+        self.escalate_reason = t(
+            "edit.error.nonportable_path", path=self.agent_nonportable_paths[0]
+        )
+        self.last_problem = "escalate"
+        return self._escalate()
+
     def _build_continuation_note(self, previous: Candidate) -> str:
         changed = [f.path for f in gw.diff(self.wt).files] if self.wt is not None else []
+        last_agent = self.last_agent_candidate or previous
         return continuation_note(
-            previous.label,
+            last_agent.label,
             self.failovers[-1] if self.failovers else None,
             changed,
             self.last_verify_failures,
@@ -806,6 +831,11 @@ class _TaskRun(RunRecord):
         self, wt: gw.Worktree, text: str, scope: _Scope, attempt_dir: Path
     ) -> list[CheckResult]:
         """Verify what an agent changed in the worktree; keep only its change afterwards."""
+        self.agent_nonportable_paths = ef.nonportable_paths(gw.changed_paths(wt))
+        if self.agent_nonportable_paths:
+            path = self.agent_nonportable_paths[0]
+            self.note = text
+            return [failed(ef.FORMAT_CHECK, Message("edit.error.nonportable_path", {"path": path}))]
         if self.task.fix:
             await run_fix_commands(self.task.fix, self.workdir, attempt_dir)
         outside = self._scope_checks(scope)
