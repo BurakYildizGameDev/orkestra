@@ -9,7 +9,7 @@
 **A budget-aware CLI that lets one strong "chief" model (e.g. Claude) hand work to many cheaper or local "worker" models, verify the results, and keep working on another provider when one fails or runs out of quota.**
 
 > **Status: early release, in development.** Everything in the table below works and is
-> covered by about 1,900 offline tests on Linux, macOS and Windows, but it has seen little
+> covered by 2,268 offline tests, with CI targeting Linux, macOS and Windows, but it has seen little
 > real-world use yet. It is not on PyPI yet. Measured: handing a **whole phase** to a code
 > agent (`orkestra delegate`) and reviewing it in a fresh session cost the chief ~68% fewer
 > tokens per line; handing over small tasks does **not** save tokens, and the context filter
@@ -92,6 +92,8 @@ uv tool install git+https://github.com/BurakYildizGameDev/orkestra
 # with desktop notifications:
 uv tool install git+https://github.com/BurakYildizGameDev/orkestra --with "desktop-notifier>=6.0,<7"
 orkestra --help
+# Optional shell completion (prints the command to install for your shell)
+orkestra --install-completion
 ```
 
 Not on PyPI yet (planned as `orkestra-cli`). From a clone, `uv sync` and `uv run orkestra --help` work
@@ -189,6 +191,7 @@ mkdir -p ~/.claude/skills && cp -r skill/orkestra ~/.claude/skills/
   continuity, batches, the night queue, chief tools, cross-review, `exec`/`read`/`find`, token
   map, configuration, the result envelope and exit codes.
 - [Recipes](docs/recipes.md): ready-made workflows.
+- [JSON result schema](schemas/envelope.schema.json): schema for `run`, `batch` and `batch --estimate` JSON output. Regenerate it with `uv run python scripts/generate_envelope_schema.py`.
 - [Example config](examples/orkestra.example.yaml) and [example tasks](examples/tasks/).
 - [`docs/PROGRESS.md`](docs/PROGRESS.md): what each phase did; [`docs/DECISIONS.md`](docs/DECISIONS.md): every deviation from the plan, with its reason.
 

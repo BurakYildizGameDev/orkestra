@@ -4,6 +4,8 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 ## Durum özeti
 
+**Son doğrulama (2026-11-24):** Config yazımındaki süreçler arası yarış D-143 kapsamında düzeltildi. `uv run pytest`: 2268 geçti, 4 canlı test seçilmedi; canlı koşuda Ollama, Codex ve OpenCode geçti, OpenRouter anahtar ve model ayarı bulunmadığı için atlandı. Ruff, format kontrolü, Pyright, paket derlemesi ve uzak CI matrisi (3 OS × 3 Python, 9/9) temiz. Markdown bağlantı taramasında 52 dosyada bozuk yerel bağlantı bulunmadı. Önceki tamamlanmış fazlardan, başka belgece referans edilmeyen üç AGY devir taslağı silindi; raporlar ve plan kayıtları korundu. README test sayısı ve kabuk tamamlama açıklaması yenilendi; `schemas/envelope.schema.json` için Pydantic kaynaklı üretici betik eklendi. README komut denetimi Typer'ın kök tamamlama seçeneklerini tanıyacak şekilde düzeltildi. Temiz ortamda üç işletim sistemi kurulumu, demo/PDF varlıkları ve yayın işlemleri henüz tamamlanmadı.
+
 | Faz | Durum | Tarih | Not |
 |---|---|---|---|
 | 0 – İskelet + i18n altyapısı | ✅ | 2026-11-09 | Paket adı `orkestra-cli` (D-001) |
@@ -65,7 +67,7 @@ Her faz sonunda ajan bu dosyayı günceller. En yeni faz en üstte.
 
 - **Bakış (Opus, Fable yerine; `FABLE_BAKIS.md`):** yayına engel yok. `uv build` + temiz ortamda kurulum, CI, sızıntı taraması, web arayüzü güvenliği temiz. Düzeltilen: sürüm `0.9.0`, README'nin 13r sonucu ve `delegate` (PR #66).
 - **Kırma testi (alt ajan, ayrı `ORKESTRA_HOME`, ücretli servis yok):** 24 bulgu (8 orta, 16 küçük), engel yok; eşzamanlılık sağlam (4 batch × 40 görev + `ask` + `status` aynı home'da, 160/160), sır sızmadı. Düzeltilenler: D-139 (HTML yanıtta çökme, zaman aşımının 4 kat beklemesi, Windows'un tutamayacağı yollar, eksik çeviri anahtarları, boş `budget`, loopback adresine "Remote") ve D-140 (fiyatsız modelle `daily_usd`'nin delinmesi, düz http ile anahtar, yanlış "onay gerekiyor" başlığı, repo dışı `delegate` planı, `doctor`'un `.cmd` ajanda asılı kalması, `ORKESTRA_HOME` dosya, `--config` klasör).
-- **Bilinen sorunlar:** `error` ile biten düzenleme koşusunun worktree'si `status`'ta görünmüyor (`gc` 30 günde toplar); kod ajanı yasak adlı dosyayı kendisi yazarsa iç hata; `runner.py` ~900 satır (~800 sınırı aşıldı, bölme Faz 14 sonrası); Typer'ın kendi ayrıştırıcı mesajları ("No such option" …) İngilizce kalır (D-141). Küçük bulgular B-10…B-23 D-141'de düzeltildi.
+- **Güncel bilinen sorunlar / sınırlar:** Typer'ın kendi ayrıştırıcı mesajlarının bir bölümü ("No such option" …) İngilizce kalır; bu D-141'de kabul edilmiş. `tasks/runner.py` 940 satır; yaklaşık 800 satırlık bakım hedefini aşıyor ve ayrı modüle bölünmesi ertelendi. Önceki taramadaki hata durumlu worktree'nin `status`'ta görünmemesi 8f7bdc3'te düzeltildi (`test_status_lists_unapplied_runs`); taşınamayan ajan yolları Git diff/stage öncesi yakalanıyor (bu taramada regresyon testi eklendi). Web `force` alanı ve erişilebilir gezinme için de regresyon testleri mevcut. Canlı servis testleri ve tarayıcıda görsel UI kontrolü bu turda yapılmadı.
 - **Kod denetimi (`/code-review 67`, 2026-11-23):** 5 önemli, 4 küçük bulgu; hepsi D-142'de düzeltildi (`no_price` yalnız fiyat listesi okunmuşken, yedek budama geri alındı, onay başlığı, bozuk adres, model adı).
 
 ### Faz 13r-c – Kabul denemesi ve tokens --compare (2026-11-23)

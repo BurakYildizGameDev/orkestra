@@ -159,8 +159,11 @@ def _resolve(
         word = rest.pop(0)
         name = word.split("=", 1)[0]
         param = root_options.get(name)
-        if name == _HELP or (param is not None and param.is_eager and not rest):
-            return None, [], ["orkestra"], []  # `--help`, `--version`: no subcommand needed
+        completion_option = name in {"--install-completion", "--show-completion"}
+        if name == _HELP or (
+            param is not None and (param.is_eager or completion_option) and not rest
+        ):
+            return None, [], ["orkestra"], []  # root options do not need a subcommand
         if param is None:
             return None, [], ["orkestra"], [f"unknown global option {name}"]
         _skip_values(param, word, rest)

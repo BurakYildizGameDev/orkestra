@@ -65,6 +65,11 @@ def test_anchors_follow_github() -> None:
     assert _anchors("## A\n## A\n") == {"a", "a-1"}
 
 
+@pytest.mark.parametrize("option", ["--install-completion", "--show-completion"])
+def test_typer_completion_options_are_valid_without_a_subcommand(option: str) -> None:
+    assert check_call(_cli(), [option]) == []
+
+
 @pytest.mark.parametrize("name", DOCS)
 def test_every_command_and_flag_in_the_docs_exists(name: str) -> None:
     text = _commands(name)
